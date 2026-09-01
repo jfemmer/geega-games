@@ -31,4 +31,10 @@ export default function App() {
         <SignupForm />
       </main>
 
-      <footer
+      <footer className="shell foot">
+        <span>© {year} Geega Games</span>
+        <span>Opening soon</span>
+      </footer>
+    </div>
+  );
+}
