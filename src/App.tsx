@@ -1,6 +1,5 @@
 import "./App.css";
 import SignupForm from "./SignupForm";
-import logo from "/logo.png";
 
 export default function App() {
   const year = new Date().getFullYear();
@@ -10,7 +9,7 @@ export default function App() {
       <main className="shell hero reveal">
         <img
           className="logo"
-          src={logo}
+          src="/logo.png"
           alt="Geega Games"
           width={686}
           height={606}
@@ -32,10 +31,4 @@ export default function App() {
         <SignupForm />
       </main>
 
-      <footer className="shell foot">
-        <span>© {year} Geega Games</span>
-        <span>Opening soon</span>
-      </footer>
-    </div>
-  );
-}
+      <footer
