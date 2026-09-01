@@ -1,39 +1,151 @@
+import { useMemo, useState } from "react";
 import "./App.css";
-import SignupForm from "./SignupForm";
+import CardGrid from "./CardGrid";
+import { SAMPLE_CARDS, COLOR_LABELS, type Card } from "./sampleCards";
+
+type Sort = "" | "name-asc" | "name-desc" | "price-asc" | "price-desc";
 
 export default function App() {
-  const year = new Date().getFullYear();
+  const [query, setQuery] = useState("");
+  const [color, setColor] = useState("");
+  const [type, setType] = useState("");
+  const [sort, setSort] = useState<Sort>("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const types = useMemo(
+    () => Array.from(new Set(SAMPLE_CARDS.map((c) => c.type))).sort(),
+    []
+  );
+
+  const visible = useMemo(() => {
+    let out: Card[] = SAMPLE_CARDS.filter((c) => {
+      const matchesQuery = c.name.toLowerCase().includes(query.trim().toLowerCase());
+      const matchesColor = !color || c.color === color;
+      const matchesType = !type || c.type === type;
+      return matchesQuery && matchesColor && matchesType;
+    });
+    switch (sort) {
+      case "name-asc": out = [...out].sort((a, b) => a.name.localeCompare(b.name)); break;
+      case "name-desc": out = [...out].sort((a, b) => b.name.localeCompare(a.name)); break;
+      case "price-asc": out = [...out].sort((a, b) => a.priceUsd - b.priceUsd); break;
+      case "price-desc": out = [...out].sort((a, b) => b.priceUsd - a.priceUsd); break;
+    }
+    return out;
+  }, [query, color, type, sort]);
 
   return (
-    <div className="page">
-      <main className="shell hero reveal">
-        <img
-          className="logo"
-          src="/logo.png"
-          alt="Geega Games"
-          width={686}
-          height={606}
-        />
+    <div className="app">
+      {/* Coming-soon notice */}
+      <div className="ribbon">
+        <span className="ribbon-dot" aria-hidden="true" />
+        Browsing is open — checkout and payment processing go live soon.
+      </div>
 
-        <span className="status">
-          <span className="dot" aria-hidden="true" />
-          Payment processing in progress
-        </span>
+      {/* Header */}
+      <header className="masthead">
+        <div className="masthead-row">
+          <img className="brand" src="/logo.png" alt="Geega Games" width={220} height={194} />
+          <div className="masthead-actions">
+            <button className="pill" disabled title="Cart opens at launch">
+              Cart (0)
+            </button>
+            <button className="pill" disabled title="Accounts open at launch">
+              Sign in
+            </button>
+          </div>
+        </div>
+        <div className="search">
+          <input
+            type="search"
+            placeholder="Search for a card…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search cards"
+          />
+        </div>
+      </header>
 
-        <h1 className="display">The shop is shuffling up.</h1>
+      {/* Purple nav */}
+      <nav className="subnav">
+        <div className="subnav-left">
+          <div className="menu">
+            <button
+              className="menu-btn"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              aria-label="Menu"
+            >
+              ☰
+            </button>
+            {menuOpen && (
+              <div className="menu-drop">
+                <a href="#" onClick={(e) => e.preventDefault()}>Home</a>
+                <a href="#" onClick={(e) => e.preventDefault()}>Request a card</a>
+                <a href="#" onClick={(e) => e.preventDefault()}>Trade-in</a>
+              </div>
+            )}
+          </div>
+          <button className="filter-btn" onClick={() => setSidebarOpen((v) => !v)}>
+            ⚲ Filters
+          </button>
+        </div>
+        <select
+          className="sort"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as Sort)}
+          aria-label="Sort cards"
+        >
+          <option value="">Sort by</option>
+          <option value="name-asc">Name A → Z</option>
+          <option value="name-desc">Name Z → A</option>
+          <option value="price-asc">Price low → high</option>
+          <option value="price-desc">Price high → low</option>
+        </select>
+      </nav>
 
-        <p className="lede">
-          Geega Games is bringing its Magic: The Gathering singles online — buy,
-          sell, and trade. We’re finishing checkout and payment processing now.
-          Join the list and you’ll be first through the door.
-        </p>
+      {/* Layout */}
+      <div className="layout">
+        <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+          <div className="sidebar-head">
+            <span>Filters</span>
+            <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close filters">✖</button>
+          </div>
+          <div className="filter-group">
+            <label htmlFor="f-color">Color</label>
+            <select id="f-color" value={color} onChange={(e) => setColor(e.target.value)}>
+              <option value="">All colors</option>
+              {Object.entries(COLOR_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-group">
+            <label htmlFor="f-type">Card type</label>
+            <select id="f-type" value={type} onChange={(e) => setType(e.target.value)}>
+              <option value="">All types</option>
+              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          {(color || type || query) && (
+            <button
+              className="clear-filters"
+              onClick={() => { setColor(""); setType(""); setQuery(""); }}
+            >
+              Clear all
+            </button>
+          )}
+        </aside>
 
-        <SignupForm />
-      </main>
+        <main className="content">
+          <p className="result-count">{visible.length} card{visible.length === 1 ? "" : "s"}</p>
+          <CardGrid cards={visible} />
+        </main>
+      </div>
 
-      <footer className="shell foot">
-        <span>© {year} Geega Games</span>
-        <span>Opening soon</span>
+      <footer className="footer">
+        <span>© {new Date().getFullYear()} Geega Games</span>
+        <span>Magic: The Gathering singles — opening soon</span>
       </footer>
     </div>
   );
