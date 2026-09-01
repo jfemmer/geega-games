@@ -181,3 +181,15 @@
   .sidebar.open { transform: translateX(0); }
   .sidebar-close { display: block; }
 }
+
+
+/* ===== Real-data states ===== */
+.card-noimg {
+  width: 100%; aspect-ratio: 5 / 7; border-radius: 10px;
+  background: repeating-linear-gradient(45deg, #efeaf7, #efeaf7 10px, #e7e0f2 10px, #e7e0f2 20px);
+  display: grid; place-items: center;
+  color: var(--violet-grey); font-size: 13px; font-weight: 600;
+}
+.card-price.unpriced {
+  font-size: 13px; font-weight: 600; color: var(--violet-grey);
+}

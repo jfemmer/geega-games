@@ -1,58 +1,82 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import CardGrid from "./CardGrid";
-import { SAMPLE_CARDS, COLOR_LABELS, type Card } from "./sampleCards";
+import { fetchCards, type Card } from "./cards";
 
 type Sort = "" | "name-asc" | "name-desc" | "price-asc" | "price-desc";
 
 export default function App() {
+  const [allCards, setAllCards] = useState<Card[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [query, setQuery] = useState("");
-  const [color, setColor] = useState("");
   const [type, setType] = useState("");
   const [sort, setSort] = useState<Sort>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setLoadError(null);
+        const data = await fetchCards();
+        if (active) setAllCards(data);
+      } catch (err) {
+        if (active) {
+          setLoadError(
+            err instanceof Error ? err.message : "Could not load the catalog."
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const types = useMemo(
-    () => Array.from(new Set(SAMPLE_CARDS.map((c) => c.type))).sort(),
-    []
+    () =>
+      Array.from(
+        new Set(allCards.map((c) => c.type).filter((t): t is string => !!t))
+      ).sort(),
+    [allCards]
   );
 
   const visible = useMemo(() => {
-    let out: Card[] = SAMPLE_CARDS.filter((c) => {
-      const matchesQuery = c.name.toLowerCase().includes(query.trim().toLowerCase());
-      const matchesColor = !color || c.color === color;
+    let out = allCards.filter((c) => {
+      const matchesQuery = c.name
+        .toLowerCase()
+        .includes(query.trim().toLowerCase());
       const matchesType = !type || c.type === type;
-      return matchesQuery && matchesColor && matchesType;
+      return matchesQuery && matchesType;
     });
     switch (sort) {
       case "name-asc": out = [...out].sort((a, b) => a.name.localeCompare(b.name)); break;
       case "name-desc": out = [...out].sort((a, b) => b.name.localeCompare(a.name)); break;
-      case "price-asc": out = [...out].sort((a, b) => a.priceUsd - b.priceUsd); break;
-      case "price-desc": out = [...out].sort((a, b) => b.priceUsd - a.priceUsd); break;
+      case "price-asc": out = [...out].sort((a, b) => a.price_usd - b.price_usd); break;
+      case "price-desc": out = [...out].sort((a, b) => b.price_usd - a.price_usd); break;
     }
     return out;
-  }, [query, color, type, sort]);
+  }, [allCards, query, type, sort]);
 
   return (
     <div className="app">
-      {/* Coming-soon notice */}
       <div className="ribbon">
         <span className="ribbon-dot" aria-hidden="true" />
         Browsing is open — checkout and payment processing go live soon.
       </div>
 
-      {/* Header */}
       <header className="masthead">
         <div className="masthead-row">
           <img className="brand" src="/logo.png" alt="Geega Games" width={220} height={194} />
           <div className="masthead-actions">
-            <button className="pill" disabled title="Cart opens at launch">
-              Cart (0)
-            </button>
-            <button className="pill" disabled title="Accounts open at launch">
-              Sign in
-            </button>
+            <button className="pill" disabled title="Cart opens at launch">Cart (0)</button>
+            <button className="pill" disabled title="Accounts open at launch">Sign in</button>
           </div>
         </div>
         <div className="search">
@@ -66,7 +90,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Purple nav */}
       <nav className="subnav">
         <div className="subnav-left">
           <div className="menu">
@@ -104,21 +127,11 @@ export default function App() {
         </select>
       </nav>
 
-      {/* Layout */}
       <div className="layout">
         <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-head">
             <span>Filters</span>
             <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close filters">✖</button>
-          </div>
-          <div className="filter-group">
-            <label htmlFor="f-color">Color</label>
-            <select id="f-color" value={color} onChange={(e) => setColor(e.target.value)}>
-              <option value="">All colors</option>
-              {Object.entries(COLOR_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
           </div>
           <div className="filter-group">
             <label htmlFor="f-type">Card type</label>
@@ -127,10 +140,10 @@ export default function App() {
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          {(color || type || query) && (
+          {(type || query) && (
             <button
               className="clear-filters"
-              onClick={() => { setColor(""); setType(""); setQuery(""); }}
+              onClick={() => { setType(""); setQuery(""); }}
             >
               Clear all
             </button>
@@ -138,8 +151,23 @@ export default function App() {
         </aside>
 
         <main className="content">
-          <p className="result-count">{visible.length} card{visible.length === 1 ? "" : "s"}</p>
-          <CardGrid cards={visible} />
+          {loading && <p className="result-count">Loading catalog…</p>}
+
+          {loadError && (
+            <div className="empty">
+              <p>Couldn’t load the catalog.</p>
+              <span>{loadError}</span>
+            </div>
+          )}
+
+          {!loading && !loadError && (
+            <>
+              <p className="result-count">
+                {visible.length} card{visible.length === 1 ? "" : "s"}
+              </p>
+              <CardGrid cards={visible} />
+            </>
+          )}
         </main>
       </div>
 
