@@ -7,31 +7,9 @@
 
 .shell {
   width: 100%;
-  max-width: 720px;
+  max-width: 620px;
   margin: 0 auto;
   padding: 0 24px;
-}
-
-/* ===== Masthead ===== */
-.masthead {
-  padding: 28px 0 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mark {
-  font-family: var(--serif);
-  font-weight: 900;
-  font-size: 22px;
-  letter-spacing: -0.01em;
-  color: var(--brand-deep);
-}
-.mark span { color: var(--gold); }
-
-.masthead nav {
-  font-size: 14px;
-  color: var(--violet-grey);
 }
 
 /* ===== Hero ===== */
@@ -39,19 +17,27 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 64px 0 48px;
+  text-align: center;
+  padding: 48px 0 40px;
+}
+
+.logo {
+  width: min(340px, 78vw);
+  height: auto;
+  filter: drop-shadow(0 12px 28px rgba(76, 42, 133, 0.22));
 }
 
 .status {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  align-self: flex-start;
+  margin-top: 20px;
   padding: 7px 14px 7px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.7);
   font-size: 13.5px;
   font-weight: 500;
   color: var(--brand-deep);
@@ -60,7 +46,6 @@
   width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--gold);
-  box-shadow: 0 0 0 0 rgba(224, 179, 65, 0.7);
   animation: pulse 2.4s ease-out infinite;
 }
 @keyframes pulse {
@@ -71,42 +56,24 @@
 
 .display {
   font-family: var(--serif);
-  font-weight: 900;
-  font-size: clamp(48px, 11vw, 104px);
-  line-height: 0.94;
-  letter-spacing: -0.02em;
-  margin: 26px 0 0;
+  font-weight: 600;
+  font-size: clamp(30px, 6vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin: 20px 0 0;
   color: var(--ink);
-  position: relative;
-}
-.display .foil {
-  display: inline-block;
-  background: linear-gradient(
-    100deg,
-    var(--brand) 0%, var(--brand-deep) 30%,
-    var(--gold) 50%, var(--brand-deep) 70%, var(--brand) 100%
-  );
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: sheen 6s ease-in-out infinite;
-}
-@keyframes sheen {
-  0%, 100% { background-position: 120% 0; }
-  50%      { background-position: -20% 0; }
 }
 
 .lede {
-  font-size: clamp(17px, 2.6vw, 20px);
-  line-height: 1.55;
+  font-size: clamp(16px, 2.4vw, 18px);
+  line-height: 1.6;
   color: var(--violet-grey);
   max-width: 46ch;
-  margin: 22px 0 0;
+  margin: 18px 0 0;
 }
 
 /* ===== Signup ===== */
-.signup { margin: 38px 0 0; }
+.signup { margin: 32px 0 0; width: 100%; max-width: 440px; }
 .signup h2 {
   font-family: var(--sans);
   font-weight: 600;
@@ -122,7 +89,7 @@
 }
 
 .field input {
-  flex: 1 1 260px;
+  flex: 1 1 240px;
   min-width: 0;
   padding: 14px 16px;
   font-family: var(--sans);
@@ -156,10 +123,7 @@
 .field button:hover:not(:disabled) { background: var(--brand); }
 .field button:active:not(:disabled) { transform: translateY(1px); }
 .field button:disabled { opacity: 0.6; cursor: not-allowed; }
-.field button:focus-visible {
-  outline: 3px solid var(--gold);
-  outline-offset: 2px;
-}
+.field button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
 .note {
   margin: 12px 0 0;
@@ -172,7 +136,8 @@
 
 /* ===== Confirmed state ===== */
 .confirmed {
-  margin: 38px 0 0;
+  margin: 32px auto 0;
+  max-width: 440px;
   padding: 22px 24px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -180,6 +145,7 @@
   display: flex;
   gap: 16px;
   align-items: flex-start;
+  text-align: left;
 }
 .confirmed .check {
   flex: 0 0 auto;
@@ -201,31 +167,28 @@
 
 /* ===== Footer ===== */
 .foot {
-  padding: 28px 0 40px;
-  border-top: 1px solid var(--line);
-  margin-top: 40px;
+  padding: 24px 0 36px;
+  margin-top: 32px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: center;
+  gap: 8px 20px;
   flex-wrap: wrap;
-  gap: 8px;
   font-size: 13px;
   color: var(--violet-grey);
 }
 
-/* ===== Page-load reveal (single orchestrated moment) ===== */
+/* ===== Page-load reveal ===== */
 .reveal > * {
   opacity: 0;
   transform: translateY(10px);
   animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
-.reveal > *:nth-child(1) { animation-delay: 0.05s; }
-.reveal > *:nth-child(2) { animation-delay: 0.14s; }
-.reveal > *:nth-child(3) { animation-delay: 0.23s; }
-.reveal > *:nth-child(4) { animation-delay: 0.32s; }
-@keyframes rise {
-  to { opacity: 1; transform: translateY(0); }
-}
+.reveal > *:nth-child(1) { animation-delay: 0.04s; }
+.reveal > *:nth-child(2) { animation-delay: 0.12s; }
+.reveal > *:nth-child(3) { animation-delay: 0.20s; }
+.reveal > *:nth-child(4) { animation-delay: 0.28s; }
+.reveal > *:nth-child(5) { animation-delay: 0.36s; }
+@keyframes rise { to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 480px) {
   .field button { flex: 1 1 100%; }

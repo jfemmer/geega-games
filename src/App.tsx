@@ -1,25 +1,27 @@
 import "./App.css";
 import SignupForm from "./SignupForm";
+import logo from "/logo.png";
 
 export default function App() {
   const year = new Date().getFullYear();
 
   return (
     <div className="page">
-      <header className="shell masthead">
-        <div className="mark">Geega<span>.</span></div>
-        <nav>Magic: The Gathering</nav>
-      </header>
-
       <main className="shell hero reveal">
+        <img
+          className="logo"
+          src={logo}
+          alt="Geega Games"
+          width={686}
+          height={606}
+        />
+
         <span className="status">
           <span className="dot" aria-hidden="true" />
           Payment processing in progress
         </span>
 
-        <h1 className="display">
-          The shop is <span className="foil">shuffling up</span>.
-        </h1>
+        <h1 className="display">The shop is shuffling up.</h1>
 
         <p className="lede">
           Geega Games is bringing its Magic: The Gathering singles online — buy,
