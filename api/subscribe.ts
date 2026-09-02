@@ -27,6 +27,12 @@ export default async function handler(
     requireJsonContentType(req);
     const body = await readJsonBody(req);
 
+        // TEMP DIAGNOSTIC — remove after debugging
+    console.log("[subscribe:diag] keys=", Object.keys(body),
+      "hasEmail=", typeof body.email === "string" && body.email.length > 0,
+      "hp_ref=", JSON.stringify(body.hp_ref ?? null),
+      "website=", JSON.stringify(body.website ?? null));
+
     // Honeypot: real users never fill this hidden field. Silently succeed so
     // bots get no signal, but do nothing. The field is named 'hp_ref' (the old
     // 'website' name is still checked for backward compatibility) because
