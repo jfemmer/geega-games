@@ -35,7 +35,7 @@ export default function SignupForm() {
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: value, website, source: "storefront" }),
+        body: JSON.stringify({ email: value, hp_ref: website, source: "storefront" }),
       });
 
       const data = (await res.json().catch(() => ({}))) as {
@@ -119,14 +119,19 @@ export default function SignupForm() {
           required
         />
 
-        {/* Honeypot: hidden from users + assistive tech, catches bots. */}
+        {/* Honeypot: hidden from users + assistive tech, catches bots.
+            Named 'hp_ref' (not 'website'/'email'/'name') so browser autofill
+            and password managers do not populate it for real users. */}
         <div className="hp-field" aria-hidden="true">
-          <label htmlFor="signup-website">Leave this field empty</label>
+          <label htmlFor="signup-hp-ref">Do not fill this in</label>
           <input
-            id="signup-website"
+            id="signup-hp-ref"
+            name="hp_ref"
             type="text"
             tabIndex={-1}
             autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore="true"
             value={website}
             onChange={(e) => setWebsite(e.target.value)}
           />

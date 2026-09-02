@@ -28,8 +28,12 @@ export default async function handler(
     const body = await readJsonBody(req);
 
     // Honeypot: real users never fill this hidden field. Silently succeed so
-    // bots get no signal, but do nothing.
-    const honeypot = typeof body.website === "string" ? body.website.trim() : "";
+    // bots get no signal, but do nothing. The field is named 'hp_ref' (the old
+    // 'website' name is still checked for backward compatibility) because
+    // browser autofill would populate a field literally named 'website',
+    // wrongly flagging real users as bots.
+    const hp = body.hp_ref ?? body.website;
+    const honeypot = typeof hp === "string" ? hp.trim() : "";
     if (honeypot.length > 0) {
       return sendJson(res, 200, { ok: true, status: "confirmation_sent" });
     }
