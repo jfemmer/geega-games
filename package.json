@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "email:dev": "email dev --dir emails"
+    "email:dev": "email dev --dir api/_lib/emails"
   },
   "dependencies": {
     "@react-email/components": "1.0.12",
