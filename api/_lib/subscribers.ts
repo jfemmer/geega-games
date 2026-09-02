@@ -58,7 +58,7 @@ export async function subscribe(
     }
 
     // Re-arm a fresh pending confirmation (covers previously unsubscribed too).
-    await db
+    const { error: updateError } = await db
       .from("newsletter_subscribers")
       .update({
         status: "pending",
@@ -70,15 +70,23 @@ export async function subscribe(
         unsubscribed_at: null,
       })
       .eq("id", existing.id);
+    if (updateError) {
+      throw new Error(`subscriber update failed: ${updateError.message}`);
+    }
   } else {
-    await db.from("newsletter_subscribers").insert({
-      email,
-      status: "pending",
-      source,
-      confirmation_token_hash: tokenHash,
-      confirmation_sent_at: now.toISOString(),
-      confirmation_expires_at: expires.toISOString(),
-    });
+    const { error: insertError } = await db
+      .from("newsletter_subscribers")
+      .insert({
+        email,
+        status: "pending",
+        source,
+        confirmation_token_hash: tokenHash,
+        confirmation_sent_at: now.toISOString(),
+        confirmation_expires_at: expires.toISOString(),
+      });
+    if (insertError) {
+      throw new Error(`subscriber insert failed: ${insertError.message}`);
+    }
   }
 
   // Look up id for delivery linkage.
