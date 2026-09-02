@@ -6,7 +6,7 @@ import {
   orderConfirmationText,
   type OrderEmailData,
   type OrderItemSnapshot,
-} from "../../emails/OrderConfirmation.js";
+} from "./emails/OrderConfirmation.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
 

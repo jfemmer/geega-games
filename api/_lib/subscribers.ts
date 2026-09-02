@@ -5,11 +5,11 @@ import { sendTrackedEmail } from "./emailService.js";
 import {
   ConfirmSubscription,
   confirmSubscriptionText,
-} from "../../emails/ConfirmSubscription.js";
+} from "./emails/ConfirmSubscription.js";
 import {
   SubscriptionConfirmed,
   subscriptionConfirmedText,
-} from "../../emails/SubscriptionConfirmed.js";
+} from "./emails/SubscriptionConfirmed.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
 
