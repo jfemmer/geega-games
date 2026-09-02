@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import CardGrid from "./CardGrid";
+import Menu from "./Menu";
+import Footer from "./Footer";
+import SignupForm from "./SignupForm";
 import { fetchCards, type Card } from "./cards";
 
 type Sort = "" | "name-asc" | "name-desc" | "price-asc" | "price-desc";
@@ -14,7 +17,6 @@ export default function App() {
   const [type, setType] = useState("");
   const [sort, setSort] = useState<Sort>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -27,7 +29,7 @@ export default function App() {
       } catch (err) {
         if (active) {
           setLoadError(
-            err instanceof Error ? err.message : "Could not load the catalog."
+            err instanceof Error ? err.message : "Could not load the catalog.",
           );
         }
       } finally {
@@ -42,9 +44,9 @@ export default function App() {
   const types = useMemo(
     () =>
       Array.from(
-        new Set(allCards.map((c) => c.type).filter((t): t is string => !!t))
+        new Set(allCards.map((c) => c.type).filter((t): t is string => !!t)),
       ).sort(),
-    [allCards]
+    [allCards],
   );
 
   const visible = useMemo(() => {
@@ -56,113 +58,163 @@ export default function App() {
       return matchesQuery && matchesType;
     });
     switch (sort) {
-      case "name-asc": out = [...out].sort((a, b) => a.name.localeCompare(b.name)); break;
-      case "name-desc": out = [...out].sort((a, b) => b.name.localeCompare(a.name)); break;
-      case "price-asc": out = [...out].sort((a, b) => a.price_usd - b.price_usd); break;
-      case "price-desc": out = [...out].sort((a, b) => b.price_usd - a.price_usd); break;
+      case "name-asc":
+        out = [...out].sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "name-desc":
+        out = [...out].sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case "price-asc":
+        out = [...out].sort((a, b) => a.price_usd - b.price_usd);
+        break;
+      case "price-desc":
+        out = [...out].sort((a, b) => b.price_usd - a.price_usd);
+        break;
     }
     return out;
   }, [allCards, query, type, sort]);
 
   return (
     <div className="app">
+      <a className="skip-link" href="#catalog">
+        Skip to catalog
+      </a>
+
       <div className="ribbon">
         <span className="ribbon-dot" aria-hidden="true" />
-        Browsing is open — checkout and payment processing go live soon.
+        Browsing is open &mdash; checkout and payment processing go live soon.
       </div>
 
       <header className="masthead">
         <div className="masthead-row">
-          <img className="brand" src="/logo.png" alt="Geega Games" width={220} height={194} />
+          <img
+            className="brand"
+            src="/logo.png"
+            alt="Geega Games"
+            width={220}
+            height={194}
+          />
           <div className="masthead-actions">
-            <button className="pill" disabled title="Cart opens at launch">Cart (0)</button>
-            <button className="pill" disabled title="Accounts open at launch">Sign in</button>
+            <button className="pill" disabled title="Cart opens at launch">
+              Cart (0) &middot; soon
+            </button>
+            <button className="pill" disabled title="Accounts open at launch">
+              Sign in &middot; soon
+            </button>
           </div>
         </div>
         <div className="search">
+          <label htmlFor="search-input" className="visually-hidden">
+            Search cards
+          </label>
           <input
+            id="search-input"
             type="search"
-            placeholder="Search for a card…"
+            placeholder="Search for a card&hellip;"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search cards"
           />
         </div>
       </header>
 
       <nav className="subnav">
         <div className="subnav-left">
-          <div className="menu">
-            <button
-              className="menu-btn"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-expanded={menuOpen}
-              aria-label="Menu"
-            >
-              ☰
-            </button>
-            {menuOpen && (
-              <div className="menu-drop">
-                <a href="#" onClick={(e) => e.preventDefault()}>Home</a>
-                <a href="#" onClick={(e) => e.preventDefault()}>Request a card</a>
-                <a href="#" onClick={(e) => e.preventDefault()}>Trade-in</a>
-              </div>
-            )}
-          </div>
-          <button className="filter-btn" onClick={() => setSidebarOpen((v) => !v)}>
-            ⚲ Filters
+          <Menu />
+          <button
+            className="filter-btn"
+            onClick={() => setSidebarOpen((v) => !v)}
+            aria-expanded={sidebarOpen}
+          >
+            &#9906; Filters
           </button>
         </div>
-        <select
-          className="sort"
-          value={sort}
-          onChange={(e) => setSort(e.target.value as Sort)}
-          aria-label="Sort cards"
-        >
-          <option value="">Sort by</option>
-          <option value="name-asc">Name A → Z</option>
-          <option value="name-desc">Name Z → A</option>
-          <option value="price-asc">Price low → high</option>
-          <option value="price-desc">Price high → low</option>
-        </select>
+        <div className="sort-wrap">
+          <label htmlFor="sort-select" className="visually-hidden">
+            Sort cards
+          </label>
+          <select
+            id="sort-select"
+            className="sort"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+          >
+            <option value="">Sort by</option>
+            <option value="name-asc">Name A &rarr; Z</option>
+            <option value="name-desc">Name Z &rarr; A</option>
+            <option value="price-asc">Price low &rarr; high</option>
+            <option value="price-desc">Price high &rarr; low</option>
+          </select>
+        </div>
       </nav>
 
       <div className="layout">
         <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-head">
             <span>Filters</span>
-            <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close filters">✖</button>
+            <button
+              className="sidebar-close"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close filters"
+            >
+              &#10006;
+            </button>
           </div>
           <div className="filter-group">
             <label htmlFor="f-type">Card type</label>
-            <select id="f-type" value={type} onChange={(e) => setType(e.target.value)}>
+            <select
+              id="f-type"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+            >
               <option value="">All types</option>
-              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+              {types.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
           </div>
           {(type || query) && (
             <button
               className="clear-filters"
-              onClick={() => { setType(""); setQuery(""); }}
+              onClick={() => {
+                setType("");
+                setQuery("");
+              }}
             >
               Clear all
             </button>
           )}
         </aside>
 
-        <main className="content">
-          {loading && <p className="result-count">Loading catalog…</p>}
+        <main className="content" id="catalog">
+          {loading && (
+            <div className="card-grid" aria-hidden="true">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div className="card card-skeleton" key={i}>
+                  <div className="skeleton-art" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line short" />
+                </div>
+              ))}
+            </div>
+          )}
+          {loading && (
+            <p className="result-count" role="status">
+              Loading catalog&hellip;
+            </p>
+          )}
 
-          {loadError && (
-            <div className="empty">
-              <p>Couldn’t load the catalog.</p>
+          {loadError && !loading && (
+            <div className="empty" role="alert">
+              <p>Couldn&rsquo;t load the catalog.</p>
               <span>{loadError}</span>
             </div>
           )}
 
           {!loading && !loadError && (
             <>
-              <p className="result-count">
+              <p className="result-count" role="status" aria-live="polite">
                 {visible.length} card{visible.length === 1 ? "" : "s"}
               </p>
               <CardGrid cards={visible} />
@@ -171,10 +223,13 @@ export default function App() {
         </main>
       </div>
 
-      <footer className="footer">
-        <span>© {new Date().getFullYear()} Geega Games</span>
-        <span>Magic: The Gathering singles — opening soon</span>
-      </footer>
+      <section className="launch" id="launch">
+        <div className="launch-inner">
+          <SignupForm />
+        </div>
+      </section>
+
+      <Footer />
     </div>
   );
 }

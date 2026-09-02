@@ -4,6 +4,14 @@ dist-ssr
 *.local
 .env
 .env.*
+# Keep the committed template (it contains no secrets)
+!.env.example
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# Vercel
+.vercel
+
+# Test / coverage artifacts
+coverage

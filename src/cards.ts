@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase, isSupabaseConfigured } from "./supabase";
 
 // Matches the columns in your Supabase `cards` table.
 export type Card = {
@@ -22,6 +22,12 @@ export const CONDITION_LABELS: Record<string, string> = {
 };
 
 export async function fetchCards(): Promise<Card[]> {
+  if (!isSupabaseConfigured) {
+    throw new Error(
+      "The catalog isn’t configured yet. Please try again later.",
+    );
+  }
+
   const { data, error } = await supabase
     .from("cards")
     .select("id, name, set, type, quantity, image_url, price_usd, condition, foil")

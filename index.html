@@ -3,14 +3,66 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Favicons (files exist in /public) -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#663399" />
+
     <title>Geega Games — Magic: The Gathering singles, coming soon</title>
-    <meta name="description" content="Geega Games is a Magic: The Gathering card shop. Buy, sell, and trade singles. Join the list to know the moment we open." />
+    <meta
+      name="description"
+      content="Geega Games is a Magic: The Gathering card shop. Browse singles now — checkout and accounts go live at launch. Join the list to know the moment we open."
+    />
+
+    <!-- Canonical + robots -->
+    <link rel="canonical" href="https://geega-games.com/" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Geega Games" />
+    <meta property="og:title" content="Geega Games — Magic: The Gathering singles" />
+    <meta
+      property="og:description"
+      content="Browse Magic: The Gathering singles now. Checkout goes live at launch — join the list to be first to know."
+    />
+    <meta property="og:url" content="https://geega-games.com/" />
+    <meta property="og:image" content="https://geega-games.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Geega Games — Magic: The Gathering singles" />
+    <meta
+      name="twitter:description"
+      content="Browse Magic: The Gathering singles now. Checkout goes live at launch."
+    />
+    <meta name="twitter:image" content="https://geega-games.com/og-image.png" />
+
+    <!-- Structured data: uses only verified business info. Update the URL and
+         add contactPoint/address only once those details are confirmed. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "OnlineStore",
+        "name": "Geega Games",
+        "description": "Magic: The Gathering singles — buy, sell, and trade.",
+        "url": "https://geega-games.com/",
+        "logo": "https://geega-games.com/logo.png",
+        "image": "https://geega-games.com/og-image.png"
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>
