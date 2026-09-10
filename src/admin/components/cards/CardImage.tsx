@@ -1,12 +1,15 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
 import type { CardFace, CardImageUris } from "../../types";
+import { imageCandidates } from "../../services/scryfall";
+import { getAdminPortalContainer } from "../ui/portal";
 
 // Reusable card imagery + hover-to-enlarge preview.
 //
@@ -22,6 +25,17 @@ import type { CardFace, CardImageUris } from "../../types";
 //
 // It uses the "normal"/"large" Scryfall sizes for previews — never the full PNG
 // — so scrolling through hundreds of results stays cheap.
+//
+// Robustness: the thumbnail and the preview each maintain an ORDERED list of
+// candidate URLs (see imageCandidates). If the preferred size fails to load
+// (CDN hiccup, missing size), onError advances to the next candidate rather than
+// leaving a broken image. When every candidate is exhausted, a professional
+// "No image available" placeholder is shown instead of an empty rectangle.
+//
+// Loading strategy: callers pass loadingPriority. Visible, above-the-fold
+// thumbnails (current inventory/order/search rows) use "eager" so their art
+// starts downloading WITH the page. Large/below-the-fold sets keep "lazy". The
+// enlarged preview image is only requested on hover/tap, never at page load.
 
 /** Which image source a preview represents — styles the frame label. */
 export type CardImageKind = "scryfall" | "scan";
@@ -46,6 +60,13 @@ export interface CardImageProps {
   className?: string;
   /** Disable the enlarge behavior (plain thumbnail). */
   noPreview?: boolean;
+  /**
+   * How the thumbnail should load. "eager" starts the request immediately with
+   * the page render (use for visible rows); "lazy" defers until near-viewport
+   * (use for long/below-the-fold sets). Defaults to "lazy" to preserve prior
+   * behavior for callers that don't opt in.
+   */
+  loadingPriority?: "eager" | "lazy";
 }
 
 const THUMB_DIMS: Record<NonNullable<CardImageProps["size"]>, { w: number; h: number }> = {
@@ -53,14 +74,6 @@ const THUMB_DIMS: Record<NonNullable<CardImageProps["size"]>, { w: number; h: nu
   sm: { w: 44, h: 61 },
   md: { w: 64, h: 89 },
 };
-
-/** Best available image at a size, degrading gracefully. */
-function pick(images: CardImageUris | null, prefer: "small" | "normal" | "large"): string | null {
-  if (!images) return null;
-  if (prefer === "small") return images.small ?? images.normal ?? images.large ?? images.png;
-  if (prefer === "large") return images.large ?? images.normal ?? images.small ?? images.png;
-  return images.normal ?? images.large ?? images.small ?? images.png;
-}
 
 function isTouchDevice(): boolean {
   if (typeof window === "undefined") return false;
@@ -80,9 +93,25 @@ export function CardImage({
   previewLabel,
   className = "",
   noPreview = false,
+  loadingPriority = "lazy",
 }: CardImageProps) {
   const dims = THUMB_DIMS[size];
-  const thumbSrc = pick(images, size === "md" ? "normal" : "small");
+
+  // Ordered candidate URLs for the thumbnail, degrading through sizes. md uses a
+  // "normal" source (sharper at 64px); xs/sm use "small" to save bandwidth.
+  const thumbCandidates = useMemo(
+    () => imageCandidates(images, size === "md" ? "normal" : "small"),
+    [images, size],
+  );
+  // Which candidate index we're currently attempting for the thumbnail.
+  const [thumbIdx, setThumbIdx] = useState(0);
+  // Reset the attempt when the candidate list changes (new card/row) so a fresh
+  // row always starts from its preferred size. Keyed by the joined URL list.
+  const thumbKey = thumbCandidates.join("|");
+  useEffect(() => {
+    setThumbIdx(0);
+  }, [thumbKey]);
+  const thumbSrc = thumbCandidates[thumbIdx] ?? null;
 
   const wrapRef = useRef<HTMLSpanElement>(null);
   const [preview, setPreview] = useState<CSSProperties | null>(null);
@@ -158,17 +187,38 @@ export function CardImage({
     else show();
   }
 
-  const activeFace = faceList[Math.min(faceIndex, faceList.length - 1)];
-  const previewSrc = pick(activeFace?.images ?? null, "large");
+  // Advance the thumbnail to its next candidate URL when the current one fails.
+  // Incrementing past the end makes thumbSrc null, which renders the placeholder.
+  const handleThumbError = useCallback(() => {
+    setThumbIdx((i) => i + 1);
+  }, []);
 
+  const activeFace = faceList[Math.min(faceIndex, faceList.length - 1)];
+  // Ordered candidates for the enlarged preview (large preferred).
+  const previewCandidates = imageCandidates(activeFace?.images ?? null, "large");
+  const [previewIdx, setPreviewIdx] = useState(0);
+  // Reset the preview attempt when the active face changes or the preview
+  // (re)opens, so each opening starts from the preferred (large) size.
+  useEffect(() => {
+    setPreviewIdx(0);
+  }, [faceIndex, preview]);
+  const previewSrc = previewCandidates[previewIdx] ?? null;
+  const handlePreviewError = useCallback(() => {
+    setPreviewIdx((i) => i + 1);
+  }, []);
+
+  // No usable thumbnail (either no images at all, or every candidate failed).
   if (!thumbSrc) {
     return (
       <span
         className={`gg-cardimg gg-cardimg--${size} gg-cardimg--empty ${className}`}
         style={{ width: dims.w, height: dims.h }}
-        aria-label={`${alt} (no image)`}
+        aria-label={`${alt} — no image available`}
         role="img"
-      />
+        title="No image available"
+      >
+        <span className="gg-cardimg__emptylabel">No image</span>
+      </span>
     );
   }
 
@@ -186,10 +236,15 @@ export function CardImage({
         alt={alt}
         width={dims.w}
         height={dims.h}
-        loading="lazy"
+        loading={loadingPriority === "eager" ? "eager" : "lazy"}
+        // fetchPriority nudges the browser: eager thumbnails matter for the
+        // initial view; lazy ones stay low so we never flood the network. React
+        // 19 supports the camelCase prop and lowercases it to the DOM attr.
+        fetchPriority={loadingPriority === "eager" ? "high" : "low"}
         decoding="async"
         className="gg-cardimg__thumb"
         onClick={touch ? handleThumbClick : undefined}
+        onError={handleThumbError}
         tabIndex={noPreview ? undefined : 0}
       />
 
@@ -204,7 +259,12 @@ export function CardImage({
             role="img"
             aria-label={`${activeFace?.label ?? alt}, enlarged`}
           >
-            <img src={previewSrc} alt="" className="gg-cardpreview__img" />
+            <img
+              src={previewSrc}
+              alt=""
+              className="gg-cardpreview__img"
+              onError={handlePreviewError}
+            />
             {multiFace && (
               <div className="gg-cardpreview__faces">
                 {faceList.map((_f, i) => (
@@ -226,7 +286,7 @@ export function CardImage({
               </div>
             )}
           </div>,
-          document.body,
+          getAdminPortalContainer(),
         )}
     </span>
   );

@@ -4,7 +4,18 @@
    Brand tokens mirror src/index.css; --gg-* are admin-local aliases + surfaces.
    ========================================================================== */
 
-.gg-admin {
+/*
+ * Design tokens live on BOTH .gg-admin (the dashboard root) AND .gg-admin-portal
+ * (the body-level container that Modal/drawer/preview portals render into — see
+ * components/ui/portal.ts). CSS custom properties inherit through the DOM, so a
+ * portaled overlay under <body> only resolves var(--gg-…) if it, or an ancestor,
+ * declares them. Declaring the tokens on .gg-admin-portal is what makes the
+ * Order/Inventory drawers fully opaque and correctly themed instead of
+ * transparent. Only elements carrying one of these classes get the tokens, so
+ * nothing leaks onto the public storefront.
+ */
+.gg-admin,
+.gg-admin-portal {
   --gg-brand: #663399;
   --gg-brand-deep: #4c2a85;
   --gg-gold: #e0b341;
@@ -51,15 +62,32 @@
 
   font-family: var(--gg-sans);
   color: var(--gg-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Layout that belongs ONLY to the dashboard root, not the portal container. The
+ * portal container must stay a plain, unsized wrapper (no flex, no full-height
+ * canvas background) so it never lays out or paints over the page — it only
+ * carries tokens and stacking for the overlays inside it.
+ */
+.gg-admin {
   background: var(--gg-canvas);
   min-height: 100vh;
   display: flex;
-  -webkit-font-smoothing: antialiased;
+}
+
+/* The portal container itself contributes no box — overlays inside are fixed. */
+.gg-admin-portal {
+  font-family: var(--gg-sans);
 }
 
 .gg-admin *,
 .gg-admin *::before,
-.gg-admin *::after { box-sizing: border-box; }
+.gg-admin *::after,
+.gg-admin-portal *,
+.gg-admin-portal *::before,
+.gg-admin-portal *::after { box-sizing: border-box; }
 
 .gg-visually-hidden {
   position: absolute !important;
@@ -70,7 +98,8 @@
 }
 
 /* Focus visibility — consistent, high-contrast, keyboard-only. */
-.gg-admin :focus-visible {
+.gg-admin :focus-visible,
+.gg-admin-portal :focus-visible {
   outline: 2px solid var(--gg-brand);
   outline-offset: 2px;
   border-radius: 4px;
@@ -432,38 +461,19 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-check-inline input { width: 15px; height: 15px; accent-color: var(--gg-brand); }
 
 /* ------------------------------- Overlay / Modal / Drawer ------------------------------- */
-
-.gg-overlay { position: fixed; inset: 0; z-index: 100; display: flex; }
-.gg-overlay__backdrop { position: absolute; inset: 0; background: rgba(26, 16, 46, 0.5); backdrop-filter: blur(2px); animation: gg-fade 0.16s ease; }
+/*
+ * The overlay/dialog/drawer VISUALS (backdrop, surface, header, body, footer,
+ * sizes) live in ONE place: the "Reconciliation" block further down, keyed to
+ * the exact class names the Modal component emits (.gg-overlay, .gg-dialog,
+ * .gg-dialog__head/__title/__body/__foot). An older parallel system that used
+ * .gg-overlay__head / .gg-drawer / etc. was dead code (no component emitted
+ * those class names) and has been removed to avoid a confusing second source of
+ * truth. Only the shared @keyframes and the still-used action/confirm helpers
+ * remain here.
+ */
 @keyframes gg-fade { from { opacity: 0; } to { opacity: 1; } }
-
-.gg-dialog {
-  position: relative; margin: auto; background: var(--gg-surface);
-  border-radius: var(--gg-radius-lg); box-shadow: var(--gg-shadow-lg);
-  width: 100%; max-width: 520px; max-height: calc(100vh - 48px);
-  display: flex; flex-direction: column; animation: gg-rise 0.18s ease;
-}
-.gg-dialog--sm { max-width: 420px; }
-.gg-dialog--md { max-width: 560px; }
-.gg-dialog--lg { max-width: 720px; }
 @keyframes gg-rise { from { opacity: 0; transform: translateY(12px) scale(0.99); } to { opacity: 1; transform: none; } }
-
-.gg-drawer {
-  position: relative; margin: 0 0 0 auto; background: var(--gg-surface);
-  box-shadow: var(--gg-shadow-lg); height: 100vh;
-  width: 100%; display: flex; flex-direction: column; animation: gg-slide 0.22s ease;
-}
-.gg-drawer--sm { max-width: 420px; }
-.gg-drawer--md { max-width: 560px; }
-.gg-drawer--lg { max-width: 860px; }
 @keyframes gg-slide { from { transform: translateX(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
-
-.gg-overlay__head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--gg-line); }
-.gg-overlay__title { font-family: var(--gg-serif); font-size: 1.2rem; font-weight: 600; margin: 0; flex: 1; }
-.gg-overlay__headextra { display: inline-flex; }
-.gg-overlay__close { margin-left: auto; }
-.gg-overlay__body { padding: 20px; overflow-y: auto; flex: 1; }
-.gg-overlay__foot { padding: 14px 20px; border-top: 1px solid var(--gg-line); background: var(--gg-surface-2); border-radius: 0 0 var(--gg-radius-lg) var(--gg-radius-lg); }
 
 .gg-drawer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; flex-wrap: wrap; }
 .gg-drawer-actions__buttons { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
@@ -578,22 +588,77 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-link { color: var(--gg-brand); text-decoration: none; font-weight: 500; }
 .gg-link:hover { text-decoration: underline; }
 
-.gg-adjust { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; background: var(--gg-surface-2); border-radius: var(--gg-radius-sm); flex-wrap: wrap; }
+/* Premium inventory detail hero: a bordered card panel with a prominent,
+ * larger artwork beside organized set/treatment info and a clear price block. */
+.gg-detail__hero--card {
+  gap: 18px; padding: 16px;
+  background: var(--gg-surface-2);
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius);
+  box-shadow: var(--gg-shadow-sm);
+  align-items: stretch;
+}
+.gg-detail__art { flex: 0 0 auto; display: flex; }
+/* Scale the md thumbnail up inside the drawer so artwork is genuinely prominent. */
+.gg-detail__art .gg-cardimg__thumb {
+  width: 116px !important; height: 162px !important;
+  border-radius: 10px; box-shadow: var(--gg-shadow);
+}
+.gg-detail__art .gg-cardimg--empty {
+  width: 116px !important; height: 162px !important;
+}
+.gg-detail__heroinfo { display: flex; flex-direction: column; gap: 12px; min-width: 0; flex: 1; }
+.gg-detail__setline { display: flex; flex-direction: column; gap: 2px; }
+.gg-detail__setname { font-family: var(--gg-serif); font-size: 1.02rem; font-weight: 600; line-height: 1.25; }
+.gg-detail__setmeta { font-size: 0.82rem; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
+.gg-detail__chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gg-chip {
+  font-size: 0.74rem; font-weight: 600; letter-spacing: 0.01em;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--gg-surface); color: var(--gg-text-soft);
+  border: 1px solid var(--gg-line-strong);
+}
+.gg-priceblock {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+  margin-top: auto; padding: 10px 12px; flex-wrap: wrap;
+  background: var(--gg-surface); border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+}
+.gg-priceblock__main { display: flex; flex-direction: column; gap: 1px; }
+.gg-priceblock__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gg-text-faint); }
+.gg-priceblock__value { font-family: var(--gg-serif); font-size: 1.4rem; font-weight: 600; color: var(--gg-brand); font-variant-numeric: tabular-nums; }
+.gg-priceblock__ref { display: flex; flex-direction: column; gap: 1px; text-align: right; }
+.gg-priceblock__refvalue { font-size: 0.92rem; font-weight: 600; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
+.gg-detail__location { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gg-text-soft); }
+.gg-detail__location svg { color: var(--gg-brand); }
+
+.gg-adjust {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 16px; background: var(--gg-surface-2);
+  border: 1px solid var(--gg-line); border-radius: var(--gg-radius-sm);
+  flex-wrap: wrap;
+}
 .gg-adjust__now { display: flex; flex-direction: column; }
 .gg-adjust__label { font-size: 0.78rem; color: var(--gg-text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
-.gg-adjust__qty { font-family: var(--gg-serif); font-size: 1.6rem; font-weight: 600; }
+.gg-adjust__qty { font-family: var(--gg-serif); font-size: 1.7rem; font-weight: 600; line-height: 1; color: var(--gg-text); }
 .gg-adjust__controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .gg-adjust__input { width: 70px; }
 
 .gg-ledger { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.gg-ledger__row { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--gg-line); align-items: flex-start; }
+.gg-ledger__row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--gg-line); align-items: center; }
 .gg-ledger__row:last-child { border-bottom: 0; }
-.gg-ledger__delta { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 36px; }
-.gg-ledger__delta--pos { color: var(--gg-success); }
-.gg-ledger__delta--neg { color: var(--gg-danger); }
-.gg-ledger__body { display: flex; flex-direction: column; gap: 1px; }
-.gg-ledger__reason { font-size: 0.85rem; font-weight: 500; }
-.gg-ledger__meta { font-size: 0.76rem; color: var(--gg-text-faint); }
+/* Delta rendered as a colored pill so positive/negative movements are instantly
+ * scannable down the column. */
+.gg-ledger__delta {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  min-width: 44px; text-align: center; flex: 0 0 auto;
+  padding: 3px 8px; border-radius: 999px; font-size: 0.82rem;
+}
+.gg-ledger__delta--pos { color: var(--gg-success); background: rgba(47, 143, 91, 0.12); }
+.gg-ledger__delta--neg { color: var(--gg-danger); background: rgba(192, 57, 43, 0.12); }
+.gg-ledger__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gg-ledger__reason { font-size: 0.85rem; font-weight: 600; }
+.gg-ledger__meta { font-size: 0.76rem; color: var(--gg-text-faint); font-variant-numeric: tabular-nums; }
 
 /* ------------------------------- Add card / printing search ------------------------------- */
 
@@ -623,25 +688,38 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-orderdetail__cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
 .gg-orderdetail__main { display: flex; flex-direction: column; gap: 16px; }
 .gg-orderdetail__side { display: flex; flex-direction: column; gap: 16px; }
-.gg-orderdetail__panel { border: 1px solid var(--gg-line); border-radius: var(--gg-radius-sm); padding: 14px; }
-.gg-orderdetail__progress { font-size: 0.8rem; font-weight: 500; color: var(--gg-text-soft); }
+/* Panels read as subtle cards with an opaque surface + soft shadow. */
+.gg-orderdetail__panel {
+  background: var(--gg-surface);
+  border: 1px solid var(--gg-line); border-radius: var(--gg-radius);
+  padding: 14px 16px; box-shadow: var(--gg-shadow-sm);
+}
 .gg-orderdetail__hint { margin: 0; }
 .gg-orderdetail__h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gg-text-faint); margin: 12px 0 4px; }
 .gg-orderdetail__cust { font-size: 0.88rem; line-height: 1.5; margin: 0; }
 .gg-orderdetail__tracking { display: flex; align-items: center; gap: 6px; font-size: 0.84rem; margin: 8px 0 0; font-weight: 500; }
 
+/* Packing checklist header: title + count + at-a-glance progress bar so staff
+ * immediately see what's packed, what remains, and when the order is ready. */
+.gg-orderdetail__cardhead { display: flex; flex-direction: column; gap: 8px; }
+.gg-orderdetail__progress { font-size: 0.78rem; font-weight: 700; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
+.gg-packbar { height: 6px; border-radius: 999px; background: var(--gg-surface-3); overflow: hidden; }
+.gg-packbar__fill { height: 100%; background: var(--gg-success); border-radius: 999px; transition: width 0.25s ease; }
+.gg-packbar__fill--done { background: linear-gradient(90deg, var(--gg-success), #3fae74); }
+
 .gg-packlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.gg-packitem { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px; border: 1px solid var(--gg-line); border-radius: var(--gg-radius-sm); }
+.gg-packitem { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--gg-line); border-radius: var(--gg-radius-sm); background: var(--gg-surface); transition: border-color 0.15s ease, background 0.15s ease; }
+.gg-packitem:hover { border-color: var(--gg-line-strong); }
 .gg-packitem--done { background: #f2f9f4; border-color: #cfe9d8; }
 .gg-packitem__check { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; min-width: 0; }
 .gg-packitem__check input { width: 18px; height: 18px; accent-color: var(--gg-success); flex: 0 0 auto; }
 .gg-packitem__check input:disabled { cursor: not-allowed; }
-.gg-packitem__img { border-radius: 4px; flex: 0 0 auto; box-shadow: var(--gg-shadow-sm); }
+.gg-packitem__img { border-radius: 4px; flex: 0 0 auto; box-shadow: var(--gg-shadow-sm); background: var(--gg-surface-3); }
 .gg-packitem__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .gg-packitem__name { font-weight: 600; font-size: 0.87rem; }
 .gg-packitem--done .gg-packitem__name { text-decoration: line-through; color: var(--gg-text-soft); }
 .gg-packitem__meta { font-size: 0.78rem; color: var(--gg-text-soft); }
-.gg-packitem__price { font-weight: 600; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.gg-packitem__price { font-weight: 600; font-size: 0.85rem; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 
 .gg-note-actions { display: flex; justify-content: flex-end; }
 
@@ -747,10 +825,39 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-profile-btn__name { display: none; }
 }
 
+/* Drawers go full-width on smaller screens so there's no cramped side panel or
+ * horizontal overflow; the body scrolls independently while the sticky header
+ * and footer actions stay reachable. Applied a bit earlier (≤640px) than the
+ * general small-screen tweaks so tablets in portrait also get a comfortable
+ * drawer. */
+@media (max-width: 640px) {
+  .gg-dialog--drawer,
+  .gg-dialog--drawer.gg-dialog--sm,
+  .gg-dialog--drawer.gg-dialog--md,
+  .gg-dialog--drawer.gg-dialog--lg {
+    max-width: 100%;
+    width: 100%;
+  }
+  /* Modals also fill more of the screen and lose the outer gutter. */
+  .gg-overlay--modal { padding: 12px; }
+  .gg-dialog--modal,
+  .gg-dialog--modal.gg-dialog--sm,
+  .gg-dialog--modal.gg-dialog--md,
+  .gg-dialog--modal.gg-dialog--lg {
+    max-width: 100%;
+  }
+  /* Footer buttons wrap and go full-width for easy tapping. */
+  .gg-drawer-actions__buttons { width: 100%; }
+  .gg-drawer-actions__buttons .gg-btn { flex: 1 1 auto; }
+}
+
 @media (max-width: 560px) {
   .gg-statgrid { grid-template-columns: 1fr; }
   .gg-form-grid { grid-template-columns: 1fr; }
-  .gg-drawer--sm, .gg-drawer--md, .gg-drawer--lg { max-width: 100%; }
+  /* Inventory hero stacks: artwork on top, info below, so nothing is cramped. */
+  .gg-detail__hero--card { flex-direction: column; align-items: center; text-align: center; }
+  .gg-detail__heroinfo { width: 100%; align-items: stretch; text-align: left; }
+  .gg-detail__chips { justify-content: flex-start; }
   .gg-pagehead__title { font-size: 1.4rem; }
   .gg-col-secondary { display: none; }
   .gg-filters__selects { width: 100%; }
@@ -761,7 +868,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 /* ------------------------------- Reduced motion ------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .gg-admin *, .gg-admin *::before, .gg-admin *::after {
+  .gg-admin *, .gg-admin *::before, .gg-admin *::after,
+  .gg-admin-portal *, .gg-admin-portal *::before, .gg-admin-portal *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
@@ -773,29 +881,76 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
    Reconciliation: exact class names emitted by UI primitives.
    ========================================================================== */
 
-/* Modal / drawer: .gg-overlay is the backdrop + flex container. */
+/* Modal / drawer: .gg-overlay is the professional darkened backdrop + flex
+ * container. The backdrop darkens the dashboard and applies a subtle blur so the
+ * active drawer reads as clearly separated from the app behind it. The DRAWER
+ * SURFACE itself is fully opaque (see .gg-dialog) — only this backdrop layer is
+ * translucent. */
 .gg-overlay {
   position: fixed; inset: 0; z-index: 100; display: flex;
-  background: rgba(26, 16, 46, 0.5); backdrop-filter: blur(2px);
+  background: rgba(24, 14, 44, 0.56);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   animation: gg-fade 0.16s ease; padding: 24px;
 }
 .gg-overlay--modal { align-items: center; justify-content: center; }
 .gg-overlay--drawer { padding: 0; }
 
-.gg-dialog { position: relative; margin: auto; background: var(--gg-surface); border-radius: var(--gg-radius-lg); box-shadow: var(--gg-shadow-lg); width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; animation: gg-rise 0.18s ease; }
+/* .gg-dialog is the OPAQUE surface. A hard hex fallback sits behind the token so
+ * the drawer can never render transparent even if var(--gg-surface) failed to
+ * resolve for any reason. */
+.gg-dialog {
+  position: relative; margin: auto;
+  background-color: #ffffff;
+  background-color: var(--gg-surface, #ffffff);
+  color: var(--gg-text, #241d31);
+  border-radius: var(--gg-radius-lg); box-shadow: var(--gg-shadow-lg);
+  width: 100%; max-height: calc(100vh - 48px);
+  display: flex; flex-direction: column; animation: gg-rise 0.18s ease;
+}
 .gg-dialog--modal.gg-dialog--sm { max-width: 440px; }
 .gg-dialog--modal.gg-dialog--md { max-width: 580px; }
 .gg-dialog--modal.gg-dialog--lg { max-width: 760px; }
-.gg-dialog--drawer { margin: 0 0 0 auto; height: 100vh; max-height: 100vh; border-radius: 0; animation: gg-slide 0.22s ease; }
+.gg-dialog--drawer {
+  margin: 0 0 0 auto; height: 100vh; max-height: 100vh; border-radius: 0;
+  /* A crisp left edge + strong shadow separates the drawer from the app. */
+  border-left: 1px solid var(--gg-line-strong, rgba(76, 42, 133, 0.28));
+  box-shadow: -24px 0 60px rgba(20, 10, 44, 0.30);
+  animation: gg-slide 0.22s ease;
+}
 .gg-dialog--drawer.gg-dialog--sm { max-width: 440px; }
 .gg-dialog--drawer.gg-dialog--md { max-width: 600px; }
 .gg-dialog--drawer.gg-dialog--lg { max-width: 880px; }
 
-.gg-dialog__head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--gg-line); }
-.gg-dialog__title { font-family: var(--gg-serif); font-size: 1.2rem; font-weight: 600; margin: 0; flex: 1; }
-.gg-dialog__head-right { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
-.gg-dialog__body { padding: 20px; overflow-y: auto; flex: 1; }
-.gg-dialog__foot { padding: 14px 20px; border-top: 1px solid var(--gg-line); background: var(--gg-surface-2); }
+/* Sticky header: stays visible while the body scrolls. A subtle brand-tinted
+ * wash + gold underline gives the premium Geega feel without heavy chrome. */
+.gg-dialog__head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px;
+  background:
+    linear-gradient(180deg, var(--gg-surface, #fff), var(--gg-surface, #fff)),
+    var(--gg-brand-tint, rgba(102, 51, 153, 0.08));
+  border-bottom: 1px solid var(--gg-line);
+  box-shadow: 0 1px 0 0 var(--gg-gold-soft, #f0d68a);
+}
+.gg-dialog__title {
+  font-family: var(--gg-serif); font-size: 1.24rem; font-weight: 600;
+  margin: 0; flex: 1; min-width: 0; color: var(--gg-text, #241d31);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gg-dialog__head-right { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex: 0 0 auto; }
+.gg-dialog__body {
+  padding: 20px; overflow-y: auto; flex: 1;
+  background-color: var(--gg-surface, #ffffff);
+  -webkit-overflow-scrolling: touch;
+}
+/* Sticky footer: primary actions stay reachable without scrolling. */
+.gg-dialog__foot {
+  position: sticky; bottom: 0; z-index: 2;
+  padding: 14px 20px; border-top: 1px solid var(--gg-line);
+  background-color: var(--gg-surface-2, #faf8f4);
+}
 
 /* Button spinner is a bare span. */
 .gg-btn .gg-spinner { width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: gg-spin 0.6s linear infinite; display: inline-block; }
@@ -851,7 +1006,18 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-cardimg--empty {
   border-radius: 5px; background: repeating-linear-gradient(45deg,#efeaf6,#efeaf6 6px,#e7e0f0 6px,#e7e0f0 12px);
   box-shadow: inset 0 0 0 1px var(--gg-line);
+  display: inline-flex; align-items: center; justify-content: center;
+  overflow: hidden; text-align: center;
 }
+/* "No image available" label — shown only when Scryfall genuinely has no art
+ * (or every candidate URL failed to load), never an empty rectangle. Hidden on
+ * the tiny xs thumbnails where there isn't room, but the aria-label/title still
+ * announce it. */
+.gg-cardimg__emptylabel {
+  font-size: 0.58rem; line-height: 1.1; font-weight: 600;
+  color: var(--gg-text-faint); padding: 2px;
+}
+.gg-cardimg--xs .gg-cardimg__emptylabel { display: none; }
 
 /* Floating enlarged preview (portal to body). */
 .gg-cardpreview {
@@ -906,6 +1072,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-scryfall__bar .gg-field { flex: 1; }
 .gg-scryfall__loading { padding: 30px; display: flex; justify-content: center; }
 .gg-scryfall__empty { padding: 8px 2px; }
+.gg-scryfall__count { margin: 0; padding: 0 2px; font-variant-numeric: tabular-nums; }
+.gg-scryfall__more { display: flex; justify-content: center; padding: 12px 0 4px; }
 .gg-scryfall__grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 10px; max-height: 460px; overflow-y: auto; padding: 2px;

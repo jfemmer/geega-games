@@ -604,42 +604,47 @@ function InventoryDetail({
       }
     >
       <div className="gg-detail">
-        <div className="gg-detail__hero">
-          <InventoryCardImage item={item} size="md" />
-          <dl className="gg-detail__facts">
-            <div>
-              <dt>Set</dt>
-              <dd>
-                {item.setName} ({item.setCode})
-              </dd>
+        <div className="gg-detail__hero gg-detail__hero--card">
+          <div className="gg-detail__art">
+            <InventoryCardImage item={item} size="md" loadingPriority="eager" />
+          </div>
+          <div className="gg-detail__heroinfo">
+            <div className="gg-detail__setline">
+              <span className="gg-detail__setname">{item.setName}</span>
+              <span className="gg-detail__setmeta">
+                {item.setCode} · #{item.collectorNumber}
+              </span>
             </div>
-            <div>
-              <dt>Collector #</dt>
-              <dd>{item.collectorNumber}</dd>
+            <div className="gg-detail__chips">
+              <Badge tone={RARITY_TONE[item.rarity]}>
+                {RARITY_LABELS[item.rarity]}
+              </Badge>
+              <span className="gg-chip">{CONDITION_LABELS[item.condition]}</span>
+              <span className="gg-chip">{FINISH_LABELS[item.finish]}</span>
             </div>
-            <div>
-              <dt>Condition / finish</dt>
-              <dd>
-                {CONDITION_LABELS[item.condition]} · {FINISH_LABELS[item.finish]}
-              </dd>
-            </div>
-            <div>
-              <dt>Price</dt>
-              <dd>{formatCents(item.priceCents)}</dd>
-            </div>
-            {item.scryfallPriceCents != null && (
-              <div>
-                <dt>Scryfall ref.</dt>
-                <dd>{formatCents(item.scryfallPriceCents)}</dd>
+            <div className="gg-priceblock">
+              <div className="gg-priceblock__main">
+                <span className="gg-priceblock__label">Selling price</span>
+                <span className="gg-priceblock__value">
+                  {formatCents(item.priceCents)}
+                </span>
               </div>
-            )}
+              {item.scryfallPriceCents != null && (
+                <div className="gg-priceblock__ref">
+                  <span className="gg-priceblock__label">Scryfall ref.</span>
+                  <span className="gg-priceblock__refvalue">
+                    {formatCents(item.scryfallPriceCents)}
+                  </span>
+                </div>
+              )}
+            </div>
             {item.storageLocation && (
-              <div>
-                <dt>Location</dt>
-                <dd>{item.storageLocation}</dd>
+              <div className="gg-detail__location">
+                <Icon name="box" size={14} />
+                <span>{item.storageLocation}</span>
               </div>
             )}
-          </dl>
+          </div>
         </div>
 
         <div className="gg-adjust">

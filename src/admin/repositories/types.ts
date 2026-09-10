@@ -79,14 +79,36 @@ export interface InventoryRepository {
  * Scryfall — live card/printing search + lookup
  * ------------------------------------------------------------------ */
 
+/** A single page of Scryfall search results, with pagination metadata. */
+export interface ScryfallSearchPage {
+  /** Printings on this page (already de-duplicated by scryfallId). */
+  printings: CardPrinting[];
+  /** Total printings Scryfall reports match the query, if known. */
+  totalCards: number | null;
+  /** True when more pages exist beyond what has been fetched so far. */
+  hasMore: boolean;
+  /** 1-based page index this result represents. */
+  page: number;
+}
+
 export interface ScryfallRepository {
   /**
    * Search the full printing catalog. Returns EVERY applicable printing, not
    * one row per name — different sets, collector numbers, artworks, promos,
    * showcase/borderless/etched treatments each appear separately. Accepts plain
    * names, set codes, collector numbers, and Scryfall search syntax.
+   *
+   * NOTE: this walks pagination server-side and returns a complete-as-possible
+   * first result set. Prefer `searchPrintingsPage` when the UI wants explicit
+   * incremental "Load more" control.
    */
   searchPrintings(query: string): Promise<CardPrinting[]>;
+  /**
+   * Fetch ONE page of search results (1-based). Powers the "Load more printings"
+   * UI so each additional page costs a single request. De-duplication across
+   * combined pages by scryfallId is the caller's responsibility (the UI merges).
+   */
+  searchPrintingsPage(query: string, page: number): Promise<ScryfallSearchPage>;
   /** Fetch one exact printing by Scryfall id. */
   getByScryfallId(scryfallId: string): Promise<CardPrinting | null>;
   /** Fetch one exact printing by set code + collector number. */

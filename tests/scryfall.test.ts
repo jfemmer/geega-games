@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  bestImage,
   extractAvailableFinishes,
   extractCardFaces,
   extractImageUris,
   extractPriceForFinish,
   extractPrintingTreatments,
+  imageCandidates,
   isMultiFaced,
   normalizeScryfallCard,
+  primaryImageUrl,
   priceStringToCents,
 } from "../src/admin/services/scryfall";
 import type { ScryfallCard } from "../src/admin/services/scryfall.types";
+import type { CardImageUris } from "../src/admin/types";
 
 function baseCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
   return {
@@ -208,5 +212,189 @@ describe("normalizeScryfallCard", () => {
     const special = normalizeScryfallCard(baseCard({ rarity: "special" as never }));
     // Unknown rarities degrade without throwing.
     expect(typeof special.rarity).toBe("string");
+  });
+});
+
+describe("primaryImageUrl — resolution & fallbacks", () => {
+  it("prefers normal at the top level", () => {
+    expect(primaryImageUrl(baseCard())).toBe("https://img/normal.jpg");
+  });
+
+  it("falls back to large, then small, then png when earlier sizes are missing", () => {
+    const noNormal = baseCard({
+      image_uris: {
+        small: "s.jpg",
+        large: "l.jpg",
+        png: "p.png",
+        // normal intentionally omitted
+      } as never,
+    });
+    // large preferred over small when normal is missing
+    expect(primaryImageUrl(noNormal)).toBe("l.jpg");
+
+    const onlySmall = baseCard({
+      image_uris: { small: "s.jpg" } as never,
+    });
+    expect(primaryImageUrl(onlySmall)).toBe("s.jpg");
+
+    const onlyPng = baseCard({
+      image_uris: { png: "only.png" } as never,
+    });
+    // png is a valid last-resort so the UI never shows blank art
+    expect(primaryImageUrl(onlyPng)).toBe("only.png");
+  });
+
+  it("uses face-level images for a DFC with no top-level image_uris", () => {
+    const dfc = baseCard({
+      layout: "transform",
+      image_uris: undefined,
+      card_faces: [
+        {
+          object: "card_face",
+          name: "Front",
+          image_uris: { normal: "front-normal.jpg" },
+        },
+        {
+          object: "card_face",
+          name: "Back",
+          image_uris: { normal: "back-normal.jpg" },
+        },
+      ] as never,
+    });
+    expect(primaryImageUrl(dfc)).toBe("front-normal.jpg");
+  });
+
+  it("returns the front face image even when the front only has png", () => {
+    const dfc = baseCard({
+      layout: "transform",
+      image_uris: undefined,
+      card_faces: [
+        { object: "card_face", name: "Front", image_uris: { png: "front.png" } },
+        { object: "card_face", name: "Back", image_uris: { normal: "back.jpg" } },
+      ] as never,
+    });
+    expect(primaryImageUrl(dfc)).toBe("front.png");
+  });
+
+  it("returns empty string only when the card truly has no images anywhere", () => {
+    const none = baseCard({ image_uris: undefined, card_faces: undefined });
+    expect(primaryImageUrl(none)).toBe("");
+  });
+});
+
+describe("bestImage / imageCandidates — ordered fallback", () => {
+  const full: CardImageUris = {
+    small: "s.jpg",
+    normal: "n.jpg",
+    large: "l.jpg",
+    png: "p.png",
+    artCrop: "a.jpg",
+  };
+
+  it("bestImage degrades by preference and always finds something", () => {
+    expect(bestImage(full, "small")).toBe("s.jpg");
+    expect(bestImage(full, "normal")).toBe("n.jpg");
+    expect(bestImage(full, "large")).toBe("l.jpg");
+
+    const onlyPng: CardImageUris = {
+      small: null,
+      normal: null,
+      large: null,
+      png: "p.png",
+      artCrop: null,
+    };
+    // When only png exists, every preference still resolves to it.
+    expect(bestImage(onlyPng, "small")).toBe("p.png");
+    expect(bestImage(onlyPng, "normal")).toBe("p.png");
+    expect(bestImage(onlyPng, "large")).toBe("p.png");
+  });
+
+  it("imageCandidates returns an ordered, de-duplicated list per preference", () => {
+    expect(imageCandidates(full, "small")).toEqual([
+      "s.jpg",
+      "n.jpg",
+      "l.jpg",
+      "p.png",
+    ]);
+    expect(imageCandidates(full, "normal")).toEqual([
+      "n.jpg",
+      "l.jpg",
+      "s.jpg",
+      "p.png",
+    ]);
+    expect(imageCandidates(full, "large")).toEqual([
+      "l.jpg",
+      "n.jpg",
+      "s.jpg",
+      "p.png",
+    ]);
+  });
+
+  it("imageCandidates de-duplicates when sizes share a url and skips nulls", () => {
+    const dupes: CardImageUris = {
+      small: "same.jpg",
+      normal: "same.jpg",
+      large: null,
+      png: "p.png",
+      artCrop: null,
+    };
+    expect(imageCandidates(dupes, "small")).toEqual(["same.jpg", "p.png"]);
+    expect(imageCandidates(null, "normal")).toEqual([]);
+  });
+});
+
+describe("normalizeScryfallCard — image resilience", () => {
+  it("keeps a usable imageUrl for a face-only DFC", () => {
+    const dfc = baseCard({
+      layout: "modal_dfc",
+      image_uris: undefined,
+      card_faces: [
+        {
+          object: "card_face",
+          name: "Front",
+          image_uris: { small: "fs.jpg", normal: "fn.jpg", large: "fl.jpg" },
+        },
+        {
+          object: "card_face",
+          name: "Back",
+          image_uris: { small: "bs.jpg", normal: "bn.jpg", large: "bl.jpg" },
+        },
+      ] as never,
+    });
+    const p = normalizeScryfallCard(dfc);
+    expect(p.imageUrl).toBe("fn.jpg");
+    expect(p.faces).toHaveLength(2);
+    expect(p.faces[1].images.normal).toBe("bn.jpg");
+    expect(isMultiFaced(p)).toBe(true);
+  });
+
+  it("produces an all-null image set but does not throw for an imageless printing", () => {
+    const none = baseCard({ image_uris: undefined, card_faces: undefined });
+    const p = normalizeScryfallCard(none);
+    expect(p.imageUrl).toBe("");
+    expect(p.images.normal).toBeNull();
+    // A blank printing still yields empty candidate lists (UI shows placeholder).
+    expect(imageCandidates(p.images, "small")).toEqual([]);
+  });
+
+  it("handles an unusual rarity/treatment printing (showcase borderless promo)", () => {
+    const fancy = baseCard({
+      rarity: "mythic",
+      border_color: "borderless",
+      frame_effects: ["showcase", "extendedart"],
+      promo: true,
+      full_art: true,
+    });
+    const p = normalizeScryfallCard(fancy);
+    expect(p.rarity).toBe("mythic");
+    expect(p.treatments).toEqual(
+      expect.arrayContaining([
+        "borderless",
+        "showcase",
+        "extended_art",
+        "promo",
+        "full_art",
+      ]),
+    );
   });
 });

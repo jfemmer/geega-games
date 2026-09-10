@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { Icon } from "./Icon";
+import { getAdminPortalContainer } from "./portal";
 
 interface OverlayProps {
   open: boolean;
@@ -76,6 +77,6 @@ export function Modal({
         {footer && <footer className="gg-dialog__foot">{footer}</footer>}
       </div>
     </div>,
-    document.body,
+    getAdminPortalContainer(),
   );
 }

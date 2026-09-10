@@ -405,8 +405,30 @@ function OrderDetail({
                 Packing checklist
                 <span className="gg-orderdetail__progress">
                   {packedCount}/{order.items.length} packed
+                  {!allPacked && order.items.length > 0
+                    ? ` · ${order.items.length - packedCount} left`
+                    : ""}
                 </span>
               </h3>
+              <div
+                className="gg-packbar"
+                role="progressbar"
+                aria-valuenow={packedCount}
+                aria-valuemin={0}
+                aria-valuemax={order.items.length}
+                aria-label="Packing progress"
+              >
+                <div
+                  className={`gg-packbar__fill ${allPacked ? "gg-packbar__fill--done" : ""}`}
+                  style={{
+                    width: `${
+                      order.items.length === 0
+                        ? 0
+                        : Math.round((packedCount / order.items.length) * 100)
+                    }%`,
+                  }}
+                />
+              </div>
             </div>
             <ul className="gg-packlist">
               {order.items.map((it) => (
@@ -427,7 +449,14 @@ function OrderDetail({
                       className="gg-packitem__img"
                       width={34}
                       height={47}
-                      loading="lazy"
+                      loading="eager"
+                      fetchPriority="high"
+                      decoding="async"
+                      onError={(e) => {
+                        // Hide a broken thumbnail rather than showing the
+                        // browser's broken-image glyph in the checklist.
+                        e.currentTarget.style.visibility = "hidden";
+                      }}
                     />
                     <span className="gg-packitem__text">
                       <span className="gg-packitem__name">

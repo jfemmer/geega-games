@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CardPrinting } from "../../types";
 import { TextField } from "../ui/Field";
 import { Button } from "../ui/Button";
@@ -15,6 +15,12 @@ import { RARITY_LABELS, RARITY_TONE } from "../../utils/labels";
 // (hover to enlarge), name, set, collector number, rarity, finishes, treatments,
 // and reference price. Supports a dense mode for experienced operators; even in
 // dense mode thumbnails keep hover-to-enlarge.
+//
+// Pagination: the first search walks Scryfall pages server-side and returns a
+// complete-as-possible initial set. If Scryfall still reports more pages beyond
+// what was returned (a very broad query), a "Load more printings" button fetches
+// the next page and MERGES it, de-duplicating by scryfallId so a printing never
+// appears twice. Exact Scryfall ids remain the canonical printing identity.
 
 interface ScryfallSearchProps {
   onSelect: (printing: CardPrinting) => void;
@@ -25,6 +31,24 @@ interface ScryfallSearchProps {
   defaultDense?: boolean;
 }
 
+/** Merge new printings into an existing list, de-duplicating by scryfallId. */
+function mergePrintings(
+  existing: CardPrinting[],
+  incoming: CardPrinting[],
+): CardPrinting[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((p) => p.scryfallId || p.id));
+  const merged = existing.slice();
+  for (const p of incoming) {
+    const key = p.scryfallId || p.id;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(p);
+    }
+  }
+  return merged;
+}
+
 export function ScryfallSearch({
   onSelect,
   autoFocus,
@@ -33,9 +57,14 @@ export function ScryfallSearch({
 }: ScryfallSearchProps) {
   const [term, setTerm] = useState(initialQuery);
   const [searching, setSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CardPrinting[]>([]);
   const [dense, setDense] = useState(defaultDense);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCards, setTotalCards] = useState<number | null>(null);
+  // Highest page we've successfully loaded for the CURRENT query.
+  const [page, setPage] = useState(1);
   const reqId = useRef(0);
 
   useEffect(() => {
@@ -44,6 +73,9 @@ export function ScryfallSearch({
       setResults([]);
       setError(null);
       setSearching(false);
+      setHasMore(false);
+      setTotalCards(null);
+      setPage(1);
       return;
     }
     setSearching(true);
@@ -51,14 +83,21 @@ export function ScryfallSearch({
     const id = ++reqId.current;
     const handle = setTimeout(async () => {
       try {
-        const res = await scryfallRepository.searchPrintings(q);
-        if (id === reqId.current) setResults(res);
+        const res = await scryfallRepository.searchPrintingsPage(q, 1);
+        if (id === reqId.current) {
+          setResults(res.printings);
+          setHasMore(res.hasMore);
+          setTotalCards(res.totalCards);
+          setPage(1);
+        }
       } catch (err) {
         if (id === reqId.current) {
           setError(
             err instanceof Error ? err.message : "Search failed. Try again.",
           );
           setResults([]);
+          setHasMore(false);
+          setTotalCards(null);
         }
       } finally {
         if (id === reqId.current) setSearching(false);
@@ -66,6 +105,33 @@ export function ScryfallSearch({
     }, 280);
     return () => clearTimeout(handle);
   }, [term]);
+
+  const loadMore = useCallback(async () => {
+    const q = term.trim();
+    if (q.length < 2 || loadingMore || !hasMore) return;
+    const id = reqId.current; // stay tied to the current query
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await scryfallRepository.searchPrintingsPage(q, nextPage);
+      if (id === reqId.current) {
+        setResults((prev) => mergePrintings(prev, res.printings));
+        setHasMore(res.hasMore);
+        if (res.totalCards != null) setTotalCards(res.totalCards);
+        setPage(nextPage);
+      }
+    } catch (err) {
+      if (id === reqId.current) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not load more printings.",
+        );
+      }
+    } finally {
+      if (id === reqId.current) setLoadingMore(false);
+    }
+  }, [term, loadingMore, hasMore, page]);
 
   return (
     <div className="gg-scryfall">
@@ -108,6 +174,16 @@ export function ScryfallSearch({
         </p>
       )}
 
+      {!searching && results.length > 0 && (
+        <p className="gg-scryfall__count gg-muted">
+          Showing {results.length}
+          {totalCards != null && totalCards > results.length
+            ? ` of ${totalCards}`
+            : ""}{" "}
+          printing{results.length === 1 ? "" : "s"}.
+        </p>
+      )}
+
       <div
         className={
           dense ? "gg-scryfall__list gg-scryfall__list--dense" : "gg-scryfall__grid"
@@ -116,12 +192,18 @@ export function ScryfallSearch({
         {results.map((p) =>
           dense ? (
             <button
-              key={p.id}
+              key={p.scryfallId || p.id}
               type="button"
               className="gg-scryrow"
               onClick={() => onSelect(p)}
             >
-              <CardImage images={p.images} faces={p.faces} alt={p.cardName} size="xs" />
+              <CardImage
+                images={p.images}
+                faces={p.faces}
+                alt={p.cardName}
+                size="xs"
+                loadingPriority="eager"
+              />
               <span className="gg-scryrow__main">
                 <span className="gg-scryrow__name">{p.cardName}</span>
                 <span className="gg-scryrow__sub">
@@ -140,12 +222,18 @@ export function ScryfallSearch({
             </button>
           ) : (
             <button
-              key={p.id}
+              key={p.scryfallId || p.id}
               type="button"
               className="gg-scrycard"
               onClick={() => onSelect(p)}
             >
-              <CardImage images={p.images} faces={p.faces} alt={p.cardName} size="md" />
+              <CardImage
+                images={p.images}
+                faces={p.faces}
+                alt={p.cardName}
+                size="md"
+                loadingPriority="eager"
+              />
               <span className="gg-scrycard__body">
                 <span className="gg-scrycard__name">{p.cardName}</span>
                 <span className="gg-scrycard__sub">
@@ -170,6 +258,20 @@ export function ScryfallSearch({
           ),
         )}
       </div>
+
+      {!searching && hasMore && (
+        <div className="gg-scryfall__more">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="plus"
+            loading={loadingMore}
+            onClick={loadMore}
+          >
+            Load more printings
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

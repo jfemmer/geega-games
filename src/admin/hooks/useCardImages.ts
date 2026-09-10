@@ -2,12 +2,19 @@ import { useEffect, useState } from "react";
 import { scryfallRepository } from "../repositories";
 import type { CardImageUris, CardPrinting } from "../types";
 
-// Resolve REAL Scryfall imagery for cards that don't already carry it.
+// Resolve REAL Scryfall imagery for cards, PREFERRING data the app already has.
 //
-// Inventory rows created before the Scryfall integration only have a stored
-// `imageUrl` (often a placeholder) and no scryfall_id. This hook resolves the
-// exact printing on demand — preferring scryfall_id, falling back to
-// set code + collector number — and returns normalized CardImageUris.
+// Architecture (fastest → slowest; we stop at the first that yields real art):
+//   1. Structured images already on the record (e.g. from a cached
+//      `card_printings` row joined into inventory). Used SYNCHRONOUSLY during
+//      the first render — no effect, no network — so the <img> starts loading
+//      with the page.
+//   2. A real (http) `imageUrl` stored on the row. Also used synchronously.
+//   3. The module-level in-memory cache (a printing already resolved this
+//      session). Synchronous when present.
+//   4. A live Scryfall lookup (getByScryfallId, else set+collector). This is the
+//      FALLBACK/RECOVERY path for legacy rows that carry neither structured
+//      images nor a real imageUrl — NOT the primary path for normal rows.
 //
 // Correctness/perf guarantees:
 //   * One resolution per distinct printing for the whole app session
@@ -18,7 +25,7 @@ import type { CardImageUris, CardPrinting } from "../types";
 //     rate limits).
 //   * Never re-fetches a key that already resolved (or resolved to null).
 //   * Placeholder/data-URI images are treated as "missing" so legacy rows get
-//     upgraded to real art.
+//     upgraded to real art — but only when no structured images exist.
 
 /** A card whose image we may need to resolve. */
 export interface ResolvableCard {
@@ -26,6 +33,12 @@ export interface ResolvableCard {
   setCode: string;
   collectorNumber: string;
   imageUrl: string | null;
+  /**
+   * Optional pre-normalized image set already known to the app (e.g. from a
+   * cached card_printings row). When present with any usable size, this is used
+   * immediately and NO Scryfall lookup happens. This is the preferred path.
+   */
+  images?: CardImageUris | null;
 }
 
 const cache = new Map<string, CardImageUris | null>();
@@ -42,22 +55,45 @@ function keyFor(card: ResolvableCard): string {
  * data-URIs (the mock purple cards) and empty values are treated as missing so
  * the row gets enriched.
  */
-function hasRealImage(url: string | null): boolean {
+function hasRealImage(url: string | null | undefined): boolean {
   return !!url && /^https?:\/\//i.test(url);
+}
+
+/** Whether a structured image set has any usable size. */
+function hasStructuredImage(images: CardImageUris | null | undefined): boolean {
+  return Boolean(
+    images &&
+      (images.small || images.normal || images.large || images.png),
+  );
 }
 
 function toUris(printing: CardPrinting): CardImageUris {
   // Prefer the printing's structured images; fall back to its single imageUrl.
-  if (
-    printing.images &&
-    (printing.images.small ||
-      printing.images.normal ||
-      printing.images.large)
-  ) {
+  if (hasStructuredImage(printing.images)) {
     return printing.images;
   }
   const u = printing.imageUrl;
   return { small: u, normal: u, large: u, png: u, artCrop: u };
+}
+
+/** Build a CardImageUris from a single stored url (all sizes point at it). */
+function urisFromUrl(url: string | null): CardImageUris {
+  return { small: url, normal: url, large: url, png: url, artCrop: url };
+}
+
+/**
+ * Resolve the BEST images we can compute WITHOUT any network, synchronously.
+ * Returns null when only a live Scryfall lookup could help (legacy row).
+ */
+function resolveLocal(card: ResolvableCard): CardImageUris | null {
+  // 1. Structured images already on the record — best case.
+  if (hasStructuredImage(card.images)) return card.images!;
+  // 2. A real stored image url.
+  if (hasRealImage(card.imageUrl)) return urisFromUrl(card.imageUrl);
+  // 3. Anything already resolved this session for this printing.
+  const cached = cache.get(keyFor(card));
+  if (hasStructuredImage(cached)) return cached!;
+  return null;
 }
 
 async function resolve(card: ResolvableCard): Promise<CardImageUris | null> {
@@ -92,27 +128,22 @@ async function resolve(card: ResolvableCard): Promise<CardImageUris | null> {
 
 /**
  * Returns the best available images for a card:
- *   - if the card already has a real (http) image, uses it immediately,
+ *   - if the card already has structured images or a real (http) image, uses
+ *     them IMMEDIATELY during the first render (no effect, no network),
  *   - otherwise resolves from Scryfall (cached) and returns them when ready.
- * While resolving, returns whatever the card already had (possibly a
- * placeholder) so the UI never flashes empty.
+ * While resolving a legacy row, returns whatever the card already had (possibly
+ * a placeholder) so the UI never flashes empty.
  */
 export function useCardImages(card: ResolvableCard | null): CardImageUris | null {
-  const stored: CardImageUris | null = card
-    ? {
-        small: card.imageUrl,
-        normal: card.imageUrl,
-        large: card.imageUrl,
-        png: card.imageUrl,
-        artCrop: card.imageUrl,
-      }
-    : null;
-
+  // Compute the best synchronously-available images for the FIRST render, so a
+  // known image starts downloading with the page instead of after an effect.
   const [images, setImages] = useState<CardImageUris | null>(() => {
     if (!card) return null;
-    if (hasRealImage(card.imageUrl)) return stored;
-    const key = keyFor(card);
-    return cache.get(key) ?? stored;
+    const local = resolveLocal(card);
+    if (local) return local;
+    // Nothing local yet — seed with whatever placeholder the row carries so the
+    // UI isn't empty while the background lookup runs.
+    return card.imageUrl ? urisFromUrl(card.imageUrl) : null;
   });
 
   useEffect(() => {
@@ -120,21 +151,23 @@ export function useCardImages(card: ResolvableCard | null): CardImageUris | null
       setImages(null);
       return;
     }
-    // Already have real art on the row — nothing to resolve.
-    if (hasRealImage(card.imageUrl)) {
-      setImages(stored);
+    // Already have real art locally (structured/http/cached) — nothing to do.
+    const local = resolveLocal(card);
+    if (local) {
+      setImages(local);
       return;
     }
+
     const key = keyFor(card);
     const cached = cache.get(key);
     if (cached !== undefined) {
-      setImages(cached ?? stored);
+      setImages(cached ?? (card.imageUrl ? urisFromUrl(card.imageUrl) : null));
       return;
     }
 
     let alive = true;
     // Show whatever we have now, resolve the real image in the background.
-    setImages(stored);
+    setImages(card.imageUrl ? urisFromUrl(card.imageUrl) : null);
     resolve(card).then((uris) => {
       if (alive && uris) setImages(uris);
     });
@@ -142,7 +175,14 @@ export function useCardImages(card: ResolvableCard | null): CardImageUris | null
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card?.scryfallId, card?.setCode, card?.collectorNumber, card?.imageUrl]);
+  }, [
+    card?.scryfallId,
+    card?.setCode,
+    card?.collectorNumber,
+    card?.imageUrl,
+    // Re-run if the structured images identity changes (e.g. lazy join arrives).
+    card?.images,
+  ]);
 
   return images;
 }

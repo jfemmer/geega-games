@@ -50,9 +50,32 @@ interface InventoryRow {
 
 const SCRYFALL_DELAY_MS = 120; // ~8 req/s, within Scryfall's guidance
 
-function hasRealImage(url: string | null): boolean {
+/** A real image is an http(s) URL. Placeholders/data-URIs/relative paths fail. */
+export function hasRealImage(url: string | null): boolean {
   return !!url && /^https?:\/\//i.test(url);
 }
+
+/**
+ * Whether an inventory row needs image repair. Exported + pure so the exact
+ * rule is unit-tested independently of Supabase. A row is a candidate when it
+ * lacks a scryfall_id OR lacks a real (http) image — which now includes rows
+ * carrying a NON-NULL placeholder/data-URI/malformed image_url that the old
+ * DB-only filter used to miss.
+ */
+export function needsImageRepair(row: {
+  scryfall_id: string | null;
+  image_url: string | null;
+}): boolean {
+  return !row.scryfall_id || !hasRealImage(row.image_url);
+}
+
+/**
+ * The PostgREST `or` filter string used to surface candidate rows at the DB
+ * level. Exported so a test can assert the placeholder-catching clause is
+ * present (the fix for rows the previous query silently excluded).
+ */
+export const BACKFILL_CANDIDATE_OR_FILTER =
+  "scryfall_id.is.null,image_url.is.null,image_url.not.ilike.http%";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -120,22 +143,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Database types yet, so use an untyped view for them.
     const admin = getSupabaseAdmin() as unknown as LooseAdmin;
 
-    // Candidates: active rows missing a scryfall_id OR without a real image.
+    // Candidates: active rows that lack a scryfall_id OR whose image_url is
+    // missing OR is not a real http(s) Scryfall image.
+    //
+    // IMPORTANT: the previous query used `scryfall_id.is.null,image_url.is.null`
+    // only. That could NOT see rows whose image_url is a NON-NULL placeholder
+    // (data-URI, blob:, a relative path, etc.) — those rows were excluded by the
+    // DB query before the JS hasRealImage() check ever ran, so they could never
+    // be repaired. We now also select rows where image_url does NOT start with
+    // "http" via a case-insensitive NOT LIKE, so placeholder/malformed images
+    // become discoverable. `hasRealImage()` still runs below as a final guard.
     const { data, error } = await admin
       .from("inventory_items")
       .select("id, scryfall_id, set_code, collector_number, image_url")
       .neq("status", "archived")
-      .or("scryfall_id.is.null,image_url.is.null")
+      .or(BACKFILL_CANDIDATE_OR_FILTER)
       .limit(limit);
 
     if (error) throw new HttpError(500, `Query failed: ${error.message}`);
 
     const rows = (data ?? []) as InventoryRow[];
-    // Filter out any that already have a real image + id (defensive; the OR
-    // above can't express the "not-http" condition).
-    const candidates = rows.filter(
-      (r) => !r.scryfall_id || !hasRealImage(r.image_url),
-    );
+    // Final JS guard. Catches anything the DB filter surfaced, including
+    // placeholder/data-URI/relative/malformed image URLs.
+    const candidates = rows.filter(needsImageRepair);
 
     let updated = 0;
     let skipped = 0;

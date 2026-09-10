@@ -63,12 +63,13 @@ export function extractImageUris(
   };
 }
 
-/** Whether a card has any usable image at the top level. */
+/** Whether a card has any usable image at the top level (any size). */
 function hasTopLevelImage(card: ScryfallCard): boolean {
   return Boolean(
     card.image_uris?.small ||
       card.image_uris?.normal ||
-      card.image_uris?.large,
+      card.image_uris?.large ||
+      card.image_uris?.png,
   );
 }
 
@@ -136,9 +137,12 @@ export function extractCardFaces(card: ScryfallCard): CardFace[] {
 }
 
 /**
- * The primary display image for a printing — the front face's normal image,
- * falling back through sizes and to the top-level image for shared-image
- * layouts. Always returns a usable string when any image exists, else "".
+ * The primary display image for a printing — the front face's image, falling
+ * back through EVERY available size and to the top-level image for shared-image
+ * layouts. Order: normal -> large -> small -> png, at the face level first, then
+ * the same order at the top level. png is included last so a card that (rarely)
+ * only ships a png still resolves instead of showing blank art. Always returns a
+ * usable string when any image exists anywhere on the card, else "".
  */
 export function primaryImageUrl(card: ScryfallCard): string {
   const faces = extractCardFaces(card);
@@ -147,9 +151,13 @@ export function primaryImageUrl(card: ScryfallCard): string {
     front?.normal ||
     front?.large ||
     front?.small ||
+    front?.png ||
     card.image_uris?.normal ||
     card.image_uris?.large ||
     card.image_uris?.small ||
+    card.image_uris?.png ||
+    // Last-ditch: any face that has ANY image (covers back-only edge cases).
+    faces.map((f) => f.images.normal || f.images.large || f.images.small || f.images.png).find(Boolean) ||
     ""
   );
 }
@@ -289,7 +297,44 @@ export function bestImage(
   images: CardImageUris,
   prefer: "small" | "normal" | "large",
 ): string | null {
-  if (prefer === "small") return images.small ?? images.normal ?? images.large;
-  if (prefer === "large") return images.large ?? images.normal ?? images.small;
-  return images.normal ?? images.large ?? images.small;
+  if (prefer === "small")
+    return images.small ?? images.normal ?? images.large ?? images.png;
+  if (prefer === "large")
+    return images.large ?? images.normal ?? images.small ?? images.png;
+  return images.normal ?? images.large ?? images.small ?? images.png;
+}
+
+/**
+ * An ORDERED, de-duplicated list of image URLs to try, starting from the
+ * preferred size and degrading through every other available size. Powers
+ * CardImage's onError recovery: if the preferred URL 404s at the CDN, the
+ * component walks to the next candidate instead of showing a broken image.
+ *
+ * Ordering by preference:
+ *   small  -> small, normal, large, png
+ *   normal -> normal, large, small, png
+ *   large  -> large, normal, small, png
+ */
+export function imageCandidates(
+  images: CardImageUris | null,
+  prefer: "small" | "normal" | "large",
+): string[] {
+  if (!images) return [];
+  const order: Array<keyof CardImageUris> =
+    prefer === "small"
+      ? ["small", "normal", "large", "png"]
+      : prefer === "large"
+        ? ["large", "normal", "small", "png"]
+        : ["normal", "large", "small", "png"];
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const key of order) {
+    const url = images[key];
+    if (url && !seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  }
+  return out;
 }

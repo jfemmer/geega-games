@@ -16,7 +16,15 @@
 
 import { supabase } from "../../supabase";
 import type { CardPrinting } from "../types";
-import type { ScryfallRepository } from "./types";
+import type { ScryfallRepository, ScryfallSearchPage } from "./types";
+
+/** Raw shape returned by GET /api/admin/scryfall/search. */
+interface SearchResponse {
+  data: CardPrinting[];
+  totalCards?: number | null;
+  hasMore?: boolean;
+  page?: number;
+}
 
 const BASE = "/api/admin/scryfall";
 
@@ -71,10 +79,36 @@ export const liveScryfallRepository: ScryfallRepository = {
   async searchPrintings(query: string): Promise<CardPrinting[]> {
     const q = query.trim();
     if (q.length < 2) return [];
-    const body = await getJson<{ data: CardPrinting[] }>(
+    // No page param -> server walks pagination and returns a complete-as-
+    // possible first result set.
+    const body = await getJson<SearchResponse>(
       `${BASE}/search?q=${encodeURIComponent(q)}`,
     );
     return body.data ?? [];
+  },
+
+  async searchPrintingsPage(
+    query: string,
+    page: number,
+  ): Promise<ScryfallSearchPage> {
+    const q = query.trim();
+    if (q.length < 2) {
+      return { printings: [], totalCards: 0, hasMore: false, page };
+    }
+    const safePage = Math.max(1, Math.floor(page) || 1);
+    // page=1 uses the multi-page walk (complete initial set); pages >1 fetch a
+    // single Scryfall page for incremental "Load more".
+    const url =
+      safePage === 1
+        ? `${BASE}/search?q=${encodeURIComponent(q)}`
+        : `${BASE}/search?q=${encodeURIComponent(q)}&page=${safePage}`;
+    const body = await getJson<SearchResponse>(url);
+    return {
+      printings: body.data ?? [],
+      totalCards: body.totalCards ?? null,
+      hasMore: Boolean(body.hasMore),
+      page: body.page ?? safePage,
+    };
   },
 
   async getByScryfallId(scryfallId: string): Promise<CardPrinting | null> {

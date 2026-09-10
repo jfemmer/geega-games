@@ -12,7 +12,10 @@ import {
 import type { ScryfallCard } from "../services/scryfall.types";
 import type { CardPrinting } from "../types";
 import { delay } from "../utils/format";
-import type { ScryfallRepository } from "./types";
+import type { ScryfallRepository, ScryfallSearchPage } from "./types";
+
+/** Mock pretends to paginate at this size so "Load more" is exercisable. */
+const MOCK_PAGE_SIZE = 175;
 
 /**
  * Very small subset of Scryfall search syntax so the mock feels real:
@@ -62,6 +65,34 @@ export const mockScryfallRepository: ScryfallRepository = {
     if (q.length < 2) return delay([], 120);
     const hits = SCRYFALL_MOCK_CARDS.filter((c) => matches(c, q));
     return delay(normalizeScryfallCards(hits).sort(sortPrintings), 260);
+  },
+
+  async searchPrintingsPage(
+    query: string,
+    page: number,
+  ): Promise<ScryfallSearchPage> {
+    const q = query.trim();
+    const safePage = Math.max(1, Math.floor(page) || 1);
+    if (q.length < 2) {
+      return delay(
+        { printings: [], totalCards: 0, hasMore: false, page: safePage },
+        120,
+      );
+    }
+    const all = normalizeScryfallCards(
+      SCRYFALL_MOCK_CARDS.filter((c) => matches(c, q)),
+    ).sort(sortPrintings);
+    const start = (safePage - 1) * MOCK_PAGE_SIZE;
+    const printings = all.slice(start, start + MOCK_PAGE_SIZE);
+    return delay(
+      {
+        printings,
+        totalCards: all.length,
+        hasMore: start + MOCK_PAGE_SIZE < all.length,
+        page: safePage,
+      },
+      260,
+    );
   },
 
   async getByScryfallId(scryfallId: string): Promise<CardPrinting | null> {

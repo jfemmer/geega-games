@@ -7,6 +7,7 @@ import {
   mockAnalyticsRepository as analytics,
   __resetMockState,
 } from "../src/admin/repositories/mock";
+import { mockScryfallRepository as scryfall } from "../src/admin/repositories/scryfall.mock";
 
 beforeEach(() => {
   __resetMockState();
@@ -196,5 +197,46 @@ describe("analytics repository", () => {
     expect(t.topCards.length).toBeGreaterThan(0);
     expect(t.salesByCondition.length).toBeGreaterThan(0);
     expect(t.revenueSeries.length).toBeGreaterThan(0);
+  });
+});
+
+describe("scryfall repository — search & pagination", () => {
+  it("returns distinct printings keyed by exact scryfall id", async () => {
+    const page = await scryfall.searchPrintingsPage("Lightning Bolt", 1);
+    const ids = page.printings.map((p) => p.scryfallId);
+    // Every printing has a canonical id and ids are unique within a page.
+    expect(ids.every(Boolean)).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("page 1 and searchPrintings agree on the first page of results", async () => {
+    const flat = await scryfall.searchPrintings("Lightning Bolt");
+    const page = await scryfall.searchPrintingsPage("Lightning Bolt", 1);
+    // page 1 is a prefix of (or equal to) the complete walk.
+    expect(page.printings.map((p) => p.scryfallId)).toEqual(
+      flat.slice(0, page.printings.length).map((p) => p.scryfallId),
+    );
+  });
+
+  it("reports hasMore=false and a totalCards count for a small result set", async () => {
+    const page = await scryfall.searchPrintingsPage("Lightning Bolt", 1);
+    expect(typeof page.totalCards).toBe("number");
+    expect(page.hasMore).toBe(false);
+    expect(page.page).toBe(1);
+  });
+
+  it("returns an empty page for a too-short query", async () => {
+    const page = await scryfall.searchPrintingsPage("a", 1);
+    expect(page.printings).toEqual([]);
+    expect(page.hasMore).toBe(false);
+  });
+
+  it("resolves an exact printing by scryfall id, preserving identity", async () => {
+    const page = await scryfall.searchPrintingsPage("Lightning Bolt", 1);
+    const target = page.printings[0];
+    const byId = await scryfall.getByScryfallId(target.scryfallId);
+    expect(byId?.scryfallId).toBe(target.scryfallId);
+    expect(byId?.setCode).toBe(target.setCode);
+    expect(byId?.collectorNumber).toBe(target.collectorNumber);
   });
 });
