@@ -1081,3 +1081,43 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   font-family: var(--gg-mono, ui-monospace, monospace); font-size: 0.78rem; padding: 2px 8px; border-radius: 5px;
   background: var(--gg-surface-3); border: 1px solid var(--gg-line-strong); box-shadow: 0 1px 0 var(--gg-line-strong);
 }
+
+/* ================================================================== *
+ * Admin auth gate (login / denied / loading)
+ * ================================================================== */
+.gg-authwrap {
+  min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  background: radial-gradient(1200px 600px at 50% -10%, #2a1b45 0%, #17102b 60%, #120c22 100%);
+}
+.gg-authcard {
+  width: 100%; max-width: 380px; background: var(--gg-surface, #fff);
+  border-radius: 16px; padding: 32px 28px;
+  box-shadow: 0 24px 60px rgba(10, 6, 24, 0.5); text-align: center;
+}
+.gg-authcard__title {
+  font-family: var(--gg-serif, Georgia, serif); font-size: 1.6rem; margin: 0 0 4px;
+  color: var(--gg-text, #241d31);
+}
+.gg-authcard__muted { color: var(--gg-text-soft, #5c5468); font-size: 0.9rem; margin: 0 0 20px; }
+.gg-authcard__error {
+  color: var(--gg-danger, #c0392b); font-size: 0.86rem; margin: 4px 0 0;
+  background: rgba(192, 57, 43, 0.08); border-radius: 8px; padding: 8px 10px;
+}
+.gg-authform { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.gg-authform__field { display: flex; flex-direction: column; gap: 5px; }
+.gg-authform__field span { font-size: 0.8rem; font-weight: 600; color: var(--gg-text-soft, #5c5468); }
+.gg-authform__field input {
+  font: inherit; padding: 10px 12px; border-radius: 9px;
+  border: 1px solid var(--gg-line-strong, rgba(76,42,133,0.28));
+  background: var(--gg-surface, #fff); color: var(--gg-text, #241d31);
+}
+.gg-authform__field input:focus {
+  outline: 2px solid var(--gg-brand, #663399); outline-offset: 1px; border-color: transparent;
+}
+.gg-authform__submit {
+  margin-top: 6px; font: inherit; font-weight: 600; padding: 11px 16px; border: none;
+  border-radius: 9px; cursor: pointer; color: #fff;
+  background: linear-gradient(120deg, var(--gg-brand, #663399), #4c2a85);
+}
+.gg-authform__submit:hover { filter: brightness(1.06); }
+.gg-authform__submit:disabled { opacity: 0.6; cursor: default; }

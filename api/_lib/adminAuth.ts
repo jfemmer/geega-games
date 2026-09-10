@@ -2,21 +2,36 @@ import type { VercelRequest } from "@vercel/node";
 import { HttpError } from "./http.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
 
-// Staff authorization for /api/admin/* endpoints.
+// Staff/admin authorization for /api/admin/* endpoints.
 //
-// The browser attaches the caller's Supabase access token as a Bearer token.
-// We verify it server-side with the service_role client, then confirm the user
-// is staff. Staff status is derived from the same source the SQL is_staff()
-// helper uses; here we read it via the admin client so a compromised browser
-// cannot elevate itself. Every privileged write endpoint MUST call this first.
+// The browser attaches the caller's Supabase access token as a Bearer header.
+// We verify it server-side with the service_role client, then read the user's
+// role from app_metadata.role — the SAME source of truth the database uses
+// (public.current_app_role() reads app_metadata.role from the JWT, and
+// is_admin()/is_staff() build on it). app_metadata can only be written with the
+// service_role key, so a user cannot elevate their own role from the browser.
+//
+// Roles: 'customer' | 'staff' | 'admin'. Admin endpoints require staff OR admin.
+
+const ALLOWED_ROLES = new Set(["staff", "admin"]);
 
 export interface StaffContext {
   userId: string;
   email: string | null;
+  role: string;
+}
+
+/** Read the app role from a user's app_metadata, defaulting to 'customer'. */
+function roleFromUser(appMetadata: Record<string, unknown> | undefined): string {
+  const raw =
+    (appMetadata?.role as string | undefined) ??
+    (appMetadata?.app_role as string | undefined) ??
+    "customer";
+  return typeof raw === "string" ? raw : "customer";
 }
 
 /**
- * Verify the request carries a valid Supabase session for a staff user.
+ * Verify the request carries a valid Supabase session for a staff/admin user.
  * Throws HttpError(401) when unauthenticated, HttpError(403) when not staff.
  */
 export async function requireStaff(req: VercelRequest): Promise<StaffContext> {
@@ -30,28 +45,20 @@ export async function requireStaff(req: VercelRequest): Promise<StaffContext> {
 
   const admin = getSupabaseAdmin();
 
-  // Validate the token and resolve the user.
+  // Validate the token and resolve the user (this also confirms the token is
+  // genuine and unexpired — it's checked against Supabase's auth server).
   const { data: userData, error: userErr } = await admin.auth.getUser(token);
   if (userErr || !userData?.user) {
     throw new HttpError(401, "Invalid or expired session.");
   }
   const user = userData.user;
 
-  // Confirm staff membership. We check a `staff` table keyed by the auth user id
-  // and require an active status. Adjust the table/column names here if the
-  // staff source of truth differs — this is the single choke point.
-  const { data: staff, error: staffErr } = await admin
-    .from("staff")
-    .select("id, status")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (staffErr) {
-    throw new HttpError(500, "Could not verify staff access.");
-  }
-  if (!staff || (staff as { status?: string }).status === "disabled") {
-    throw new HttpError(403, "Staff access required.");
+  const role = roleFromUser(
+    user.app_metadata as Record<string, unknown> | undefined,
+  );
+  if (!ALLOWED_ROLES.has(role)) {
+    throw new HttpError(403, "Admin access required.");
   }
 
-  return { userId: user.id, email: user.email ?? null };
+  return { userId: user.id, email: user.email ?? null, role };
 }

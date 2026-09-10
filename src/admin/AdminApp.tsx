@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { AdminLayout } from "./components/layout/AdminLayout";
+import { AdminAuthGate } from "./components/auth/AdminAuthGate";
 import { SECTION_TITLES } from "./components/layout/nav";
 import { useRouter, adminSection, ADMIN_BASE } from "./hooks/useRouter";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -13,7 +14,19 @@ import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
 import "./admin.css";
 
+// The dashboard itself is only rendered once AdminAuthGate confirms a signed-in
+// admin/staff user. The gate handles login, the not-authorized state, and
+// loading; server endpoints re-check the role, so access control does not rely
+// on the client alone.
 export default function AdminApp() {
+  return (
+    <AdminAuthGate>
+      <AdminDashboard />
+    </AdminAuthGate>
+  );
+}
+
+function AdminDashboard() {
   const { path, navigate } = useRouter();
 
   // Normalise /admin -> /admin_dashboard once.
