@@ -6,7 +6,7 @@ import { Badge } from "../components/ui/Badge";
 import { Icon } from "../components/ui/Icon";
 import { SearchInput, SelectField } from "../components/ui/Field";
 import { DataTable, type Column } from "../components/ui/DataTable";
-import { CardImage } from "../components/cards/CardImage";
+import { InventoryCardImage } from "../components/cards/InventoryCardImage";
 import { Pagination } from "../components/ui/Nav";
 import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
@@ -35,12 +35,6 @@ import type {
 } from "../types";
 
 const PAGE_SIZE = 10;
-
-/** Build a minimal image set from a single stored inventory image URL. */
-function imageUrisFrom(url: string | null) {
-  if (!url) return null;
-  return { small: url, normal: url, large: url, png: url, artCrop: url };
-}
 
 export function InventoryPage({
   query,
@@ -181,11 +175,7 @@ export function InventoryPage({
       sortKey: "name",
       render: (r) => (
         <div className="gg-cardcell">
-          <CardImage
-            images={imageUrisFrom(r.imageUrl)}
-            alt={r.cardName}
-            size="xs"
-          />
+          <InventoryCardImage item={r} size="xs" />
           <div className="gg-cardcell__text">
             <span className="gg-cardcell__name">{r.cardName}</span>
             <span className="gg-cardcell__set">
@@ -615,11 +605,7 @@ function InventoryDetail({
     >
       <div className="gg-detail">
         <div className="gg-detail__hero">
-          <CardImage
-            images={imageUrisFrom(item.imageUrl)}
-            alt={item.cardName}
-            size="md"
-          />
+          <InventoryCardImage item={item} size="md" />
           <dl className="gg-detail__facts">
             <div>
               <dt>Set</dt>
