@@ -33,12 +33,32 @@ const PAGE_DELAY_MS = 90;
  */
 const DEFAULT_MAX_PAGES = 6;
 
+/**
+ * Per-request timeout. Vercel Functions have a hard wall-clock limit; a hung
+ * Scryfall call would otherwise burn the whole budget and surface as an opaque
+ * platform timeout (which the browser sees as a failed/empty search). Aborting
+ * ourselves lets us return a clean error the UI can show.
+ */
+const REQUEST_TIMEOUT_MS = 7000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 async function scryfallGetUrl<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: COMMON_HEADERS });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: COMMON_HEADERS, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new HttpError(504, "Scryfall took too long to respond. Try again.");
+    }
+    throw new HttpError(502, "Could not reach Scryfall. Try again.");
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (res.status === 429) {
     throw new HttpError(429, "Scryfall rate limit reached. Retry shortly.");

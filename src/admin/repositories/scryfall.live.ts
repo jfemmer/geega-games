@@ -79,10 +79,11 @@ export const liveScryfallRepository: ScryfallRepository = {
   async searchPrintings(query: string): Promise<CardPrinting[]> {
     const q = query.trim();
     if (q.length < 2) return [];
-    // No page param -> server walks pagination and returns a complete-as-
-    // possible first result set.
+    // Single page (page=1) — one Scryfall round-trip, no server walk. Callers
+    // needing more pages use searchPrintingsPage. This keeps every code path off
+    // the multi-page walk that could time out on Vercel for high-printing cards.
     const body = await getJson<SearchResponse>(
-      `${BASE}/search?q=${encodeURIComponent(q)}`,
+      `${BASE}/search?q=${encodeURIComponent(q)}&page=1`,
     );
     return body.data ?? [];
   },
@@ -96,15 +97,24 @@ export const liveScryfallRepository: ScryfallRepository = {
       return { printings: [], totalCards: 0, hasMore: false, page };
     }
     const safePage = Math.max(1, Math.floor(page) || 1);
-    // page=1 uses the multi-page walk (complete initial set); pages >1 fetch a
-    // single Scryfall page for incremental "Load more".
-    const url =
-      safePage === 1
-        ? `${BASE}/search?q=${encodeURIComponent(q)}`
-        : `${BASE}/search?q=${encodeURIComponent(q)}&page=${safePage}`;
+    // ALWAYS request a single explicit page (page=1, page=2, …). This keeps every
+    // request to ONE Scryfall round-trip, which is fast and avoids the Vercel
+    // function-timeout risk that a multi-page server walk carries for cards with
+    // many printings (Counterspell, Ragavan, dual lands, etc.). Completeness is
+    // preserved because the UI pages through with "Load more". `hasMore` from the
+    // API tells the UI when another page exists.
+    const url = `${BASE}/search?q=${encodeURIComponent(q)}&page=${safePage}`;
     const body = await getJson<SearchResponse>(url);
+    const printings = body.data ?? [];
+    // Visibility: a successful-but-empty result for a real query is worth a
+    // breadcrumb, since it's indistinguishable from a bug at the UI layer.
+    if (printings.length === 0 && typeof console !== "undefined") {
+      console.info(
+        `[Geega] Scryfall search "${q}" (page ${safePage}) returned 0 printings.`,
+      );
+    }
     return {
-      printings: body.data ?? [],
+      printings,
       totalCards: body.totalCards ?? null,
       hasMore: Boolean(body.hasMore),
       page: body.page ?? safePage,
