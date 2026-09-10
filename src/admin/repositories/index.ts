@@ -35,9 +35,18 @@ import type {
   UserRepository,
 } from "./types";
 
-const useLiveScryfall =
-  typeof import.meta !== "undefined" &&
-  import.meta.env?.VITE_USE_LIVE_SCRYFALL === "1";
+// Accept common truthy spellings so a value like "true" or "1 " (with a stray
+// space from the Vercel dashboard) still enables the live path. Vite inlines
+// VITE_* vars AT BUILD TIME, so this must be set BEFORE the build and the
+// project must be REDEPLOYED after changing it — changing it in the dashboard
+// without a new deploy has no effect.
+const liveFlag =
+  typeof import.meta !== "undefined"
+    ? String(import.meta.env?.VITE_USE_LIVE_SCRYFALL ?? "")
+        .trim()
+        .toLowerCase()
+    : "";
+const useLiveScryfall = liveFlag === "1" || liveFlag === "true";
 
 export const inventoryRepository: InventoryRepository = mockInventoryRepository;
 export const orderRepository: OrderRepository = mockOrderRepository;
@@ -48,6 +57,15 @@ export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
 export const scryfallRepository: ScryfallRepository = useLiveScryfall
   ? liveScryfallRepository
   : mockScryfallRepository;
+
+// One-time breadcrumb so it's obvious in the browser console which data source
+// is active. If you set VITE_USE_LIVE_SCRYFALL but still see "mock" here, the
+// build predates the env change — redeploy.
+if (typeof console !== "undefined") {
+  console.info(
+    `[Geega] Scryfall source: ${useLiveScryfall ? "LIVE (/api/admin/scryfall)" : "mock catalog"}`,
+  );
+}
 export const scanRepository: ScanRepository = mockScanRepository;
 export const recognitionProvider: CardRecognitionProvider =
   stubRecognitionProvider;
