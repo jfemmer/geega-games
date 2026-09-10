@@ -2,18 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "../components/ui/Modal";
 import { Button } from "../components/ui/Button";
 import { TextField, TextArea, SelectField } from "../components/ui/Field";
-import { Badge } from "../components/ui/Badge";
 import { Icon } from "../components/ui/Icon";
-import { Spinner } from "../components/ui/States";
+import { ScryfallSearch } from "../components/cards/ScryfallSearch";
+import {
+  SelectedPrintingPreview,
+  priceForFinish,
+} from "../components/cards/PrintingPreview";
 import { inventoryRepository } from "../repositories";
 import { useToast } from "../hooks/useToast";
 import { CURRENT_ADMIN } from "../data/session.mock";
 import { formatCents } from "../utils/format";
-import {
-  CONDITION_LABELS,
-  FINISH_LABELS,
-  RARITY_LABELS,
-} from "../utils/labels";
+import { CONDITION_LABELS, FINISH_LABELS } from "../utils/labels";
 import type {
   CardCondition,
   CardFinish,
@@ -28,6 +27,13 @@ function centsFromInput(dollars: string): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
+/**
+ * Manual add-inventory flow. Search Scryfall → pick the EXACT printing → confirm
+ * the artwork in a large preview → choose condition/finish/qty/price → save.
+ * Duplicate detection is by scryfall_id + condition + finish (falling back to
+ * set/collector for legacy rows), and duplicates ADD to the existing line
+ * through the movement ledger rather than creating a new one.
+ */
 export function AddInventoryDrawer({
   open,
   onClose,
@@ -38,9 +44,6 @@ export function AddInventoryDrawer({
   onSaved: () => void;
 }) {
   const toast = useToast();
-  const [term, setTerm] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [printings, setPrintings] = useState<CardPrinting[]>([]);
   const [selected, setSelected] = useState<CardPrinting | null>(null);
 
   const [condition, setCondition] = useState<CardCondition>("NM");
@@ -56,8 +59,6 @@ export function AddInventoryDrawer({
 
   useEffect(() => {
     if (!open) {
-      setTerm("");
-      setPrintings([]);
       setSelected(null);
       resetForm();
     }
@@ -74,24 +75,27 @@ export function AddInventoryDrawer({
     setDupe(null);
   }
 
-  // Debounced printing search.
+  // When a printing is chosen, constrain the finish to its available finishes
+  // and seed the price field from the finish-specific Scryfall reference.
   useEffect(() => {
-    if (!open) return;
-    const q = term.trim();
-    if (q.length < 2) {
-      setPrintings([]);
-      return;
-    }
-    setSearching(true);
-    const handle = setTimeout(async () => {
-      const res = await inventoryRepository.searchPrintings(q);
-      setPrintings(res);
-      setSearching(false);
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [term, open]);
+    if (!selected) return;
+    const first = selected.availableFinishes[0] ?? "nonfoil";
+    setFinish((prev) =>
+      selected.availableFinishes.includes(prev) ? prev : first,
+    );
+  }, [selected]);
 
-  // Dupe detection when printing + condition + finish are chosen.
+  // Reference price follows the selected finish; only prefill when price empty.
+  useEffect(() => {
+    if (!selected) return;
+    const ref = priceForFinish(selected, finish);
+    if (ref != null) {
+      setPrice((prev) => (prev === "" ? (ref / 100).toFixed(2) : prev));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finish, selected]);
+
+  // Dupe detection: prefer scryfall identity, fall back to set/collector.
   useEffect(() => {
     let active = true;
     if (!selected) {
@@ -99,9 +103,17 @@ export function AddInventoryDrawer({
       return;
     }
     inventoryRepository
-      .findMatch(selected.setCode, selected.collectorNumber, condition, finish)
-      .then((match) => {
-        if (active) setDupe(match);
+      .findMatchByScryfall(selected.scryfallId, condition, finish)
+      .then(async (match) => {
+        const resolved =
+          match ??
+          (await inventoryRepository.findMatch(
+            selected.setCode,
+            selected.collectorNumber,
+            condition,
+            finish,
+          ));
+        if (active) setDupe(resolved);
       });
     return () => {
       active = false;
@@ -109,15 +121,11 @@ export function AddInventoryDrawer({
   }, [selected, condition, finish]);
 
   const finishOptions = useMemo(() => {
-    const list = selected?.availableFinishes ?? ["nonfoil", "foil", "etched", "glossy"];
+    const list = selected?.availableFinishes ?? ["nonfoil"];
     return list.map((f) => ({ value: f, label: FINISH_LABELS[f] }));
   }, [selected]);
 
-  useEffect(() => {
-    if (selected && !selected.availableFinishes.includes(finish)) {
-      setFinish(selected.availableFinishes[0] ?? "nonfoil");
-    }
-  }, [selected, finish]);
+  const refPrice = selected ? priceForFinish(selected, finish) : null;
 
   async function handleSave() {
     if (!selected) {
@@ -149,6 +157,7 @@ export function AddInventoryDrawer({
       } else {
         await inventoryRepository.create(
           {
+            scryfallId: selected.scryfallId,
             cardName: selected.cardName,
             setName: selected.setName,
             setCode: selected.setCode,
@@ -165,7 +174,7 @@ export function AddInventoryDrawer({
             sku: null,
             notes: notes || null,
             status: "active",
-            scryfallPriceCents: selected.scryfallPriceCents,
+            scryfallPriceCents: refPrice,
           },
           CURRENT_ADMIN.name,
         );
@@ -173,6 +182,7 @@ export function AddInventoryDrawer({
       }
       onSaved();
       if (addAnother) {
+        setSelected(null);
         resetForm();
       } else {
         onClose();
@@ -190,7 +200,7 @@ export function AddInventoryDrawer({
       onClose={onClose}
       title="Add inventory"
       variant="drawer"
-      size="md"
+      size="lg"
       footer={
         <div className="gg-drawer-actions">
           <label className="gg-check-inline">
@@ -219,90 +229,18 @@ export function AddInventoryDrawer({
     >
       <div className="gg-addcard">
         {!selected ? (
-          <>
-            <TextField
-              label="Search for a card"
-              placeholder="e.g. Ragavan, Lightning Bolt…"
-              value={term}
-              autoFocus
-              onChange={(e) => setTerm(e.target.value)}
-              hint="Search mirrors Scryfall in production; results are mocked here."
-            />
-            <div className="gg-printing-results">
-              {searching && (
-                <div className="gg-printing-loading">
-                  <Spinner label="Searching printings" />
-                </div>
-              )}
-              {!searching &&
-                term.trim().length >= 2 &&
-                printings.length === 0 && (
-                  <p className="gg-muted">No printings match “{term}”.</p>
-                )}
-              {printings.map((p) => (
-                <button
-                  key={p.id}
-                  className="gg-printing"
-                  onClick={() => setSelected(p)}
-                >
-                  <img
-                    src={p.imageUrl}
-                    alt=""
-                    className="gg-printing__img"
-                    width={44}
-                    height={61}
-                  />
-                  <span className="gg-printing__text">
-                    <span className="gg-printing__name">{p.cardName}</span>
-                    <span className="gg-printing__set">
-                      {p.setName} ({p.setCode}) · #{p.collectorNumber} ·{" "}
-                      {RARITY_LABELS[p.rarity]}
-                    </span>
-                  </span>
-                  {p.scryfallPriceCents != null && (
-                    <span className="gg-printing__price">
-                      {formatCents(p.scryfallPriceCents)}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </>
+          <ScryfallSearch onSelect={setSelected} autoFocus />
         ) : (
           <>
-            <div className="gg-selected-printing">
-              <img
-                src={selected.imageUrl}
-                alt=""
-                className="gg-selected-printing__img"
-                width={64}
-                height={89}
-              />
-              <div className="gg-selected-printing__meta">
-                <div className="gg-selected-printing__name">
-                  {selected.cardName}
-                </div>
-                <div className="gg-muted">
-                  {selected.setName} ({selected.setCode}) · #
-                  {selected.collectorNumber}
-                </div>
-                <div className="gg-selected-printing__tags">
-                  <Badge tone="purple">{RARITY_LABELS[selected.rarity]}</Badge>
-                  {selected.scryfallPriceCents != null && (
-                    <span className="gg-muted">
-                      Scryfall {formatCents(selected.scryfallPriceCents)}
-                    </span>
-                  )}
-                </div>
-              </div>
+            <div className="gg-addcard__selhead">
+              <SelectedPrintingPreview printing={selected} finish={finish} />
               <Button
                 variant="ghost"
                 size="sm"
                 icon="close"
                 onClick={() => setSelected(null)}
-                aria-label="Choose a different card"
               >
-                Change
+                Change card
               </Button>
             </div>
 
@@ -310,8 +248,8 @@ export function AddInventoryDrawer({
               <div className="gg-inline-note gg-inline-note--warning" role="status">
                 <Icon name="warning" size={18} />
                 <div>
-                  You already stock this exact printing, condition, and finish (
-                  {dupe.quantity} on hand). Saving will{" "}
+                  You already have {dupe.quantity} of this exact printing in{" "}
+                  {condition} {FINISH_LABELS[finish]}. Saving will{" "}
                   <strong>add to the existing line</strong> through the movement
                   ledger rather than creating a duplicate.
                 </div>
@@ -356,6 +294,11 @@ export function AddInventoryDrawer({
                 placeholder="0.00"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
+                hint={
+                  refPrice != null
+                    ? `Scryfall ${FINISH_LABELS[finish]}: ${formatCents(refPrice)}`
+                    : undefined
+                }
               />
               <TextField
                 label="Cost (USD)"

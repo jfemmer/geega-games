@@ -41,6 +41,9 @@ export type IconName =
   | "clock"
   | "arrowUp"
   | "arrowDown"
+  | "scan"
+  | "layers"
+  | "keyboard"
   | "sparkle";
 
 const PATHS: Record<IconName, string> = {
@@ -96,6 +99,10 @@ const PATHS: Record<IconName, string> = {
   clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-16v6l4 2",
   arrowUp: "M12 19V5M5 12l7-7 7 7",
   arrowDown: "M12 5v14M19 12l-7 7-7-7",
+  scan: "M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18",
+  layers: "M12 2 2 7l10 5 10-5-10-5ZM2 17l10 5 10-5M2 12l10 5 10-5",
+  keyboard:
+    "M2 6h20v12H2V6Zm4 3h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6",
   sparkle: "M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1L12 2Z",
 };
 

@@ -7,8 +7,14 @@
 
 import type {
   AdminActivity,
+  BatchCommitPreview,
+  BatchCommitResult,
   Campaign,
+  CardCondition,
+  CardFinish,
   CardPrinting,
+  CardRecognitionResult,
+  CardScan,
   Customer,
   CustomerQuery,
   DateRangeKey,
@@ -19,6 +25,10 @@ import type {
   OrderQuery,
   OverviewMetrics,
   Page,
+  ScanQuery,
+  ScanReviewPatch,
+  ScanSession,
+  ScanSourceType,
   ShippingCarrier,
   StaffMember,
   StaffRole,
@@ -52,7 +62,131 @@ export interface InventoryRepository {
     condition: InventoryItem["condition"],
     finish: InventoryItem["finish"],
   ): Promise<InventoryItem | null>;
+  /**
+   * Preferred dupe detection: identity by Scryfall printing + condition +
+   * finish. Falls back to set/collector matching when a legacy row lacks a
+   * scryfallId. Used by the new Scryfall-powered add + scan flows.
+   */
+  findMatchByScryfall(
+    scryfallId: string,
+    condition: CardCondition,
+    finish: CardFinish,
+  ): Promise<InventoryItem | null>;
   searchPrintings(term: string): Promise<CardPrinting[]>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Scryfall — live card/printing search + lookup
+ * ------------------------------------------------------------------ */
+
+export interface ScryfallRepository {
+  /**
+   * Search the full printing catalog. Returns EVERY applicable printing, not
+   * one row per name — different sets, collector numbers, artworks, promos,
+   * showcase/borderless/etched treatments each appear separately. Accepts plain
+   * names, set codes, collector numbers, and Scryfall search syntax.
+   */
+  searchPrintings(query: string): Promise<CardPrinting[]>;
+  /** Fetch one exact printing by Scryfall id. */
+  getByScryfallId(scryfallId: string): Promise<CardPrinting | null>;
+  /** Fetch one exact printing by set code + collector number. */
+  getBySetAndCollector(
+    setCode: string,
+    collectorNumber: string,
+  ): Promise<CardPrinting | null>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Scan sessions + card scans (high-volume batch ingestion)
+ * ------------------------------------------------------------------ */
+
+/** One uploaded file destined for a scan (front or back of a card). */
+export interface UploadedScanFile {
+  /** Client-side handle; the real impl uploads to Supabase Storage. */
+  file: File | Blob;
+  fileName: string;
+  side: "front" | "back";
+  /** Preserves scanner/batch order across concurrent uploads. */
+  sequenceHint: number;
+}
+
+export interface ScanIngestProgress {
+  total: number;
+  processed: number;
+  failed: number;
+}
+
+export interface ScanRepository {
+  listSessions(): Promise<ScanSession[]>;
+  getSession(id: string): Promise<ScanSession | null>;
+  createSession(input: {
+    scannerName: string | null;
+    sourceType: ScanSourceType;
+    createdBy: string;
+  }): Promise<ScanSession>;
+  updateSessionStatus(
+    id: string,
+    status: ScanSession["status"],
+  ): Promise<ScanSession>;
+  setSessionNote(id: string, note: string | null): Promise<ScanSession>;
+
+  /**
+   * Ingest a batch of uploaded files into an existing session. Uploads are
+   * chunked/concurrent; a single failed file does not fail the batch. Front/back
+   * files sharing a card are paired into one CardScan (see pairing rules in the
+   * mock). Progress is reported through onProgress. Idempotent per file name.
+   */
+  ingestBatch(
+    sessionId: string,
+    files: UploadedScanFile[],
+    onProgress?: (p: ScanIngestProgress) => void,
+  ): Promise<{ created: CardScan[]; failed: number }>;
+
+  listScans(sessionId: string, query: ScanQuery): Promise<Page<CardScan>>;
+  getScan(scanId: string): Promise<CardScan | null>;
+  /** Counts per filter tab for the current session. */
+  filterCounts(sessionId: string): Promise<Record<string, number>>;
+
+  updateScan(scanId: string, patch: ScanReviewPatch): Promise<CardScan>;
+  /** Safe bulk field application. Never bulk-assigns a Scryfall match. */
+  bulkUpdate(
+    scanIds: string[],
+    patch: Omit<ScanReviewPatch, "selectedScryfallId" | "selectedPrinting">,
+    reviewer: string,
+  ): Promise<CardScan[]>;
+
+  /** Preview which ready scans would create vs increment inventory. */
+  previewCommit(sessionId: string): Promise<BatchCommitPreview>;
+  /**
+   * Commit all ready scans in a session to inventory. Transactional per scan,
+   * idempotent (a scan already carrying inventoryItemId is skipped), and reports
+   * partial failures without rolling back succeeded rows.
+   */
+  commitReady(
+    sessionId: string,
+    reviewer: string,
+  ): Promise<BatchCommitResult>;
+  /** Commit a single reviewed scan to inventory (scan_add movement). */
+  commitScan(scanId: string, reviewer: string): Promise<CardScan>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Card recognition (future OCR) — pluggable provider, stub today
+ * ------------------------------------------------------------------ */
+
+export interface CardRecognitionProvider {
+  /** Human-readable id, e.g. "stub" or (later) "scryfall-vision". */
+  readonly name: string;
+  /** Whether real recognition is available (false for the stub). */
+  readonly implemented: boolean;
+  /** Recognize a single scan. Stub returns an empty, low-confidence result. */
+  recognize(scan: CardScan): Promise<CardRecognitionResult>;
+  /**
+   * Queue recognition for a scan (future batch/async pipeline). The stub is a
+   * no-op that resolves immediately; the boundary exists so a job-based
+   * implementation can slot in without schema or interface changes.
+   */
+  queueRecognition(scanId: string): Promise<void>;
 }
 
 export interface OrderRepository {

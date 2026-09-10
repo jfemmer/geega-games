@@ -9,6 +9,7 @@ import type {
   ListingStatus,
   OrderStatus,
   PaymentStatus,
+  PrintingTreatment,
   StaffRole,
   SubscriberStatus,
 } from "../types";
@@ -44,6 +45,30 @@ export const FINISH_LABELS: Record<CardFinish, string> = {
   foil: "Foil",
   etched: "Etched",
   glossy: "Glossy",
+};
+
+export const TREATMENT_LABELS: Record<PrintingTreatment, string> = {
+  showcase: "Showcase",
+  borderless: "Borderless",
+  extended_art: "Extended Art",
+  retro_frame: "Retro Frame",
+  full_art: "Full Art",
+  textless: "Textless",
+  promo: "Promo",
+  etched: "Etched",
+  variation: "Variation",
+};
+
+export const TREATMENT_TONE: Record<PrintingTreatment, BadgeTone> = {
+  showcase: "purple",
+  borderless: "info",
+  extended_art: "info",
+  retro_frame: "gold",
+  full_art: "purple",
+  textless: "neutral",
+  promo: "warning",
+  etched: "gold",
+  variation: "neutral",
 };
 
 export const RARITY_LABELS: Record<CardRarity, string> = {
@@ -206,6 +231,8 @@ export const MOVEMENT_REASON_LABELS: Record<InventoryMovementReason, string> = {
   manual_add: "Manual add",
   manual_remove: "Manual remove",
   correction: "Correction",
+  scan_add: "Scan add",
+  batch_scan_add: "Batch scan add",
   order_reserved: "Reserved for order",
   order_shipped: "Shipped on order",
   order_cancelled: "Order cancelled",

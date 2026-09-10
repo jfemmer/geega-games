@@ -24,8 +24,75 @@ const IMG =
     </svg>`,
   );
 
+
+/**
+ * The mock "catalog" is written in the original lightweight shape and upgraded
+ * to full CardPrinting objects via mockPrinting(). This keeps the seed concise
+ * while satisfying the richer exact-printing domain model. In production these
+ * come from Scryfall (see services/scryfall.ts) rather than a static list.
+ */
+interface RawMockPrinting {
+  id: string;
+  cardName: string;
+  setName: string;
+  setCode: string;
+  collectorNumber: string;
+  rarity: CardPrinting["rarity"];
+  cardType: string;
+  imageUrl: string;
+  availableFinishes: CardPrinting["availableFinishes"];
+  scryfallPriceCents: number | null;
+}
+
+function mockPrinting(raw: RawMockPrinting): CardPrinting {
+  const images = {
+    small: raw.imageUrl,
+    normal: raw.imageUrl,
+    large: raw.imageUrl,
+    png: raw.imageUrl,
+    artCrop: raw.imageUrl,
+  };
+  const scryfallId = `mock_${raw.id}`;
+  return {
+    ...raw,
+    scryfallId,
+    oracleId: `oracle_${raw.cardName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+    images,
+    faces: [
+      {
+        name: raw.cardName,
+        manaCost: null,
+        typeLine: raw.cardType,
+        oracleText: null,
+        artist: "Mock Artist",
+        illustrationId: null,
+        images,
+      },
+    ],
+    layout: "normal",
+    artist: "Mock Artist",
+    releasedAt: "2022-01-01",
+    language: "en",
+    frame: "2015",
+    frameEffects: [],
+    borderColor: "black",
+    fullArt: false,
+    textless: false,
+    promo: false,
+    promoTypes: [],
+    treatments: raw.availableFinishes.includes("etched") ? ["etched"] : [],
+    prices: {
+      usd: raw.scryfallPriceCents,
+      usdFoil: raw.scryfallPriceCents != null ? Math.round(raw.scryfallPriceCents * 1.6) : null,
+      usdEtched: raw.availableFinishes.includes("etched") && raw.scryfallPriceCents != null
+        ? Math.round(raw.scryfallPriceCents * 1.9)
+        : null,
+    },
+  };
+}
+
 /** Mock "Scryfall" catalog used by the add-card search autocomplete. */
-export const CARD_PRINTINGS: CardPrinting[] = [
+const RAW_PRINTINGS: RawMockPrinting[] = [
   {
     id: "prt_ragavan",
     cardName: "Ragavan, Nimble Pilferer",
@@ -172,6 +239,8 @@ export const CARD_PRINTINGS: CardPrinting[] = [
   },
 ];
 
+export const CARD_PRINTINGS: CardPrinting[] = RAW_PRINTINGS.map(mockPrinting);
+
 const now = Date.now();
 const daysAgo = (d: number) => new Date(now - d * 86400000).toISOString();
 const hoursAgo = (h: number) => new Date(now - h * 3600000).toISOString();
@@ -179,6 +248,7 @@ const hoursAgo = (h: number) => new Date(now - h * 3600000).toISOString();
 export const INVENTORY_SEED: InventoryItem[] = [
   {
     id: "inv_1",
+    scryfallId: "mock_prt_ragavan",
     cardName: "Ragavan, Nimble Pilferer",
     setName: "Modern Horizons 2",
     setCode: "MH2",
@@ -201,6 +271,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_2",
+    scryfallId: "mock_prt_ragavan",
     cardName: "Ragavan, Nimble Pilferer",
     setName: "Modern Horizons 2",
     setCode: "MH2",
@@ -223,6 +294,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_3",
+    scryfallId: null,
     cardName: "Sheoldred, the Apocalypse",
     setName: "Dominaria United",
     setCode: "DMU",
@@ -245,6 +317,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_4",
+    scryfallId: null,
     cardName: "Lightning Bolt",
     setName: "Modern Masters 2015",
     setCode: "MM2",
@@ -267,6 +340,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_5",
+    scryfallId: null,
     cardName: "Orcish Bowmasters",
     setName: "The Lord of the Rings: Tales of Middle-earth",
     setCode: "LTR",
@@ -289,6 +363,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_6",
+    scryfallId: null,
     cardName: "Fable of the Mirror-Breaker",
     setName: "Kamigawa: Neon Dynasty",
     setCode: "NEO",
@@ -311,6 +386,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_7",
+    scryfallId: null,
     cardName: "Teferi, Hero of Dominaria",
     setName: "Dominaria",
     setCode: "DOM",
@@ -333,6 +409,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_8",
+    scryfallId: null,
     cardName: "Swords to Plowshares",
     setName: "Commander Masters",
     setCode: "CMM",
@@ -355,6 +432,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_9",
+    scryfallId: null,
     cardName: "Atraxa, Grand Unifier",
     setName: "Phyrexia: All Will Be One",
     setCode: "ONE",
@@ -377,6 +455,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_10",
+    scryfallId: null,
     cardName: "Wrenn and Six",
     setName: "Modern Horizons",
     setCode: "MH1",
@@ -399,6 +478,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_11",
+    scryfallId: null,
     cardName: "Thoughtseize",
     setName: "Theros",
     setCode: "THS",
@@ -421,6 +501,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_12",
+    scryfallId: null,
     cardName: "Counterspell",
     setName: "Modern Horizons 2",
     setCode: "MH2",
@@ -443,6 +524,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_13",
+    scryfallId: null,
     cardName: "Solitude",
     setName: "Modern Horizons 2",
     setCode: "MH2",
@@ -465,6 +547,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
   },
   {
     id: "inv_14",
+    scryfallId: null,
     cardName: "Teferi, Hero of Dominaria",
     setName: "Dominaria",
     setCode: "DOM",

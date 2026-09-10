@@ -6,6 +6,8 @@ import { useRouter, adminSection, ADMIN_BASE } from "./hooks/useRouter";
 import { OverviewPage } from "./pages/OverviewPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { ScanSessionsPage } from "./pages/scan/ScanSessionsPage";
+import { ScanReviewPage } from "./pages/scan/ScanReviewPage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
@@ -36,6 +38,20 @@ export default function AdminApp() {
         return <InventoryPage query={query} onNavigate={navigate} />;
       case "orders":
         return <OrdersPage query={query} onNavigate={navigate} />;
+      case "scanning": {
+        // /scanning or /scanning/:sessionId
+        const clean = path.split("?")[0].replace(/\/+$/, "");
+        const rest = clean.startsWith(ADMIN_BASE)
+          ? clean.slice(ADMIN_BASE.length + 1)
+          : "";
+        const parts = rest.split("/");
+        const sessionId = parts[1];
+        return sessionId ? (
+          <ScanReviewPage sessionId={sessionId} onNavigate={navigate} />
+        ) : (
+          <ScanSessionsPage onNavigate={navigate} />
+        );
+      }
       case "announcements":
         return <AnnouncementsPage />;
       case "users":

@@ -29,6 +29,12 @@
   --gg-warning: #b7791f;
   --gg-danger: #c0392b;
 
+  /* Added for Scryfall + Card Scanning UI. */
+  --gg-brand-tint: rgba(102, 51, 153, 0.08);
+  --gg-surface-3: #ece7f3;
+  --gg-gold-deep: #b8860b;
+  --gg-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
   --gg-radius: 12px;
   --gg-radius-sm: 8px;
   --gg-radius-lg: 18px;
@@ -826,3 +832,252 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 /* Tooltip popup uses data attribute variant in Nav — ensure base works. */
 .gg-tooltip [data-tip] { position: relative; }
+
+/* ================================================================== *
+ * Card imagery + hover-to-enlarge preview (Scryfall integration)
+ * ================================================================== */
+
+.gg-cardimg { display: inline-flex; position: relative; flex: 0 0 auto; line-height: 0; }
+.gg-cardimg__thumb {
+  border-radius: 5px; object-fit: cover; display: block;
+  box-shadow: var(--gg-shadow-sm); background: #ece7f3; cursor: zoom-in;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.gg-cardimg__thumb:hover { transform: scale(1.04); box-shadow: var(--gg-shadow); }
+.gg-cardimg__thumb:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-cardimg--xs .gg-cardimg__thumb { width: 30px; height: 42px; }
+.gg-cardimg--sm .gg-cardimg__thumb { width: 44px; height: 61px; }
+.gg-cardimg--md .gg-cardimg__thumb { width: 64px; height: 89px; }
+.gg-cardimg--empty {
+  border-radius: 5px; background: repeating-linear-gradient(45deg,#efeaf6,#efeaf6 6px,#e7e0f0 6px,#e7e0f0 12px);
+  box-shadow: inset 0 0 0 1px var(--gg-line);
+}
+
+/* Floating enlarged preview (portal to body). */
+.gg-cardpreview {
+  position: fixed; z-index: 1200; width: 300px;
+  pointer-events: none; /* never trap the cursor between thumbnails */
+  filter: drop-shadow(0 18px 40px rgba(20, 10, 44, 0.42));
+  animation: gg-preview-in 0.09s ease-out;
+}
+@keyframes gg-preview-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+.gg-cardpreview__img { width: 300px; height: auto; border-radius: 14px; display: block; background: #201436; }
+.gg-cardpreview--scan .gg-cardpreview__img { box-shadow: 0 0 0 3px var(--gg-gold); }
+.gg-cardpreview__faces {
+  pointer-events: auto; display: flex; gap: 6px; justify-content: center;
+  margin-top: 8px;
+}
+.gg-cardpreview__face {
+  font: inherit; font-size: 0.72rem; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.35); background: rgba(20,10,44,0.72);
+  color: #f0e9fb; cursor: pointer;
+}
+.gg-cardpreview__face--active { background: var(--gg-gold); color: #2a1b45; border-color: var(--gg-gold); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .gg-cardpreview { animation: none; } }
+
+/* Treatment badges + finish pills. */
+.gg-treatments { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.gg-finishpills { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+.gg-finishpill {
+  font-size: 0.72rem; padding: 2px 8px; border-radius: 999px;
+  background: var(--gg-surface-2); border: 1px solid var(--gg-line); color: var(--gg-text-soft);
+}
+.gg-finishpill[data-finish="foil"] { background: linear-gradient(120deg,#fdf1c9,#e7d6ff); color: #5a3d12; border-color: #e0b341; }
+.gg-finishpill[data-finish="etched"] { background: linear-gradient(120deg,#fbe6c7,#f6cf8f); color: #6a3d05; border-color: #d99a3a; }
+
+/* Selected-printing large preview (add flow + scan review). */
+.gg-selprint { display: flex; gap: 18px; padding: 16px; background: var(--gg-surface-2); border-radius: var(--gg-radius); border: 1px solid var(--gg-line); }
+.gg-selprint__imgcol { display: flex; flex-direction: column; gap: 8px; align-items: center; flex: 0 0 auto; }
+.gg-selprint__img { width: 172px; height: auto; border-radius: 12px; box-shadow: var(--gg-shadow); background: #201436; }
+.gg-selprint__faces { display: flex; gap: 6px; }
+.gg-selprint__face { font: inherit; font-size: 0.74rem; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--gg-line-strong); background: var(--gg-surface); color: var(--gg-text-soft); cursor: pointer; }
+.gg-selprint__face--active { background: var(--gg-brand); color: #fff; border-color: var(--gg-brand); font-weight: 600; }
+.gg-selprint__meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gg-selprint__name { font-family: var(--gg-serif); font-size: 1.2rem; font-weight: 600; line-height: 1.2; }
+.gg-selprint__tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gg-selprint__artist { font-size: 0.82rem; }
+.gg-selprint__finishes { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.gg-selprint__finlabel { font-size: 0.74rem; color: var(--gg-text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.gg-selprint__price { margin-top: 4px; font-size: 0.9rem; color: var(--gg-text-soft); }
+
+/* Scryfall search (visual grid + dense list). */
+.gg-scryfall { display: flex; flex-direction: column; gap: 12px; }
+.gg-scryfall__bar { display: flex; gap: 12px; align-items: flex-end; }
+.gg-scryfall__bar .gg-field { flex: 1; }
+.gg-scryfall__loading { padding: 30px; display: flex; justify-content: center; }
+.gg-scryfall__empty { padding: 8px 2px; }
+.gg-scryfall__grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px; max-height: 460px; overflow-y: auto; padding: 2px;
+}
+.gg-scrycard {
+  display: flex; gap: 12px; padding: 10px; text-align: left; font: inherit;
+  background: var(--gg-surface); border: 1px solid var(--gg-line); border-radius: var(--gg-radius-sm);
+  cursor: pointer; transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+.gg-scrycard:hover { border-color: var(--gg-brand); box-shadow: var(--gg-shadow-sm); }
+.gg-scrycard__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.gg-scrycard__name { font-weight: 600; font-size: 0.9rem; line-height: 1.2; }
+.gg-scrycard__sub { font-size: 0.76rem; color: var(--gg-text-soft); }
+.gg-scrycard__tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
+.gg-scrycard__foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 4px; }
+.gg-scrycard__finishes { font-size: 0.72rem; color: var(--gg-text-faint); text-transform: capitalize; }
+.gg-scrycard__price { font-weight: 600; font-size: 0.82rem; }
+
+.gg-scryfall__list--dense { display: flex; flex-direction: column; gap: 2px; max-height: 460px; overflow-y: auto; }
+.gg-scryrow {
+  display: flex; align-items: center; gap: 10px; padding: 5px 8px; width: 100%;
+  text-align: left; font: inherit; background: none; border: 1px solid transparent;
+  border-radius: var(--gg-radius-sm); cursor: pointer;
+}
+.gg-scryrow:hover { background: var(--gg-surface-2); border-color: var(--gg-line); }
+.gg-scryrow__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gg-scryrow__name { font-weight: 600; font-size: 0.86rem; }
+.gg-scryrow__sub { font-size: 0.74rem; color: var(--gg-text-soft); }
+.gg-scryrow__badges { display: flex; gap: 4px; flex-wrap: wrap; flex: 0 0 auto; }
+.gg-scryrow__price { font-weight: 600; font-size: 0.8rem; min-width: 56px; text-align: right; }
+
+.gg-addcard__selhead { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.gg-addcard__selhead .gg-selprint { width: 100%; }
+
+/* ================================================================== *
+ * Card Scanning — sessions list
+ * ================================================================== */
+
+.gg-sessions { display: flex; flex-direction: column; gap: 8px; }
+.gg-sessionrow {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  padding: 14px 16px; background: var(--gg-surface); border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius); cursor: pointer; font: inherit;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease, transform 0.05s ease;
+}
+.gg-sessionrow:hover { border-color: var(--gg-brand); box-shadow: var(--gg-shadow-sm); }
+.gg-sessionrow:active { transform: translateY(1px); }
+.gg-sessionrow__icon {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 10px;
+  display: grid; place-items: center; background: var(--gg-brand-tint); color: var(--gg-brand);
+}
+.gg-sessionrow__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.gg-sessionrow__title { display: flex; align-items: center; gap: 8px; font-family: var(--gg-serif); font-size: 1.02rem; font-weight: 600; }
+.gg-sessionrow__sub { font-size: 0.8rem; color: var(--gg-text-soft); }
+.gg-sessionrow__progress { height: 5px; border-radius: 999px; background: var(--gg-surface-3); overflow: hidden; max-width: 340px; }
+.gg-sessionrow__progressbar { display: block; height: 100%; background: linear-gradient(90deg, var(--gg-brand), var(--gg-gold)); border-radius: 999px; }
+.gg-sessionrow__stats { display: flex; gap: 16px; flex: 0 0 auto; }
+.gg-sessionstat { display: flex; flex-direction: column; align-items: center; min-width: 44px; }
+.gg-sessionstat__value { font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.gg-sessionstat__label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gg-text-faint); }
+.gg-sessionstat--gold .gg-sessionstat__value { color: var(--gg-gold-deep, #b8860b); }
+.gg-sessionstat--success .gg-sessionstat__value { color: var(--gg-success, #2e7d4f); }
+.gg-sessionrow__chev { color: var(--gg-text-faint); flex: 0 0 auto; }
+@media (max-width: 900px) { .gg-sessionrow__stats { display: none; } }
+
+/* New scan session modal */
+.gg-newscan { display: flex; flex-direction: column; gap: 14px; }
+.gg-dropzone {
+  border: 2px dashed var(--gg-line-strong); border-radius: var(--gg-radius); padding: 26px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  color: var(--gg-text-soft); cursor: pointer; background: var(--gg-surface-2);
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+.gg-dropzone:hover, .gg-dropzone--over { border-color: var(--gg-brand); background: var(--gg-brand-tint); color: var(--gg-brand); }
+.gg-dropzone__title { font-weight: 600; margin: 0; }
+.gg-dropzone__hint { font-size: 0.8rem; margin: 0; }
+.gg-newscan__count { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--gg-success, #2e7d4f); }
+.gg-newscan__count .gg-btn { margin-left: auto; }
+.gg-uploadprog { display: flex; flex-direction: column; gap: 6px; }
+.gg-uploadprog__bar { height: 8px; border-radius: 999px; background: var(--gg-surface-3); overflow: hidden; }
+.gg-uploadprog__fill { height: 100%; background: linear-gradient(90deg, var(--gg-brand), var(--gg-gold)); transition: width 0.12s ease; }
+.gg-uploadprog__text { font-size: 0.8rem; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
+
+/* ================================================================== *
+ * Card Scanning — review page
+ * ================================================================== */
+
+.gg-scanhead-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.gg-scanprogress { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.gg-scanprogress__bar { height: 8px; border-radius: 999px; background: var(--gg-surface-3); overflow: hidden; }
+.gg-scanprogress__fill { height: 100%; background: linear-gradient(90deg, var(--gg-brand), var(--gg-gold)); transition: width 0.2s ease; }
+.gg-scanprogress__stats { display: flex; justify-content: space-between; gap: 12px; font-size: 0.82rem; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+
+.gg-filtertabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 1px solid var(--gg-line); padding-bottom: 8px; }
+.gg-filtertab {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid transparent; background: none; font: inherit; font-size: 0.84rem; color: var(--gg-text-soft); cursor: pointer;
+}
+.gg-filtertab:hover { background: var(--gg-surface-2); }
+.gg-filtertab--active { background: var(--gg-brand); color: #fff; }
+.gg-filtertab__count {
+  font-size: 0.72rem; font-variant-numeric: tabular-nums; padding: 0 7px; border-radius: 999px;
+  background: var(--gg-surface-3); color: var(--gg-text-soft); min-width: 20px; text-align: center;
+}
+.gg-filtertab--active .gg-filtertab__count { background: rgba(255,255,255,0.25); color: #fff; }
+
+.gg-scanlayout { display: grid; grid-template-columns: minmax(360px, 460px) 1fr; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .gg-scanlayout { grid-template-columns: 1fr; } }
+
+.gg-scanqueue {
+  display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 320px);
+  overflow-y: auto; padding-right: 4px; position: sticky; top: 12px;
+}
+@media (max-width: 1100px) { .gg-scanqueue { max-height: 420px; position: static; } }
+
+.gg-scanrow {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--gg-radius-sm);
+  border: 1px solid transparent; cursor: pointer; background: var(--gg-surface);
+}
+.gg-scanrow:hover { background: var(--gg-surface-2); }
+.gg-scanrow--active { border-color: var(--gg-brand); background: var(--gg-brand-tint); }
+.gg-scanrow--selected { box-shadow: inset 3px 0 0 var(--gg-gold); }
+.gg-scanrow__check { flex: 0 0 auto; }
+.gg-scanrow__seq { font-size: 0.72rem; font-variant-numeric: tabular-nums; color: var(--gg-text-faint); width: 34px; flex: 0 0 auto; }
+.gg-scanrow__arrow { color: var(--gg-text-faint); flex: 0 0 auto; }
+.gg-scanrow__nomatch {
+  width: 30px; height: 42px; border-radius: 5px; display: grid; place-items: center; flex: 0 0 auto;
+  background: repeating-linear-gradient(45deg,#efeaf6,#efeaf6 5px,#e6dff0 5px,#e6dff0 10px); color: var(--gg-text-faint);
+}
+.gg-scanrow__main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.gg-scanrow__name { font-size: 0.86rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gg-scanrow__sub { font-size: 0.72rem; color: var(--gg-text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gg-scanrow__flag { color: var(--gg-warning, #b8860b); flex: 0 0 auto; }
+
+.gg-scandetail { background: var(--gg-surface); border: 1px solid var(--gg-line); border-radius: var(--gg-radius); padding: 16px; min-height: 400px; }
+.gg-scandetail__empty, .gg-scandetail__inner { display: flex; flex-direction: column; }
+.gg-scandetail__empty { align-items: center; justify-content: center; gap: 10px; color: var(--gg-text-faint); min-height: 380px; }
+.gg-scandetail__inner { gap: 16px; }
+
+.gg-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 680px) { .gg-compare { grid-template-columns: 1fr; } }
+.gg-compare__side { display: flex; flex-direction: column; gap: 8px; }
+.gg-comparelabel { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gg-text-faint); font-weight: 600; }
+.gg-comparelabel--scan { color: var(--gg-gold-deep, #b8860b); }
+.gg-compare__img { width: 100%; max-width: 240px; border-radius: 12px; box-shadow: var(--gg-shadow-sm); background: #201436; }
+.gg-compare__img--back { max-width: 150px; opacity: 0.9; }
+.gg-compare__placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 220px; border: 1px dashed var(--gg-line-strong); border-radius: 12px; color: var(--gg-text-faint); text-align: center; padding: 16px;
+}
+
+.gg-scanform { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--gg-line); padding-top: 14px; }
+.gg-scanform__row { display: flex; gap: 8px; }
+.gg-scanform__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.gg-findmatch { display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
+@media (max-width: 720px) { .gg-findmatch { grid-template-columns: 1fr; } }
+.gg-findmatch__scan { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+
+.gg-bulk { display: flex; flex-direction: column; gap: 12px; }
+
+.gg-commit { display: flex; flex-direction: column; gap: 12px; }
+.gg-commit__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.gg-commit__list li { display: flex; justify-content: space-between; padding: 8px 12px; background: var(--gg-surface-2); border-radius: var(--gg-radius-sm); }
+.gg-commit__err { color: var(--gg-danger, #c0392b); }
+.gg-commit__errors { font-size: 0.8rem; color: var(--gg-danger, #c0392b); display: flex; flex-direction: column; gap: 3px; max-height: 140px; overflow-y: auto; }
+
+.gg-shortcuts { width: 100%; border-collapse: collapse; }
+.gg-shortcuts td { padding: 7px 10px; border-bottom: 1px solid var(--gg-line); font-size: 0.88rem; }
+.gg-shortcuts td:first-child { width: 110px; }
+.gg-shortcuts kbd {
+  font-family: var(--gg-mono, ui-monospace, monospace); font-size: 0.78rem; padding: 2px 8px; border-radius: 5px;
+  background: var(--gg-surface-3); border: 1px solid var(--gg-line-strong); box-shadow: 0 1px 0 var(--gg-line-strong);
+}

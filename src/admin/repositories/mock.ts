@@ -41,6 +41,7 @@ import type {
   OrderRepository,
   UserRepository,
 } from "./types";
+import { __resetScanState } from "./scan.mock";
 
 // Clone seeds so the module owns its own mutable state.
 let inventory: InventoryItem[] = INVENTORY_SEED.map((i) => ({ ...i }));
@@ -227,6 +228,19 @@ export const mockInventoryRepository: InventoryRepository = {
         (i) =>
           i.setCode === setCode &&
           i.collectorNumber === collectorNumber &&
+          i.condition === condition &&
+          i.finish === finish &&
+          i.status !== "archived",
+      ) ?? null,
+      150,
+    );
+  },
+
+  async findMatchByScryfall(scryfallId, condition, finish) {
+    return delay(
+      inventory.find(
+        (i) =>
+          i.scryfallId === scryfallId &&
           i.condition === condition &&
           i.finish === finish &&
           i.status !== "archived",
@@ -554,6 +568,7 @@ export function __resetMockState() {
   campaigns = CAMPAIGNS_SEED.map((c) => ({ ...c }));
   customers = CUSTOMERS_SEED.map((c) => ({ ...c }));
   staff = STAFF_SEED.map((s) => ({ ...s, recentActivity: [...s.recentActivity] }));
+  __resetScanState();
 }
 
 // Export the carrier type re-export for convenience in the ship() consumers.
