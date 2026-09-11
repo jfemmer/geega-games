@@ -116,6 +116,23 @@ export interface ScryfallRepository {
     setCode: string,
     collectorNumber: string,
   ): Promise<CardPrinting | null>;
+  /**
+   * High-accuracy exact-printing resolution using ALL available identity
+   * signals (id, name, set, collector number, finish). Tries exact id, then
+   * exact set/collector (with collector-number variants), then targeted
+   * name+set+collector search, then name+set — scoring candidates and NEVER
+   * returning a name mismatch. Returns null when no confident match exists.
+   */
+  resolveExact(input: ResolveExactInput): Promise<CardPrinting | null>;
+}
+
+/** Identity signals for high-accuracy printing resolution. */
+export interface ResolveExactInput {
+  scryfallId?: string | null;
+  cardName?: string | null;
+  setCode?: string | null;
+  collectorNumber?: string | null;
+  finish?: string | null;
 }
 
 /* ------------------------------------------------------------------ *
