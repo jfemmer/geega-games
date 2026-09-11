@@ -11,6 +11,8 @@ import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { ShipModal } from "./ShipModal";
+import { OrderCardImage } from "../components/cards/OrderCardImage";
+import { CardPrintingBadges } from "../components/cards/CardPrintingBadges";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { orderRepository } from "../repositories";
@@ -28,6 +30,7 @@ import {
   PAYMENT_STATUS_TONE,
   EMAIL_STATUS_LABELS,
   EMAIL_STATUS_TONE,
+  FINISH_LABELS,
 } from "../utils/labels";
 import type { Order, OrderQuery, OrderStatus } from "../types";
 
@@ -443,20 +446,10 @@ function OrderDetail({
                       disabled={order.status !== "packing"}
                       onChange={() => toggleItem(it.id)}
                     />
-                    <img
-                      src={it.imageUrl ?? ""}
-                      alt=""
+                    <OrderCardImage
+                      item={it}
+                      size="xs"
                       className="gg-packitem__img"
-                      width={34}
-                      height={47}
-                      loading="eager"
-                      fetchPriority="high"
-                      decoding="async"
-                      onError={(e) => {
-                        // Hide a broken thumbnail rather than showing the
-                        // browser's broken-image glyph in the checklist.
-                        e.currentTarget.style.visibility = "hidden";
-                      }}
                     />
                     <span className="gg-packitem__text">
                       <span className="gg-packitem__name">
@@ -464,8 +457,21 @@ function OrderDetail({
                       </span>
                       <span className="gg-packitem__meta">
                         {it.setCode ? `${it.setCode} · ` : ""}
-                        {it.condition} · {it.finish}
+                        {it.collectorNumber ? `#${it.collectorNumber} · ` : ""}
+                        {it.condition} · {FINISH_LABELS[it.finish]}
                       </span>
+                      <CardPrintingBadges
+                        card={{
+                          scryfallId: null,
+                          setCode: it.setCode ?? "",
+                          collectorNumber: it.collectorNumber ?? "",
+                          imageUrl: it.imageUrl,
+                          cardName: it.cardName,
+                          finish: it.finish,
+                        }}
+                        showFinish
+                        max={3}
+                      />
                     </span>
                   </label>
                   <span className="gg-packitem__price">

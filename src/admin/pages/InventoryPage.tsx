@@ -7,6 +7,7 @@ import { Icon } from "../components/ui/Icon";
 import { SearchInput, SelectField } from "../components/ui/Field";
 import { DataTable, type Column } from "../components/ui/DataTable";
 import { InventoryCardImage } from "../components/cards/InventoryCardImage";
+import { CardPrintingBadges } from "../components/cards/CardPrintingBadges";
 import { Pagination } from "../components/ui/Nav";
 import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
@@ -621,6 +622,18 @@ function InventoryDetail({
               </Badge>
               <span className="gg-chip">{CONDITION_LABELS[item.condition]}</span>
               <span className="gg-chip">{FINISH_LABELS[item.finish]}</span>
+              {/* Treatment (Borderless/Showcase/Extended Art/…) resolved from
+                  the exact Scryfall printing, so staff can verify the art. */}
+              <CardPrintingBadges
+                card={{
+                  scryfallId: item.scryfallId ?? null,
+                  setCode: item.setCode,
+                  collectorNumber: item.collectorNumber,
+                  imageUrl: item.imageUrl,
+                  cardName: item.cardName,
+                  finish: item.finish,
+                }}
+              />
             </div>
             <div className="gg-priceblock">
               <div className="gg-priceblock__main">

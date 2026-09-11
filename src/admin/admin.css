@@ -715,7 +715,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-packitem__check input { width: 18px; height: 18px; accent-color: var(--gg-success); flex: 0 0 auto; }
 .gg-packitem__check input:disabled { cursor: not-allowed; }
 .gg-packitem__img { border-radius: 4px; flex: 0 0 auto; box-shadow: var(--gg-shadow-sm); background: var(--gg-surface-3); }
-.gg-packitem__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gg-packitem__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .gg-packitem__name { font-weight: 600; font-size: 0.87rem; }
 .gg-packitem--done .gg-packitem__name { text-decoration: line-through; color: var(--gg-text-soft); }
 .gg-packitem__meta { font-size: 0.78rem; color: var(--gg-text-soft); }
