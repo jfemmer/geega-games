@@ -226,3 +226,180 @@ export function scryfallBySetCollector(
     `/cards/${encodeURIComponent(set.toLowerCase())}/${encodeURIComponent(collector)}`,
   );
 }
+
+// ------------------------------------------------------------------------- //
+// Exact-printing resolution (multi-signal, high accuracy)
+// ------------------------------------------------------------------------- //
+
+export interface ResolveExactInput {
+  scryfallId?: string | null;
+  cardName?: string | null;
+  setCode?: string | null;
+  collectorNumber?: string | null;
+  /** finish/treatment hints used only as tie-breakers, never as filters. */
+  finish?: string | null;
+}
+
+const UUID_RE_SRV =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/**
+ * Collector numbers vary in punctuation/case between our data and Scryfall
+ * ("138", "138★", "138a", "s138", "0138"). Produce an ordered list of variants
+ * to try for the exact /cards/:set/:cn endpoint, most-likely first.
+ */
+function collectorVariants(cn: string): string[] {
+  const raw = cn.trim();
+  const lower = raw.toLowerCase();
+  const noStar = lower.replace(/[★*]/g, "").trim();
+  const digitsOnly = lower.replace(/[^0-9]/g, "");
+  const noLeadingZeros = digitsOnly.replace(/^0+(?=\d)/, "");
+  const variants = new Set<string>();
+  for (const v of [lower, noStar, digitsOnly, noLeadingZeros]) {
+    if (v) variants.add(v);
+  }
+  return Array.from(variants);
+}
+
+/** True if two set codes are equivalent (case-insensitive). */
+function sameSet(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** True if two collector numbers are equivalent, ignoring case/punctuation. */
+function sameCollector(a: string, b: string): boolean {
+  const norm = (s: string) => s.trim().toLowerCase().replace(/[^0-9a-z]/g, "");
+  return norm(a) === norm(b);
+}
+
+/**
+ * Score a candidate printing against the requested identity. Higher = better.
+ * Exact set + collector is the strongest signal; name must match to be eligible;
+ * finish/treatment breaks ties. Returns -1 if the candidate is INELIGIBLE
+ * (name mismatch) so we never return the wrong card.
+ */
+function scoreCandidate(
+  card: ScryfallCard,
+  input: ResolveExactInput,
+): number {
+  // Name gate: if we know the expected name, the candidate MUST match it.
+  if (input.cardName) {
+    const want = normName(input.cardName);
+    const got = normName(card.name ?? "");
+    const nameOk = got === want || got.includes(want) || want.includes(got);
+    if (!nameOk) return -1;
+  }
+
+  let score = 0;
+  if (input.setCode && card.set && sameSet(input.setCode, card.set)) score += 100;
+  if (
+    input.collectorNumber &&
+    card.collector_number &&
+    sameCollector(input.collectorNumber, card.collector_number)
+  ) {
+    score += 100;
+  }
+  // Finish tie-breaker: prefer a printing that offers the requested finish.
+  if (input.finish && Array.isArray(card.finishes)) {
+    const f = input.finish.toLowerCase();
+    const wantFoil = f === "foil" || f === "etched";
+    if (card.finishes.map((x) => x.toLowerCase()).includes(f)) score += 10;
+    else if (wantFoil && card.finishes.some((x) => x.toLowerCase() !== "nonfoil"))
+      score += 3;
+  }
+  // Prefer the exact language when nothing else separates candidates.
+  if (card.lang === "en") score += 1;
+  return score;
+}
+
+function pickBest(
+  cards: ScryfallCard[],
+  input: ResolveExactInput,
+): ScryfallCard | null {
+  let best: ScryfallCard | null = null;
+  let bestScore = -1;
+  for (const c of cards) {
+    const s = scoreCandidate(c, input);
+    if (s > bestScore) {
+      bestScore = s;
+      best = c;
+    }
+  }
+  // Require a positive score (name-eligible AND at least one identity signal).
+  return best && bestScore >= 100 ? best : null;
+}
+
+/**
+ * Resolve the EXACT printing for a set of identity signals, with high accuracy.
+ * Resolution ladder (stops at the first confident hit):
+ *   1. scryfallId (real UUID)                       — authoritative
+ *   2. /cards/:set/:cn exact, trying cn variants    — authoritative
+ *   3. search !"Name" set:xx cn:yy (unique=prints)  — pick set+cn match
+ *   4. search !"Name" set:xx                         — pick best by cn, then name
+ * Never returns a printing whose NAME doesn't match. Returns null when no
+ * confident exact match exists (caller shows a clean "No image" placeholder
+ * rather than the wrong art).
+ */
+export async function scryfallResolveExact(
+  input: ResolveExactInput,
+): Promise<ScryfallCard | null> {
+  // 1. Real Scryfall id — authoritative.
+  const id = input.scryfallId?.trim();
+  if (id && UUID_RE_SRV.test(id)) {
+    try {
+      return await scryfallById(id);
+    } catch {
+      /* fall through to weaker signals */
+    }
+  }
+
+  const set = input.setCode?.trim();
+  const cn = input.collectorNumber?.trim();
+
+  // 2. Exact set + collector, trying collector-number variants.
+  if (set && cn) {
+    for (const variant of collectorVariants(cn)) {
+      try {
+        const card = await scryfallBySetCollector(set, variant);
+        // Name gate even here: guards against a bad set/cn mapping.
+        if (scoreCandidate(card, input) >= 0) return card;
+      } catch {
+        /* try next variant */
+      }
+    }
+  }
+
+  // 3. Targeted search using name + set + collector (exact name match syntax).
+  if (input.cardName && set && cn) {
+    try {
+      const q = `!"${input.cardName}" set:${set} cn:${cn}`;
+      const list = await scryfallGet<ScryfallList>(
+        `/cards/search?q=${encodeURIComponent(q)}&unique=prints&order=released&dir=desc`,
+      );
+      const best = pickBest(list.data ?? [], input);
+      if (best) return best;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // 4. Looser: name + set, then pick the best collector/finish match.
+  if (input.cardName && set) {
+    try {
+      const q = `!"${input.cardName}" set:${set}`;
+      const list = await scryfallGet<ScryfallList>(
+        `/cards/search?q=${encodeURIComponent(q)}&unique=prints&order=released&dir=desc`,
+      );
+      const best = pickBest(list.data ?? [], input);
+      if (best) return best;
+    } catch {
+      /* give up */
+    }
+  }
+
+  return null;
+}

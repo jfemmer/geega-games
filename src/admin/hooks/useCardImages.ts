@@ -40,6 +40,8 @@ export interface ResolvableCard {
    * resolve to a different real Scryfall printing.) Optional for back-compat.
    */
   cardName?: string | null;
+  /** finish/treatment hint (foil/etched/nonfoil) — used as a tie-breaker. */
+  finish?: string | null;
   /**
    * Optional pre-normalized image set already known to the app (e.g. from a
    * cached card_printings row). When present with any usable size, this is used
@@ -127,57 +129,26 @@ function resolveLocal(card: ResolvableCard): CardImageUris | null {
   return null;
 }
 
-/** Normalize a card name for tolerant comparison (case, punctuation, spacing). */
-function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-/**
- * Whether a resolved printing is an acceptable match for the requested card.
- * When we looked up by exact scryfallId (byId=true), trust it. When we looked up
- * by set+collector (a weaker key), require the NAME to match so we never show a
- * different card's art for a row whose set/collector resolved to the wrong
- * printing. If the caller gave no expected name, we can't verify — accept it.
- */
-function printingMatches(
-  card: ResolvableCard,
-  printing: CardPrinting,
-  byId: boolean,
-): boolean {
-  if (byId) return true; // exact-id lookups are authoritative
-  const expected = card.cardName ? normalizeName(card.cardName) : "";
-  if (!expected) return true;
-  const got = normalizeName(printing.cardName);
-  // Match if either name contains the other (handles "Ragavan" vs
-  // "Ragavan, Nimble Pilferer" and DFC "A // B" names).
-  return got === expected || got.includes(expected) || expected.includes(got);
-}
-
 async function resolve(card: ResolvableCard): Promise<CardImageUris | null> {
   const key = keyFor(card);
   if (cache.has(key)) return cache.get(key) ?? null;
   const pending = inflight.get(key);
   if (pending) return pending;
 
-  const realId = usableScryfallId(card.scryfallId);
-
   const task = (async () => {
     try {
-      const printing = realId
-        ? await scryfallRepository.getByScryfallId(realId)
-        : await scryfallRepository.getBySetAndCollector(
-            card.setCode,
-            card.collectorNumber,
-          );
-      // Reject a set/collector lookup that resolved to a DIFFERENT card — better
-      // to show the "no image" placeholder than art for the wrong card.
-      const uris =
-        printing && printingMatches(card, printing, Boolean(realId))
-          ? toUris(printing)
-          : null;
+      // One high-accuracy resolver call with EVERY identity signal we have:
+      // id + name + set + collector + finish. The server scores candidates by
+      // set + collector + finish and never returns a name mismatch, so the
+      // image is guaranteed to be for THIS exact printing (or null).
+      const printing = await scryfallRepository.resolveExact({
+        scryfallId: usableScryfallId(card.scryfallId),
+        cardName: card.cardName ?? null,
+        setCode: card.setCode || null,
+        collectorNumber: card.collectorNumber || null,
+        finish: card.finish ?? null,
+      });
+      const uris = printing ? toUris(printing) : null;
       cache.set(key, uris);
       return uris;
     } catch {

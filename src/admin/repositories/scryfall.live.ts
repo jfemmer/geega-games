@@ -16,7 +16,11 @@
 
 import { supabase } from "../../supabase";
 import type { CardPrinting } from "../types";
-import type { ScryfallRepository, ScryfallSearchPage } from "./types";
+import type {
+  ResolveExactInput,
+  ScryfallRepository,
+  ScryfallSearchPage,
+} from "./types";
 
 /** Raw shape returned by GET /api/admin/scryfall/search. */
 interface SearchResponse {
@@ -136,6 +140,24 @@ export const liveScryfallRepository: ScryfallRepository = {
       `${BASE}/card?set=${encodeURIComponent(setCode)}&cn=${encodeURIComponent(
         collectorNumber,
       )}`,
+    );
+    return body.data ?? null;
+  },
+
+  async resolveExact(input: ResolveExactInput): Promise<CardPrinting | null> {
+    // Pass EVERY identity signal to the server resolver so it can score
+    // candidates precisely (set + collector + name + finish) and never return a
+    // wrong-name printing. One request; server does the resolution ladder.
+    const params = new URLSearchParams();
+    if (input.scryfallId) params.set("id", input.scryfallId);
+    if (input.setCode) params.set("set", input.setCode);
+    if (input.collectorNumber) params.set("cn", input.collectorNumber);
+    if (input.cardName) params.set("name", input.cardName);
+    if (input.finish) params.set("finish", input.finish);
+    const qs = params.toString();
+    if (!qs) return null;
+    const body = await getJson<{ data: CardPrinting | null }>(
+      `${BASE}/card?${qs}`,
     );
     return body.data ?? null;
   },

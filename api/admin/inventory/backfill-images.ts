@@ -7,10 +7,7 @@ import {
 } from "../../_lib/http.js";
 import { requireStaff } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
-import {
-  scryfallById,
-  scryfallBySetCollector,
-} from "../../_lib/scryfall.js";
+import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import {
   normalizeScryfallCard,
   primaryImageUrl,
@@ -43,8 +40,10 @@ interface Body {
 interface InventoryRow {
   id: string;
   scryfall_id: string | null;
+  card_name: string | null;
   set_code: string;
   collector_number: string;
+  finish: string | null;
   image_url: string | null;
 }
 
@@ -155,7 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // become discoverable. `hasRealImage()` still runs below as a final guard.
     const { data, error } = await admin
       .from("inventory_items")
-      .select("id, scryfall_id, set_code, collector_number, image_url")
+      .select("id, scryfall_id, card_name, set_code, collector_number, finish, image_url")
       .neq("status", "archived")
       .or(BACKFILL_CANDIDATE_OR_FILTER)
       .limit(limit);
@@ -174,15 +173,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     for (const row of candidates) {
       try {
-        let card: ScryfallCard | null = null;
-        if (row.scryfall_id) {
-          card = await scryfallById(row.scryfall_id);
-        } else if (row.set_code && row.collector_number) {
-          card = await scryfallBySetCollector(
-            row.set_code,
-            row.collector_number,
-          );
-        }
+        // High-accuracy resolution using ALL identity signals so a repaired row
+        // gets the EXACT printing (set + collector + name + finish), never a
+        // wrong-name match. Falls back through the ladder and returns null when
+        // no confident match exists (row is skipped, not mis-repaired).
+        const card: ScryfallCard | null = await scryfallResolveExact({
+          scryfallId: row.scryfall_id,
+          cardName: row.card_name,
+          setCode: row.set_code,
+          collectorNumber: row.collector_number,
+          finish: row.finish,
+        });
         if (!card) {
           skipped += 1;
           continue;
