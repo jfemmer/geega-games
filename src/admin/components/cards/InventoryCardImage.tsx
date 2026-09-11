@@ -43,6 +43,7 @@ export function InventoryCardImage({
     setCode: item.setCode,
     collectorNumber: item.collectorNumber,
     imageUrl: item.imageUrl,
+    cardName: item.cardName,
     images: item.images ?? null,
   });
 

@@ -34,6 +34,13 @@ export interface ResolvableCard {
   collectorNumber: string;
   imageUrl: string | null;
   /**
+   * The card's expected name. When a set+collector lookup returns a printing
+   * whose name doesn't match this, we REJECT it rather than show art for the
+   * wrong card. (Mock/legacy rows sometimes carry set/collector numbers that
+   * resolve to a different real Scryfall printing.) Optional for back-compat.
+   */
+  cardName?: string | null;
+  /**
    * Optional pre-normalized image set already known to the app (e.g. from a
    * cached card_printings row). When present with any usable size, this is used
    * immediately and NO Scryfall lookup happens. This is the preferred path.
@@ -44,26 +51,50 @@ export interface ResolvableCard {
 const cache = new Map<string, CardImageUris | null>();
 const inflight = new Map<string, Promise<CardImageUris | null>>();
 
+/**
+ * Real Scryfall ids are UUIDs. Mock/legacy rows sometimes carry synthetic ids
+ * (e.g. "mock_prt_ragavan") that will 404 on live Scryfall. Treat anything that
+ * isn't a UUID as "no id" so resolution falls back to set+collector (with name
+ * verification) instead of failing outright.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function usableScryfallId(id: string | null): string | null {
+  return id && UUID_RE.test(id) ? id : null;
+}
+
 function keyFor(card: ResolvableCard): string {
-  return card.scryfallId
-    ? `id:${card.scryfallId}`
+  const realId = card.scryfallId && UUID_RE.test(card.scryfallId)
+    ? card.scryfallId
+    : null;
+  return realId
+    ? `id:${realId}`
     : `sc:${card.setCode.toLowerCase()}/${card.collectorNumber.toLowerCase()}`;
 }
 
 /**
  * A stored image counts as "real" only if it's an http(s) URL. Placeholder
- * data-URIs (the mock purple cards) and empty values are treated as missing so
- * the row gets enriched.
+ * data-URIs (the mock purple cards), blob:, relative paths, and empty values
+ * are treated as missing so the row gets enriched from Scryfall.
  */
 function hasRealImage(url: string | null | undefined): boolean {
   return !!url && /^https?:\/\//i.test(url);
 }
 
-/** Whether a structured image set has any usable size. */
+/**
+ * Whether a structured image set contains a REAL (http) image at any size. A set
+ * whose every size is a data-URI placeholder (mock/legacy seed data) is NOT
+ * real — returning false here lets those rows fall through to live Scryfall
+ * resolution instead of being short-circuited to the placeholder. This is the
+ * fix for placeholder/wrong art on mock-seeded inventory rows.
+ */
 function hasStructuredImage(images: CardImageUris | null | undefined): boolean {
-  return Boolean(
-    images &&
-      (images.small || images.normal || images.large || images.png),
+  if (!images) return false;
+  return (
+    hasRealImage(images.small) ||
+    hasRealImage(images.normal) ||
+    hasRealImage(images.large) ||
+    hasRealImage(images.png)
   );
 }
 
@@ -96,21 +127,57 @@ function resolveLocal(card: ResolvableCard): CardImageUris | null {
   return null;
 }
 
+/** Normalize a card name for tolerant comparison (case, punctuation, spacing). */
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Whether a resolved printing is an acceptable match for the requested card.
+ * When we looked up by exact scryfallId (byId=true), trust it. When we looked up
+ * by set+collector (a weaker key), require the NAME to match so we never show a
+ * different card's art for a row whose set/collector resolved to the wrong
+ * printing. If the caller gave no expected name, we can't verify — accept it.
+ */
+function printingMatches(
+  card: ResolvableCard,
+  printing: CardPrinting,
+  byId: boolean,
+): boolean {
+  if (byId) return true; // exact-id lookups are authoritative
+  const expected = card.cardName ? normalizeName(card.cardName) : "";
+  if (!expected) return true;
+  const got = normalizeName(printing.cardName);
+  // Match if either name contains the other (handles "Ragavan" vs
+  // "Ragavan, Nimble Pilferer" and DFC "A // B" names).
+  return got === expected || got.includes(expected) || expected.includes(got);
+}
+
 async function resolve(card: ResolvableCard): Promise<CardImageUris | null> {
   const key = keyFor(card);
   if (cache.has(key)) return cache.get(key) ?? null;
   const pending = inflight.get(key);
   if (pending) return pending;
 
+  const realId = usableScryfallId(card.scryfallId);
+
   const task = (async () => {
     try {
-      const printing = card.scryfallId
-        ? await scryfallRepository.getByScryfallId(card.scryfallId)
+      const printing = realId
+        ? await scryfallRepository.getByScryfallId(realId)
         : await scryfallRepository.getBySetAndCollector(
             card.setCode,
             card.collectorNumber,
           );
-      const uris = printing ? toUris(printing) : null;
+      // Reject a set/collector lookup that resolved to a DIFFERENT card — better
+      // to show the "no image" placeholder than art for the wrong card.
+      const uris =
+        printing && printingMatches(card, printing, Boolean(realId))
+          ? toUris(printing)
+          : null;
       cache.set(key, uris);
       return uris;
     } catch {
@@ -141,9 +208,10 @@ export function useCardImages(card: ResolvableCard | null): CardImageUris | null
     if (!card) return null;
     const local = resolveLocal(card);
     if (local) return local;
-    // Nothing local yet — seed with whatever placeholder the row carries so the
-    // UI isn't empty while the background lookup runs.
-    return card.imageUrl ? urisFromUrl(card.imageUrl) : null;
+    // Nothing REAL locally — render nothing (placeholder) rather than a stale
+    // data-URI placeholder, while the background lookup runs. Seeding the
+    // placeholder here is what made wrong/placeholder art briefly appear.
+    return null;
   });
 
   useEffect(() => {
@@ -161,15 +229,18 @@ export function useCardImages(card: ResolvableCard | null): CardImageUris | null
     const key = keyFor(card);
     const cached = cache.get(key);
     if (cached !== undefined) {
-      setImages(cached ?? (card.imageUrl ? urisFromUrl(card.imageUrl) : null));
+      // cached is either real images or null (resolved-to-nothing). Never seed
+      // the row's own placeholder data-URI.
+      setImages(cached ?? null);
       return;
     }
 
     let alive = true;
-    // Show whatever we have now, resolve the real image in the background.
-    setImages(card.imageUrl ? urisFromUrl(card.imageUrl) : null);
+    // Show nothing (clean placeholder) while resolving; swap in real art when
+    // it arrives. Prevents wrong/placeholder art from lingering.
+    setImages(null);
     resolve(card).then((uris) => {
-      if (alive && uris) setImages(uris);
+      if (alive) setImages(uris);
     });
     return () => {
       alive = false;
@@ -180,6 +251,7 @@ export function useCardImages(card: ResolvableCard | null): CardImageUris | null
     card?.setCode,
     card?.collectorNumber,
     card?.imageUrl,
+    card?.cardName,
     // Re-run if the structured images identity changes (e.g. lazy join arrives).
     card?.images,
   ]);
