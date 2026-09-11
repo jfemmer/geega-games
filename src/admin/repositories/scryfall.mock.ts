@@ -12,7 +12,11 @@ import {
 import type { ScryfallCard } from "../services/scryfall.types";
 import type { CardPrinting } from "../types";
 import { delay } from "../utils/format";
-import type { ScryfallRepository, ScryfallSearchPage } from "./types";
+import type {
+  ResolveExactInput,
+  ScryfallRepository,
+  ScryfallSearchPage,
+} from "./types";
 
 /** Mock pretends to paginate at this size so "Load more" is exercisable. */
 const MOCK_PAGE_SIZE = 175;
@@ -109,6 +113,45 @@ export const mockScryfallRepository: ScryfallRepository = {
         c.set.toLowerCase() === setCode.toLowerCase() &&
         c.collector_number === collectorNumber,
     );
+    return delay(card ? normalizeScryfallCard(card) : null, 150);
+  },
+
+  async resolveExact(input: ResolveExactInput): Promise<CardPrinting | null> {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const sameCn = (a: string, b: string) =>
+      a.toLowerCase().replace(/[^0-9a-z]/g, "") ===
+      b.toLowerCase().replace(/[^0-9a-z]/g, "");
+
+    let card: ScryfallCard | undefined;
+    // 1. exact id
+    if (input.scryfallId) {
+      card = SCRYFALL_MOCK_CARDS.find((c) => c.id === input.scryfallId);
+    }
+    // 2. exact set + collector
+    if (!card && input.setCode && input.collectorNumber) {
+      card = SCRYFALL_MOCK_CARDS.find(
+        (c) =>
+          c.set.toLowerCase() === input.setCode!.toLowerCase() &&
+          sameCn(c.collector_number, input.collectorNumber!),
+      );
+    }
+    // 3. name + set (+ collector tie-break)
+    if (!card && input.cardName && input.setCode) {
+      const want = norm(input.cardName);
+      const inSet = SCRYFALL_MOCK_CARDS.filter(
+        (c) =>
+          c.set.toLowerCase() === input.setCode!.toLowerCase() &&
+          norm(c.name).includes(want),
+      );
+      card =
+        (input.collectorNumber &&
+          inSet.find((c) => sameCn(c.collector_number, input.collectorNumber!))) ||
+        inSet[0];
+    }
+    // Name gate: never return a mismatch.
+    if (card && input.cardName && !norm(card.name).includes(norm(input.cardName))) {
+      card = undefined;
+    }
     return delay(card ? normalizeScryfallCard(card) : null, 150);
   },
 };
