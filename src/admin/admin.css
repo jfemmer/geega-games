@@ -53,6 +53,8 @@
   --gg-shadow: 0 4px 14px rgba(38, 20, 74, 0.10);
   --gg-shadow-lg: 0 18px 48px rgba(30, 16, 60, 0.24);
 
+  /* Fraunces is reserved ONLY for the sidebar brand wordmark. All dashboard
+   * content (titles, tables, stats, prices, forms) uses Inter (--gg-sans). */
   --gg-serif: "Fraunces", Georgia, "Times New Roman", serif;
   --gg-sans: "Inter", system-ui, -apple-system, sans-serif;
 
@@ -277,7 +279,7 @@
 .gg-page { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
 .gg-pagehead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.gg-pagehead__title { font-family: var(--gg-serif); font-weight: 600; font-size: 1.7rem; margin: 0; color: var(--gg-ink); letter-spacing: 0.2px; }
+.gg-pagehead__title { font-family: var(--gg-sans); font-weight: 700; font-size: 1.65rem; margin: 0; color: var(--gg-ink); letter-spacing: -0.015em; }
 .gg-pagehead__desc { margin: 4px 0 0; color: var(--gg-text-soft); font-size: 0.92rem; }
 .gg-pagehead__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
@@ -300,7 +302,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-stat__row { display: flex; align-items: center; justify-content: space-between; }
 .gg-stat__label { font-size: 0.82rem; color: var(--gg-text-soft); font-weight: 500; }
 .gg-stat__icon { color: var(--gg-brand); display: inline-flex; }
-.gg-stat__value { font-family: var(--gg-serif); font-size: 1.65rem; font-weight: 600; color: var(--gg-ink); line-height: 1.1; }
+.gg-stat__value { font-family: var(--gg-sans); font-size: 1.6rem; font-weight: 700; color: var(--gg-ink); line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .gg-stat__foot { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--gg-text-faint); flex-wrap: wrap; }
 .gg-stat__trend { font-weight: 600; display: inline-flex; align-items: center; gap: 2px; }
 .gg-stat__trend--up { color: var(--gg-success); }
@@ -357,19 +359,19 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 /* ------------------------------- Tables ------------------------------- */
 
 .gg-table-wrap { overflow-x: auto; border-radius: var(--gg-radius-sm); }
-.gg-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.gg-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .gg-table thead th {
   text-align: left; font-weight: 600; font-size: 0.76rem; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--gg-text-faint);
   padding: 10px 14px; border-bottom: 1px solid var(--gg-line); white-space: nowrap;
   background: var(--gg-surface-2);
 }
-.gg-table tbody td { padding: 11px 14px; border-bottom: 1px solid var(--gg-line); vertical-align: middle; }
+.gg-table tbody td { padding: 12px 14px; border-bottom: 1px solid var(--gg-line); vertical-align: middle; line-height: 1.45; }
 .gg-table tbody tr:last-child td { border-bottom: 0; }
 .gg-table__row--clickable { cursor: pointer; }
 .gg-table__row--clickable:hover td { background: var(--gg-surface-2); }
 .gg-table__row--selected td { background: rgba(102,51,153,0.06); }
-.gg-align-right { text-align: right; }
+.gg-align-right { text-align: right; font-variant-numeric: tabular-nums; }
 .gg-align-center { text-align: center; }
 .gg-table__checkcol { width: 42px; text-align: center; }
 .gg-table__checkcol input { width: 16px; height: 16px; accent-color: var(--gg-brand); cursor: pointer; }
@@ -538,7 +540,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-donut__legendval { color: var(--gg-text-soft); margin-left: auto; font-variant-numeric: tabular-nums; }
 
 .gg-splitstat { display: flex; gap: 32px; flex-wrap: wrap; padding: 8px 0; }
-.gg-splitstat__value { font-family: var(--gg-serif); font-size: 1.9rem; font-weight: 600; color: var(--gg-ink); display: block; }
+.gg-splitstat__value { font-family: var(--gg-sans); font-size: 1.8rem; font-weight: 700; color: var(--gg-ink); display: block; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .gg-splitstat__label { font-size: 0.84rem; color: var(--gg-text-soft); }
 
 /* ------------------------------- Attention / activity lists ------------------------------- */
@@ -609,7 +611,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 }
 .gg-detail__heroinfo { display: flex; flex-direction: column; gap: 12px; min-width: 0; flex: 1; }
 .gg-detail__setline { display: flex; flex-direction: column; gap: 2px; }
-.gg-detail__setname { font-family: var(--gg-serif); font-size: 1.02rem; font-weight: 600; line-height: 1.25; }
+.gg-detail__setname { font-family: var(--gg-sans); font-size: 1.02rem; font-weight: 600; line-height: 1.25; }
 .gg-detail__setmeta { font-size: 0.82rem; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
 .gg-detail__chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .gg-chip {
@@ -626,7 +628,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 }
 .gg-priceblock__main { display: flex; flex-direction: column; gap: 1px; }
 .gg-priceblock__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gg-text-faint); }
-.gg-priceblock__value { font-family: var(--gg-serif); font-size: 1.4rem; font-weight: 600; color: var(--gg-brand); font-variant-numeric: tabular-nums; }
+.gg-priceblock__value { font-family: var(--gg-sans); font-size: 1.4rem; font-weight: 700; color: var(--gg-brand); font-variant-numeric: tabular-nums; }
 .gg-priceblock__ref { display: flex; flex-direction: column; gap: 1px; text-align: right; }
 .gg-priceblock__refvalue { font-size: 0.92rem; font-weight: 600; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
 .gg-detail__location { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gg-text-soft); }
@@ -640,7 +642,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 }
 .gg-adjust__now { display: flex; flex-direction: column; }
 .gg-adjust__label { font-size: 0.78rem; color: var(--gg-text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
-.gg-adjust__qty { font-family: var(--gg-serif); font-size: 1.7rem; font-weight: 600; line-height: 1; color: var(--gg-text); }
+.gg-adjust__qty { font-family: var(--gg-sans); font-size: 1.6rem; font-weight: 700; line-height: 1; color: var(--gg-text); font-variant-numeric: tabular-nums; }
 .gg-adjust__controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .gg-adjust__input { width: 70px; }
 
@@ -769,9 +771,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-preview-text pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem; line-height: 1.5; }
 
 .gg-email { font-size: 0.86rem; }
-.gg-email__brand { display: flex; align-items: center; gap: 7px; justify-content: center; font-family: var(--gg-serif); font-weight: 600; color: var(--gg-brand); margin-bottom: 12px; }
+.gg-email__brand { display: flex; align-items: center; gap: 7px; justify-content: center; font-family: var(--gg-sans); font-weight: 600; color: var(--gg-brand); margin-bottom: 12px; }
 .gg-email__card { background: #fff; border-radius: var(--gg-radius-sm); padding: 20px; box-shadow: var(--gg-shadow-sm); }
-.gg-email__subject { font-family: var(--gg-serif); font-size: 1.25rem; margin: 0 0 6px; color: var(--gg-ink); }
+.gg-email__subject { font-family: var(--gg-sans); font-size: 1.25rem; margin: 0 0 6px; color: var(--gg-ink); }
 .gg-email__preheader { color: var(--gg-text-faint); font-size: 0.8rem; margin: 0 0 14px; }
 .gg-email__body { line-height: 1.6; color: #332d40; }
 .gg-email__body p { margin: 0 0 8px; }
@@ -935,7 +937,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   box-shadow: 0 1px 0 0 var(--gg-gold-soft, #f0d68a);
 }
 .gg-dialog__title {
-  font-family: var(--gg-serif); font-size: 1.24rem; font-weight: 600;
+  font-family: var(--gg-sans); font-size: 1.24rem; font-weight: 600;
   margin: 0; flex: 1; min-width: 0; color: var(--gg-text, #241d31);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1059,7 +1061,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-selprint__face { font: inherit; font-size: 0.74rem; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--gg-line-strong); background: var(--gg-surface); color: var(--gg-text-soft); cursor: pointer; }
 .gg-selprint__face--active { background: var(--gg-brand); color: #fff; border-color: var(--gg-brand); font-weight: 600; }
 .gg-selprint__meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.gg-selprint__name { font-family: var(--gg-serif); font-size: 1.2rem; font-weight: 600; line-height: 1.2; }
+.gg-selprint__name { font-family: var(--gg-sans); font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
 .gg-selprint__tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .gg-selprint__artist { font-size: 0.82rem; }
 .gg-selprint__finishes { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
@@ -1126,7 +1128,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   display: grid; place-items: center; background: var(--gg-brand-tint); color: var(--gg-brand);
 }
 .gg-sessionrow__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.gg-sessionrow__title { display: flex; align-items: center; gap: 8px; font-family: var(--gg-serif); font-size: 1.02rem; font-weight: 600; }
+.gg-sessionrow__title { display: flex; align-items: center; gap: 8px; font-family: var(--gg-sans); font-size: 1.02rem; font-weight: 600; }
 .gg-sessionrow__sub { font-size: 0.8rem; color: var(--gg-text-soft); }
 .gg-sessionrow__progress { height: 5px; border-radius: 999px; background: var(--gg-surface-3); overflow: hidden; max-width: 340px; }
 .gg-sessionrow__progressbar { display: block; height: 100%; background: linear-gradient(90deg, var(--gg-brand), var(--gg-gold)); border-radius: 999px; }
@@ -1263,7 +1265,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   box-shadow: 0 24px 60px rgba(10, 6, 24, 0.5); text-align: center;
 }
 .gg-authcard__title {
-  font-family: var(--gg-serif, Georgia, serif); font-size: 1.6rem; margin: 0 0 4px;
+  font-family: var(--gg-sans); font-size: 1.6rem; margin: 0 0 4px;
   color: var(--gg-text, #241d31);
 }
 .gg-authcard__muted { color: var(--gg-text-soft, #5c5468); font-size: 0.9rem; margin: 0 0 20px; }

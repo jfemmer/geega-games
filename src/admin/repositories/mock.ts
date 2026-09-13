@@ -87,7 +87,7 @@ export const mockInventoryRepository: InventoryRepository = {
       const matchesSearch =
         !q ||
         item.cardName.toLowerCase().includes(q) ||
-        item.setName.toLowerCase().includes(q) ||
+        (item.setName?.toLowerCase().includes(q) ?? false) ||
         item.setCode.toLowerCase().includes(q) ||
         (item.sku?.toLowerCase().includes(q) ?? false);
       const matchesStatus = status === "all" || item.status === status;
@@ -165,7 +165,8 @@ export const mockInventoryRepository: InventoryRepository = {
           resultingQuantity: item.quantity,
           reason: "manual_add",
           relatedOrderNumber: null,
-          adminName,
+          actor: adminName,
+          note: null,
           createdAt: new Date().toISOString(),
         },
         ...movements,
@@ -203,7 +204,8 @@ export const mockInventoryRepository: InventoryRepository = {
         resultingQuantity,
         reason,
         relatedOrderNumber: null,
-        adminName,
+        actor: adminName,
+        note: null,
         createdAt: new Date().toISOString(),
       },
       ...movements,

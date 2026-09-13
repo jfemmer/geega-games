@@ -45,6 +45,14 @@ export const FINISH_LABELS: Record<CardFinish, string> = {
   foil: "Foil",
   etched: "Etched",
   glossy: "Glossy",
+  ripple: "Ripple",
+  surge: "Surge",
+  rainbow: "Rainbow",
+  galaxy: "Galaxy",
+  textured: "Textured",
+  mana: "Mana",
+  gilded: "Gilded",
+  halo: "Halo",
 };
 
 export const TREATMENT_LABELS: Record<PrintingTreatment, string> = {
@@ -87,15 +95,25 @@ export const RARITY_TONE: Record<CardRarity, BadgeTone> = {
   special: "purple",
 };
 
+/** Null-safe rarity label (legacy rows may have no rarity). */
+export function rarityLabel(rarity: CardRarity | null | undefined): string {
+  return rarity ? RARITY_LABELS[rarity] : "—";
+}
+
+/** Null-safe rarity tone. */
+export function rarityTone(rarity: CardRarity | null | undefined): BadgeTone {
+  return rarity ? RARITY_TONE[rarity] : "neutral";
+}
+
 export const LISTING_STATUS_LABELS: Record<ListingStatus, string> = {
   active: "Active",
-  inactive: "Inactive",
+  reserved: "Reserved",
   archived: "Archived",
 };
 
 export const LISTING_STATUS_TONE: Record<ListingStatus, BadgeTone> = {
   active: "success",
-  inactive: "neutral",
+  reserved: "info",
   archived: "neutral",
 };
 
@@ -237,4 +255,6 @@ export const MOVEMENT_REASON_LABELS: Record<InventoryMovementReason, string> = {
   order_shipped: "Shipped on order",
   order_cancelled: "Order cancelled",
   import: "CSV import",
+  archive: "Archived",
+  restore: "Restored",
 };

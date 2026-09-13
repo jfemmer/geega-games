@@ -33,7 +33,7 @@ describe("inventory repository", () => {
     expect(latest.delta).toBe(3);
     expect(latest.resultingQuantity).toBe(before + 3);
     expect(latest.previousQuantity).toBe(before);
-    expect(latest.adminName).toBe("Test Admin");
+    expect(latest.actor).toBe("Test Admin");
   });
 
   it("never lets quantity go negative", async () => {

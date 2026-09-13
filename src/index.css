@@ -8,7 +8,14 @@
   --violet-grey: #6b6076;
   --line: rgba(76, 42, 133, 0.16);
 
-  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  /*
+   * Typography system (Geega): Inter-first for ALL application content —
+   * page titles, card names, tables, stats, prices, buttons, forms. The serif
+   * (Fraunces) is reserved ONLY for the small brand wordmark, never for
+   * dashboard/storefront content. Keep contrast strong; avoid decorative serif,
+   * tiny text, and low-contrast gray-on-gray.
+   */
+  --serif: "Fraunces", Georgia, "Times New Roman", serif; /* brand wordmark only */
   --sans: "Inter", system-ui, -apple-system, sans-serif;
 }
 

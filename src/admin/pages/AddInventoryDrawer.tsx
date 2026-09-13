@@ -10,7 +10,7 @@ import {
 } from "../components/cards/PrintingPreview";
 import { inventoryRepository } from "../repositories";
 import { useToast } from "../hooks/useToast";
-import { CURRENT_ADMIN } from "../data/session.mock";
+import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { formatCents } from "../utils/format";
 import { CONDITION_LABELS, FINISH_LABELS } from "../utils/labels";
 import type {
@@ -44,6 +44,7 @@ export function AddInventoryDrawer({
   onSaved: () => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
   const [selected, setSelected] = useState<CardPrinting | null>(null);
 
   const [condition, setCondition] = useState<CardCondition>("NM");
@@ -149,7 +150,7 @@ export function AddInventoryDrawer({
           dupe.id,
           qty,
           "manual_add",
-          CURRENT_ADMIN.name,
+          currentAdmin.name,
         );
         toast.success(
           `Added ${qty} to existing stock of ${dupe.cardName} (${condition}, ${FINISH_LABELS[finish]}).`,
@@ -176,7 +177,7 @@ export function AddInventoryDrawer({
             status: "active",
             scryfallPriceCents: refPrice,
           },
-          CURRENT_ADMIN.name,
+          currentAdmin.name,
         );
         toast.success(`Added ${selected.cardName} to inventory.`);
       }

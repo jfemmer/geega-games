@@ -540,7 +540,7 @@ export const INVENTORY_SEED: InventoryItem[] = [
     storageLocation: "Bin B2",
     sku: "MH2-034-HP-NF",
     notes: "Played copy — priced to move.",
-    status: "inactive",
+    status: "reserved",
     scryfallPriceCents: 3899,
     createdAt: daysAgo(33),
     updatedAt: daysAgo(11),
@@ -580,7 +580,8 @@ export const INVENTORY_MOVEMENTS_SEED: InventoryMovement[] = [
     resultingQuantity: 4,
     reason: "order_shipped",
     relatedOrderNumber: "GG-1042",
-    adminName: "Jordan Vega",
+    actor: "Jordan Vega",
+    note: null,
     createdAt: hoursAgo(30),
   },
   {
@@ -592,7 +593,8 @@ export const INVENTORY_MOVEMENTS_SEED: InventoryMovement[] = [
     resultingQuantity: 5,
     reason: "manual_add",
     relatedOrderNumber: null,
-    adminName: "Jordan Vega",
+    actor: "Jordan Vega",
+    note: null,
     createdAt: daysAgo(40),
   },
   {
@@ -604,7 +606,8 @@ export const INVENTORY_MOVEMENTS_SEED: InventoryMovement[] = [
     resultingQuantity: 2,
     reason: "order_shipped",
     relatedOrderNumber: "GG-1039",
-    adminName: "Sam Okafor",
+    actor: "Sam Okafor",
+    note: null,
     createdAt: hoursAgo(10),
   },
   {
@@ -616,7 +619,8 @@ export const INVENTORY_MOVEMENTS_SEED: InventoryMovement[] = [
     resultingQuantity: 0,
     reason: "order_shipped",
     relatedOrderNumber: "GG-1036",
-    adminName: "Sam Okafor",
+    actor: "Sam Okafor",
+    note: null,
     createdAt: daysAgo(1),
   },
   {
@@ -628,7 +632,8 @@ export const INVENTORY_MOVEMENTS_SEED: InventoryMovement[] = [
     resultingQuantity: 12,
     reason: "import",
     relatedOrderNumber: null,
-    adminName: "Riley Chen",
+    actor: "Riley Chen",
+    note: null,
     createdAt: daysAgo(25),
   },
 ];

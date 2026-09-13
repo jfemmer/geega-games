@@ -14,14 +14,15 @@ import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddInventoryDrawer } from "./AddInventoryDrawer";
 import { useAsync } from "../hooks/useAsync";
+import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
 import { inventoryRepository } from "../repositories";
 import { formatCents, formatDateTime, timeAgo } from "../utils/format";
 import {
   CONDITION_LABELS,
   FINISH_LABELS,
-  RARITY_LABELS,
-  RARITY_TONE,
+  rarityLabel,
+  rarityTone,
   LISTING_STATUS_LABELS,
   LISTING_STATUS_TONE,
   MOVEMENT_REASON_LABELS,
@@ -181,7 +182,7 @@ export function InventoryPage({
             <span className="gg-cardcell__name">{r.cardName}</span>
             <span className="gg-cardcell__set">
               {r.setCode} · #{r.collectorNumber} ·{" "}
-              <Badge tone={RARITY_TONE[r.rarity]}>{RARITY_LABELS[r.rarity]}</Badge>
+              <Badge tone={rarityTone(r.rarity)}>{rarityLabel(r.rarity)}</Badge>
             </span>
           </div>
         </div>
@@ -540,6 +541,7 @@ function InventoryDetail({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [adjust, setAdjust] = useState("");
   const [busy, setBusy] = useState(false);
@@ -561,7 +563,7 @@ function InventoryDetail({
         item.id,
         delta,
         delta > 0 ? "manual_add" : "manual_remove",
-        "Jordan Vega",
+        currentAdmin.name,
       );
       toast.success(
         `${delta > 0 ? "Added" : "Removed"} ${Math.abs(delta)} — ${item.cardName}.`,
@@ -617,8 +619,8 @@ function InventoryDetail({
               </span>
             </div>
             <div className="gg-detail__chips">
-              <Badge tone={RARITY_TONE[item.rarity]}>
-                {RARITY_LABELS[item.rarity]}
+              <Badge tone={rarityTone(item.rarity)}>
+                {rarityLabel(item.rarity)}
               </Badge>
               <span className="gg-chip">{CONDITION_LABELS[item.condition]}</span>
               <span className="gg-chip">{FINISH_LABELS[item.finish]}</span>
@@ -730,7 +732,7 @@ function InventoryDetail({
                     </span>
                     <span className="gg-ledger__meta">
                       {mv.previousQuantity} → {mv.resultingQuantity} ·{" "}
-                      {mv.adminName} · {timeAgo(mv.createdAt)}
+                      {mv.actor ?? "System"} · {timeAgo(mv.createdAt)}
                     </span>
                   </span>
                 </li>

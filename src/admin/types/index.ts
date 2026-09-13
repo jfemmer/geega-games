@@ -14,7 +14,22 @@
 
 export type CardCondition = "NM" | "LP" | "MP" | "HP" | "DMG";
 
-export type CardFinish = "nonfoil" | "foil" | "etched" | "glossy";
+// Full finish set as defined by public.card_finish in the live database. The
+// storefront still derives a legacy `foil` boolean for visual effects, but the
+// underlying model retains the exact finish (task: preserve the real finish).
+export type CardFinish =
+  | "nonfoil"
+  | "foil"
+  | "etched"
+  | "glossy"
+  | "ripple"
+  | "surge"
+  | "rainbow"
+  | "galaxy"
+  | "textured"
+  | "mana"
+  | "gilded"
+  | "halo";
 
 export type OrderStatus =
   | "pending_payment"
@@ -58,8 +73,15 @@ export type EmailDeliveryStatus =
  * Inventory
  * ------------------------------------------------------------------ */
 
-export type ListingStatus = "active" | "inactive" | "archived";
+// Matches public.inventory_status in the live database EXACTLY. Do not translate
+// `reserved` to `inactive`: `reserved` means stock held for an open order and is
+// intentionally distinct. Only `active` rows appear on the storefront; `archived`
+// rows are hidden; `reserved` rows are hidden from the storefront but retained.
+export type ListingStatus = "active" | "reserved" | "archived";
 
+// DB `rarity` is nullable free text (legacy rows have no rarity). The mapper
+// normalises known Scryfall rarities to this union and falls back to "common"
+// for display only when the source value is unknown/null.
 export type CardRarity = "common" | "uncommon" | "rare" | "mythic" | "special";
 
 /** A concrete, sellable inventory line: one printing + condition + finish. */
@@ -72,11 +94,14 @@ export interface InventoryItem {
    */
   scryfallId: string | null;
   cardName: string;
-  setName: string;
+  /** Human set name. Legacy rows may only have the set code; null-safe. */
+  setName: string | null;
   setCode: string;
   collectorNumber: string;
-  rarity: CardRarity;
-  cardType: string;
+  /** Null for legacy rows that predate Scryfall resolution. */
+  rarity: CardRarity | null;
+  /** Maps to inventory_items.type_line. Null for unresolved legacy rows. */
+  cardType: string | null;
   imageUrl: string | null;
   condition: CardCondition;
   finish: CardFinish;
@@ -95,6 +120,7 @@ export interface InventoryItem {
   updatedAt: string;
 }
 
+// Matches public.inventory_movement_reason in the live database.
 export type InventoryMovementReason =
   | "manual_add"
   | "manual_remove"
@@ -104,9 +130,16 @@ export type InventoryMovementReason =
   | "order_reserved"
   | "order_shipped"
   | "order_cancelled"
-  | "import";
+  | "import"
+  | "archive"
+  | "restore";
 
-/** Append-only ledger entry — the model the real DB will use. */
+/**
+ * Append-only ledger entry. Mirrors public.inventory_movements. `actor` is the
+ * signed-in staff member's display name/email (DB column `actor`), replacing the
+ * old mock `adminName`. `note` carries optional free text (e.g. adjustment
+ * reason). This is now the LIVE model, not a placeholder.
+ */
 export interface InventoryMovement {
   id: string;
   inventoryItemId: string;
@@ -117,7 +150,9 @@ export interface InventoryMovement {
   resultingQuantity: number;
   reason: InventoryMovementReason;
   relatedOrderNumber: string | null;
-  adminName: string;
+  /** Acting staff member (display name or email). DB column: actor. */
+  actor: string | null;
+  note: string | null;
   createdAt: string;
 }
 

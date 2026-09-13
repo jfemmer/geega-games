@@ -12,6 +12,17 @@
 // Committing reuses mockInventoryRepository so scan-created inventory flows
 // through the SAME movement ledger as manual adds (reason: scan_add /
 // batch_scan_add), keeping one audit trail.
+//
+// ⚠️  PHASE BOUNDARY (card/inventory cutover): this whole repository is STILL
+// MOCKED and is intentionally bound to mockInventoryRepository in
+// repositories/index.ts — it writes to in-memory mock inventory ONLY, never to
+// the production Supabase inventory. The OCR recognition pipeline (Ricoh
+// fi-8170) is not built yet. When the real scan pipeline lands, its commit path
+// must call the LIVE inventory writes (supabaseInventoryRepository.create /
+// adjustQuantity, which POST to /api/admin/inventory/*) so committed scans land
+// in public.inventory_items with scan_add / batch_scan_add movements — do NOT
+// point real scan commits at the mock. Until then this stays isolated so it can
+// never introduce fake writes into production inventory.
 
 import type {
   BatchCommitPreview,

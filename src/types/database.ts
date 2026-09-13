@@ -4,7 +4,10 @@
 // (or via the Supabase MCP generate_typescript_types tool)
 //
 // This file is the single source of truth for DB types used by both the
-// browser client and the server-side admin client.
+// browser client and the server-side admin client. It reflects the LIVE schema
+// (migrations 0001-0014 plus the additive inventory production migrations
+// 20260911000000 / 20260911000100): inventory_items, inventory_movements, the
+// inventory_public storefront view, and the admin_* / search_inventory RPCs.
 
 export type Json =
   | string
@@ -12,226 +15,1477 @@ export type Json =
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
 export type Database = {
   __InternalSupabase: {
-    PostgrestVersion: "14.5";
-  };
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
+      addresses: {
+        Row: {
+          city: string
+          country: string
+          created_at: string
+          id: string
+          is_default: boolean
+          label: string | null
+          legacy_mongo_id: string | null
+          line1: string
+          line2: string | null
+          phone: string | null
+          postal_code: string
+          recipient: string | null
+          state: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          city: string
+          country?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label?: string | null
+          legacy_mongo_id?: string | null
+          line1: string
+          line2?: string | null
+          phone?: string | null
+          postal_code: string
+          recipient?: string | null
+          state: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          city?: string
+          country?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label?: string | null
+          legacy_mongo_id?: string | null
+          line1?: string
+          line2?: string | null
+          phone?: string | null
+          postal_code?: string
+          recipient?: string | null
+          state?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      card_printings: {
+        Row: {
+          artist: string | null
+          available_finishes: string[]
+          border_color: string | null
+          card_name: string
+          card_type: string | null
+          collector_number: string
+          created_at: string
+          faces: Json | null
+          frame: string | null
+          frame_effects: string[]
+          full_art: boolean
+          images: Json | null
+          language: string | null
+          layout: string | null
+          oracle_id: string | null
+          price_usd_cents: number | null
+          price_usd_etched_cents: number | null
+          price_usd_foil_cents: number | null
+          prices_updated_at: string | null
+          promo: boolean
+          promo_types: string[]
+          rarity: string | null
+          released_at: string | null
+          scryfall_id: string
+          set_code: string
+          set_name: string | null
+          textless: boolean
+          treatments: string[]
+          updated_at: string
+        }
+        Insert: {
+          artist?: string | null
+          available_finishes?: string[]
+          border_color?: string | null
+          card_name: string
+          card_type?: string | null
+          collector_number: string
+          created_at?: string
+          faces?: Json | null
+          frame?: string | null
+          frame_effects?: string[]
+          full_art?: boolean
+          images?: Json | null
+          language?: string | null
+          layout?: string | null
+          oracle_id?: string | null
+          price_usd_cents?: number | null
+          price_usd_etched_cents?: number | null
+          price_usd_foil_cents?: number | null
+          prices_updated_at?: string | null
+          promo?: boolean
+          promo_types?: string[]
+          rarity?: string | null
+          released_at?: string | null
+          scryfall_id: string
+          set_code: string
+          set_name?: string | null
+          textless?: boolean
+          treatments?: string[]
+          updated_at?: string
+        }
+        Update: {
+          artist?: string | null
+          available_finishes?: string[]
+          border_color?: string | null
+          card_name?: string
+          card_type?: string | null
+          collector_number?: string
+          created_at?: string
+          faces?: Json | null
+          frame?: string | null
+          frame_effects?: string[]
+          full_art?: boolean
+          images?: Json | null
+          language?: string | null
+          layout?: string | null
+          oracle_id?: string | null
+          price_usd_cents?: number | null
+          price_usd_etched_cents?: number | null
+          price_usd_foil_cents?: number | null
+          prices_updated_at?: string | null
+          promo?: boolean
+          promo_types?: string[]
+          rarity?: string | null
+          released_at?: string | null
+          scryfall_id?: string
+          set_code?: string
+          set_name?: string | null
+          textless?: boolean
+          treatments?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cards: {
         Row: {
-          condition: string;
-          created_at: string;
-          foil: boolean;
-          id: number;
-          image_url: string | null;
-          name: string;
-          price_usd: number;
-          quantity: number;
-          set: string | null;
-          type: string | null;
-        };
+          condition: string
+          created_at: string
+          foil: boolean
+          id: number
+          image_url: string | null
+          name: string
+          price_usd: number
+          quantity: number
+          set: string | null
+          type: string | null
+        }
         Insert: {
-          condition?: string;
-          created_at?: string;
-          foil?: boolean;
-          id?: never;
-          image_url?: string | null;
-          name: string;
-          price_usd?: number;
-          quantity?: number;
-          set?: string | null;
-          type?: string | null;
-        };
+          condition?: string
+          created_at?: string
+          foil?: boolean
+          id?: never
+          image_url?: string | null
+          name: string
+          price_usd?: number
+          quantity?: number
+          set?: string | null
+          type?: string | null
+        }
         Update: {
-          condition?: string;
-          created_at?: string;
-          foil?: boolean;
-          id?: never;
-          image_url?: string | null;
-          name?: string;
-          price_usd?: number;
-          quantity?: number;
-          set?: string | null;
-          type?: string | null;
-        };
-        Relationships: [];
-      };
-      newsletter_subscribers: {
+          condition?: string
+          created_at?: string
+          foil?: boolean
+          id?: never
+          image_url?: string | null
+          name?: string
+          price_usd?: number
+          quantity?: number
+          set?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
+      cart_items: {
         Row: {
-          confirmation_expires_at: string | null;
-          confirmation_sent_at: string | null;
-          confirmation_token_hash: string | null;
-          confirmed_at: string | null;
-          created_at: string;
-          email: string;
-          id: string;
-          last_bounce_reason: string | null;
-          source: string;
-          status: Database["public"]["Enums"]["subscriber_status"];
-          unsubscribe_token_hash: string | null;
-          unsubscribed_at: string | null;
-          updated_at: string;
-        };
+          cart_id: string
+          created_at: string
+          id: string
+          inventory_item_id: string
+          quantity: number
+          updated_at: string
+        }
         Insert: {
-          confirmation_expires_at?: string | null;
-          confirmation_sent_at?: string | null;
-          confirmation_token_hash?: string | null;
-          confirmed_at?: string | null;
-          created_at?: string;
-          email: string;
-          id?: string;
-          last_bounce_reason?: string | null;
-          source?: string;
-          status?: Database["public"]["Enums"]["subscriber_status"];
-          unsubscribe_token_hash?: string | null;
-          unsubscribed_at?: string | null;
-          updated_at?: string;
-        };
+          cart_id: string
+          created_at?: string
+          id?: string
+          inventory_item_id: string
+          quantity: number
+          updated_at?: string
+        }
         Update: {
-          confirmation_expires_at?: string | null;
-          confirmation_sent_at?: string | null;
-          confirmation_token_hash?: string | null;
-          confirmed_at?: string | null;
-          created_at?: string;
-          email?: string;
-          id?: string;
-          last_bounce_reason?: string | null;
-          source?: string;
-          status?: Database["public"]["Enums"]["subscriber_status"];
-          unsubscribe_token_hash?: string | null;
-          unsubscribed_at?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
+          cart_id?: string
+          created_at?: string
+          id?: string
+          inventory_item_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carts: {
+        Row: {
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_deliveries: {
         Row: {
-          bounced_at: string | null;
-          complained_at: string | null;
-          created_at: string;
-          delivered_at: string | null;
-          email_type: string;
-          error_detail: string | null;
-          failed_at: string | null;
-          id: string;
-          idempotency_key: string;
-          order_id: string | null;
-          resend_email_id: string | null;
-          sent_at: string | null;
-          status: Database["public"]["Enums"]["email_delivery_status"];
-          subscriber_id: string | null;
-          suppressed_at: string | null;
-          to_email: string;
-          updated_at: string;
-        };
+          bounced_at: string | null
+          complained_at: string | null
+          created_at: string
+          delivered_at: string | null
+          email_type: string
+          error_detail: string | null
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          order_id: string | null
+          resend_email_id: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["email_delivery_status"]
+          subscriber_id: string | null
+          suppressed_at: string | null
+          to_email: string
+          updated_at: string
+        }
         Insert: {
-          bounced_at?: string | null;
-          complained_at?: string | null;
-          created_at?: string;
-          delivered_at?: string | null;
-          email_type: string;
-          error_detail?: string | null;
-          failed_at?: string | null;
-          id?: string;
-          idempotency_key: string;
-          order_id?: string | null;
-          resend_email_id?: string | null;
-          sent_at?: string | null;
-          status?: Database["public"]["Enums"]["email_delivery_status"];
-          subscriber_id?: string | null;
-          suppressed_at?: string | null;
-          to_email: string;
-          updated_at?: string;
-        };
+          bounced_at?: string | null
+          complained_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          email_type: string
+          error_detail?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          order_id?: string | null
+          resend_email_id?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["email_delivery_status"]
+          subscriber_id?: string | null
+          suppressed_at?: string | null
+          to_email: string
+          updated_at?: string
+        }
         Update: {
-          bounced_at?: string | null;
-          complained_at?: string | null;
-          created_at?: string;
-          delivered_at?: string | null;
-          email_type?: string;
-          error_detail?: string | null;
-          failed_at?: string | null;
-          id?: string;
-          idempotency_key?: string;
-          order_id?: string | null;
-          resend_email_id?: string | null;
-          sent_at?: string | null;
-          status?: Database["public"]["Enums"]["email_delivery_status"];
-          subscriber_id?: string | null;
-          suppressed_at?: string | null;
-          to_email?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      orders: {
+          bounced_at?: string | null
+          complained_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          email_type?: string
+          error_detail?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          order_id?: string | null
+          resend_email_id?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["email_delivery_status"]
+          subscriber_id?: string | null
+          suppressed_at?: string | null
+          to_email?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_deliveries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_deliveries_subscriber_id_fkey"
+            columns: ["subscriber_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_subscribers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_items: {
         Row: {
-          amount_due_cents: number;
-          cancelled_at: string | null;
-          created_at: string;
-          delivered_at: string | null;
-          discount_cents: number;
-          email: string;
-          id: string;
-          paid_at: string | null;
-          payment_provider:
-            | Database["public"]["Enums"]["payment_provider"]
-            | null;
-          payment_reference: string | null;
-          payment_status: Database["public"]["Enums"]["payment_status"];
-          ship_city: string | null;
-          ship_country: string | null;
-          ship_line1: string | null;
-          ship_line2: string | null;
-          ship_postal_code: string | null;
-          ship_recipient: string | null;
-          ship_state: string | null;
-          shipping_cents: number;
-          status: Database["public"]["Enums"]["order_status"];
-          subtotal_cents: number;
-          total_cents: number;
-          updated_at: string;
-          user_id: string;
-        };
-        Insert: { [key: string]: unknown };
-        Update: { [key: string]: unknown };
-        Relationships: [];
-      };
+          card_name: string
+          collector_number: string
+          colors: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          cost_cents: number | null
+          created_at: string
+          creature_types: string[]
+          finish: Database["public"]["Enums"]["card_finish"]
+          foil: boolean | null
+          id: string
+          image_url: string | null
+          language: string
+          legacy_mongo_id: string | null
+          notes: string | null
+          oracle_id: string | null
+          price_cents: number | null
+          quantity: number
+          rarity: string | null
+          scryfall_id: string | null
+          scryfall_price_cents: number | null
+          set_code: string
+          set_name: string | null
+          sku: string | null
+          status: Database["public"]["Enums"]["inventory_status"]
+          storage_location: string | null
+          type_line: string | null
+          updated_at: string
+          variant_type: string
+        }
+        Insert: {
+          card_name: string
+          collector_number: string
+          colors?: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          cost_cents?: number | null
+          created_at?: string
+          creature_types?: string[]
+          finish?: Database["public"]["Enums"]["card_finish"]
+          foil?: boolean | null
+          id?: string
+          image_url?: string | null
+          language?: string
+          legacy_mongo_id?: string | null
+          notes?: string | null
+          oracle_id?: string | null
+          price_cents?: number | null
+          quantity?: number
+          rarity?: string | null
+          scryfall_id?: string | null
+          scryfall_price_cents?: number | null
+          set_code: string
+          set_name?: string | null
+          sku?: string | null
+          status?: Database["public"]["Enums"]["inventory_status"]
+          storage_location?: string | null
+          type_line?: string | null
+          updated_at?: string
+          variant_type?: string
+        }
+        Update: {
+          card_name?: string
+          collector_number?: string
+          colors?: string[]
+          condition?: Database["public"]["Enums"]["card_condition"]
+          cost_cents?: number | null
+          created_at?: string
+          creature_types?: string[]
+          finish?: Database["public"]["Enums"]["card_finish"]
+          foil?: boolean | null
+          id?: string
+          image_url?: string | null
+          language?: string
+          legacy_mongo_id?: string | null
+          notes?: string | null
+          oracle_id?: string | null
+          price_cents?: number | null
+          quantity?: number
+          rarity?: string | null
+          scryfall_id?: string | null
+          scryfall_price_cents?: number | null
+          set_code?: string
+          set_name?: string | null
+          sku?: string | null
+          status?: Database["public"]["Enums"]["inventory_status"]
+          storage_location?: string | null
+          type_line?: string | null
+          updated_at?: string
+          variant_type?: string
+        }
+        Relationships: []
+      }
+      inventory_movements: {
+        Row: {
+          actor: string | null
+          card_name: string
+          created_at: string
+          delta: number
+          id: string
+          inventory_item_id: string
+          note: string | null
+          previous_quantity: number
+          reason: Database["public"]["Enums"]["inventory_movement_reason"]
+          related_order_number: string | null
+          resulting_quantity: number
+        }
+        Insert: {
+          actor?: string | null
+          card_name: string
+          created_at?: string
+          delta: number
+          id?: string
+          inventory_item_id: string
+          note?: string | null
+          previous_quantity: number
+          reason: Database["public"]["Enums"]["inventory_movement_reason"]
+          related_order_number?: string | null
+          resulting_quantity: number
+        }
+        Update: {
+          actor?: string | null
+          card_name?: string
+          created_at?: string
+          delta?: number
+          id?: string
+          inventory_item_id?: string
+          note?: string | null
+          previous_quantity?: number
+          reason?: Database["public"]["Enums"]["inventory_movement_reason"]
+          related_order_number?: string | null
+          resulting_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      newsletter_subscribers: {
+        Row: {
+          confirmation_expires_at: string | null
+          confirmation_sent_at: string | null
+          confirmation_token_hash: string | null
+          confirmed_at: string | null
+          created_at: string
+          email: string
+          id: string
+          last_bounce_reason: string | null
+          source: string
+          status: Database["public"]["Enums"]["subscriber_status"]
+          unsubscribe_token_hash: string | null
+          unsubscribed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          confirmation_expires_at?: string | null
+          confirmation_sent_at?: string | null
+          confirmation_token_hash?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          last_bounce_reason?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["subscriber_status"]
+          unsubscribe_token_hash?: string | null
+          unsubscribed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          confirmation_expires_at?: string | null
+          confirmation_sent_at?: string | null
+          confirmation_token_hash?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          last_bounce_reason?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["subscriber_status"]
+          unsubscribe_token_hash?: string | null
+          unsubscribed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
-          card_name: string;
-          condition: Database["public"]["Enums"]["card_condition"];
-          finish: Database["public"]["Enums"]["card_finish"];
-          id: string;
-          line_total_cents: number;
-          order_id: string;
-          quantity: number;
-          set_name: string | null;
-          unit_price_cents: number;
-        };
-        Insert: { [key: string]: unknown };
-        Update: { [key: string]: unknown };
-        Relationships: [];
-      };
+          card_name: string
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          created_at: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string | null
+          inventory_item_id: string | null
+          line_total_cents: number
+          order_id: string
+          quantity: number
+          scryfall_id: string | null
+          set_code: string | null
+          set_name: string | null
+          unit_price_cents: number
+          variant_type: string
+        }
+        Insert: {
+          card_name: string
+          collector_number?: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          inventory_item_id?: string | null
+          line_total_cents: number
+          order_id: string
+          quantity: number
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          unit_price_cents: number
+          variant_type?: string
+        }
+        Update: {
+          card_name?: string
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"]
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          inventory_item_id?: string | null
+          line_total_cents?: number
+          order_id?: string
+          quantity?: number
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          unit_price_cents?: number
+          variant_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          amount_due_cents: number
+          cancelled_at: string | null
+          created_at: string
+          delivered_at: string | null
+          discount_cents: number
+          email: string
+          id: string
+          legacy_mongo_id: string | null
+          packed_at: string | null
+          paid_at: string | null
+          payment_provider:
+            | Database["public"]["Enums"]["payment_provider"]
+            | null
+          payment_reference: string | null
+          payment_status: Database["public"]["Enums"]["payment_status"]
+          ready_at: string | null
+          ship_city: string | null
+          ship_country: string | null
+          ship_line1: string | null
+          ship_line2: string | null
+          ship_postal_code: string | null
+          ship_recipient: string | null
+          ship_state: string | null
+          shipped_at: string | null
+          shipping_cents: number
+          shipping_method: Database["public"]["Enums"]["shipping_method"]
+          status: Database["public"]["Enums"]["order_status"]
+          store_credit_used_cents: number
+          subtotal_cents: number
+          total_cents: number
+          tracking_carrier: string | null
+          tracking_number: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_due_cents: number
+          cancelled_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          discount_cents?: number
+          email: string
+          id?: string
+          legacy_mongo_id?: string | null
+          packed_at?: string | null
+          paid_at?: string | null
+          payment_provider?:
+            | Database["public"]["Enums"]["payment_provider"]
+            | null
+          payment_reference?: string | null
+          payment_status?: Database["public"]["Enums"]["payment_status"]
+          ready_at?: string | null
+          ship_city?: string | null
+          ship_country?: string | null
+          ship_line1?: string | null
+          ship_line2?: string | null
+          ship_postal_code?: string | null
+          ship_recipient?: string | null
+          ship_state?: string | null
+          shipped_at?: string | null
+          shipping_cents?: number
+          shipping_method: Database["public"]["Enums"]["shipping_method"]
+          status?: Database["public"]["Enums"]["order_status"]
+          store_credit_used_cents?: number
+          subtotal_cents: number
+          total_cents: number
+          tracking_carrier?: string | null
+          tracking_number?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_due_cents?: number
+          cancelled_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          discount_cents?: number
+          email?: string
+          id?: string
+          legacy_mongo_id?: string | null
+          packed_at?: string | null
+          paid_at?: string | null
+          payment_provider?:
+            | Database["public"]["Enums"]["payment_provider"]
+            | null
+          payment_reference?: string | null
+          payment_status?: Database["public"]["Enums"]["payment_status"]
+          ready_at?: string | null
+          ship_city?: string | null
+          ship_country?: string | null
+          ship_line1?: string | null
+          ship_line2?: string | null
+          ship_postal_code?: string | null
+          ship_recipient?: string | null
+          ship_state?: string | null
+          shipped_at?: string | null
+          shipping_cents?: number
+          shipping_method?: Database["public"]["Enums"]["shipping_method"]
+          status?: Database["public"]["Enums"]["order_status"]
+          store_credit_used_cents?: number
+          subtotal_cents?: number
+          total_cents?: number
+          tracking_carrier?: string | null
+          tracking_number?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      payment_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          id: string
+          order_id: string | null
+          payload: Json | null
+          processed_at: string
+          provider: Database["public"]["Enums"]["payment_provider"]
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          id?: string
+          order_id?: string | null
+          payload?: Json | null
+          processed_at?: string
+          provider: Database["public"]["Enums"]["payment_provider"]
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          id?: string
+          order_id?: string | null
+          payload?: Json | null
+          processed_at?: string
+          provider?: Database["public"]["Enums"]["payment_provider"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
-          first_name: string | null;
-          id: string;
-          last_name: string | null;
-        };
-        Insert: { [key: string]: unknown };
-        Update: { [key: string]: unknown };
-        Relationships: [];
-      };
-    };
-    Views: { [key: string]: never };
-    Functions: { [key: string]: never };
+          announcement_notifications: Json
+          created_at: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          legacy_mongo_id: string | null
+          phone: string | null
+          shipping_notifications: Json
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          announcement_notifications?: Json
+          created_at?: string
+          first_name?: string | null
+          id: string
+          last_name?: string | null
+          legacy_mongo_id?: string | null
+          phone?: string | null
+          shipping_notifications?: Json
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          announcement_notifications?: Json
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          legacy_mongo_id?: string | null
+          phone?: string | null
+          shipping_notifications?: Json
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      scanner_jobs: {
+        Row: {
+          attempts: number
+          chosen_collector: string | null
+          chosen_set: string | null
+          chosen_set_name: string | null
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          copyright_year: number | null
+          created_at: string
+          detected_set_code: string | null
+          finish: Database["public"]["Enums"]["card_finish"]
+          finished_at: string | null
+          guessed_name: string | null
+          id: string
+          last_error: string | null
+          legacy_mongo_id: string | null
+          locked_at: string | null
+          name_confidence: number | null
+          ocr_text_bottom: string | null
+          ocr_text_name: string | null
+          original_name: string | null
+          set_code: string | null
+          set_symbol_best_dist: number | null
+          set_symbol_score: number | null
+          status: Database["public"]["Enums"]["scan_job_status"]
+          storage_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          chosen_collector?: string | null
+          chosen_set?: string | null
+          chosen_set_name?: string | null
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"]
+          copyright_year?: number | null
+          created_at?: string
+          detected_set_code?: string | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          finished_at?: string | null
+          guessed_name?: string | null
+          id?: string
+          last_error?: string | null
+          legacy_mongo_id?: string | null
+          locked_at?: string | null
+          name_confidence?: number | null
+          ocr_text_bottom?: string | null
+          ocr_text_name?: string | null
+          original_name?: string | null
+          set_code?: string | null
+          set_symbol_best_dist?: number | null
+          set_symbol_score?: number | null
+          status?: Database["public"]["Enums"]["scan_job_status"]
+          storage_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          chosen_collector?: string | null
+          chosen_set?: string | null
+          chosen_set_name?: string | null
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"]
+          copyright_year?: number | null
+          created_at?: string
+          detected_set_code?: string | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          finished_at?: string | null
+          guessed_name?: string | null
+          id?: string
+          last_error?: string | null
+          legacy_mongo_id?: string | null
+          locked_at?: string | null
+          name_confidence?: number | null
+          ocr_text_bottom?: string | null
+          ocr_text_name?: string | null
+          original_name?: string | null
+          set_code?: string | null
+          set_symbol_best_dist?: number | null
+          set_symbol_score?: number | null
+          status?: Database["public"]["Enums"]["scan_job_status"]
+          storage_key?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      scanner_results: {
+        Row: {
+          auto_ingested: boolean
+          candidates: Json
+          card_name: string | null
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          created_at: string
+          crop_storage_keys: Json
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_storage_key: string | null
+          job_id: string | null
+          ocr: Json
+          overall_score: number | null
+          scryfall_id: string | null
+          set_code: string | null
+        }
+        Insert: {
+          auto_ingested?: boolean
+          candidates?: Json
+          card_name?: string | null
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          created_at?: string
+          crop_storage_keys?: Json
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_storage_key?: string | null
+          job_id?: string | null
+          ocr?: Json
+          overall_score?: number | null
+          scryfall_id?: string | null
+          set_code?: string | null
+        }
+        Update: {
+          auto_ingested?: boolean
+          candidates?: Json
+          card_name?: string | null
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          created_at?: string
+          crop_storage_keys?: Json
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_storage_key?: string | null
+          job_id?: string | null
+          ocr?: Json
+          overall_score?: number | null
+          scryfall_id?: string | null
+          set_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scanner_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "scanner_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scanner_review_queue: {
+        Row: {
+          candidates: Json
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          confidence: number | null
+          corrected_scryfall_id: string | null
+          created_at: string
+          created_inventory_item_id: string | null
+          finish: Database["public"]["Enums"]["card_finish"]
+          guessed_name: string | null
+          id: string
+          image_storage_key: string | null
+          predicted_set: string | null
+          reason: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          result_id: string | null
+          review_hash: string | null
+          status: Database["public"]["Enums"]["scan_review_status"]
+          symbol_match: string | null
+          updated_at: string
+        }
+        Insert: {
+          candidates?: Json
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          confidence?: number | null
+          corrected_scryfall_id?: string | null
+          created_at?: string
+          created_inventory_item_id?: string | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          guessed_name?: string | null
+          id?: string
+          image_storage_key?: string | null
+          predicted_set?: string | null
+          reason?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          result_id?: string | null
+          review_hash?: string | null
+          status?: Database["public"]["Enums"]["scan_review_status"]
+          symbol_match?: string | null
+          updated_at?: string
+        }
+        Update: {
+          candidates?: Json
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          confidence?: number | null
+          corrected_scryfall_id?: string | null
+          created_at?: string
+          created_inventory_item_id?: string | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          guessed_name?: string | null
+          id?: string
+          image_storage_key?: string | null
+          predicted_set?: string | null
+          reason?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          result_id?: string | null
+          review_hash?: string | null
+          status?: Database["public"]["Enums"]["scan_review_status"]
+          symbol_match?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scanner_review_queue_created_inventory_item_id_fkey"
+            columns: ["created_inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scanner_review_queue_created_inventory_item_id_fkey"
+            columns: ["created_inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scanner_review_queue_result_id_fkey"
+            columns: ["result_id"]
+            isOneToOne: false
+            referencedRelation: "scanner_results"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_credit_transactions: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          id: string
+          reason: string | null
+          reference_id: string | null
+          reference_type: string | null
+          type: Database["public"]["Enums"]["store_credit_type"]
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          type: Database["public"]["Enums"]["store_credit_type"]
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          type?: Database["public"]["Enums"]["store_credit_type"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trade_in_items: {
+        Row: {
+          card_name: string
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          created_at: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string | null
+          quantity: number
+          scryfall_id: string | null
+          set_code: string | null
+          set_name: string | null
+          trade_in_id: string
+        }
+        Insert: {
+          card_name: string
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          quantity?: number
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          trade_in_id: string
+        }
+        Update: {
+          card_name?: string
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          quantity?: number
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          trade_in_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_in_items_trade_in_id_fkey"
+            columns: ["trade_in_id"]
+            isOneToOne: false
+            referencedRelation: "trade_ins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_ins: {
+        Row: {
+          created_at: string
+          email: string | null
+          estimated_value_cents: number | null
+          first_name: string | null
+          id: string
+          internal_notes: string | null
+          last_name: string | null
+          legacy_mongo_id: string | null
+          notes: string | null
+          offer_value_cents: number | null
+          phone: string | null
+          source: string | null
+          status: Database["public"]["Enums"]["trade_in_status"]
+          total_cards: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          estimated_value_cents?: number | null
+          first_name?: string | null
+          id?: string
+          internal_notes?: string | null
+          last_name?: string | null
+          legacy_mongo_id?: string | null
+          notes?: string | null
+          offer_value_cents?: number | null
+          phone?: string | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["trade_in_status"]
+          total_cards?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          estimated_value_cents?: number | null
+          first_name?: string | null
+          id?: string
+          internal_notes?: string | null
+          last_name?: string | null
+          legacy_mongo_id?: string | null
+          notes?: string | null
+          offer_value_cents?: number | null
+          phone?: string | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["trade_in_status"]
+          total_cards?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      inventory_public: {
+        Row: {
+          card_name: string | null
+          collector_number: string | null
+          colors: string[] | null
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          creature_types: string[] | null
+          finish: Database["public"]["Enums"]["card_finish"] | null
+          foil: boolean | null
+          id: string | null
+          image_url: string | null
+          language: string | null
+          oracle_id: string | null
+          price_cents: number | null
+          quantity: number | null
+          rarity: string | null
+          scryfall_id: string | null
+          scryfall_price_cents: number | null
+          set_code: string | null
+          set_name: string | null
+          type_line: string | null
+          variant_type: string | null
+        }
+        Insert: {
+          card_name?: string | null
+          collector_number?: string | null
+          colors?: string[] | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          creature_types?: string[] | null
+          finish?: Database["public"]["Enums"]["card_finish"] | null
+          foil?: boolean | null
+          id?: string | null
+          image_url?: string | null
+          language?: string | null
+          oracle_id?: string | null
+          price_cents?: number | null
+          quantity?: number | null
+          rarity?: string | null
+          scryfall_id?: string | null
+          scryfall_price_cents?: number | null
+          set_code?: string | null
+          set_name?: string | null
+          type_line?: string | null
+          variant_type?: string | null
+        }
+        Update: {
+          card_name?: string | null
+          collector_number?: string | null
+          colors?: string[] | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          creature_types?: string[] | null
+          finish?: Database["public"]["Enums"]["card_finish"] | null
+          foil?: boolean | null
+          id?: string | null
+          image_url?: string | null
+          language?: string | null
+          oracle_id?: string | null
+          price_cents?: number | null
+          quantity?: number | null
+          rarity?: string | null
+          scryfall_id?: string | null
+          scryfall_price_cents?: number | null
+          set_code?: string | null
+          set_name?: string | null
+          type_line?: string | null
+          variant_type?: string | null
+        }
+        Relationships: []
+      }
+    }
+    Functions: {
+      admin_adjust_inventory_quantity: {
+        Args: {
+          p_actor?: string
+          p_delta: number
+          p_id: string
+          p_note?: string
+          p_reason: Database["public"]["Enums"]["inventory_movement_reason"]
+        }
+        Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
+      }
+      admin_adjust_store_credit: {
+        Args: { p_amount_cents: number; p_reason?: string; p_user_id: string }
+        Returns: number
+      }
+      admin_inventory_set_codes: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          set_code: string
+        }[]
+      }
+      admin_search_inventory: {
+        Args: {
+          p_condition?: string
+          p_finish?: string
+          p_limit?: number
+          p_low_stock_threshold?: number
+          p_offset?: number
+          p_query?: string
+          p_set_code?: string
+          p_sort?: string
+          p_sort_dir?: string
+          p_status?: string
+          p_stock?: string
+        }
+        Returns: {
+          card_name: string
+          collector_number: string
+          colors: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          cost_cents: number
+          created_at: string
+          creature_types: string[]
+          finish: Database["public"]["Enums"]["card_finish"]
+          foil: boolean
+          id: string
+          image_url: string
+          notes: string
+          oracle_id: string
+          price_cents: number
+          quantity: number
+          rarity: string
+          scryfall_id: string
+          scryfall_price_cents: number
+          set_code: string
+          set_name: string
+          sku: string
+          status: Database["public"]["Enums"]["inventory_status"]
+          storage_location: string
+          total_count: number
+          type_line: string
+          updated_at: string
+          variant_type: string
+        }[]
+      }
+      admin_set_inventory_status: {
+        Args: {
+          p_actor?: string
+          p_id: string
+          p_status: Database["public"]["Enums"]["inventory_status"]
+        }
+        Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
+      }
+      admin_upsert_inventory: {
+        Args: {
+          p_actor?: string
+          p_card_name: string
+          p_collector_number: string
+          p_colors?: string[]
+          p_condition: Database["public"]["Enums"]["card_condition"]
+          p_cost_cents?: number
+          p_creature_types?: string[]
+          p_finish: Database["public"]["Enums"]["card_finish"]
+          p_image_url: string
+          p_language?: string
+          p_notes?: string
+          p_oracle_id: string
+          p_price_cents: number
+          p_quantity: number
+          p_rarity: string
+          p_scryfall_id: string
+          p_scryfall_price_cents?: number
+          p_set_code: string
+          p_set_name: string
+          p_sku?: string
+          p_storage_location?: string
+          p_type_line: string
+          p_variant_type?: string
+        }
+        Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
+      }
+      cancel_unpaid_order: {
+        Args: { p_order_id: string; p_reason?: string }
+        Returns: undefined
+      }
+      checkout_create_order: {
+        Args: {
+          p_ship_city?: string
+          p_ship_country?: string
+          p_ship_line1?: string
+          p_ship_line2?: string
+          p_ship_postal_code?: string
+          p_ship_recipient?: string
+          p_ship_state?: string
+          p_shipping_method: Database["public"]["Enums"]["shipping_method"]
+          p_store_credit_requested_cents?: number
+        }
+        Returns: {
+          amount_due_cents: number
+          order_id: string
+          shipping_cents: number
+          store_credit_used_cents: number
+          subtotal_cents: number
+          total_cents: number
+        }[]
+      }
+      current_app_role: {
+        Args: Record<PropertyKey, never>
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      get_or_create_my_cart: { Args: Record<PropertyKey, never>; Returns: string }
+      inventory_facets: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          creature_types: string[]
+          price_max_cents: number
+          price_min_cents: number
+          rarities: string[]
+          sets: string[]
+        }[]
+      }
+      is_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      is_staff: { Args: Record<PropertyKey, never>; Returns: boolean }
+      mark_order_paid: {
+        Args: {
+          p_order_id: string
+          p_provider: Database["public"]["Enums"]["payment_provider"]
+          p_reference: string
+        }
+        Returns: undefined
+      }
+      my_store_credit_balance: { Args: Record<PropertyKey, never>; Returns: number }
+      search_inventory: {
+        Args: {
+          p_colors?: string[]
+          p_conditions?: Database["public"]["Enums"]["card_condition"][]
+          p_creature_types?: string[]
+          p_finishes?: Database["public"]["Enums"]["card_finish"][]
+          p_in_stock_only?: boolean
+          p_include_archived?: boolean
+          p_limit?: number
+          p_max_price_cents?: number
+          p_min_price_cents?: number
+          p_offset?: number
+          p_query?: string
+          p_rarities?: string[]
+          p_sets?: string[]
+          p_sort?: string
+        }
+        Returns: {
+          card_name: string
+          collector_number: string
+          colors: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          creature_types: string[]
+          finish: Database["public"]["Enums"]["card_finish"]
+          foil: boolean
+          id: string
+          image_url: string
+          oracle_id: string
+          price_cents: number
+          quantity: number
+          rarity: string
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          total_count: number
+          type_line: string
+          variant_type: string
+        }[]
+      }
+      store_credit_balance: { Args: { p_user_id: string }; Returns: number }
+    }
     Enums: {
-      card_condition: "NM" | "LP" | "MP" | "HP" | "DMG";
-      card_finish: "nonfoil" | "foil" | "etched" | "glossy";
+      app_role: "customer" | "staff" | "admin"
+      card_condition: "NM" | "LP" | "MP" | "HP" | "DMG"
+      card_finish:
+        | "nonfoil"
+        | "foil"
+        | "etched"
+        | "glossy"
+        | "ripple"
+        | "surge"
+        | "rainbow"
+        | "galaxy"
+        | "textured"
+        | "mana"
+        | "gilded"
+        | "halo"
       email_delivery_status:
         | "queued"
         | "sent"
@@ -241,7 +1495,20 @@ export type Database = {
         | "delivery_delayed"
         | "suppressed"
         | "failed"
-        | "canceled";
+        | "canceled"
+      inventory_movement_reason:
+        | "manual_add"
+        | "manual_remove"
+        | "correction"
+        | "scan_add"
+        | "batch_scan_add"
+        | "order_reserved"
+        | "order_shipped"
+        | "order_cancelled"
+        | "import"
+        | "archive"
+        | "restore"
+      inventory_status: "active" | "reserved" | "archived"
       order_status:
         | "pending_payment"
         | "paid"
@@ -250,17 +1517,242 @@ export type Database = {
         | "shipped"
         | "delivered"
         | "cancelled"
-        | "refunded";
-      payment_provider: "stripe" | "paypal" | "store_credit" | "manual";
-      payment_status: "unpaid" | "processing" | "paid" | "refunded" | "failed";
+        | "refunded"
+      payment_provider: "stripe" | "paypal" | "store_credit" | "manual"
+      payment_status: "unpaid" | "processing" | "paid" | "refunded" | "failed"
+      scan_job_status: "queued" | "processing" | "done" | "failed"
+      scan_review_status: "pending" | "approved" | "corrected" | "rejected"
+      shipping_method: "tracked" | "pwe"
+      store_credit_type:
+        | "opening_balance"
+        | "admin_adjustment"
+        | "order_spend"
+        | "order_refund"
+        | "trade_in_payout"
       subscriber_status:
         | "pending"
         | "active"
         | "unsubscribed"
         | "bounced"
         | "complained"
-        | "suppressed";
-    };
-    CompositeTypes: { [key: string]: never };
-  };
-};
+        | "suppressed"
+      trade_in_status:
+        | "new"
+        | "received"
+        | "evaluating"
+        | "offer_made"
+        | "accepted"
+        | "paid_out"
+        | "rejected"
+        | "cancelled"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      app_role: ["customer", "staff", "admin"],
+      card_condition: ["NM", "LP", "MP", "HP", "DMG"],
+      card_finish: [
+        "nonfoil",
+        "foil",
+        "etched",
+        "glossy",
+        "ripple",
+        "surge",
+        "rainbow",
+        "galaxy",
+        "textured",
+        "mana",
+        "gilded",
+        "halo",
+      ],
+      email_delivery_status: [
+        "queued",
+        "sent",
+        "delivered",
+        "bounced",
+        "complained",
+        "delivery_delayed",
+        "suppressed",
+        "failed",
+        "canceled",
+      ],
+      inventory_movement_reason: [
+        "manual_add",
+        "manual_remove",
+        "correction",
+        "scan_add",
+        "batch_scan_add",
+        "order_reserved",
+        "order_shipped",
+        "order_cancelled",
+        "import",
+        "archive",
+        "restore",
+      ],
+      inventory_status: ["active", "reserved", "archived"],
+      order_status: [
+        "pending_payment",
+        "paid",
+        "packing",
+        "ready_to_ship",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "refunded",
+      ],
+      payment_provider: ["stripe", "paypal", "store_credit", "manual"],
+      payment_status: ["unpaid", "processing", "paid", "refunded", "failed"],
+      scan_job_status: ["queued", "processing", "done", "failed"],
+      scan_review_status: ["pending", "approved", "corrected", "rejected"],
+      shipping_method: ["tracked", "pwe"],
+      store_credit_type: [
+        "opening_balance",
+        "admin_adjustment",
+        "order_spend",
+        "order_refund",
+        "trade_in_payout",
+      ],
+      subscriber_status: [
+        "pending",
+        "active",
+        "unsubscribed",
+        "bounced",
+        "complained",
+        "suppressed",
+      ],
+      trade_in_status: [
+        "new",
+        "received",
+        "evaluating",
+        "offer_made",
+        "accepted",
+        "paid_out",
+        "rejected",
+        "cancelled",
+      ],
+    },
+  },
+} as const
