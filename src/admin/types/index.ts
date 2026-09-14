@@ -519,6 +519,43 @@ export interface Customer {
   subscriberStatus: SubscriberStatus | null;
 }
 
+/* ------------------------------------------------------------------ *
+ * Reservations (per-line, per-customer stock holds)
+ * ------------------------------------------------------------------ */
+
+/** One active reservation, enriched with customer + card fields for the UI. */
+export interface Reservation {
+  id: string;
+  inventoryItemId: string;
+  customerId: string;
+  customerEmail: string;
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  quantity: number;
+  note: string | null;
+  reservedBy: string | null;
+  reservedAt: string;
+  cardName: string;
+  setCode: string;
+  setName: string | null;
+  collectorNumber: string;
+  condition: CardCondition;
+  finish: CardFinish;
+  imageUrl: string | null;
+  /** Physical on-hand quantity of the underlying inventory line. */
+  onHand: number;
+}
+
+/** Active reservations grouped under one customer (Reserved tab). */
+export interface CustomerReservations {
+  customerId: string;
+  customerEmail: string;
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  totalQuantity: number;
+  reservations: Reservation[];
+}
+
 export type StaffRole = "owner" | "administrator" | "fulfillment" | "inventory";
 
 export interface StaffActivity {

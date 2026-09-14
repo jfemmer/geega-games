@@ -17,6 +17,7 @@ import type {
   CardScan,
   Customer,
   CustomerQuery,
+  CustomerReservations,
   DateRangeKey,
   InventoryItem,
   InventoryMovement,
@@ -26,6 +27,7 @@ import type {
   OrderQuery,
   OverviewMetrics,
   Page,
+  Reservation,
   ScanQuery,
   ScanReviewPatch,
   ScanSession,
@@ -282,15 +284,60 @@ export interface CampaignRepository {
       | "clickCount"
     > & { id?: string },
   ): Promise<Campaign>;
-  /** Mock send — never sends real email; simulates queue -> sent. */
+  /**
+   * Sending real campaigns is intentionally NOT enabled yet (see the live
+   * repository). This exists to satisfy the interface; the live implementation
+   * throws a clear "not enabled" error rather than faking a successful send.
+   */
   send(id: string): Promise<Campaign>;
   cancel(id: string): Promise<Campaign>;
+  /** LIVE recipient count for an audience (no hardcoded figures). */
   recipientCount(audience: Campaign["audience"]): Promise<number>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Reservations — per-line, per-customer stock holds
+ * ------------------------------------------------------------------ */
+
+export interface ReservationRepository {
+  /** All active reservations grouped by customer (Reserved tab). */
+  listGrouped(): Promise<CustomerReservations[]>;
+  /** Flat list of active reservations for one inventory line. */
+  listForItem(inventoryItemId: string): Promise<Reservation[]>;
+  /**
+   * Create a hold. The server locks the inventory row and rejects the request
+   * (409) when the requested quantity exceeds current availability, so this
+   * can never overbook.
+   */
+  create(input: {
+    inventoryItemId: string;
+    customerId: string;
+    quantity: number;
+    note?: string | null;
+  }): Promise<void>;
+  /** Release one reservation, fully or by a specific quantity. */
+  release(reservationId: string, quantity?: number): Promise<void>;
+  /** Release ALL active reservations for a customer (optionally one line). */
+  releaseAllForCustomer(
+    customerId: string,
+    inventoryItemId?: string,
+  ): Promise<number>;
 }
 
 export interface UserRepository {
   listCustomers(query: CustomerQuery): Promise<Customer[]>;
   getCustomer(id: string): Promise<Customer | null>;
+  /**
+   * Manually add (or link) a customer by email. Never duplicates, never
+   * subscribes to marketing, never creates an Auth account. Returns the
+   * customer plus whether a brand-new record was created (vs linked to an
+   * existing one) so the UI can show the right message.
+   */
+  addCustomer(input: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  }): Promise<{ customer: Customer; created: boolean }>;
   setCustomerStatus(
     id: string,
     status: Customer["accountStatus"],

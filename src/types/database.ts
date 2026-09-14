@@ -173,6 +173,72 @@ export type Database = {
         }
         Relationships: []
       }
+      campaigns: {
+        Row: {
+          audience: Database["public"]["Enums"]["campaign_audience"]
+          body: string
+          bounce_count: number
+          button_text: string | null
+          button_url: string | null
+          click_count: number | null
+          created_at: string
+          created_by: string | null
+          delivered_count: number
+          id: string
+          name: string
+          open_count: number | null
+          preview_text: string
+          recipient_count: number
+          scheduled_at: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["campaign_status"]
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: Database["public"]["Enums"]["campaign_audience"]
+          body?: string
+          bounce_count?: number
+          button_text?: string | null
+          button_url?: string | null
+          click_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          id?: string
+          name: string
+          open_count?: number | null
+          preview_text?: string
+          recipient_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: Database["public"]["Enums"]["campaign_audience"]
+          body?: string
+          bounce_count?: number
+          button_text?: string | null
+          button_url?: string | null
+          click_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          id?: string
+          name?: string
+          open_count?: number | null
+          preview_text?: string
+          recipient_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cards: {
         Row: {
           condition: string
@@ -279,6 +345,42 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      customers: {
+        Row: {
+          auth_user_id: string | null
+          created_at: string
+          email: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          source: Database["public"]["Enums"]["customer_source"]
+          status: Database["public"]["Enums"]["account_status"]
+          updated_at: string
+        }
+        Insert: {
+          auth_user_id?: string | null
+          created_at?: string
+          email: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          source?: Database["public"]["Enums"]["customer_source"]
+          status?: Database["public"]["Enums"]["account_status"]
+          updated_at?: string
+        }
+        Update: {
+          auth_user_id?: string | null
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          source?: Database["public"]["Enums"]["customer_source"]
+          status?: Database["public"]["Enums"]["account_status"]
+          updated_at?: string
         }
         Relationships: []
       }
@@ -503,6 +605,66 @@ export type Database = {
             columns: ["inventory_item_id"]
             isOneToOne: false
             referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_reservations: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          inventory_item_id: string
+          note: string | null
+          quantity: number
+          released_at: string | null
+          released_by: string | null
+          reserved_at: string
+          reserved_by: string | null
+          status: Database["public"]["Enums"]["reservation_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          inventory_item_id: string
+          note?: string | null
+          quantity: number
+          released_at?: string | null
+          released_by?: string | null
+          reserved_at?: string
+          reserved_by?: string | null
+          status?: Database["public"]["Enums"]["reservation_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          inventory_item_id?: string
+          note?: string | null
+          quantity?: number
+          released_at?: string | null
+          released_by?: string | null
+          reserved_at?: string
+          reserved_by?: string | null
+          status?: Database["public"]["Enums"]["reservation_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_reservations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
             referencedColumns: ["id"]
           },
         ]
@@ -1288,6 +1450,89 @@ export type Database = {
         }
         Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
       }
+      admin_create_reservation: {
+        Args: {
+          p_customer_id: string
+          p_inventory_item_id: string
+          p_note?: string
+          p_quantity: number
+          p_reserved_by?: string
+        }
+        Returns: Database["public"]["Tables"]["inventory_reservations"]["Row"]
+      }
+      admin_customer_list: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          auth_user_id: string
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          last_order_at: string
+          last_sign_in_at: string
+          lifetime_spend_cents: number
+          order_count: number
+          source: Database["public"]["Enums"]["customer_source"]
+          status: Database["public"]["Enums"]["account_status"]
+          subscriber_status: Database["public"]["Enums"]["subscriber_status"]
+        }[]
+      }
+      admin_list_reservations: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          card_name: string
+          collector_number: string
+          condition: Database["public"]["Enums"]["card_condition"]
+          customer_email: string
+          customer_first: string
+          customer_id: string
+          customer_last: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          image_url: string
+          inventory_item_id: string
+          note: string
+          on_hand: number
+          quantity: number
+          reservation_id: string
+          reserved_at: string
+          reserved_by: string
+          set_code: string
+          set_name: string
+        }[]
+      }
+      admin_release_customer_reservations: {
+        Args: {
+          p_customer_id: string
+          p_inventory_item_id?: string
+          p_released_by?: string
+        }
+        Returns: number
+      }
+      admin_release_reservation: {
+        Args: {
+          p_quantity?: number
+          p_released_by?: string
+          p_reservation_id: string
+        }
+        Returns: Database["public"]["Tables"]["inventory_reservations"]["Row"]
+      }
+      admin_upsert_customer: {
+        Args: {
+          p_auth_user_id?: string
+          p_email: string
+          p_first_name?: string
+          p_last_name?: string
+          p_source?: Database["public"]["Enums"]["customer_source"]
+        }
+        Returns: Database["public"]["Tables"]["customers"]["Row"]
+      }
+      campaign_audience_count: {
+        Args: {
+          p_audience: Database["public"]["Enums"]["campaign_audience"]
+        }
+        Returns: number
+      }
       admin_adjust_store_credit: {
         Args: { p_amount_cents: number; p_reason?: string; p_user_id: string }
         Returns: number
@@ -1468,11 +1713,31 @@ export type Database = {
           variant_type: string
         }[]
       }
+      reserved_quantity: { Args: { p_inventory_item_id: string }; Returns: number }
       store_credit_balance: { Args: { p_user_id: string }; Returns: number }
     }
     Enums: {
+      account_status: "active" | "disabled"
       app_role: "customer" | "staff" | "admin"
+      campaign_audience:
+        | "active_subscribers"
+        | "confirmed_recent"
+        | "all_customers"
+      campaign_status:
+        | "draft"
+        | "queued"
+        | "sending"
+        | "sent"
+        | "failed"
+        | "cancelled"
       card_condition: "NM" | "LP" | "MP" | "HP" | "DMG"
+      customer_source:
+        | "manual"
+        | "newsletter"
+        | "account_signup"
+        | "checkout"
+        | "import"
+      reservation_status: "active" | "released" | "fulfilled"
       card_finish:
         | "nonfoil"
         | "foil"
@@ -1672,7 +1937,29 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      account_status: ["active", "disabled"],
       app_role: ["customer", "staff", "admin"],
+      campaign_audience: [
+        "active_subscribers",
+        "confirmed_recent",
+        "all_customers",
+      ],
+      campaign_status: [
+        "draft",
+        "queued",
+        "sending",
+        "sent",
+        "failed",
+        "cancelled",
+      ],
+      customer_source: [
+        "manual",
+        "newsletter",
+        "account_signup",
+        "checkout",
+        "import",
+      ],
+      reservation_status: ["active", "released", "fulfilled"],
       card_condition: ["NM", "LP", "MP", "HP", "DMG"],
       card_finish: [
         "nonfoil",

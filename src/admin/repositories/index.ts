@@ -1,6 +1,6 @@
 // Single place the app resolves its repositories.
 //
-// ── DATA SOURCE STATUS (Card/Inventory production cutover) ─────────────────
+// ── DATA SOURCE STATUS (production) ────────────────────────────────────────
 // LIVE (real Supabase + Vercel + Scryfall):
 //   • Supabase authentication (AdminAuthGate)
 //   • Scryfall lookup .................. liveScryfallRepository (/api/admin/scryfall)
@@ -8,15 +8,24 @@
 //     movements, storefront catalog) ... supabaseInventoryRepository
 //                                        (reads: RLS + admin_search_inventory RPC;
 //                                         writes: /api/admin/inventory/* functions)
+//   • Reservations (per-line, per-customer
+//     holds; storefront availability) .. supabaseReservationRepository
+//                                        (reads: admin_list_reservations RPC;
+//                                         writes: /api/admin/reservations/*)
+//   • Customers + Staff (Users page) ... supabaseUserRepository
+//                                        (customers: admin_customer_list RPC +
+//                                         /api/admin/customers/*; staff: Auth
+//                                         Admin API via /api/admin/staff/*)
+//   • Campaigns / announcements ........ supabaseCampaignRepository
+//                                        (reads: public.campaigns RLS;
+//                                         writes: /api/admin/campaigns/*).
+//                                        Sending is NOT enabled — send() throws
+//                                        rather than faking delivery stats.
 //
-// STILL MOCKED (intentionally, for a later phase):
+// STILL MOCKED (intentionally, outside this phase's scope):
 //   • Orders ........................... mockOrderRepository
-//   • Campaigns / announcements ........ mockCampaignRepository
-//   • Customers / staff / users ........ mockUserRepository
 //   • Analytics / trends / metrics ..... mockAnalyticsRepository
-//   • Scan sessions / batch ingest ..... mockScanRepository (OCR is a stub; when a
-//                                        scan is committed it must target the LIVE
-//                                        inventory — see scan.mock TODO boundary)
+//   • Scan sessions / batch ingest ..... mockScanRepository (OCR is a stub)
 //   • Card recognition (OCR) ........... stubRecognitionProvider
 //
 // No component or page imports a mock directly — they all import from here, so
@@ -27,9 +36,13 @@ import {
   mockCampaignRepository,
   mockInventoryRepository,
   mockOrderRepository,
+  mockReservationRepository,
   mockUserRepository,
 } from "./mock";
 import { supabaseInventoryRepository } from "./inventory.supabase";
+import { supabaseUserRepository } from "./user.supabase";
+import { supabaseCampaignRepository } from "./campaign.supabase";
+import { supabaseReservationRepository } from "./reservation.supabase";
 import { mockScryfallRepository } from "./scryfall.mock";
 import { liveScryfallRepository } from "./scryfall.live";
 import { mockScanRepository } from "./scan.mock";
@@ -41,6 +54,7 @@ import type {
   CardRecognitionProvider,
   InventoryRepository,
   OrderRepository,
+  ReservationRepository,
   ScanRepository,
   ScryfallRepository,
   UserRepository,
@@ -78,10 +92,25 @@ export const scryfallRepository: ScryfallRepository = useLiveScryfall
   ? liveScryfallRepository
   : mockScryfallRepository;
 
+// Users, campaigns, and reservations go LIVE whenever Supabase is configured
+// (same condition as inventory). The mocks remain only as a no-backend fallback
+// for local UI work and are never a silent production path.
+const useLiveData = isSupabaseConfigured;
+
+export const userRepository: UserRepository = useLiveData
+  ? supabaseUserRepository
+  : mockUserRepository;
+
+export const campaignRepository: CampaignRepository = useLiveData
+  ? supabaseCampaignRepository
+  : mockCampaignRepository;
+
+export const reservationRepository: ReservationRepository = useLiveData
+  ? supabaseReservationRepository
+  : mockReservationRepository;
+
 // Still mocked for this phase (see status banner above).
 export const orderRepository: OrderRepository = mockOrderRepository;
-export const campaignRepository: CampaignRepository = mockCampaignRepository;
-export const userRepository: UserRepository = mockUserRepository;
 export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
 export const scanRepository: ScanRepository = mockScanRepository;
 export const recognitionProvider: CardRecognitionProvider =
@@ -96,7 +125,7 @@ if (typeof console !== "undefined") {
       useLiveInventory ? "LIVE (Supabase)" : "mock"
     } · Scryfall source: ${
       useLiveScryfall ? "LIVE (/api/admin/scryfall)" : "mock catalog"
-    }`,
+    } · Users/Campaigns/Reservations: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
   );
 }
 
@@ -106,6 +135,7 @@ export type {
   CardRecognitionProvider,
   InventoryRepository,
   OrderRepository,
+  ReservationRepository,
   ScanRepository,
   ScryfallRepository,
   UserRepository,

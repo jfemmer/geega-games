@@ -42,6 +42,7 @@ import type {
   CampaignRepository,
   InventoryRepository,
   OrderRepository,
+  ReservationRepository,
   UserRepository,
 } from "./types";
 import { mockScryfallRepository } from "./scryfall.mock";
@@ -544,6 +545,8 @@ export const mockOrderRepository: OrderRepository = {
  * Campaigns
  * ------------------------------------------------------------------ */
 
+// Fallback-only audience counts (no Supabase). The LIVE campaign repository
+// derives recipient counts from real newsletter_subscribers / customers rows.
 const AUDIENCE_COUNTS: Record<Campaign["audience"], number> = {
   active_subscribers: 851,
   confirmed_recent: 604,
@@ -578,7 +581,9 @@ export const mockCampaignRepository: CampaignRepository = {
     return delay(campaign, 250);
   },
   async send(id) {
-    // Simulated only — no real email is sent.
+    // Fallback-only (no Supabase). The LIVE campaign repository does NOT send or
+    // simulate; this mock's simulated stats are never used in a configured
+    // runtime. Kept so the no-backend UI remains interactive.
     campaigns = campaigns.map((c) =>
       c.id === id
         ? {
@@ -632,6 +637,30 @@ export const mockUserRepository: UserRepository = {
   async getCustomer(id) {
     return delay(customers.find((c) => c.id === id) ?? null, 150);
   },
+  async addCustomer({ email, firstName, lastName }) {
+    const normalized = email.trim().toLowerCase();
+    const existing = customers.find(
+      (c) => c.email.toLowerCase() === normalized,
+    );
+    if (existing) {
+      return delay({ customer: existing, created: false }, 200);
+    }
+    const customer: Customer = {
+      id: mockId("cus"),
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: normalized,
+      createdAt: new Date().toISOString(),
+      lastSignInAt: null,
+      orderCount: 0,
+      lifetimeSpendCents: 0,
+      lastOrderAt: null,
+      accountStatus: "active",
+      subscriberStatus: null,
+    };
+    customers = [customer, ...customers];
+    return delay({ customer, created: true }, 250);
+  },
   async setCustomerStatus(id, status) {
     customers = customers.map((c) =>
       c.id === id ? { ...c, accountStatus: status } : c,
@@ -662,6 +691,30 @@ export const mockUserRepository: UserRepository = {
   async setStaffStatus(id, status) {
     staff = staff.map((s) => (s.id === id ? { ...s, status } : s));
     return delay(staff.find((s) => s.id === id)!, 200);
+  },
+};
+
+/* ------------------------------------------------------------------ *
+ * Reservations (in-memory fallback for local/dev with no Supabase)
+ * ------------------------------------------------------------------ */
+
+export const mockReservationRepository: ReservationRepository = {
+  async listGrouped() {
+    return delay([], 150);
+  },
+  async listForItem() {
+    return delay([], 120);
+  },
+  async create() {
+    throw new Error(
+      "Reservations require a configured Supabase backend. Configure Supabase to reserve stock.",
+    );
+  },
+  async release() {
+    throw new Error("Reservations require a configured Supabase backend.");
+  },
+  async releaseAllForCustomer() {
+    throw new Error("Reservations require a configured Supabase backend.");
   },
 };
 

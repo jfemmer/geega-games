@@ -154,6 +154,20 @@ function finishIsFoilLike(finish: string | null): boolean {
   return !!finish && finish !== "nonfoil";
 }
 
+/**
+ * The SELLABLE quantity of an inventory line: physical on-hand minus the sum of
+ * ACTIVE reservation quantities, floored at zero. This mirrors the semantics of
+ * the `inventory_public` view (which does the same subtraction in SQL) and is
+ * exported so the invariant is unit-testable: reserved copies are NEVER counted
+ * as available on the storefront.
+ */
+export function sellableQuantity(
+  onHand: number,
+  activeReservedQuantity: number,
+): number {
+  return Math.max(0, onHand - Math.max(0, activeReservedQuantity));
+}
+
 /** Pure transform of an inventory_public row → storefront Card. Exported for tests. */
 export function mapInventoryPublicRow(row: InventoryPublicRow): Card {
   const priceCents = row.price_cents ?? 0;

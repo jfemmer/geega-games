@@ -4,7 +4,7 @@ import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Icon } from "../components/ui/Icon";
-import { SearchInput, SelectField } from "../components/ui/Field";
+import { SearchInput, SelectField, TextField } from "../components/ui/Field";
 import { DataTable, type Column } from "../components/ui/DataTable";
 import { InventoryCardImage } from "../components/cards/InventoryCardImage";
 import { CardPrintingBadges } from "../components/cards/CardPrintingBadges";
@@ -17,8 +17,12 @@ import { EditInventoryDrawer } from "./EditInventoryDrawer";
 import { useAsync } from "../hooks/useAsync";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
-import { inventoryRepository } from "../repositories";
-import { formatCents, formatDateTime, timeAgo } from "../utils/format";
+import {
+  inventoryRepository,
+  reservationRepository,
+  userRepository,
+} from "../repositories";
+import { formatCents, formatDateTime, timeAgo, fullName } from "../utils/format";
 import {
   CONDITION_LABELS,
   FINISH_LABELS,
@@ -31,6 +35,8 @@ import {
 import type {
   CardCondition,
   CardFinish,
+  Customer,
+  CustomerReservations,
   InventoryItem,
   InventoryMovement,
   InventoryQuery,
@@ -44,7 +50,9 @@ const PAGE_SIZE = 10;
  * never downloads rows it will only hide:
  *   in_stock     → status active, quantity > 0   (default working set)
  *   out_of_stock → status active, quantity == 0  (restock queue)
- *   reserved     → status reserved               (held for open orders)
+ *   reserved     → a USER-CENTRIC view of active reservations (own component,
+ *                  NOT an inventory_items query — reservations are a separate,
+ *                  quantity-aware model layered on top of physical stock)
  *   archived     → status archived               (reversible, history kept)
  */
 type InventoryTab = "in_stock" | "out_of_stock" | "reserved" | "archived";
@@ -59,7 +67,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { key: "in_stock", label: "In Stock", status: "active", stock: "in" },
   { key: "out_of_stock", label: "Out of Stock", status: "active", stock: "out" },
-  { key: "reserved", label: "Reserved", status: "reserved", stock: "all" },
+  { key: "reserved", label: "Reserved", status: "active", stock: "all" },
   { key: "archived", label: "Archived", status: "archived", stock: "all" },
 ];
 
@@ -92,6 +100,7 @@ export function InventoryPage({
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<InventoryItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
+  const [reserveTarget, setReserveTarget] = useState<InventoryItem | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   const setCodes = useAsync(() => inventoryRepository.setCodes(), []);
@@ -128,7 +137,13 @@ export function InventoryPage({
     ],
   );
 
-  const inv = useAsync(() => inventoryRepository.list(q), [q]);
+  const inv = useAsync(
+    () =>
+      tab === "reserved"
+        ? Promise.resolve({ rows: [], total: 0 })
+        : inventoryRepository.list(q),
+    [q, tab],
+  );
 
   // Reset to page 1 when filters or the tab change.
   useEffect(() => {
@@ -377,6 +392,9 @@ export function InventoryPage({
         ))}
       </div>
 
+      {tab === "reserved" ? (
+        <ReservedView onNavigate={onNavigate} />
+      ) : (
       <SectionCard title="">
         <div className="gg-filters">
           <SearchInput
@@ -498,6 +516,7 @@ export function InventoryPage({
           </>
         )}
       </SectionCard>
+      )}
 
       <AddInventoryDrawer
         open={addOpen}
@@ -529,6 +548,7 @@ export function InventoryPage({
         onEdit={(it) => setEditItem(it)}
         onArchive={(it) => setArchiveTarget(it)}
         onDelete={(it) => setDeleteTarget(it)}
+        onReserve={(it) => setReserveTarget(it)}
         onRestore={async (it) => {
           await inventoryRepository.restore(it.id);
           toast.success(`${it.cardName} restored to active.`);
@@ -629,6 +649,15 @@ export function InventoryPage({
           </p>
         </div>
       </Modal>
+      <ReserveModal
+        item={reserveTarget}
+        open={!!reserveTarget}
+        onClose={() => setReserveTarget(null)}
+        onReserved={() => {
+          if (reserveTarget) refreshDetail(reserveTarget.id);
+          inv.reload();
+        }}
+      />
     </div>
   );
 }
@@ -641,6 +670,7 @@ function InventoryDetail({
   onEdit,
   onArchive,
   onDelete,
+  onReserve,
   onRestore,
   onChanged,
 }: {
@@ -649,6 +679,7 @@ function InventoryDetail({
   onEdit: (item: InventoryItem) => void;
   onArchive: (item: InventoryItem) => void;
   onDelete: (item: InventoryItem) => void;
+  onReserve: (item: InventoryItem) => void;
   onRestore: (item: InventoryItem) => void | Promise<void>;
   onChanged: (id: string) => void;
 }) {
@@ -732,6 +763,15 @@ function InventoryDetail({
                 onClick={() => onArchive(item)}
               >
                 Archive
+              </Button>
+            )}
+            {!isArchived && item.quantity > 0 && (
+              <Button
+                variant="secondary"
+                icon="box"
+                onClick={() => onReserve(item)}
+              >
+                Reserve
               </Button>
             )}
             <Button variant="primary" icon="edit" onClick={() => onEdit(item)}>
@@ -887,6 +927,387 @@ function InventoryDetail({
             </ul>
           )}
         </div>
+      </div>
+    </Modal>
+  );
+}
+/* --------------------------- Reserved tab --------------------------- */
+
+/**
+ * USER-CENTRIC reserved view. Active reservations are grouped by customer (a
+ * separate model from physical inventory_items). Releasing a hold — one line, a
+ * partial quantity, or everything for a customer — immediately frees the copies
+ * on the storefront because inventory_public subtracts ONLY active reservations.
+ */
+function ReservedView({ onNavigate }: { onNavigate: (path: string) => void }) {
+  const toast = useToast();
+  const groups = useAsync(() => reservationRepository.listGrouped(), []);
+  const [releaseAllTarget, setReleaseAllTarget] =
+    useState<CustomerReservations | null>(null);
+  const [releaseOneId, setReleaseOneId] = useState<string | null>(null);
+
+  const data = groups.data ?? [];
+
+  async function releaseOne(reservationId: string, cardName: string) {
+    try {
+      await reservationRepository.release(reservationId);
+      toast.success(`Released reservation — ${cardName}.`);
+      groups.reload();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not release the reservation.",
+      );
+    } finally {
+      setReleaseOneId(null);
+    }
+  }
+
+  async function reduceOne(
+    reservationId: string,
+    cardName: string,
+    qty: number,
+  ) {
+    try {
+      await reservationRepository.release(reservationId, qty);
+      toast.success(`Released ${qty} — ${cardName}.`);
+      groups.reload();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not release the quantity.",
+      );
+    }
+  }
+
+  return (
+    <SectionCard title="">
+      {groups.loading ? (
+        <TableSkeleton rows={4} cols={3} />
+      ) : groups.error ? (
+        <ErrorState
+          message="Could not load reservations."
+          onRetry={groups.reload}
+        />
+      ) : data.length === 0 ? (
+        <EmptyState
+          icon="inventory"
+          title="No reserved cards"
+          message="Reserve a card from its detail view to hold stock for a customer."
+        />
+      ) : (
+        <div className="gg-reserved">
+          {data.map((group) => {
+            const name =
+              fullName(
+                group.customerFirstName ?? "",
+                group.customerLastName ?? "",
+              ) || group.customerEmail;
+            return (
+              <div key={group.customerId} className="gg-reserved__group">
+                <div className="gg-reserved__grouphead">
+                  <div className="gg-reserved__customer">
+                    <button
+                      className="gg-link gg-reserved__name"
+                      onClick={() =>
+                        onNavigate(
+                          `/admin_dashboard/users?customer=${group.customerId}`,
+                        )
+                      }
+                    >
+                      {name}
+                    </button>
+                    <span className="gg-reserved__email">
+                      {group.customerEmail}
+                    </span>
+                  </div>
+                  <div className="gg-reserved__groupmeta">
+                    <Badge tone="info">
+                      {group.totalQuantity} card
+                      {group.totalQuantity === 1 ? "" : "s"} reserved
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setReleaseAllTarget(group)}
+                    >
+                      Unreserve all
+                    </Button>
+                  </div>
+                </div>
+
+                <ul className="gg-reserved__list">
+                  {group.reservations.map((r) => (
+                    <li key={r.id} className="gg-reserved__item">
+                      <div className="gg-reserved__card">
+                        <InventoryCardImage
+                          item={{
+                            imageUrl: r.imageUrl,
+                            scryfallId: null,
+                            cardName: r.cardName,
+                            setCode: r.setCode,
+                            collectorNumber: r.collectorNumber,
+                            finish: r.finish,
+                          } as unknown as InventoryItem}
+                          size="xs"
+                        />
+                        <div className="gg-reserved__cardtext">
+                          <span className="gg-reserved__cardname">
+                            {r.cardName}
+                          </span>
+                          <span className="gg-reserved__cardmeta">
+                            {r.setCode} · #{r.collectorNumber} ·{" "}
+                            {r.condition} · {FINISH_LABELS[r.finish]}
+                          </span>
+                          <span className="gg-reserved__cardmeta gg-muted">
+                            Qty {r.quantity} · reserved {timeAgo(r.reservedAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="gg-reserved__actions">
+                        {r.quantity > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => reduceOne(r.id, r.cardName, 1)}
+                            title="Release one copy"
+                          >
+                            −1
+                          </Button>
+                        )}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setReleaseOneId(r.id)}
+                        >
+                          Unreserve
+                        </Button>
+                      </div>
+
+                      <ConfirmDialog
+                        open={releaseOneId === r.id}
+                        title="Unreserve this card?"
+                        message={`${r.quantity} × ${r.cardName} (${r.condition}, ${FINISH_LABELS[r.finish]}) will be released back to the storefront immediately.`}
+                        confirmLabel="Unreserve"
+                        tone="danger"
+                        onConfirm={() => releaseOne(r.id, r.cardName)}
+                        onCancel={() => setReleaseOneId(null)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!releaseAllTarget}
+        title="Unreserve everything for this customer?"
+        message={
+          releaseAllTarget
+            ? `All ${releaseAllTarget.totalQuantity} reserved card${
+                releaseAllTarget.totalQuantity === 1 ? "" : "s"
+              } for ${
+                fullName(
+                  releaseAllTarget.customerFirstName ?? "",
+                  releaseAllTarget.customerLastName ?? "",
+                ) || releaseAllTarget.customerEmail
+              } will be released back to the storefront immediately.`
+            : ""
+        }
+        confirmLabel="Unreserve all"
+        tone="danger"
+        onConfirm={async () => {
+          if (!releaseAllTarget) return;
+          try {
+            const n = await reservationRepository.releaseAllForCustomer(
+              releaseAllTarget.customerId,
+            );
+            toast.success(
+              `Released ${n} reservation${n === 1 ? "" : "s"}.`,
+            );
+            groups.reload();
+          } catch (err) {
+            toast.error(
+              err instanceof Error
+                ? err.message
+                : "Could not release reservations.",
+            );
+          } finally {
+            setReleaseAllTarget(null);
+          }
+        }}
+        onCancel={() => setReleaseAllTarget(null)}
+      />
+    </SectionCard>
+  );
+}
+
+/* --------------------------- Reserve modal --------------------------- */
+
+/**
+ * Reserve stock for a customer from an active inventory line. Shows the current
+ * SELLABLE availability (on hand minus active reservations) and never lets the
+ * admin request more than that — the server also re-checks atomically, so the
+ * client math is a convenience, not the authority.
+ */
+function ReserveModal({
+  item,
+  open,
+  onClose,
+  onReserved,
+}: {
+  item: InventoryItem | null;
+  open: boolean;
+  onClose: () => void;
+  onReserved: () => void;
+}) {
+  const toast = useToast();
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerId, setCustomerId] = useState("");
+  const [search, setSearch] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [reservedQty, setReservedQty] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || !item) return;
+    setCustomerId("");
+    setSearch("");
+    setQuantity("1");
+    setLoading(true);
+    Promise.all([
+      userRepository.listCustomers({ accountStatus: "active" }),
+      reservationRepository.listForItem(item.id),
+    ])
+      .then(([cs, rs]) => {
+        setCustomers(cs);
+        setReservedQty(rs.reduce((sum, r) => sum + r.quantity, 0));
+      })
+      .catch(() => {
+        toast.error("Could not load reservation data.");
+      })
+      .finally(() => setLoading(false));
+  }, [open, item, toast]);
+
+  if (!item) return null;
+
+  const available = Math.max(0, item.quantity - reservedQty);
+  const filtered = customers.filter((c) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.email.toLowerCase().includes(q) ||
+      `${c.firstName} ${c.lastName}`.toLowerCase().includes(q)
+    );
+  });
+
+  async function submit() {
+    if (!item) return;
+    if (!customerId) {
+      toast.error("Choose a customer.");
+      return;
+    }
+    const n = Number.parseInt(quantity, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      toast.error("Enter a quantity of at least 1.");
+      return;
+    }
+    if (n > available) {
+      toast.error(`Only ${available} available to reserve.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      await reservationRepository.create({
+        inventoryItemId: item.id,
+        customerId,
+        quantity: n,
+      });
+      toast.success(`Reserved ${n} × ${item.cardName}.`);
+      onReserved();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not reserve the card.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Reserve — ${item.cardName}`}
+      size="sm"
+      footer={
+        <div className="gg-drawer-actions__buttons">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={available === 0}
+            onClick={submit}
+          >
+            Reserve
+          </Button>
+        </div>
+      }
+    >
+      <div className="gg-detail">
+        <div className="gg-inline-note" role="status">
+          <Icon name="box" size={16} />
+          <div>
+            <strong>{available}</strong> available to reserve
+            <span className="gg-muted">
+              {" "}
+              ({item.quantity} on hand
+              {reservedQty > 0 ? `, ${reservedQty} already reserved` : ""})
+            </span>
+          </div>
+        </div>
+
+        {loading ? (
+          <p className="gg-muted">Loading customers…</p>
+        ) : (
+          <>
+            <SearchInput
+              label="Find customer"
+              placeholder="Name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <SelectField
+              label="Customer"
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+            >
+              <option value="">Select a customer…</option>
+              {filtered.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {fullName(c.firstName, c.lastName) || c.email} · {c.email}
+                </option>
+              ))}
+            </SelectField>
+            {filtered.length === 0 && (
+              <p className="gg-muted">
+                No matching customers. Add one from the Users page first.
+              </p>
+            )}
+            <TextField
+              label="Quantity"
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              hint={`Up to ${available}.`}
+            />
+          </>
+        )}
       </div>
     </Modal>
   );

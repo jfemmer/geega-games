@@ -1302,3 +1302,40 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 }
 .gg-authform__submit:hover { filter: brightness(1.06); }
 .gg-authform__submit:disabled { opacity: 0.6; cursor: default; }
+/* ---------------------------------------------------------------------------
+ * Reserved tab — user-centric reservation groups
+ * ------------------------------------------------------------------------- */
+.gg-reserved { display: flex; flex-direction: column; gap: 18px; }
+.gg-reserved__group {
+  border: 1px solid var(--gg-border, #e5e7eb);
+  border-radius: var(--gg-radius-sm, 8px);
+  overflow: hidden;
+}
+.gg-reserved__grouphead {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--gg-surface-2, #f8fafc);
+  border-bottom: 1px solid var(--gg-border, #e5e7eb);
+}
+.gg-reserved__customer { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gg-reserved__name { font-weight: 600; text-align: left; }
+.gg-reserved__email { font-size: 0.82rem; color: var(--gg-text-muted, #6b7280); }
+.gg-reserved__groupmeta { display: flex; align-items: center; gap: 10px; }
+.gg-reserved__list { list-style: none; margin: 0; padding: 0; }
+.gg-reserved__item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 14px;
+  border-bottom: 1px solid var(--gg-border-subtle, #f1f5f9);
+}
+.gg-reserved__item:last-child { border-bottom: 0; }
+.gg-reserved__card { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gg-reserved__cardtext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gg-reserved__cardname { font-weight: 600; }
+.gg-reserved__cardmeta { font-size: 0.8rem; color: var(--gg-text-muted, #6b7280); }
+.gg-reserved__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .gg-reserved__item { flex-direction: column; align-items: stretch; }
+  .gg-reserved__actions { justify-content: flex-end; }
+}

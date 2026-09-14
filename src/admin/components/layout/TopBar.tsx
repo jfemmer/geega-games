@@ -2,7 +2,15 @@ import { useRef, useState } from "react";
 import { Icon } from "../ui/Icon";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { timeAgo } from "../../utils/format";
-import { CURRENT_ADMIN } from "../../data/session.mock";
+import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
+
+/** Up-to-two-letter initials from a display name or email. */
+function adminInitials(name: string, email: string | null): string {
+  const source = name && name !== "Staff" ? name : (email ?? "");
+  const parts = source.split(/[\s@._-]+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((p) => p[0] ?? "");
+  return (letters.join("") || "?").toUpperCase();
+}
 
 interface Notification {
   id: string;
@@ -49,6 +57,10 @@ export function TopBar({
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const admin = useCurrentAdmin();
+  const adminName = admin.name;
+  const adminEmail = admin.email;
+  const initialsLabel = adminInitials(adminName, adminEmail);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   useClickOutside(notifRef, notifOpen, () => setNotifOpen(false));
@@ -138,19 +150,19 @@ export function TopBar({
             aria-label="Account menu"
             aria-expanded={profileOpen}
           >
-            <span className="gg-avatar">{CURRENT_ADMIN.initials}</span>
-            <span className="gg-profile-btn__name">{CURRENT_ADMIN.name}</span>
+            <span className="gg-avatar">{initialsLabel}</span>
+            <span className="gg-profile-btn__name">{adminName}</span>
             <Icon name="chevronDown" size={15} />
           </button>
           {profileOpen && (
             <div className="gg-popover gg-popover--profile" role="menu">
               <div className="gg-popover__profilehead">
                 <span className="gg-avatar gg-avatar--lg">
-                  {CURRENT_ADMIN.initials}
+                  {initialsLabel}
                 </span>
                 <div>
-                  <div className="gg-popover__name">{CURRENT_ADMIN.name}</div>
-                  <div className="gg-popover__email">{CURRENT_ADMIN.email}</div>
+                  <div className="gg-popover__name">{adminName}</div>
+                  <div className="gg-popover__email">{adminEmail ?? "—"}</div>
                 </div>
               </div>
               <button className="gg-popover__item" role="menuitem">

@@ -125,32 +125,17 @@ export function CampaignEditor({
     }
   }
 
-  async function handleSendTest() {
-    const err = validate();
-    if (err) {
-      toast.error(err);
-      return;
-    }
-    toast.success("Test email simulated to your address (not actually sent).");
-  }
-
   async function handleSend() {
+    // Persist the draft with a live recipient count, then inform the admin that
+    // sending isn't enabled yet. We NEVER simulate a send or invent statistics.
     const saved = await save();
+    setConfirmSend(false);
     if (!saved) return;
-    setBusy(true);
-    try {
-      await campaignRepository.send(saved.id);
-      toast.success(
-        `Campaign queued to ${formatNumber(recipients)} recipients (simulated — no real email sent).`,
-      );
-      onSaved();
-      onClose();
-    } catch {
-      toast.error("Could not queue the campaign.");
-    } finally {
-      setBusy(false);
-      setConfirmSend(false);
-    }
+    toast.info(
+      "Draft saved with a live recipient count. Sending isn't enabled yet — no email was sent and no delivery stats were created.",
+    );
+    onSaved();
+    onClose();
   }
 
   return (
@@ -170,9 +155,6 @@ export function CampaignEditor({
             </div>
           ) : (
             <div className="gg-drawer-actions__buttons">
-              <Button variant="ghost" onClick={handleSendTest} disabled={busy}>
-                Send test
-              </Button>
               <Button
                 variant="secondary"
                 onClick={handleSaveDraft}
@@ -184,6 +166,7 @@ export function CampaignEditor({
                 variant="primary"
                 icon="mail"
                 disabled={busy}
+                title="Sending isn't enabled yet"
                 onClick={() => {
                   const err = validate();
                   if (err) {
@@ -280,11 +263,11 @@ export function CampaignEditor({
 
       <ConfirmDialog
         open={confirmSend}
-        title="Send this campaign?"
-        message={`This will queue “${form.subject}” to ${formatNumber(
+        title="Sending isn't enabled yet"
+        message={`“${form.subject}” would reach ${formatNumber(
           recipients,
-        )} recipients (${CAMPAIGN_AUDIENCE_LABELS[form.audience]}). In the mock, delivery is simulated and no real email is sent.`}
-        confirmLabel="Send now"
+        )} recipients (${CAMPAIGN_AUDIENCE_LABELS[form.audience]}). Campaign sending is not enabled yet, so nothing will be emailed. We'll save the draft with this live recipient count and never fabricate delivery statistics.`}
+        confirmLabel="Save draft"
         tone="primary"
         onConfirm={handleSend}
         onCancel={() => setConfirmSend(false)}

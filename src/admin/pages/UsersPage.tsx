@@ -12,7 +12,7 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { userRepository } from "../repositories";
-import { CURRENT_ADMIN } from "../data/session.mock";
+import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import {
   formatCents,
   formatDate,
@@ -75,6 +75,7 @@ function CustomersView({ query }: { query: URLSearchParams }) {
   >("all");
   const [detail, setDetail] = useState<Customer | null>(null);
   const [statusTarget, setStatusTarget] = useState<Customer | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const q: CustomerQuery = useMemo(
     () => ({
@@ -153,7 +154,14 @@ function CustomersView({ query }: { query: URLSearchParams }) {
   ];
 
   return (
-    <SectionCard title="">
+    <SectionCard
+      title=""
+      action={
+        <Button variant="primary" icon="plus" onClick={() => setAddOpen(true)}>
+          Add customer
+        </Button>
+      }
+    >
       <div className="gg-filters">
         <SearchInput
           label="Search customers"
@@ -244,7 +252,108 @@ function CustomersView({ query }: { query: URLSearchParams }) {
         }}
         onCancel={() => setStatusTarget(null)}
       />
+
+      <AddCustomerModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onAdded={() => customers.reload()}
+      />
     </SectionCard>
+  );
+}
+
+function AddCustomerModal({
+  open,
+  onClose,
+  onAdded,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const toast = useToast();
+  const [email, setEmail] = useState("");
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setEmail("");
+      setFirst("");
+      setLast("");
+    }
+  }, [open]);
+
+  async function submit() {
+    if (!email.trim()) {
+      toast.error("Enter an email address.");
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { customer, created } = await userRepository.addCustomer({
+        email: email.trim(),
+        firstName: first.trim(),
+        lastName: last.trim(),
+      });
+      toast.success(
+        created
+          ? `${customer.email} added as a customer.`
+          : `${customer.email} already existed — linked to the existing customer.`,
+      );
+      onAdded();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not add the customer.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add customer"
+      size="sm"
+      footer={
+        <div className="gg-drawer-actions__buttons">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={busy} onClick={submit}>
+            Add customer
+          </Button>
+        </div>
+      }
+    >
+      <div className="gg-form-grid">
+        <TextField
+          label="First name"
+          value={first}
+          onChange={(e) => setFirst(e.target.value)}
+        />
+        <TextField
+          label="Last name"
+          value={last}
+          onChange={(e) => setLast(e.target.value)}
+        />
+      </div>
+      <TextField
+        label="Email"
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        hint="Adding a customer does not subscribe them to marketing or create a login."
+      />
+    </Modal>
   );
 }
 
@@ -462,13 +571,13 @@ function InviteStaffModal({
         last.trim(),
         role,
       );
-      toast.success(
-        `Invitation prepared for ${email.trim()} (not actually emailed in the mock).`,
-      );
+      toast.success(`Invitation email sent to ${email.trim()}.`);
       onInvited();
       onClose();
-    } catch {
-      toast.error("Could not create the invite.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not create the invite.",
+      );
     } finally {
       setBusy(false);
     }
@@ -540,6 +649,7 @@ function StaffDetail({
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
 }) {
+  const currentAdmin = useCurrentAdmin();
   const [role, setRole] = useState<StaffRole>("fulfillment");
   const [busy, setBusy] = useState(false);
 
@@ -549,7 +659,7 @@ function StaffDetail({
 
   if (!member) return null;
 
-  const isSelf = member.id === CURRENT_ADMIN.id;
+  const isSelf = member.id === currentAdmin.userId;
   const isLastOwner =
     member.role === "owner" && member.status === "active" && ownerCount <= 1;
 
@@ -568,6 +678,8 @@ function StaffDetail({
       const updated = await userRepository.setStaffRole(member.id, role);
       onSuccess(`${fullName(updated.firstName, updated.lastName)} is now ${STAFF_ROLE_LABELS[updated.role]}.`);
       onChanged(updated);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not update the role.");
     } finally {
       setBusy(false);
     }
@@ -593,6 +705,10 @@ function StaffDetail({
         }.`,
       );
       onChanged(updated);
+    } catch (err) {
+      onError(
+        err instanceof Error ? err.message : "Could not update the account.",
+      );
     } finally {
       setBusy(false);
     }

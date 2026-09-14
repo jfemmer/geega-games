@@ -12,6 +12,7 @@ import {
 } from "./emails/SubscriptionConfirmed.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
+import { syncCustomer } from "./customers.js";
 
 const CONFIRM_TTL_HOURS = 48;
 // Do not re-send a confirmation email more than once per this window.
@@ -96,6 +97,12 @@ export async function subscribe(
     .eq("email", email)
     .single();
 
+  // Mirror the lead into the canonical customers table (identity only — this
+  // does NOT create an Auth account or add marketing consent beyond the
+  // newsletter row itself). Case-insensitive, so it links to any existing
+  // customer instead of duplicating.
+  await syncCustomer(db, { email, source: "newsletter" });
+
   const confirmUrl = `${siteUrl()}/api/confirm?token=${encodeURIComponent(token)}`;
 
   // Idempotency key includes the token hash so each new confirmation attempt is
@@ -171,6 +178,9 @@ export async function confirm(token: string): Promise<ConfirmOutcome> {
       unsubscribe_token_hash: unsubHash,
     })
     .eq("id", row.id);
+
+  // Ensure a canonical customer exists for this confirmed lead (identity only).
+  await syncCustomer(db, { email: row.email, source: "newsletter" });
 
   const unsubscribeUrl = `${siteUrl()}/api/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
 
