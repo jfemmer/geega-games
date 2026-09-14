@@ -61,7 +61,7 @@ export const supabaseCampaignRepository: CampaignRepository = {
 
   async save(input): Promise<Campaign> {
     const res = await adminFetch<{ campaign: CampaignRow }>(
-      "/api/admin/campaigns",
+      "/api/admin?resource=campaigns&action=save",
       {
         method: "POST",
         body: {
@@ -98,7 +98,7 @@ export const supabaseCampaignRepository: CampaignRepository = {
 
   async recipientCount(audience: Campaign["audience"]): Promise<number> {
     const res = await adminFetch<{ count: number }>(
-      `/api/admin/campaigns/audience-count?audience=${encodeURIComponent(audience)}`,
+      `/api/admin?resource=campaigns&action=audience-count&audience=${encodeURIComponent(audience)}`,
       { method: "GET" },
     );
     return Number(res.count ?? 0);

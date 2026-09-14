@@ -83,7 +83,7 @@ export const supabaseReservationRepository: ReservationRepository = {
   },
 
   async create(input): Promise<void> {
-    await adminFetch("/api/admin/reservations", {
+    await adminFetch("/api/admin?resource=reservations&action=create", {
       method: "POST",
       body: {
         inventoryItemId: input.inventoryItemId,
@@ -95,7 +95,7 @@ export const supabaseReservationRepository: ReservationRepository = {
   },
 
   async release(reservationId: string, quantity?: number): Promise<void> {
-    await adminFetch("/api/admin/reservations/release", {
+    await adminFetch("/api/admin?resource=reservations&action=release", {
       method: "POST",
       body: { reservationId, quantity: quantity ?? null },
     });
@@ -106,7 +106,7 @@ export const supabaseReservationRepository: ReservationRepository = {
     inventoryItemId?: string,
   ): Promise<number> {
     const res = await adminFetch<{ releasedCount: number }>(
-      "/api/admin/reservations/release",
+      "/api/admin?resource=reservations&action=release",
       {
         method: "POST",
         body: { customerId, inventoryItemId: inventoryItemId ?? null },

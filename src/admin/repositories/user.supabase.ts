@@ -87,7 +87,7 @@ export const supabaseUserRepository: UserRepository = {
         status: Customer["accountStatus"];
         created_at: string;
       };
-    }>("/api/admin/customers", {
+    }>("/api/admin?resource=customers&action=create", {
       method: "POST",
       body: { email, firstName, lastName },
     });
@@ -112,10 +112,13 @@ export const supabaseUserRepository: UserRepository = {
     id: string,
     status: Customer["accountStatus"],
   ): Promise<Customer> {
-    await adminFetch<{ customer: unknown }>(`/api/admin/customers/${id}/status`, {
-      method: "POST",
-      body: { status },
-    });
+    await adminFetch<{ customer: unknown }>(
+      `/api/admin?resource=customers&action=status&id=${encodeURIComponent(id)}`,
+      {
+        method: "POST",
+        body: { status },
+      },
+    );
     // Re-read the enriched row so order/newsletter/sign-in data stay accurate.
     const fresh = await this.getCustomer(id);
     if (fresh) return fresh;
@@ -136,9 +139,12 @@ export const supabaseUserRepository: UserRepository = {
   },
 
   async listStaff(): Promise<StaffMember[]> {
-    const res = await adminFetch<{ rows: StaffMember[] }>("/api/admin/staff", {
-      method: "GET",
-    });
+    const res = await adminFetch<{ rows: StaffMember[] }>(
+      "/api/admin?resource=staff&action=list",
+      {
+        method: "GET",
+      },
+    );
     return res.rows ?? [];
   },
 
@@ -148,16 +154,19 @@ export const supabaseUserRepository: UserRepository = {
     lastName: string,
     role: StaffRole,
   ): Promise<StaffMember> {
-    const res = await adminFetch<{ staff: StaffMember }>("/api/admin/staff", {
-      method: "POST",
-      body: { email, firstName, lastName, role },
-    });
+    const res = await adminFetch<{ staff: StaffMember }>(
+      "/api/admin?resource=staff&action=invite",
+      {
+        method: "POST",
+        body: { email, firstName, lastName, role },
+      },
+    );
     return res.staff;
   },
 
   async setStaffRole(id: string, role: StaffRole): Promise<StaffMember> {
     const res = await adminFetch<{ staff: StaffMember }>(
-      `/api/admin/staff/${id}`,
+      `/api/admin?resource=staff&action=update&id=${encodeURIComponent(id)}`,
       { method: "PATCH", body: { role } },
     );
     return res.staff;
@@ -168,7 +177,7 @@ export const supabaseUserRepository: UserRepository = {
     status: StaffMember["status"],
   ): Promise<StaffMember> {
     const res = await adminFetch<{ staff: StaffMember }>(
-      `/api/admin/staff/${id}`,
+      `/api/admin?resource=staff&action=update&id=${encodeURIComponent(id)}`,
       { method: "PATCH", body: { status } },
     );
     return res.staff;
