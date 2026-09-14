@@ -20,6 +20,7 @@ import type {
   DateRangeKey,
   InventoryItem,
   InventoryMovement,
+  InventoryPrintingEdit,
   InventoryQuery,
   Order,
   OrderQuery,
@@ -46,6 +47,20 @@ export interface InventoryRepository {
     adminName: string,
   ): Promise<InventoryItem>;
   update(id: string, patch: Partial<InventoryItem>): Promise<InventoryItem>;
+  /**
+   * Change the EXACT printing (and optionally condition/finish) of an existing
+   * line, plus editable fields, in one server-validated call. The server
+   * re-resolves the Scryfall printing (never trusts client-supplied printing
+   * metadata), constrains the finish to that printing's available finishes,
+   * refreshes ALL denormalized printing metadata + image, and rejects a change
+   * that would collide with another active line (scryfall_id + condition +
+   * finish) with a friendly 409. Quantity is never touched here.
+   */
+  updatePrinting(
+    id: string,
+    input: InventoryPrintingEdit,
+    adminName: string,
+  ): Promise<InventoryItem>;
   /** Adjust quantity through the movement ledger (never silent overwrite). */
   adjustQuantity(
     id: string,
@@ -54,6 +69,15 @@ export interface InventoryRepository {
     adminName: string,
   ): Promise<InventoryItem>;
   archive(id: string): Promise<InventoryItem>;
+  /** Restore an archived/reserved line back to active (reversible). */
+  restore(id: string): Promise<InventoryItem>;
+  /**
+   * PERMANENTLY delete an inventory line. Only safe for lines never referenced
+   * by historical business records (orders, carts, scans). The server returns a
+   * 409 (surfaced as an Error) when the row is referenced and must be archived
+   * instead. Cascades the movement ledger for the deleted row.
+   */
+  delete(id: string): Promise<void>;
   movements(itemId?: string): Promise<InventoryMovement[]>;
   /** Find an existing printing+condition+finish match (dupe detection). */
   findMatch(

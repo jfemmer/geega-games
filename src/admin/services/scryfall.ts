@@ -139,25 +139,32 @@ export function extractCardFaces(card: ScryfallCard): CardFace[] {
 /**
  * The primary display image for a printing — the front face's image, falling
  * back through EVERY available size and to the top-level image for shared-image
- * layouts. Order: normal -> large -> small -> png, at the face level first, then
- * the same order at the top level. png is included last so a card that (rarely)
- * only ships a png still resolves instead of showing blank art. Always returns a
- * usable string when any image exists anywhere on the card, else "".
+ * layouts.
+ *
+ * Order: large -> normal -> png -> small, at the face level first, then the same
+ * order at the top level. We PREFER Scryfall's high-quality `large` JPG for the
+ * stored/display URL: in a responsive card grid on high-DPI screens, the
+ * `normal` (~488px) image is scaled up enough to look soft, whereas `large`
+ * (~672px) stays crisp while remaining far lighter than the full PNG. png is a
+ * fallback (used only when large/normal are absent) and `small` is the last
+ * resort so a card that only ships a tiny thumbnail still resolves rather than
+ * showing blank art. Always returns a usable string when any image exists
+ * anywhere on the card, else "".
  */
 export function primaryImageUrl(card: ScryfallCard): string {
   const faces = extractCardFaces(card);
   const front = faces[0]?.images;
   return (
-    front?.normal ||
     front?.large ||
-    front?.small ||
+    front?.normal ||
     front?.png ||
-    card.image_uris?.normal ||
+    front?.small ||
     card.image_uris?.large ||
-    card.image_uris?.small ||
+    card.image_uris?.normal ||
     card.image_uris?.png ||
+    card.image_uris?.small ||
     // Last-ditch: any face that has ANY image (covers back-only edge cases).
-    faces.map((f) => f.images.normal || f.images.large || f.images.small || f.images.png).find(Boolean) ||
+    faces.map((f) => f.images.large || f.images.normal || f.images.png || f.images.small).find(Boolean) ||
     ""
   );
 }

@@ -24,6 +24,7 @@ import type {
   CardFinish,
   InventoryItem,
   InventoryMovement,
+  InventoryPrintingEdit,
   InventoryQuery,
   Page,
   CardPrinting,
@@ -79,6 +80,8 @@ async function authFetch<T>(
     );
   }
   if (!res.ok) {
+    // Preserve the server's friendly message for 400/404/409 (duplicate
+    // identity, unsafe delete, invalid finish, etc.) so the UI can show it.
     let message = `Request failed (${res.status}).`;
     try {
       const body = (await res.json()) as { message?: string };
@@ -88,6 +91,8 @@ async function authFetch<T>(
     }
     throw new Error(message);
   }
+  // 204 No Content (delete) has no body to parse.
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -96,7 +101,8 @@ async function authFetch<T>(
  * ------------------------------------------------------------------ */
 
 function stockArg(stock: InventoryQuery["stock"]): string {
-  // Domain stock filter is 'all' | 'low' | 'out'. The RPC also supports 'in'.
+  // Domain stock filter is 'all' | 'in' | 'low' | 'out'; all are understood by
+  // admin_search_inventory(p_stock), so quantity filtering happens IN THE DB.
   return stock && stock !== "all" ? stock : "all";
 }
 
@@ -213,12 +219,55 @@ export const supabaseInventoryRepository: InventoryRepository = {
     return mapInventoryRow(row);
   },
 
+  async updatePrinting(
+    id: string,
+    input: InventoryPrintingEdit,
+    adminName: string,
+  ): Promise<InventoryItem> {
+    // The PATCH endpoint validates + re-resolves the exact printing server-side
+    // and refreshes all denormalized metadata. A duplicate identity or an
+    // unavailable finish comes back as a 409/400 with a friendly message.
+    const row = await authFetch<InventoryRowLike>(`/${id}`, {
+      method: "PATCH",
+      body: {
+        scryfallId: input.scryfallId,
+        setCode: input.setCode,
+        collectorNumber: input.collectorNumber,
+        cardName: input.cardName,
+        condition: input.condition,
+        finish: input.finish,
+        priceCents: input.priceCents,
+        costCents: input.costCents,
+        storageLocation: input.storageLocation,
+        sku: input.sku,
+        notes: input.notes,
+        actor: adminName,
+      },
+    });
+    return mapInventoryRow(row);
+  },
+
   async archive(id: string): Promise<InventoryItem> {
     const row = await authFetch<InventoryRowLike>(`/${id}/archive`, {
       method: "POST",
       body: {},
     });
     return mapInventoryRow(row);
+  },
+
+  async restore(id: string): Promise<InventoryItem> {
+    const row = await authFetch<InventoryRowLike>(`/${id}/archive`, {
+      method: "POST",
+      body: { restore: true },
+    });
+    return mapInventoryRow(row);
+  },
+
+  async delete(id: string): Promise<void> {
+    // The server runs the historical-safety check and returns 409 when the row
+    // is referenced by orders/carts/scans; authFetch turns that into an Error
+    // whose message tells the admin to archive instead.
+    await authFetch<void>(`/${id}`, { method: "DELETE" });
   },
 
   async movements(itemId?: string): Promise<InventoryMovement[]> {

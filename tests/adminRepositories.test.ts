@@ -73,6 +73,259 @@ describe("inventory repository", () => {
     const still = await inventory.get(item.id);
     expect(still).not.toBeNull();
   });
+
+  it("restores an archived item back to active", async () => {
+    const page = await inventory.list({ pageSize: 1 });
+    const item = page.rows[0];
+    await inventory.archive(item.id);
+    const restored = await inventory.restore(item.id);
+    expect(restored.status).toBe("active");
+  });
+});
+
+describe("inventory state tabs (stock filtering)", () => {
+  it("In Stock returns only active rows with quantity > 0", async () => {
+    const page = await inventory.list({
+      status: "active",
+      stock: "in",
+      pageSize: 100,
+    });
+    expect(page.rows.length).toBeGreaterThan(0);
+    expect(page.rows.every((r) => r.quantity > 0 && r.status === "active")).toBe(
+      true,
+    );
+  });
+
+  it("Out of Stock returns only active rows with quantity exactly 0", async () => {
+    const page = await inventory.list({
+      status: "active",
+      stock: "out",
+      pageSize: 100,
+    });
+    expect(page.rows.every((r) => r.quantity === 0 && r.status === "active")).toBe(
+      true,
+    );
+  });
+
+  it("a card at quantity 0 leaves In Stock and appears in Out of Stock", async () => {
+    // Find an in-stock active row and drain it to zero.
+    const inStock = await inventory.list({
+      status: "active",
+      stock: "in",
+      pageSize: 100,
+    });
+    const target = inStock.rows.find((r) => r.status === "active");
+    expect(target).toBeTruthy();
+    await inventory.adjustQuantity(
+      target!.id,
+      -target!.quantity,
+      "manual_remove",
+      "Test Admin",
+    );
+
+    const nowIn = await inventory.list({
+      status: "active",
+      stock: "in",
+      pageSize: 100,
+    });
+    expect(nowIn.rows.some((r) => r.id === target!.id)).toBe(false);
+
+    const nowOut = await inventory.list({
+      status: "active",
+      stock: "out",
+      pageSize: 100,
+    });
+    expect(nowOut.rows.some((r) => r.id === target!.id)).toBe(true);
+  });
+
+  it("restocking an out-of-stock card returns it to In Stock", async () => {
+    const out = await inventory.list({
+      status: "active",
+      stock: "out",
+      pageSize: 100,
+    });
+    // Seed guarantees at least one active, zero-qty row (see inventory.mock).
+    const target = out.rows[0];
+    expect(target).toBeTruthy();
+    await inventory.adjustQuantity(target.id, 3, "manual_add", "Test Admin");
+
+    const nowIn = await inventory.list({
+      status: "active",
+      stock: "in",
+      pageSize: 100,
+    });
+    expect(nowIn.rows.some((r) => r.id === target.id)).toBe(true);
+  });
+});
+
+describe("inventory delete", () => {
+  it("permanently deletes a deletable line and it can't be fetched after", async () => {
+    // Create a fresh, unreferenced line (not one of the protected seed ids).
+    const created = await inventory.create(
+      {
+        scryfallId: null,
+        cardName: "Test Delete Card",
+        setName: "Test Set",
+        setCode: "TST",
+        collectorNumber: "999",
+        rarity: "common",
+        cardType: "Instant",
+        imageUrl: null,
+        condition: "NM",
+        finish: "nonfoil",
+        quantity: 1,
+        priceCents: 100,
+        costCents: null,
+        storageLocation: null,
+        sku: null,
+        notes: null,
+        status: "active",
+        scryfallPriceCents: null,
+      },
+      "Test Admin",
+    );
+    await inventory.delete(created.id);
+    const after = await inventory.get(created.id);
+    expect(after).toBeNull();
+  });
+
+  it("blocks deletion of a historically-referenced line with a clear error", async () => {
+    // inv_1 is treated as referenced by an order in the mock.
+    await expect(inventory.delete("inv_1")).rejects.toThrow(/archive it instead/i);
+    // …and it's still present (not deleted).
+    const still = await inventory.get("inv_1");
+    expect(still).not.toBeNull();
+  });
+
+  it("cascades the movement ledger when a line is deleted", async () => {
+    const created = await inventory.create(
+      {
+        scryfallId: null,
+        cardName: "Ledger Cascade Card",
+        setName: "Test Set",
+        setCode: "TST",
+        collectorNumber: "998",
+        rarity: "common",
+        cardType: "Instant",
+        imageUrl: null,
+        condition: "NM",
+        finish: "nonfoil",
+        quantity: 2,
+        priceCents: 100,
+        costCents: null,
+        storageLocation: null,
+        sku: null,
+        notes: null,
+        status: "active",
+        scryfallPriceCents: null,
+      },
+      "Test Admin",
+    );
+    const before = await inventory.movements(created.id);
+    expect(before.length).toBeGreaterThan(0);
+    await inventory.delete(created.id);
+    const after = await inventory.movements(created.id);
+    expect(after.length).toBe(0);
+  });
+});
+
+describe("inventory edit (printing / condition / finish)", () => {
+  it("changes condition without touching quantity", async () => {
+    const page = await inventory.list({ status: "active", stock: "in", pageSize: 100 });
+    const item = page.rows.find((r) => r.condition !== "LP");
+    expect(item).toBeTruthy();
+    const qtyBefore = item!.quantity;
+    const updated = await inventory.updatePrinting(
+      item!.id,
+      { condition: "LP" },
+      "Test Admin",
+    );
+    expect(updated.condition).toBe("LP");
+    expect(updated.quantity).toBe(qtyBefore);
+  });
+
+  it("changes finish without touching quantity", async () => {
+    const page = await inventory.list({ status: "active", stock: "in", pageSize: 100 });
+    // Pick a nonfoil row and switch to foil.
+    const item = page.rows.find((r) => r.finish === "nonfoil");
+    expect(item).toBeTruthy();
+    const qtyBefore = item!.quantity;
+    const updated = await inventory.updatePrinting(
+      item!.id,
+      { finish: "foil" },
+      "Test Admin",
+    );
+    expect(updated.finish).toBe("foil");
+    expect(updated.quantity).toBe(qtyBefore);
+  });
+
+  it("changes the exact printing and refreshes denormalized metadata", async () => {
+    const page = await inventory.list({ status: "active", stock: "in", pageSize: 100 });
+    const item = page.rows[0];
+    // Switch to the MH2 extended-art Ragavan printing (cn 492) via set+collector.
+    const updated = await inventory.updatePrinting(
+      item.id,
+      { setCode: "MH2", collectorNumber: "492", cardName: "Ragavan, Nimble Pilferer" },
+      "Test Admin",
+    );
+    expect(updated.collectorNumber).toBe("492");
+    expect(updated.cardName).toBe("Ragavan, Nimble Pilferer");
+    expect(updated.setCode).toBe("MH2");
+  });
+
+  it("rejects a duplicate printing + condition + finish cleanly", async () => {
+    // Create two distinct lines, then try to edit one INTO the other's identity.
+    const a = await inventory.create(
+      {
+        scryfallId: "dupe-scryfall-a",
+        cardName: "Dupe Card",
+        setName: "Test",
+        setCode: "TST",
+        collectorNumber: "111",
+        rarity: "rare",
+        cardType: "Instant",
+        imageUrl: null,
+        condition: "NM",
+        finish: "nonfoil",
+        quantity: 1,
+        priceCents: 100,
+        costCents: null,
+        storageLocation: null,
+        sku: null,
+        notes: null,
+        status: "active",
+        scryfallPriceCents: null,
+      },
+      "Test Admin",
+    );
+    await inventory.create(
+      {
+        scryfallId: "dupe-scryfall-a",
+        cardName: "Dupe Card",
+        setName: "Test",
+        setCode: "TST",
+        collectorNumber: "111",
+        rarity: "rare",
+        cardType: "Instant",
+        imageUrl: null,
+        condition: "LP",
+        finish: "nonfoil",
+        quantity: 1,
+        priceCents: 100,
+        costCents: null,
+        storageLocation: null,
+        sku: null,
+        notes: null,
+        status: "active",
+        scryfallPriceCents: null,
+      },
+      "Test Admin",
+    );
+    // Editing A's condition NM -> LP now collides with the second line.
+    await expect(
+      inventory.updatePrinting(a.id, { condition: "LP" }, "Test Admin"),
+    ).rejects.toThrow(/already exists in inventory/i);
+  });
 });
 
 describe("order repository", () => {

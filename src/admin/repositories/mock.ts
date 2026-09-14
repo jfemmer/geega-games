@@ -20,12 +20,15 @@ import {
 } from "../data/misc.mock";
 import type {
   Campaign,
+  CardCondition,
+  CardFinish,
   CardPrinting,
   Customer,
   CustomerQuery,
   DateRangeKey,
   InventoryItem,
   InventoryMovement,
+  InventoryPrintingEdit,
   InventoryQuery,
   Order,
   OrderQuery,
@@ -41,7 +44,17 @@ import type {
   OrderRepository,
   UserRepository,
 } from "./types";
+import { mockScryfallRepository } from "./scryfall.mock";
 import { __resetScanState } from "./scan.mock";
+
+/**
+ * Inventory ids the mock treats as referenced by historical business records
+ * (an order/cart/scan). delete() refuses these with a 409-style Error so the
+ * "unsafe delete is blocked" behavior is testable without a real database.
+ * Seeded from any inventory row whose sku marks it referenced; defaults to the
+ * first seed row so tests have a deterministic protected id.
+ */
+const REFERENCED_INVENTORY_IDS = new Set<string>(["inv_1"]);
 
 // Clone seeds so the module owns its own mutable state.
 let inventory: InventoryItem[] = INVENTORY_SEED.map((i) => ({ ...i }));
@@ -93,6 +106,7 @@ export const mockInventoryRepository: InventoryRepository = {
       const matchesStatus = status === "all" || item.status === status;
       const matchesStock =
         stock === "all" ||
+        (stock === "in" && item.quantity > 0) ||
         (stock === "low" &&
           item.quantity > 0 &&
           item.quantity <= LOW_STOCK_THRESHOLD) ||
@@ -213,8 +227,124 @@ export const mockInventoryRepository: InventoryRepository = {
     return delay(inventory.find((i) => i.id === id)!, 200);
   },
 
+  async updatePrinting(id, input: InventoryPrintingEdit, adminName) {
+    void adminName;
+    const item = inventory.find((i) => i.id === id);
+    if (!item) throw new Error("Inventory item not found");
+
+    // Re-resolve the exact printing when the identity is changing, mirroring the
+    // server's "never trust client metadata" rule. Prefer id, fall back to
+    // set/collector. When only field edits are supplied, keep the printing.
+    let printing: CardPrinting | null = null;
+    const changingPrinting =
+      input.scryfallId !== undefined ||
+      input.setCode !== undefined ||
+      input.collectorNumber !== undefined;
+    if (changingPrinting) {
+      printing = await mockScryfallRepository.resolveExact({
+        scryfallId: input.scryfallId ?? null,
+        setCode: input.setCode ?? null,
+        collectorNumber: input.collectorNumber ?? null,
+        cardName: input.cardName ?? null,
+        finish: input.finish ?? item.finish,
+      });
+      if (!printing) {
+        throw new Error("Could not resolve the selected printing.");
+      }
+    }
+
+    const nextCondition: CardCondition = input.condition ?? item.condition;
+    // Constrain the finish to the (possibly new) printing's available finishes.
+    const available = printing?.availableFinishes ?? null;
+    let nextFinish: CardFinish = input.finish ?? item.finish;
+    if (available && !available.includes(nextFinish)) {
+      if (input.finish && available.includes(input.finish)) {
+        nextFinish = input.finish;
+      } else {
+        nextFinish = available[0] ?? "nonfoil";
+      }
+    }
+
+    const nextScryfallId = printing?.scryfallId ?? item.scryfallId;
+
+    // Duplicate-identity guard: another ACTIVE line with same printing +
+    // condition + finish must block the edit.
+    const collision = inventory.find(
+      (i) =>
+        i.id !== id &&
+        i.status !== "archived" &&
+        i.condition === nextCondition &&
+        i.finish === nextFinish &&
+        ((nextScryfallId && i.scryfallId === nextScryfallId) ||
+          (!!printing &&
+            i.setCode === printing.setCode &&
+            i.collectorNumber === printing.collectorNumber)),
+    );
+    if (collision) {
+      throw new Error(
+        "This exact printing, condition, and finish already exists in inventory. Adjust the existing inventory line instead.",
+      );
+    }
+
+    inventory = inventory.map((i) =>
+      i.id === id
+        ? {
+            ...i,
+            ...(printing
+              ? {
+                  scryfallId: printing.scryfallId,
+                  cardName: printing.cardName,
+                  setCode: printing.setCode,
+                  setName: printing.setName,
+                  collectorNumber: printing.collectorNumber,
+                  rarity: printing.rarity,
+                  cardType: printing.cardType,
+                  imageUrl: printing.imageUrl,
+                  scryfallPriceCents: printing.scryfallPriceCents,
+                }
+              : {}),
+            condition: nextCondition,
+            finish: nextFinish,
+            ...(input.priceCents !== undefined
+              ? { priceCents: input.priceCents }
+              : {}),
+            ...(input.costCents !== undefined
+              ? { costCents: input.costCents }
+              : {}),
+            ...(input.storageLocation !== undefined
+              ? { storageLocation: input.storageLocation }
+              : {}),
+            ...(input.sku !== undefined ? { sku: input.sku } : {}),
+            ...(input.notes !== undefined ? { notes: input.notes } : {}),
+            updatedAt: new Date().toISOString(),
+          }
+        : i,
+    );
+    const updated = inventory.find((i) => i.id === id);
+    if (!updated) throw new Error("Inventory item not found");
+    return delay(updated, 200);
+  },
+
   async archive(id) {
     return this.update(id, { status: "archived" });
+  },
+
+  async restore(id) {
+    return this.update(id, { status: "active" });
+  },
+
+  async delete(id) {
+    const item = inventory.find((i) => i.id === id);
+    if (!item) throw new Error("Inventory item not found");
+    if (REFERENCED_INVENTORY_IDS.has(id)) {
+      throw new Error(
+        "This card is referenced by existing orders and can't be permanently deleted. Archive it instead.",
+      );
+    }
+    inventory = inventory.filter((i) => i.id !== id);
+    // Cascade the movement ledger for the deleted row (mirrors ON DELETE CASCADE).
+    movements = movements.filter((m) => m.inventoryItemId !== id);
+    return delay(undefined, 150);
   },
 
   async movements(itemId) {

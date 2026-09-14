@@ -13,6 +13,7 @@ import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddInventoryDrawer } from "./AddInventoryDrawer";
+import { EditInventoryDrawer } from "./EditInventoryDrawer";
 import { useAsync } from "../hooks/useAsync";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
@@ -33,10 +34,34 @@ import type {
   InventoryItem,
   InventoryMovement,
   InventoryQuery,
-  ListingStatus,
 } from "../types";
 
 const PAGE_SIZE = 10;
+
+/**
+ * The inventory "state" tabs. Each tab maps to a specific (status, stock)
+ * combination executed IN THE DATABASE by admin_search_inventory, so a tab
+ * never downloads rows it will only hide:
+ *   in_stock     → status active, quantity > 0   (default working set)
+ *   out_of_stock → status active, quantity == 0  (restock queue)
+ *   reserved     → status reserved               (held for open orders)
+ *   archived     → status archived               (reversible, history kept)
+ */
+type InventoryTab = "in_stock" | "out_of_stock" | "reserved" | "archived";
+
+interface TabDef {
+  key: InventoryTab;
+  label: string;
+  status: InventoryQuery["status"];
+  stock: InventoryQuery["stock"];
+}
+
+const TABS: TabDef[] = [
+  { key: "in_stock", label: "In Stock", status: "active", stock: "in" },
+  { key: "out_of_stock", label: "Out of Stock", status: "active", stock: "out" },
+  { key: "reserved", label: "Reserved", status: "reserved", stock: "all" },
+  { key: "archived", label: "Archived", status: "archived", stock: "all" },
+];
 
 export function InventoryPage({
   query,
@@ -46,11 +71,14 @@ export function InventoryPage({
   onNavigate: (path: string) => void;
 }) {
   const toast = useToast();
+
+  // Deep-link ?stock=low still lands on In Stock with the low-stock sub-filter.
+  const initialTab: InventoryTab = "in_stock";
+  const [tab, setTab] = useState<InventoryTab>(initialTab);
+
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<ListingStatus | "all">("all");
-  const [stock, setStock] = useState<"all" | "low" | "out">(
-    (query.get("stock") as "low") ? "low" : "all",
-  );
+  // Sub-filter within the In-Stock tab: all in-stock vs. low stock only.
+  const [lowOnly, setLowOnly] = useState<boolean>(query.get("stock") === "low");
   const [condition, setCondition] = useState<CardCondition | "all">("all");
   const [finish, setFinish] = useState<CardFinish | "all">("all");
   const [setCode, setSetCode] = useState<string>("all");
@@ -61,16 +89,24 @@ export function InventoryPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<InventoryItem | null>(null);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<InventoryItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   const setCodes = useAsync(() => inventoryRepository.setCodes(), []);
 
+  const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
+
+  // The In-Stock tab's low-stock sub-filter narrows stock from "in" to "low".
+  const effectiveStock: InventoryQuery["stock"] =
+    tab === "in_stock" && lowOnly ? "low" : activeTab.stock;
+
   const q: InventoryQuery = useMemo(
     () => ({
       search: search.trim() || undefined,
-      status,
-      stock,
+      status: activeTab.status,
+      stock: effectiveStock,
       condition,
       finish,
       setCode,
@@ -79,15 +115,25 @@ export function InventoryPage({
       page,
       pageSize: PAGE_SIZE,
     }),
-    [search, status, stock, condition, finish, setCode, sortBy, sortDir, page],
+    [
+      search,
+      activeTab.status,
+      effectiveStock,
+      condition,
+      finish,
+      setCode,
+      sortBy,
+      sortDir,
+      page,
+    ],
   );
 
   const inv = useAsync(() => inventoryRepository.list(q), [q]);
 
-  // Reset to page 1 when filters change.
+  // Reset to page 1 when filters or the tab change.
   useEffect(() => {
     setPage(1);
-  }, [search, status, stock, condition, finish, setCode, sortBy, sortDir]);
+  }, [search, tab, lowOnly, condition, finish, setCode, sortBy, sortDir]);
 
   // Deep-link: ?item=<id> opens detail.
   useEffect(() => {
@@ -170,6 +216,14 @@ export function InventoryPage({
     toast.success(`Exported ${rows.length} rows to CSV.`);
   }
 
+  // Refresh helpers so a detail/edit/delete action reflects immediately and
+  // keeps the selected detail item's data current.
+  async function refreshDetail(id: string) {
+    const fresh = await inventoryRepository.get(id);
+    setDetailItem(fresh);
+    inv.reload();
+  }
+
   const columns: Column<InventoryItem>[] = [
     {
       key: "card",
@@ -246,12 +300,38 @@ export function InventoryPage({
   ];
 
   const activeFilters =
-    status !== "all" ||
-    stock !== "all" ||
     condition !== "all" ||
     finish !== "all" ||
     setCode !== "all" ||
+    (tab === "in_stock" && lowOnly) ||
     search.trim() !== "";
+
+  function clearFilters() {
+    setSearch("");
+    setCondition("all");
+    setFinish("all");
+    setSetCode("all");
+    setLowOnly(false);
+  }
+
+  const emptyCopy: Record<InventoryTab, { title: string; message: string }> = {
+    in_stock: {
+      title: "No cards in stock",
+      message: "Add your first card, or check the Out of Stock tab to restock.",
+    },
+    out_of_stock: {
+      title: "Nothing out of stock",
+      message: "Every active card currently has stock on hand. Nice.",
+    },
+    reserved: {
+      title: "No reserved cards",
+      message: "Cards held for open orders will appear here.",
+    },
+    archived: {
+      title: "No archived cards",
+      message: "Archived cards are hidden from the storefront but kept here.",
+    },
+  };
 
   return (
     <div className="gg-page">
@@ -278,6 +358,25 @@ export function InventoryPage({
         }
       />
 
+      {/* Inventory state tabs: In Stock | Out of Stock | Reserved | Archived */}
+      <div className="gg-tabs" role="tablist" aria-label="Inventory state">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={tab === t.key ? "gg-tab gg-tab--active" : "gg-tab"}
+            onClick={() => {
+              setTab(t.key);
+              setSelectedIds(new Set());
+              if (t.key !== "in_stock") setLowOnly(false);
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <SectionCard title="">
         <div className="gg-filters">
           <SearchInput
@@ -287,25 +386,16 @@ export function InventoryPage({
             onChange={(e) => setSearch(e.target.value)}
           />
           <div className="gg-filters__selects">
-            <SelectField
-              label="Stock"
-              value={stock}
-              onChange={(e) => setStock(e.target.value as typeof stock)}
-            >
-              <option value="all">All stock</option>
-              <option value="low">Low stock</option>
-              <option value="out">Out of stock</option>
-            </SelectField>
-            <SelectField
-              label="Status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as typeof status)}
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="archived">Archived</option>
-            </SelectField>
+            {tab === "in_stock" && (
+              <SelectField
+                label="Stock level"
+                value={lowOnly ? "low" : "in"}
+                onChange={(e) => setLowOnly(e.target.value === "low")}
+              >
+                <option value="in">All in stock</option>
+                <option value="low">Low stock only</option>
+              </SelectField>
+            )}
             <SelectField
               label="Condition"
               value={condition}
@@ -347,29 +437,10 @@ export function InventoryPage({
 
         {selectedIds.size > 0 && (
           <div className="gg-bulkbar" role="region" aria-label="Bulk actions">
-            <span className="gg-bulkbar__count">
-              {selectedIds.size} selected
-            </span>
+            <span className="gg-bulkbar__count">{selectedIds.size} selected</span>
             <div className="gg-bulkbar__actions">
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="download"
-                onClick={exportCsv}
-              >
+              <Button variant="ghost" size="sm" icon="download" onClick={exportCsv}>
                 Export selected
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="trash"
-                onClick={() =>
-                  toast.info(
-                    "Bulk archive is confirmed per-item in the mock to protect data.",
-                  )
-                }
-              >
-                Archive
               </Button>
               <Button
                 variant="ghost"
@@ -389,32 +460,22 @@ export function InventoryPage({
         ) : rows.length === 0 ? (
           <EmptyState
             icon={activeFilters ? "search" : "inventory"}
-            title={activeFilters ? "No matches" : "No inventory yet"}
+            title={activeFilters ? "No matches" : emptyCopy[tab].title}
             message={
               activeFilters
                 ? "Try adjusting or clearing your filters."
-                : "Add your first card to get started."
+                : emptyCopy[tab].message
             }
             action={
               activeFilters ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setSearch("");
-                    setStatus("all");
-                    setStock("all");
-                    setCondition("all");
-                    setFinish("all");
-                    setSetCode("all");
-                  }}
-                >
+                <Button variant="secondary" onClick={clearFilters}>
                   Clear filters
                 </Button>
-              ) : (
+              ) : tab === "in_stock" ? (
                 <Button variant="primary" icon="plus" onClick={() => setAddOpen(true)}>
                   Add card
                 </Button>
-              )
+              ) : undefined
             }
           />
         ) : (
@@ -433,12 +494,7 @@ export function InventoryPage({
               onToggleAll={toggleAll}
               caption="Inventory items"
             />
-            <Pagination
-              page={page}
-              pageSize={PAGE_SIZE}
-              total={total}
-              onPage={setPage}
-            />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
           </>
         )}
       </SectionCard>
@@ -452,15 +508,33 @@ export function InventoryPage({
         }}
       />
 
+      <EditInventoryDrawer
+        open={!!editItem}
+        item={editItem}
+        onClose={() => setEditItem(null)}
+        onSaved={(updated) => {
+          setEditItem(null);
+          setDetailItem(updated);
+          inv.reload();
+          setCodes.reload();
+        }}
+      />
+
       <InventoryDetail
         item={detailItem}
         onClose={() => {
           setDetailItem(null);
-          // Drop the ?item param on close.
           if (query.get("item")) onNavigate("/admin_dashboard/inventory");
         }}
+        onEdit={(it) => setEditItem(it)}
         onArchive={(it) => setArchiveTarget(it)}
-        onChanged={() => inv.reload()}
+        onDelete={(it) => setDeleteTarget(it)}
+        onRestore={async (it) => {
+          await inventoryRepository.restore(it.id);
+          toast.success(`${it.cardName} restored to active.`);
+          await refreshDetail(it.id);
+        }}
+        onChanged={(id) => refreshDetail(id)}
       />
 
       <ConfirmDialog
@@ -482,6 +556,38 @@ export function InventoryPage({
           inv.reload();
         }}
         onCancel={() => setArchiveTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Permanently delete this card?"
+        message={
+          deleteTarget
+            ? `${deleteTarget.cardName} (${deleteTarget.condition}, ${FINISH_LABELS[deleteTarget.finish]}) will be permanently removed from inventory, including its movement history. This cannot be undone. If this card has ever appeared on an order, deletion is blocked — archive it instead. Only delete lines entered by mistake.`
+            : ""
+        }
+        confirmLabel="Delete permanently"
+        tone="danger"
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await inventoryRepository.delete(deleteTarget.id);
+            toast.success(`${deleteTarget.cardName} permanently deleted.`);
+            setDeleteTarget(null);
+            setDetailItem(null);
+            inv.reload();
+            setCodes.reload();
+          } catch (err) {
+            // Blocked (409) or other error — keep the dialog context but inform.
+            setDeleteTarget(null);
+            toast.error(
+              err instanceof Error
+                ? err.message
+                : "Could not delete this card.",
+            );
+          }
+        }}
+        onCancel={() => setDeleteTarget(null)}
       />
 
       <Modal
@@ -532,13 +638,19 @@ export function InventoryPage({
 function InventoryDetail({
   item,
   onClose,
+  onEdit,
   onArchive,
+  onDelete,
+  onRestore,
   onChanged,
 }: {
   item: InventoryItem | null;
   onClose: () => void;
+  onEdit: (item: InventoryItem) => void;
   onArchive: (item: InventoryItem) => void;
-  onChanged: () => void;
+  onDelete: (item: InventoryItem) => void;
+  onRestore: (item: InventoryItem) => void | Promise<void>;
+  onChanged: (id: string) => void;
 }) {
   const toast = useToast();
   const currentAdmin = useCurrentAdmin();
@@ -570,13 +682,16 @@ function InventoryDetail({
       );
       const fresh = await inventoryRepository.movements(item.id);
       setMovements(fresh);
-      onChanged();
+      onChanged(item.id);
     } catch {
       toast.error("Could not adjust quantity.");
     } finally {
       setBusy(false);
     }
   }
+
+  const isOutOfStock = item.quantity === 0 && item.status === "active";
+  const isArchived = item.status === "archived";
 
   return (
     <Modal
@@ -587,26 +702,60 @@ function InventoryDetail({
       size="md"
       headerExtra={
         <Badge tone={LISTING_STATUS_TONE[item.status]}>
-          {LISTING_STATUS_LABELS[item.status]}
+          {isOutOfStock ? "Out of Stock" : LISTING_STATUS_LABELS[item.status]}
         </Badge>
       }
       footer={
-        <div className="gg-drawer-actions__buttons">
-          <Button
-            variant="danger"
-            icon="trash"
-            onClick={() => onArchive(item)}
-            disabled={item.status === "archived"}
-          >
-            Archive
-          </Button>
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
+        <div className="gg-drawer-actions">
+          <div className="gg-drawer-actions__left">
+            <Button
+              variant="danger"
+              icon="trash"
+              onClick={() => onDelete(item)}
+            >
+              Delete
+            </Button>
+          </div>
+          <div className="gg-drawer-actions__buttons">
+            {isArchived ? (
+              <Button
+                variant="secondary"
+                icon="check"
+                onClick={() => onRestore(item)}
+              >
+                Restore
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                icon="trash"
+                onClick={() => onArchive(item)}
+              >
+                Archive
+              </Button>
+            )}
+            <Button variant="primary" icon="edit" onClick={() => onEdit(item)}>
+              Edit
+            </Button>
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+          </div>
         </div>
       }
     >
       <div className="gg-detail">
+        {isOutOfStock && (
+          <div className="gg-inline-note gg-inline-note--warning" role="status">
+            <Icon name="warning" size={18} />
+            <div>
+              This card is <strong>out of stock</strong> and hidden from the
+              storefront. Add quantity below to restock it — it returns to In
+              Stock and the storefront automatically.
+            </div>
+          </div>
+        )}
+
         <div className="gg-detail__hero gg-detail__hero--card">
           <div className="gg-detail__art">
             <InventoryCardImage item={item} size="md" loadingPriority="eager" />
@@ -624,8 +773,6 @@ function InventoryDetail({
               </Badge>
               <span className="gg-chip">{CONDITION_LABELS[item.condition]}</span>
               <span className="gg-chip">{FINISH_LABELS[item.finish]}</span>
-              {/* Treatment (Borderless/Showcase/Extended Art/…) resolved from
-                  the exact Scryfall printing, so staff can verify the art. */}
               <CardPrintingBadges
                 card={{
                   scryfallId: item.scryfallId ?? null,
@@ -704,7 +851,7 @@ function InventoryDetail({
                 if (Number.isFinite(n) && n !== 0) applyAdjust(n);
               }}
             >
-              Apply
+              {isOutOfStock ? "Restock" : "Apply"}
             </Button>
           </div>
         </div>

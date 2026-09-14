@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BACKFILL_CANDIDATE_OR_FILTER,
   hasRealImage,
+  isLowResScryfallImage,
   needsImageRepair,
 } from "../api/admin/inventory/backfill-images";
 
@@ -50,13 +51,59 @@ describe("needsImageRepair", () => {
     ).toBe(true);
   });
 
-  it("does NOT flag a row that already has a scryfall_id AND a real image", () => {
+  it("flags a row whose Scryfall image is low-resolution (small/normal)", () => {
+    // A stored /normal/ or /small/ Scryfall URL is upgradable to /large/, so it
+    // is a repair candidate even though it's a valid http image.
     expect(
       needsImageRepair({
         scryfall_id: "abc",
-        image_url: "https://cards.scryfall.io/normal/x.jpg",
+        image_url: "https://cards.scryfall.io/normal/front/a/b/u.jpg",
+      }),
+    ).toBe(true);
+    expect(
+      needsImageRepair({
+        scryfall_id: "abc",
+        image_url: "https://cards.scryfall.io/small/front/a/b/u.jpg",
+      }),
+    ).toBe(true);
+  });
+
+  it("does NOT flag a row that already has a scryfall_id AND a high-quality image", () => {
+    expect(
+      needsImageRepair({
+        scryfall_id: "abc",
+        image_url: "https://cards.scryfall.io/large/front/a/b/u.jpg",
       }),
     ).toBe(false);
+    // Non-Scryfall http image with an id is left alone (not our CDN to upgrade).
+    expect(
+      needsImageRepair({
+        scryfall_id: "abc",
+        image_url: "https://example.com/card.jpg",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("isLowResScryfallImage", () => {
+  it("detects small/normal Scryfall CDN URLs as low-res", () => {
+    expect(
+      isLowResScryfallImage("https://cards.scryfall.io/small/front/a/b/u.jpg"),
+    ).toBe(true);
+    expect(
+      isLowResScryfallImage("https://cards.scryfall.io/normal/front/a/b/u.jpg"),
+    ).toBe(true);
+  });
+
+  it("does not flag large/png Scryfall URLs or non-Scryfall URLs", () => {
+    expect(
+      isLowResScryfallImage("https://cards.scryfall.io/large/front/a/b/u.jpg"),
+    ).toBe(false);
+    expect(
+      isLowResScryfallImage("https://cards.scryfall.io/png/front/a/b/u.png"),
+    ).toBe(false);
+    expect(isLowResScryfallImage("https://example.com/normal/x.jpg")).toBe(false);
+    expect(isLowResScryfallImage(null)).toBe(false);
   });
 });
 

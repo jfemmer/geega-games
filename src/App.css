@@ -122,8 +122,21 @@
   box-shadow: 0 14px 28px rgba(102,51,153,.18);
   border-color: var(--brand);
 }
-.card-art { position: relative; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
-.card-art img { width: 100%; height: auto; display: block; border-radius: 10px; }
+.card-art {
+  position: relative; border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+  /* Reserve the Magic card aspect ratio (5:7) so the grid never shifts as
+     images load, and so the frame matches the artwork it contains. */
+  aspect-ratio: 5 / 7; background: #efeaf7;
+}
+.card-art img {
+  width: 100%; height: 100%; display: block; border-radius: 10px;
+  /* Show the WHOLE card (never crop edges/text). `contain` keeps the full card
+     visible within the reserved 5:7 box; the box already matches the card, so
+     there is effectively no letterboxing for real card scans. */
+  object-fit: contain;
+  /* Keep upscaled art as crisp as the browser allows on high-DPI screens. */
+  image-rendering: auto;
+}
 .foil img { box-shadow: 0 0 12px rgba(224,179,65,.5); }
 .foil::after {
   content: ""; position: absolute; inset: -50%;
@@ -238,9 +251,10 @@
   100% { background-position: -200% 0; }
 }
 
-/* Stable card images: reserve aspect ratio so images don't shift layout */
-.card-art { aspect-ratio: 5 / 7; background: #efeaf7; }
-.card-art img { width: 100%; height: 100%; object-fit: cover; }
+/* Card image aspect ratio + fit are defined once, above, in the ===== Card grid
+   ===== section (5:7 box, object-fit: contain so the whole card shows without
+   cropping). The previous duplicate rule here used object-fit: cover, which
+   cropped card edges/text and made art look wrong — removed intentionally. */
 
 /* ===== Launch / signup section ===== */
 .launch {

@@ -201,7 +201,7 @@ describe("normalizeScryfallCard", () => {
     expect(printing.collectorNumber).toBe("161");
     expect(printing.rarity).toBe("common");
     expect(printing.availableFinishes).toContain("nonfoil");
-    expect(printing.imageUrl).toBe("https://img/normal.jpg");
+    expect(printing.imageUrl).toBe("https://img/large.jpg");
     expect(printing.scryfallPriceCents).toBe(250);
     expect(printing.faces).toHaveLength(1);
   });
@@ -216,31 +216,39 @@ describe("normalizeScryfallCard", () => {
 });
 
 describe("primaryImageUrl — resolution & fallbacks", () => {
-  it("prefers normal at the top level", () => {
-    expect(primaryImageUrl(baseCard())).toBe("https://img/normal.jpg");
+  it("prefers large at the top level (crisp storefront/high-DPI display)", () => {
+    // Prefer the high-quality `large` JPG over `normal` for the stored/display
+    // URL so the storefront card grid stays sharp on high-DPI screens.
+    expect(primaryImageUrl(baseCard())).toBe("https://img/large.jpg");
   });
 
-  it("falls back to large, then small, then png when earlier sizes are missing", () => {
-    const noNormal = baseCard({
+  it("falls back large -> normal -> png -> small as sizes are missing", () => {
+    const noLarge = baseCard({
       image_uris: {
         small: "s.jpg",
-        large: "l.jpg",
+        normal: "n.jpg",
         png: "p.png",
-        // normal intentionally omitted
+        // large intentionally omitted
       } as never,
     });
-    // large preferred over small when normal is missing
-    expect(primaryImageUrl(noNormal)).toBe("l.jpg");
+    // normal preferred over png/small when large is missing
+    expect(primaryImageUrl(noLarge)).toBe("n.jpg");
+
+    const onlyNormal = baseCard({
+      image_uris: { normal: "n.jpg" } as never,
+    });
+    expect(primaryImageUrl(onlyNormal)).toBe("n.jpg");
 
     const onlySmall = baseCard({
       image_uris: { small: "s.jpg" } as never,
     });
+    // small is the last resort so the UI never shows blank art
     expect(primaryImageUrl(onlySmall)).toBe("s.jpg");
 
     const onlyPng = baseCard({
       image_uris: { png: "only.png" } as never,
     });
-    // png is a valid last-resort so the UI never shows blank art
+    // png is preferred over small when large/normal are missing
     expect(primaryImageUrl(onlyPng)).toBe("only.png");
   });
 
@@ -362,7 +370,8 @@ describe("normalizeScryfallCard — image resilience", () => {
       ] as never,
     });
     const p = normalizeScryfallCard(dfc);
-    expect(p.imageUrl).toBe("fn.jpg");
+    // Front face's high-quality large image is preferred (crisp display).
+    expect(p.imageUrl).toBe("fl.jpg");
     expect(p.faces).toHaveLength(2);
     expect(p.faces[1].images.normal).toBe("bn.jpg");
     expect(isMultiFaced(p)).toBe(true);

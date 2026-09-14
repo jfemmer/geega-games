@@ -478,6 +478,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 @keyframes gg-slide { from { transform: translateX(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
 
 .gg-drawer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; flex-wrap: wrap; }
+.gg-drawer-actions__left { display: flex; gap: 8px; flex-wrap: wrap; }
 .gg-drawer-actions__buttons { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 
 .gg-confirm__message { color: var(--gg-text-soft); font-size: 0.92rem; line-height: 1.55; margin: 0; }
@@ -683,7 +684,17 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 .gg-inline-note { display: flex; gap: 10px; padding: 12px; border-radius: var(--gg-radius-sm); font-size: 0.85rem; line-height: 1.5; }
 .gg-inline-note--warning { background: #fbefdd; color: #7a5210; }
+.gg-inline-note--info { background: rgba(102,51,153,0.08); color: var(--gg-brand); }
 .gg-inline-note svg { flex: 0 0 auto; margin-top: 1px; }
+
+/* Edit inventory drawer */
+.gg-editcurrent { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+.gg-editcurrent__art { flex: 0 0 auto; }
+.gg-editcurrent__meta { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gg-editprint { display: flex; flex-direction: column; gap: 12px; }
+.gg-editprint__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gg-editprint__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.gg-editnote { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
 
 /* ------------------------------- Orders detail ------------------------------- */
 

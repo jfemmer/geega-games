@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mapInventoryPublicRow, type Card } from "../src/cards";
+import {
+  mapInventoryPublicRow,
+  scryfallImageAtSize,
+  scryfallSrcSet,
+  storefrontImageUrl,
+  type Card,
+} from "../src/cards";
 import type { Database } from "../src/types/database";
 
 type Row = Database["public"]["Views"]["inventory_public"]["Row"];
@@ -75,5 +81,74 @@ describe("mapInventoryPublicRow", () => {
     expect(c.type).toBeNull();
     expect(c.rarity).toBeNull();
     expect(c.scryfallId).toBeNull();
+  });
+
+  it("upgrades a stored Scryfall /normal/ image to /large/ for display", () => {
+    const c = mapInventoryPublicRow(
+      row({ image_url: "https://cards.scryfall.io/normal/front/a/b/uuid.jpg?123" }),
+    );
+    expect(c.image_url).toBe(
+      "https://cards.scryfall.io/large/front/a/b/uuid.jpg?123",
+    );
+  });
+});
+
+describe("scryfallImageAtSize", () => {
+  it("rewrites the size path segment on a Scryfall CDN URL", () => {
+    expect(
+      scryfallImageAtSize(
+        "https://cards.scryfall.io/normal/front/a/b/uuid.jpg",
+        "large",
+      ),
+    ).toBe("https://cards.scryfall.io/large/front/a/b/uuid.jpg");
+    expect(
+      scryfallImageAtSize(
+        "https://cards.scryfall.io/small/front/a/b/uuid.jpg",
+        "large",
+      ),
+    ).toBe("https://cards.scryfall.io/large/front/a/b/uuid.jpg");
+  });
+
+  it("returns null for non-Scryfall or non-sized URLs", () => {
+    expect(scryfallImageAtSize("https://example.com/x.jpg", "large")).toBeNull();
+    expect(scryfallImageAtSize(null, "large")).toBeNull();
+    expect(scryfallImageAtSize("", "large")).toBeNull();
+    // png tier is intentionally not upgraded to a jpg size tier.
+    expect(
+      scryfallImageAtSize("https://cards.scryfall.io/png/front/a/b/uuid.png", "large"),
+    ).toBeNull();
+  });
+});
+
+describe("storefrontImageUrl", () => {
+  it("upgrades small/normal but leaves large, png, and non-Scryfall untouched", () => {
+    expect(
+      storefrontImageUrl("https://cards.scryfall.io/small/front/a/b/u.jpg"),
+    ).toBe("https://cards.scryfall.io/large/front/a/b/u.jpg");
+    expect(
+      storefrontImageUrl("https://cards.scryfall.io/normal/front/a/b/u.jpg"),
+    ).toBe("https://cards.scryfall.io/large/front/a/b/u.jpg");
+    // Already large — unchanged.
+    const large = "https://cards.scryfall.io/large/front/a/b/u.jpg";
+    expect(storefrontImageUrl(large)).toBe(large);
+    // Non-Scryfall — unchanged.
+    const other = "https://example.com/card.png";
+    expect(storefrontImageUrl(other)).toBe(other);
+    expect(storefrontImageUrl(null)).toBeNull();
+  });
+});
+
+describe("scryfallSrcSet", () => {
+  it("produces normal 488w + large 672w for a Scryfall image", () => {
+    const set = scryfallSrcSet(
+      "https://cards.scryfall.io/normal/front/a/b/u.jpg",
+    );
+    expect(set).toContain("https://cards.scryfall.io/normal/front/a/b/u.jpg 488w");
+    expect(set).toContain("https://cards.scryfall.io/large/front/a/b/u.jpg 672w");
+  });
+
+  it("returns null (no fake entries) for non-Scryfall images", () => {
+    expect(scryfallSrcSet("https://example.com/card.png")).toBeNull();
+    expect(scryfallSrcSet(null)).toBeNull();
   });
 });

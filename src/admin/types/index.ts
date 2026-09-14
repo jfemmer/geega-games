@@ -612,7 +612,14 @@ export interface Page<T> {
 export interface InventoryQuery {
   search?: string;
   status?: ListingStatus | "all";
-  stock?: "all" | "low" | "out";
+  /**
+   * Stock filter. `in` = quantity > 0 (the storefront-visible working set),
+   * `out` = quantity exactly 0, `low` = 0 < quantity <= low-stock threshold,
+   * `all` = no quantity constraint. The `in` value is executed IN THE DATABASE
+   * by admin_search_inventory(p_stock) so the In-Stock tab never downloads
+   * out-of-stock rows only to hide them client-side.
+   */
+  stock?: "all" | "in" | "low" | "out";
   condition?: CardCondition | "all";
   finish?: CardFinish | "all";
   setCode?: string | "all";
@@ -620,6 +627,29 @@ export interface InventoryQuery {
   sortDir?: "asc" | "desc";
   page?: number;
   pageSize?: number;
+}
+
+/**
+ * Payload for editing an existing inventory line's card identity + fields. The
+ * server re-resolves the Scryfall printing from these identity signals (id
+ * preferred), so client-supplied denormalized metadata is never trusted. Every
+ * field is optional: only provided keys are changed. Quantity is intentionally
+ * NOT part of this payload — it always flows through adjustQuantity().
+ */
+export interface InventoryPrintingEdit {
+  /** New exact Scryfall printing id (drives re-resolution of all metadata). */
+  scryfallId?: string | null;
+  /** Fallback identity signals when no id is available (legacy rows). */
+  setCode?: string | null;
+  collectorNumber?: string | null;
+  cardName?: string | null;
+  condition?: CardCondition;
+  finish?: CardFinish;
+  priceCents?: number;
+  costCents?: number | null;
+  storageLocation?: string | null;
+  sku?: string | null;
+  notes?: string | null;
 }
 
 export interface OrderQuery {

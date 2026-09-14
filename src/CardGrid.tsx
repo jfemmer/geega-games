@@ -1,4 +1,4 @@
-import { CONDITION_LABELS, type Card } from "./cards";
+import { CONDITION_LABELS, scryfallSrcSet, type Card } from "./cards";
 
 export default function CardGrid({ cards }: { cards: Card[] }) {
   if (cards.length === 0) {
@@ -14,11 +14,36 @@ export default function CardGrid({ cards }: { cards: Card[] }) {
     <div className="card-grid">
       {cards.map((card) => {
         const priced = card.price_usd > 0;
+        // A real responsive srcSet ONLY when we can derive genuine Scryfall
+        // size variants (normal 488w + large 672w). For non-Scryfall images we
+        // omit srcSet entirely rather than emit fake entries for the same file.
+        const srcSet = scryfallSrcSet(card.image_url);
+        // Descriptive alt: name, set, and finish for screen-reader users.
+        const altText = [
+          card.name,
+          card.set ? `(${card.set})` : null,
+          card.foil ? "foil" : null,
+        ]
+          .filter(Boolean)
+          .join(" ");
         return (
           <article className="card" key={card.id}>
             <div className={`card-art ${card.foil ? "foil" : ""}`}>
               {card.image_url ? (
-                <img src={card.image_url} alt={card.name} loading="lazy" />
+                <img
+                  src={card.image_url}
+                  {...(srcSet
+                    ? {
+                        srcSet,
+                        // Grid columns are minmax(200px, 1fr); ~220px is a good
+                        // typical rendered width across the responsive layout.
+                        sizes: "(max-width: 760px) 45vw, 220px",
+                      }
+                    : {})}
+                  alt={altText}
+                  loading="lazy"
+                  decoding="async"
+                />
               ) : (
                 <div className="card-noimg">No image</div>
               )}
