@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/Button";
 import { TextField, SelectField } from "../../components/ui/Field";
 import { Icon } from "../../components/ui/Icon";
 import { scanRepository } from "../../repositories";
-import { CURRENT_ADMIN } from "../../data/session.mock";
+import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import type { ScanSession, ScanSourceType } from "../../types";
 import type { UploadedScanFile } from "../../repositories/types";
 
@@ -40,6 +40,7 @@ export function NewScanSessionModal({
   onClose: () => void;
   onCreated: (session: ScanSession) => void;
 }) {
+  const currentAdmin = useCurrentAdmin();
   const [scannerName, setScannerName] = useState("Ricoh fi-8170");
   const [sourceType, setSourceType] = useState<ScanSourceType>("scanner_export");
   const [pairing, setPairing] = useState<PairingMode>("front_only");
@@ -101,7 +102,7 @@ export function NewScanSessionModal({
       const session = await scanRepository.createSession({
         scannerName: scannerName.trim() || null,
         sourceType,
-        createdBy: CURRENT_ADMIN.name,
+        createdBy: currentAdmin.name,
       });
 
       if (files.length > 0) {

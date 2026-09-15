@@ -6,13 +6,20 @@
 // This file is the single source of truth for DB types used by both the
 // browser client and the server-side admin client. It reflects the LIVE
 // schema as of 2026-09-15, including scan_sessions/card_scans (see
-// supabase/migrations/20260915194514_scan_sessions_card_scans.sql) and the
+// supabase/migrations/20260915194514_scan_sessions_card_scans.sql), the
 // broadened search_inventory match (see
-// supabase/migrations/20260915194435_search_inventory_match_set_and_collector.sql).
+// supabase/migrations/20260915194435_search_inventory_match_set_and_collector.sql
+// and .../20260915194611_search_inventory_exclude_reserved_status.sql), and
+// admin_upsert_inventory's p_reason param + scan_filter_counts/
+// recompute_scan_session, with grants hardened to match their sibling RPCs
+// (see supabase/migrations/20260915200500_admin_upsert_inventory_reason_and_scan_filter_counts.sql,
+// .../20260915201200_scan_recompute_session_and_service_role_fix.sql, and
+// .../20260915202700_fix_scan_function_grants_and_drop_orphaned_overload.sql).
 //
 // Note: scanner_jobs/scanner_results/scanner_review_queue are an OLDER,
 // unrelated, unused (0 rows) scanner design predating scan_sessions/
-// card_scans — see the comment in that migration file for the full history.
+// card_scans — see the comment in the superseded 20260910000000 migration
+// file for the full history.
 
 export type Json =
   | string
@@ -1891,6 +1898,7 @@ export type Database = {
           p_price_cents: number
           p_quantity: number
           p_rarity: string
+          p_reason?: Database["public"]["Enums"]["inventory_movement_reason"]
           p_scryfall_id: string
           p_scryfall_price_cents?: number
           p_set_code: string
@@ -1993,9 +2001,53 @@ export type Database = {
         Returns: undefined
       }
       my_store_credit_balance: { Args: never; Returns: number }
+      recompute_scan_session: {
+        Args: { p_session_id: string }
+        Returns: {
+          added_cards: number
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          failed_cards: number
+          id: string
+          label: string
+          matched_cards: number
+          note: string | null
+          ready_cards: number
+          rejected_cards: number
+          reviewed_cards: number
+          scanner_name: string | null
+          source_type: Database["public"]["Enums"]["scan_source_type"]
+          status: Database["public"]["Enums"]["scan_session_status"]
+          total_cards: number
+          total_files: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "scan_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reserved_quantity: {
         Args: { p_inventory_item_id: string }
         Returns: number
+      }
+      scan_filter_counts: {
+        Args: { p_session_id: string }
+        Returns: {
+          added: number
+          all_count: number
+          error: number
+          matched: number
+          missing_back: number
+          needs_manual_match: number
+          pending_match: number
+          ready: number
+          rejected: number
+          unreviewed: number
+        }[]
       }
       search_inventory: {
         Args: {
@@ -2038,6 +2090,7 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      staff_or_service_role: { Args: never; Returns: boolean }
       store_credit_balance: { Args: { p_user_id: string }; Returns: number }
     }
     Enums: {

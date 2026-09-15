@@ -19,7 +19,7 @@ import { SelectedPrintingPreview } from "../../components/cards/PrintingPreview"
 import { useAsync } from "../../hooks/useAsync";
 import { useToast } from "../../hooks/useToast";
 import { scanRepository } from "../../repositories";
-import { CURRENT_ADMIN } from "../../data/session.mock";
+import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
 import { CONDITION_LABELS, FINISH_LABELS } from "../../utils/labels";
@@ -71,6 +71,7 @@ export function ScanReviewPage({
   onNavigate: (path: string) => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
   const [filter, setFilter] = useState<ScanFilterKey>("all");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -229,7 +230,7 @@ export function ScanReviewPage({
   async function doCommit() {
     setCommitting(true);
     try {
-      const result = await scanRepository.commitReady(sessionId, CURRENT_ADMIN.name);
+      const result = await scanRepository.commitReady(sessionId, currentAdmin.name);
       if (result.failedCount > 0) {
         toast.error(
           `${result.addedCount} added, ${result.failedCount} failed. Fix and retry.`,
@@ -395,7 +396,7 @@ export function ScanReviewPage({
           await scanRepository.bulkUpdate(
             Array.from(selectedIds),
             patch,
-            CURRENT_ADMIN.name,
+            currentAdmin.name,
           );
           setBulkOpen(false);
           setSelectedIds(new Set());

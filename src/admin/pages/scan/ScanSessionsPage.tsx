@@ -7,9 +7,8 @@ import { Icon } from "../../components/ui/Icon";
 import { Spinner, EmptyState, ErrorState } from "../../components/ui/States";
 import { useAsync } from "../../hooks/useAsync";
 import { useToast } from "../../hooks/useToast";
-import { scanRepository } from "../../repositories";
+import { isScanRepositoryLive, scanRepository } from "../../repositories";
 import { ensureScanSeed } from "../../repositories/scan.mock";
-import { CURRENT_ADMIN } from "../../data/session.mock";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatDateTime, timeAgo } from "../../utils/format";
 import { NewScanSessionModal } from "./NewScanSessionModal";
@@ -43,11 +42,15 @@ export function ScanSessionsPage({
 }) {
   const toast = useToast();
   const [newOpen, setNewOpen] = useState(false);
-  const [seeded, setSeeded] = useState(false);
+  // Nothing to seed against the real database — starts already "seeded" so
+  // the live path never touches the mock's fixture data.
+  const [seeded, setSeeded] = useState(isScanRepositoryLive);
 
-  // Seed a demo session once so the section isn't empty on first load in dev.
+  // Seed a demo session once so the section isn't empty on first load in dev
+  // — mock-only fixture data, never run against the live repository.
   useEffect(() => {
-    ensureScanSeed(CURRENT_ADMIN.name).finally(() => setSeeded(true));
+    if (isScanRepositoryLive) return;
+    ensureScanSeed().finally(() => setSeeded(true));
   }, []);
 
   const sessions = useAsync(

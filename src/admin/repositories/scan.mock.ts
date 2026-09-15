@@ -572,13 +572,17 @@ export function __resetScanState(): void {
 /**
  * Seed one demo session with a handful of scans so the Card Scanning section is
  * populated on first load in dev. Idempotent — only seeds when empty.
+ *
+ * This is fixture data, not a real admin action, so it's never attributed to
+ * the actual signed-in user — callers should only invoke this when the mock
+ * repository is the active one (see index.ts's isScanRepositoryLive).
  */
-export async function ensureScanSeed(createdBy: string): Promise<void> {
+export async function ensureScanSeed(): Promise<void> {
   if (sessions.length > 0) return;
   const session = await mockScanRepository.createSession({
     scannerName: "Ricoh fi-8170",
     sourceType: "scanner_export",
-    createdBy,
+    createdBy: "Sample data",
   });
   const files: UploadedScanFile[] = [];
   for (let i = 1; i <= 8; i++) {

@@ -28,11 +28,21 @@
 //                                         shipping, notes, packing checklist).
 //                                        These are the SAME rows the customer
 //                                        account's Track My Order page reads.
+//   • Scan sessions / batch ingest ..... supabaseScanRepository
+//                                        (reads: RLS + scan_filter_counts RPC;
+//                                         writes: /api/admin/scan-sessions/* +
+//                                         /api/admin/scans/*; uploads: signed
+//                                         Storage URLs into the private
+//                                         card-scans bucket; commits: the SAME
+//                                         admin_upsert_inventory RPC manual
+//                                         adds use, reason=scan_add/
+//                                         batch_scan_add).
 //
 // STILL MOCKED (intentionally, outside this phase's scope):
 //   • Analytics / trends / metrics ..... mockAnalyticsRepository
-//   • Scan sessions / batch ingest ..... mockScanRepository (OCR is a stub)
-//   • Card recognition (OCR) ........... stubRecognitionProvider
+//   • Card recognition (OCR) ........... stubRecognitionProvider — honestly
+//     reports unavailable (implemented: false) rather than a silent
+//     production fallback; there is no live provider yet.
 //
 // No component or page imports a mock directly — they all import from here, so
 // swapping any remaining mock for a live implementation is a one-line change.
@@ -53,6 +63,7 @@ import { supabaseOrderRepository } from "./order.supabase";
 import { mockScryfallRepository } from "./scryfall.mock";
 import { liveScryfallRepository } from "./scryfall.live";
 import { mockScanRepository } from "./scan.mock";
+import { supabaseScanRepository } from "./scan.supabase";
 import { stubRecognitionProvider } from "./recognition.stub";
 import { isSupabaseConfigured } from "../../supabase";
 import type {
@@ -125,9 +136,23 @@ export const orderRepository: OrderRepository = useLiveData
   ? supabaseOrderRepository
   : mockOrderRepository;
 
-// Still mocked for this phase (see status banner above).
+// Scan sessions / batch ingest go LIVE whenever Supabase is configured, same
+// condition as users/campaigns/reservations/orders: reads via RLS +
+// scan_filter_counts(), writes via staff-gated /api/admin/scan-sessions/* and
+// /api/admin/scans/* Vercel Functions (service role), commits through the
+// SAME admin_upsert_inventory RPC manual adds use. `isScanRepositoryLive` lets
+// call sites (e.g. the "seed a demo session" dev convenience) tell whether
+// they're pointed at the real database and skip anything mock-only.
+export const isScanRepositoryLive = useLiveData;
+export const scanRepository: ScanRepository = useLiveData
+  ? supabaseScanRepository
+  : mockScanRepository;
+
+// Recognition (OCR) has no live implementation yet — the stub is honest
+// about that (implemented: false, empty result, explicit warning) rather
+// than a silent production fallback, so it's used regardless of the flags
+// above until a real provider lands.
 export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
-export const scanRepository: ScanRepository = mockScanRepository;
 export const recognitionProvider: CardRecognitionProvider =
   stubRecognitionProvider;
 
@@ -140,7 +165,7 @@ if (typeof console !== "undefined") {
       useLiveInventory ? "LIVE (Supabase)" : "mock"
     } · Scryfall source: ${
       useLiveScryfall ? "LIVE (/api/admin/scryfall)" : "mock catalog"
-    } · Users/Campaigns/Reservations/Orders: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
+    } · Users/Campaigns/Reservations/Orders/Scanning: ${useLiveData ? "LIVE (Supabase)" : "mock"} · Recognition: stub (not implemented)`,
   );
 }
 
