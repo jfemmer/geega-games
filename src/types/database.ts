@@ -5,16 +5,14 @@
 //
 // This file is the single source of truth for DB types used by both the
 // browser client and the server-side admin client. It reflects the LIVE
-// schema as of 2026-09-15, including scan_sessions/card_scans (see
-// supabase/migrations/20260915194514_scan_sessions_card_scans.sql), the
-// broadened search_inventory match (see
-// supabase/migrations/20260915194435_search_inventory_match_set_and_collector.sql
-// and .../20260915194611_search_inventory_exclude_reserved_status.sql), and
-// admin_upsert_inventory's p_reason param + scan_filter_counts/
-// recompute_scan_session, with grants hardened to match their sibling RPCs
-// (see supabase/migrations/20260915200500_admin_upsert_inventory_reason_and_scan_filter_counts.sql,
-// .../20260915201200_scan_recompute_session_and_service_role_fix.sql, and
-// .../20260915202700_fix_scan_function_grants_and_drop_orphaned_overload.sql).
+// schema as of 2026-09-15: scan_sessions/card_scans, the broadened/reserved-
+// excluding search_inventory, admin_upsert_inventory's p_reason param +
+// scan_filter_counts/recompute_scan_session, scryfall_bulk_cards (a
+// refreshable local cache of Scryfall's bulk data — see
+// scripts/refreshScryfallBulkIndex.ts), and scryfall_image_hash_cache /
+// scryfall_set_symbol_cache (lazily-populated perceptual-hash caches the
+// recognition pipeline uses for visual verification and set-symbol
+// matching — see api/_lib/recognition/).
 //
 // Note: scanner_jobs/scanner_results/scanner_review_queue are an OLDER,
 // unrelated, unused (0 rows) scanner design predating scan_sessions/
@@ -1435,6 +1433,123 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scryfall_bulk_cards: {
+        Row: {
+          border_color: string | null
+          bulk_updated_at: string
+          card_name: string
+          collector_number: string
+          finishes: string[]
+          frame: string | null
+          frame_effects: string[]
+          full_art: boolean
+          lang: string
+          layout: string | null
+          oracle_id: string | null
+          printed_name: string | null
+          promo: boolean
+          promo_types: string[]
+          rarity: string | null
+          raw: Json
+          released_at: string | null
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          textless: boolean
+          variation: boolean
+        }
+        Insert: {
+          border_color?: string | null
+          bulk_updated_at?: string
+          card_name: string
+          collector_number: string
+          finishes?: string[]
+          frame?: string | null
+          frame_effects?: string[]
+          full_art?: boolean
+          lang?: string
+          layout?: string | null
+          oracle_id?: string | null
+          printed_name?: string | null
+          promo?: boolean
+          promo_types?: string[]
+          rarity?: string | null
+          raw: Json
+          released_at?: string | null
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          textless?: boolean
+          variation?: boolean
+        }
+        Update: {
+          border_color?: string | null
+          bulk_updated_at?: string
+          card_name?: string
+          collector_number?: string
+          finishes?: string[]
+          frame?: string | null
+          frame_effects?: string[]
+          full_art?: boolean
+          lang?: string
+          layout?: string | null
+          oracle_id?: string | null
+          printed_name?: string | null
+          promo?: boolean
+          promo_types?: string[]
+          rarity?: string | null
+          raw?: Json
+          released_at?: string | null
+          scryfall_id?: string
+          set_code?: string
+          set_name?: string
+          textless?: boolean
+          variation?: boolean
+        }
+        Relationships: []
+      }
+      scryfall_image_hash_cache: {
+        Row: {
+          created_at: string
+          hash: string
+          region: string
+          scryfall_id: string
+        }
+        Insert: {
+          created_at?: string
+          hash: string
+          region: string
+          scryfall_id: string
+        }
+        Update: {
+          created_at?: string
+          hash?: string
+          region?: string
+          scryfall_id?: string
+        }
+        Relationships: []
+      }
+      scryfall_set_symbol_cache: {
+        Row: {
+          created_at: string
+          hash: string
+          icon_svg_uri: string
+          set_code: string
+        }
+        Insert: {
+          created_at?: string
+          hash: string
+          icon_svg_uri: string
+          set_code: string
+        }
+        Update: {
+          created_at?: string
+          hash?: string
+          icon_svg_uri?: string
+          set_code?: string
+        }
+        Relationships: []
       }
       store_credit_transactions: {
         Row: {

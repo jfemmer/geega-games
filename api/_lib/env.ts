@@ -38,4 +38,8 @@ export const ServerEnv = {
   // API keeps working before Stripe is configured.
   stripeSecretKey: () => requireEnv("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: () => requireEnv("STRIPE_WEBHOOK_SECRET"),
+  // Optional: the scan recognition pipeline degrades to an honest
+  // "unavailable" state (see api/_lib/ocr) rather than failing hard when
+  // this isn't set.
+  googleCloudVisionApiKey: () => optionalEnv("GOOGLE_CLOUD_VISION_API_KEY"),
 } as const;

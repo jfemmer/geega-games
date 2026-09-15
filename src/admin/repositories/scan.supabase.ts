@@ -50,6 +50,34 @@ const SIGNED_URL_TTL_SECONDS = 3600;
 const UPLOAD_CONCURRENCY = 4;
 const UPLOAD_URL_CHUNK = 40;
 const INGEST_CHUNK = 200;
+// Recognition concurrency is lower than upload's: each call does OCR +
+// Scryfall candidate lookups + visual verification server-side, meaningfully
+// heavier per-unit work than a Storage PUT (Part 15's "sensible concurrency
+// limits" — this is what protects the OCR provider and Scryfall from a
+// burst of hundreds of simultaneous calls).
+const RECOGNITION_CONCURRENCY = 3;
+const RECOGNITION_MAX_RETRIES = 2;
+const RECOGNITION_RETRY_BASE_DELAY_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Recognize one scan, retrying with exponential backoff. One card's
+ * exhausted retries never fail the batch — the caller just counts it. */
+async function recognizeWithRetry(scanId: string): Promise<boolean> {
+  for (let attempt = 0; attempt <= RECOGNITION_MAX_RETRIES; attempt++) {
+    try {
+      await adminFetch(`/api/admin/scans/${scanId}/recognize`, { method: "POST" });
+      return true;
+    } catch {
+      if (attempt < RECOGNITION_MAX_RETRIES) {
+        await sleep(RECOGNITION_RETRY_BASE_DELAY_MS * 2 ** attempt);
+      }
+    }
+  }
+  return false;
+}
 
 const SCAN_SELECT = "*, card_printings!selected_scryfall_id(*)";
 
@@ -177,7 +205,7 @@ export const supabaseScanRepository: ScanRepository = {
     files: UploadedScanFile[],
     onProgress?: (p: ScanIngestProgress) => void,
   ): Promise<{ created: CardScan[]; failed: number }> {
-    const total = files.length;
+    let total = files.length;
     let processed = 0;
     let failed = 0;
     const report = () => onProgress?.({ total, processed, failed });
@@ -245,7 +273,33 @@ export const supabaseScanRepository: ScanRepository = {
       failed += res.failed;
     }
 
-    return { created: await mapScansWithImages(created), failed };
+    // 4) Recognition happens automatically — no manual "recognize" click
+    // per card (Part 15). Concurrency-limited with retries; one card's
+    // exhausted retries is counted as failed but never blocks the rest of
+    // the batch or fails ingestBatch itself (a scan that never got
+    // recognized is still a real, persisted scan the operator can retry or
+    // match manually).
+    total += created.length;
+    await mapWithConcurrency(created, RECOGNITION_CONCURRENCY, async (scan) => {
+      const ok = await recognizeWithRetry(scan.id);
+      if (!ok) failed += 1;
+      processed += 1;
+      report();
+    });
+
+    // Re-fetch so the returned scans reflect recognition results, not the
+    // pre-recognition rows from step 3.
+    const createdIds = created.map((c) => c.id);
+    const fresh =
+      createdIds.length > 0
+        ? await supabase
+            .from("card_scans")
+            .select(SCAN_SELECT)
+            .in("id", createdIds)
+            .then((r) => (r.data ?? []) as CardScanRowLike[])
+        : [];
+
+    return { created: await mapScansWithImages(fresh), failed };
   },
 
   async listScans(sessionId, query): Promise<Page<CardScan>> {

@@ -379,7 +379,16 @@ export interface RecognitionCandidate {
   setCode: string;
   collectorNumber: string;
   confidence: number;
+  /** Why this candidate scored the way it did, e.g. "set+collector exact, visual 0.94". */
+  reason?: string;
 }
+
+/** Which Part 7 era-strategy the pipeline used for this scan. */
+export type RecognitionEra =
+  | "modern"
+  | "exodus_to_premodern"
+  | "vintage"
+  | "unknown";
 
 export interface CardRecognitionResult {
   detectedName: string | null;
@@ -391,6 +400,19 @@ export interface CardRecognitionResult {
   confidence: number;
   fieldConfidence: Record<string, number>;
   warnings: string[];
+
+  /* --- Additive debug/explainability fields (all optional — a stub or an
+   * older stored result simply omits them; nothing downstream should
+   * require them). --- */
+  /** Which era-strategy (Part 7) was used to generate candidates. */
+  era?: RecognitionEra;
+  /** Human-readable reason auto-match was accepted OR why it was withheld —
+   * Part 10's "record why an automatic match was accepted / sent to review". */
+  decisionReason?: string;
+  /** Best set-symbol shape-match, independent cross-check (Part 6.5). */
+  setSymbolMatch?: { setCode: string; confidence: number } | null;
+  /** Combined visual similarity (full-card + art) to the accepted/best candidate. */
+  visualSimilarity?: number | null;
 }
 
 /* ------------------------------------------------------------------ *

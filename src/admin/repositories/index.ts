@@ -37,12 +37,19 @@
 //                                         admin_upsert_inventory RPC manual
 //                                         adds use, reason=scan_add/
 //                                         batch_scan_add).
+//   • Card recognition ................. supabaseRecognitionProvider
+//                                        (writes: /api/admin/scans/:id/
+//                                         recognize, which runs the
+//                                         multi-signal pipeline in
+//                                         api/_lib/recognition/ — OCR via
+//                                         Google Cloud Vision when
+//                                         GOOGLE_CLOUD_VISION_API_KEY is
+//                                         set, else an honest per-call
+//                                         "unavailable" result, never a
+//                                         fake success).
 //
 // STILL MOCKED (intentionally, outside this phase's scope):
 //   • Analytics / trends / metrics ..... mockAnalyticsRepository
-//   • Card recognition (OCR) ........... stubRecognitionProvider — honestly
-//     reports unavailable (implemented: false) rather than a silent
-//     production fallback; there is no live provider yet.
 //
 // No component or page imports a mock directly — they all import from here, so
 // swapping any remaining mock for a live implementation is a one-line change.
@@ -65,6 +72,7 @@ import { liveScryfallRepository } from "./scryfall.live";
 import { mockScanRepository } from "./scan.mock";
 import { supabaseScanRepository } from "./scan.supabase";
 import { stubRecognitionProvider } from "./recognition.stub";
+import { supabaseRecognitionProvider } from "./recognition.supabase";
 import { isSupabaseConfigured } from "../../supabase";
 import type {
   AnalyticsRepository,
@@ -148,13 +156,18 @@ export const scanRepository: ScanRepository = useLiveData
   ? supabaseScanRepository
   : mockScanRepository;
 
-// Recognition (OCR) has no live implementation yet — the stub is honest
-// about that (implemented: false, empty result, explicit warning) rather
-// than a silent production fallback, so it's used regardless of the flags
-// above until a real provider lands.
+// Recognition goes LIVE whenever Supabase is configured, same condition as
+// scanning: it calls the real multi-signal pipeline (api/_lib/recognition/)
+// via /api/admin/scans/:id/recognize. Whether OCR itself is configured
+// (GOOGLE_CLOUD_VISION_API_KEY) is a PER-CALL outcome the server decides,
+// not a static capability check here — an unconfigured OCR provider still
+// returns a real, honest recognition_status='failed' result with a clear
+// warning, never a silent fake success. The stub remains for local/no-
+// backend dev.
 export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
-export const recognitionProvider: CardRecognitionProvider =
-  stubRecognitionProvider;
+export const recognitionProvider: CardRecognitionProvider = useLiveData
+  ? supabaseRecognitionProvider
+  : stubRecognitionProvider;
 
 // One-time breadcrumb so it's obvious in the browser console which sources are
 // active. If inventory/Scryfall show "mock" unexpectedly, Supabase env vars are
@@ -165,7 +178,7 @@ if (typeof console !== "undefined") {
       useLiveInventory ? "LIVE (Supabase)" : "mock"
     } · Scryfall source: ${
       useLiveScryfall ? "LIVE (/api/admin/scryfall)" : "mock catalog"
-    } · Users/Campaigns/Reservations/Orders/Scanning: ${useLiveData ? "LIVE (Supabase)" : "mock"} · Recognition: stub (not implemented)`,
+    } · Users/Campaigns/Reservations/Orders/Scanning/Recognition: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
   );
 }
 

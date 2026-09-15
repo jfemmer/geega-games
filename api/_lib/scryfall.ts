@@ -227,6 +227,17 @@ export function scryfallBySetCollector(
   );
 }
 
+export interface ScryfallSet {
+  code: string;
+  name: string;
+  icon_svg_uri: string;
+}
+
+/** Fetch a set's metadata, notably icon_svg_uri — used by set-symbol matching. */
+export function scryfallSet(code: string): Promise<ScryfallSet> {
+  return scryfallGet<ScryfallSet>(`/sets/${encodeURIComponent(code.toLowerCase())}`);
+}
+
 // ------------------------------------------------------------------------- //
 // Exact-printing resolution (multi-signal, high accuracy)
 // ------------------------------------------------------------------------- //
