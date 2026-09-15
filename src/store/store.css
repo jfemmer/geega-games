@@ -1,0 +1,428 @@
+/* Storefront additions layered on top of App.css. Uses the existing purple/gold
+   brand tokens where available and defines fallbacks so it renders standalone. */
+
+:root {
+  --gg-purple: #4c1d95;
+  --gg-purple-2: #6d28d9;
+  --gg-gold: #f5c518;
+  --gg-ink: #1a1030;
+  --gg-line: rgba(0, 0, 0, 0.1);
+  --gg-danger: #b91c1c;
+  --gg-ok: #15803d;
+}
+
+/* ---- Header ---- */
+.gg-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--gg-ink);
+  color: #fff;
+  border-bottom: 3px solid var(--gg-gold);
+}
+.gg-header-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.6rem 1rem;
+}
+.gg-logo {
+  height: 48px;
+  width: auto;
+  flex: none;
+}
+.gg-header-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gg-header-search input {
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 1rem;
+}
+.gg-header-search input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+.gg-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+}
+.gg-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  min-height: 40px;
+}
+.gg-iconbtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.gg-iconbtn:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+}
+.gg-cart-count {
+  background: var(--gg-gold);
+  color: var(--gg-ink);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  min-width: 1.25rem;
+  text-align: center;
+}
+.gg-nav {
+  display: flex;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem 0.6rem;
+  flex-wrap: wrap;
+}
+.gg-nav a {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.gg-nav a:hover {
+  color: var(--gg-gold);
+}
+
+/* ---- Layout ---- */
+.gg-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+.gg-shop {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 1.5rem;
+}
+@media (max-width: 800px) {
+  .gg-shop {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Product grid ---- */
+.gg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+.gg-card {
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+.gg-card-img {
+  aspect-ratio: 488 / 680;
+  background: #f3f0fa;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gg-card-body {
+  padding: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+}
+.gg-card-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.gg-card-meta {
+  font-size: 0.8rem;
+  color: #555;
+}
+.gg-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: var(--gg-purple);
+  font-weight: 600;
+}
+.gg-card-foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.4rem;
+}
+.gg-price {
+  font-weight: 700;
+  color: var(--gg-ink);
+}
+.gg-btn {
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--gg-purple);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+}
+.gg-btn:hover:not(:disabled) {
+  background: var(--gg-purple-2);
+}
+.gg-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.gg-btn:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+}
+.gg-btn-sm {
+  padding: 0.35rem 0.6rem;
+  min-height: 34px;
+  font-size: 0.85rem;
+}
+.gg-btn-ghost {
+  background: transparent;
+  color: var(--gg-purple);
+  border: 1px solid var(--gg-purple);
+}
+.gg-btn-ghost:hover:not(:disabled) {
+  background: #f3f0fa;
+}
+
+/* ---- Filters ---- */
+.gg-filters {
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1rem;
+  align-self: start;
+}
+.gg-filter-group {
+  margin-bottom: 1rem;
+}
+.gg-filter-group h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #666;
+  margin: 0 0 0.5rem;
+}
+.gg-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  padding: 0.15rem 0;
+}
+.gg-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.gg-mobile-filter-btn {
+  display: none;
+}
+@media (max-width: 800px) {
+  .gg-mobile-filter-btn {
+    display: inline-flex;
+  }
+  .gg-filters.gg-filters-desktop {
+    display: none;
+  }
+}
+
+/* ---- Drawer (cart / mobile filters) ---- */
+.gg-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+}
+.gg-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100dvh;
+  width: min(420px, 100vw);
+  background: #fff;
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.2);
+}
+.gg-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+.gg-drawer-foot {
+  border-top: 1px solid var(--gg-line);
+  padding: 1rem;
+}
+.gg-line {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-line-img {
+  width: 48px;
+  height: 67px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #f3f0fa;
+  flex: none;
+}
+.gg-line-info {
+  flex: 1;
+  min-width: 0;
+}
+.gg-qty {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.gg-qty button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f0fa;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+.gg-qty button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.gg-qty span {
+  min-width: 2rem;
+  text-align: center;
+}
+
+/* ---- Forms / auth ---- */
+.gg-form {
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.gg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.gg-field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.gg-field input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+.gg-field input:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+.gg-alert {
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.gg-alert-error {
+  background: #fef2f2;
+  color: var(--gg-danger);
+  border: 1px solid #fecaca;
+}
+.gg-alert-ok {
+  background: #f0fdf4;
+  color: var(--gg-ok);
+  border: 1px solid #bbf7d0;
+}
+.gg-alert-warn {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+/* ---- Misc ---- */
+.gg-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #666;
+}
+.gg-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.gg-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e6e6e6 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: gg-shimmer 1.4s infinite;
+  border-radius: 8px;
+}
+@keyframes gg-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-skeleton {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+.gg-prose {
+  max-width: 720px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+.gg-prose h1 {
+  color: var(--gg-ink);
+}
+.gg-prose h2 {
+  color: var(--gg-purple);
+  margin-top: 1.5rem;
+}

@@ -33,4 +33,9 @@ export const ServerEnv = {
   fromOrders: () =>
     optionalEnv("RESEND_FROM_ORDERS", "Geega Games <orders@geega-games.com>"),
   replyTo: () => optionalEnv("RESEND_REPLY_TO", "support@geega-games.com"),
+  // Stripe (server-only secrets; never expose to the browser). These are read
+  // lazily so only the payment/webhook functions require them — the rest of the
+  // API keeps working before Stripe is configured.
+  stripeSecretKey: () => requireEnv("STRIPE_SECRET_KEY"),
+  stripeWebhookSecret: () => requireEnv("STRIPE_WEBHOOK_SECRET"),
 } as const;
