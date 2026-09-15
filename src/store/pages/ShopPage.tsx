@@ -20,7 +20,7 @@ const SORTS: { value: CatalogSort; label: string }[] = [
 ];
 
 export default function ShopPage() {
-  const { query: urlQuery } = useRouter();
+  const { query: urlQuery, navigate } = useRouter();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     ...DEFAULT_FILTERS,
     query: urlQuery.get("q") ?? "",
@@ -31,15 +31,37 @@ export default function ShopPage() {
   const facets = useFacets();
   const { cards, total, loading, error } = useCatalog(filters, page);
 
-  // Reflect query + sort in the URL (shareable/bookmarkable) without spamming
-  // history — replaceState keeps the back button sane.
+  // Sync URL -> filters. Catches every source that can change ?q=/?sort=
+  // AFTER this page has already mounted: the header search box, browser
+  // back/forward, a nav link like "New arrivals" (?sort=newest), or a
+  // pasted/bookmarked search link. `urlQuery` is a stable reference that only
+  // changes identity when the actual URL search string changes (see
+  // RouterProvider), so this does not run on every render.
+  useEffect(() => {
+    const q = urlQuery.get("q") ?? "";
+    const sort = (urlQuery.get("sort") as CatalogSort) || "name_asc";
+    setFilters((f) =>
+      f.query === q && f.sort === sort ? f : { ...f, query: q, sort },
+    );
+  }, [urlQuery]);
+
+  // Reflect filters -> URL (shareable/bookmarkable) without spamming history
+  // — always replace. Goes through the router's navigate() (not a raw
+  // history.replaceState) so RouterProvider's own query state stays the
+  // source of truth; the target-vs-current check below stops this from
+  // fighting the URL -> filters effect above (each only ever no-ops the
+  // other instead of looping).
   useEffect(() => {
     const params = new URLSearchParams();
     if (filters.query) params.set("q", filters.query);
     if (filters.sort !== "name_asc") params.set("sort", filters.sort);
     const qs = params.toString();
-    window.history.replaceState({}, "", qs ? `/shop?${qs}` : "/shop");
-  }, [filters.query, filters.sort]);
+    const target = qs ? `/shop?${qs}` : "/shop";
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (target !== current) {
+      navigate(target, { replace: true });
+    }
+  }, [filters.query, filters.sort, navigate]);
 
   // Reset to first page whenever the filter set changes.
   useEffect(() => {

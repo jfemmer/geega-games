@@ -312,12 +312,15 @@ export type ScanReviewStatus =
 
 export type ScanFileSide = "front" | "back";
 
+// Matches public.recognition_status in the live database EXACTLY
+// (supabase/migrations/20260915194514_scan_sessions_card_scans.sql).
 /** Recognition status — drives the future OCR pipeline; stub today. */
 export type RecognitionStatus =
   | "none"
   | "queued"
   | "processing"
   | "recognized"
+  | "low_confidence"
   | "failed";
 
 /**

@@ -4,10 +4,15 @@
 // (or via the Supabase MCP generate_typescript_types tool)
 //
 // This file is the single source of truth for DB types used by both the
-// browser client and the server-side admin client. It reflects the LIVE schema
-// (migrations 0001-0014 plus the additive inventory production migrations
-// 20260911000000 / 20260911000100): inventory_items, inventory_movements, the
-// inventory_public storefront view, and the admin_* / search_inventory RPCs.
+// browser client and the server-side admin client. It reflects the LIVE
+// schema as of 2026-09-15, including scan_sessions/card_scans (see
+// supabase/migrations/20260915194514_scan_sessions_card_scans.sql) and the
+// broadened search_inventory match (see
+// supabase/migrations/20260915194435_search_inventory_match_set_and_collector.sql).
+//
+// Note: scanner_jobs/scanner_results/scanner_review_queue are an OLDER,
+// unrelated, unused (0 rows) scanner design predating scan_sessions/
+// card_scans — see the comment in that migration file for the full history.
 
 export type Json =
   | string
@@ -18,6 +23,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -74,6 +81,72 @@ export type Database = {
           state?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      campaigns: {
+        Row: {
+          audience: Database["public"]["Enums"]["campaign_audience"]
+          body: string
+          bounce_count: number
+          button_text: string | null
+          button_url: string | null
+          click_count: number | null
+          created_at: string
+          created_by: string | null
+          delivered_count: number
+          id: string
+          name: string
+          open_count: number | null
+          preview_text: string
+          recipient_count: number
+          scheduled_at: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["campaign_status"]
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: Database["public"]["Enums"]["campaign_audience"]
+          body?: string
+          bounce_count?: number
+          button_text?: string | null
+          button_url?: string | null
+          click_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          id?: string
+          name: string
+          open_count?: number | null
+          preview_text?: string
+          recipient_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: Database["public"]["Enums"]["campaign_audience"]
+          body?: string
+          bounce_count?: number
+          button_text?: string | null
+          button_url?: string | null
+          click_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          id?: string
+          name?: string
+          open_count?: number | null
+          preview_text?: string
+          recipient_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["campaign_status"]
+          subject?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -173,71 +246,127 @@ export type Database = {
         }
         Relationships: []
       }
-      campaigns: {
+      card_scans: {
         Row: {
-          audience: Database["public"]["Enums"]["campaign_audience"]
-          body: string
-          bounce_count: number
-          button_text: string | null
-          button_url: string | null
-          click_count: number | null
+          back_image_path: string | null
+          confirmed_condition:
+            | Database["public"]["Enums"]["card_condition"]
+            | null
+          cost_cents: number | null
           created_at: string
-          created_by: string | null
-          delivered_count: number
+          front_image_path: string | null
           id: string
-          name: string
-          open_count: number | null
-          preview_text: string
-          recipient_count: number
-          scheduled_at: string | null
-          sent_at: string | null
-          status: Database["public"]["Enums"]["campaign_status"]
-          subject: string
+          inventory_item_id: string | null
+          notes: string | null
+          price_cents: number | null
+          quantity: number
+          recognition_confidence: number | null
+          recognition_data: Json | null
+          recognition_status: Database["public"]["Enums"]["recognition_status"]
+          review_status: Database["public"]["Enums"]["card_scan_review_status"]
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scan_session_id: string
+          selected_finish: Database["public"]["Enums"]["card_finish"] | null
+          selected_scryfall_id: string | null
+          sequence_number: number
+          storage_location: string | null
+          suggested_condition:
+            | Database["public"]["Enums"]["card_condition"]
+            | null
+          suggested_condition_confidence: number | null
           updated_at: string
         }
         Insert: {
-          audience?: Database["public"]["Enums"]["campaign_audience"]
-          body?: string
-          bounce_count?: number
-          button_text?: string | null
-          button_url?: string | null
-          click_count?: number | null
+          back_image_path?: string | null
+          confirmed_condition?:
+            | Database["public"]["Enums"]["card_condition"]
+            | null
+          cost_cents?: number | null
           created_at?: string
-          created_by?: string | null
-          delivered_count?: number
+          front_image_path?: string | null
           id?: string
-          name: string
-          open_count?: number | null
-          preview_text?: string
-          recipient_count?: number
-          scheduled_at?: string | null
-          sent_at?: string | null
-          status?: Database["public"]["Enums"]["campaign_status"]
-          subject: string
+          inventory_item_id?: string | null
+          notes?: string | null
+          price_cents?: number | null
+          quantity?: number
+          recognition_confidence?: number | null
+          recognition_data?: Json | null
+          recognition_status?: Database["public"]["Enums"]["recognition_status"]
+          review_status?: Database["public"]["Enums"]["card_scan_review_status"]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_session_id: string
+          selected_finish?: Database["public"]["Enums"]["card_finish"] | null
+          selected_scryfall_id?: string | null
+          sequence_number: number
+          storage_location?: string | null
+          suggested_condition?:
+            | Database["public"]["Enums"]["card_condition"]
+            | null
+          suggested_condition_confidence?: number | null
           updated_at?: string
         }
         Update: {
-          audience?: Database["public"]["Enums"]["campaign_audience"]
-          body?: string
-          bounce_count?: number
-          button_text?: string | null
-          button_url?: string | null
-          click_count?: number | null
+          back_image_path?: string | null
+          confirmed_condition?:
+            | Database["public"]["Enums"]["card_condition"]
+            | null
+          cost_cents?: number | null
           created_at?: string
-          created_by?: string | null
-          delivered_count?: number
+          front_image_path?: string | null
           id?: string
-          name?: string
-          open_count?: number | null
-          preview_text?: string
-          recipient_count?: number
-          scheduled_at?: string | null
-          sent_at?: string | null
-          status?: Database["public"]["Enums"]["campaign_status"]
-          subject?: string
+          inventory_item_id?: string | null
+          notes?: string | null
+          price_cents?: number | null
+          quantity?: number
+          recognition_confidence?: number | null
+          recognition_data?: Json | null
+          recognition_status?: Database["public"]["Enums"]["recognition_status"]
+          review_status?: Database["public"]["Enums"]["card_scan_review_status"]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_session_id?: string
+          selected_finish?: Database["public"]["Enums"]["card_finish"] | null
+          selected_scryfall_id?: string | null
+          sequence_number?: number
+          storage_location?: string | null
+          suggested_condition?:
+            | Database["public"]["Enums"]["card_condition"]
+            | null
+          suggested_condition_confidence?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "card_scans_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_scans_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_scans_scan_session_id_fkey"
+            columns: ["scan_session_id"]
+            isOneToOne: false
+            referencedRelation: "scan_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_scans_selected_scryfall_id_fkey"
+            columns: ["selected_scryfall_id"]
+            isOneToOne: false
+            referencedRelation: "card_printings"
+            referencedColumns: ["scryfall_id"]
+          },
+        ]
       }
       cards: {
         Row: {
@@ -667,6 +796,13 @@ export type Database = {
             referencedRelation: "inventory_items"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "inventory_reservations_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       newsletter_subscribers: {
@@ -987,6 +1123,69 @@ export type Database = {
           shipping_notifications?: Json
           updated_at?: string
           username?: string | null
+        }
+        Relationships: []
+      }
+      scan_sessions: {
+        Row: {
+          added_cards: number
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          failed_cards: number
+          id: string
+          label: string
+          matched_cards: number
+          note: string | null
+          ready_cards: number
+          rejected_cards: number
+          reviewed_cards: number
+          scanner_name: string | null
+          source_type: Database["public"]["Enums"]["scan_source_type"]
+          status: Database["public"]["Enums"]["scan_session_status"]
+          total_cards: number
+          total_files: number
+          updated_at: string
+        }
+        Insert: {
+          added_cards?: number
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_cards?: number
+          id?: string
+          label: string
+          matched_cards?: number
+          note?: string | null
+          ready_cards?: number
+          rejected_cards?: number
+          reviewed_cards?: number
+          scanner_name?: string | null
+          source_type?: Database["public"]["Enums"]["scan_source_type"]
+          status?: Database["public"]["Enums"]["scan_session_status"]
+          total_cards?: number
+          total_files?: number
+          updated_at?: string
+        }
+        Update: {
+          added_cards?: number
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_cards?: number
+          id?: string
+          label?: string
+          matched_cards?: number
+          note?: string | null
+          ready_cards?: number
+          rejected_cards?: number
+          reviewed_cards?: number
+          scanner_name?: string | null
+          source_type?: Database["public"]["Enums"]["scan_source_type"]
+          status?: Database["public"]["Enums"]["scan_session_status"]
+          total_cards?: number
+          total_files?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1398,50 +1597,6 @@ export type Database = {
           type_line: string | null
           variant_type: string | null
         }
-        Insert: {
-          card_name?: string | null
-          collector_number?: string | null
-          colors?: string[] | null
-          condition?: Database["public"]["Enums"]["card_condition"] | null
-          creature_types?: string[] | null
-          finish?: Database["public"]["Enums"]["card_finish"] | null
-          foil?: boolean | null
-          id?: string | null
-          image_url?: string | null
-          language?: string | null
-          oracle_id?: string | null
-          price_cents?: number | null
-          quantity?: number | null
-          rarity?: string | null
-          scryfall_id?: string | null
-          scryfall_price_cents?: number | null
-          set_code?: string | null
-          set_name?: string | null
-          type_line?: string | null
-          variant_type?: string | null
-        }
-        Update: {
-          card_name?: string | null
-          collector_number?: string | null
-          colors?: string[] | null
-          condition?: Database["public"]["Enums"]["card_condition"] | null
-          creature_types?: string[] | null
-          finish?: Database["public"]["Enums"]["card_finish"] | null
-          foil?: boolean | null
-          id?: string | null
-          image_url?: string | null
-          language?: string | null
-          oracle_id?: string | null
-          price_cents?: number | null
-          quantity?: number | null
-          rarity?: string | null
-          scryfall_id?: string | null
-          scryfall_price_cents?: number | null
-          set_code?: string | null
-          set_name?: string | null
-          type_line?: string | null
-          variant_type?: string | null
-        }
         Relationships: []
       }
     }
@@ -1454,7 +1609,46 @@ export type Database = {
           p_note?: string
           p_reason: Database["public"]["Enums"]["inventory_movement_reason"]
         }
-        Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
+        Returns: {
+          card_name: string
+          collector_number: string
+          colors: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          cost_cents: number | null
+          created_at: string
+          creature_types: string[]
+          finish: Database["public"]["Enums"]["card_finish"]
+          foil: boolean | null
+          id: string
+          image_url: string | null
+          language: string
+          legacy_mongo_id: string | null
+          notes: string | null
+          oracle_id: string | null
+          price_cents: number | null
+          quantity: number
+          rarity: string | null
+          scryfall_id: string | null
+          scryfall_price_cents: number | null
+          set_code: string
+          set_name: string | null
+          sku: string | null
+          status: Database["public"]["Enums"]["inventory_status"]
+          storage_location: string | null
+          type_line: string | null
+          updated_at: string
+          variant_type: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "inventory_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      admin_adjust_store_credit: {
+        Args: { p_amount_cents: number; p_reason?: string; p_user_id: string }
+        Returns: number
       }
       admin_create_reservation: {
         Args: {
@@ -1464,10 +1658,29 @@ export type Database = {
           p_quantity: number
           p_reserved_by?: string
         }
-        Returns: Database["public"]["Tables"]["inventory_reservations"]["Row"]
+        Returns: {
+          created_at: string
+          customer_id: string
+          id: string
+          inventory_item_id: string
+          note: string | null
+          quantity: number
+          released_at: string | null
+          released_by: string | null
+          reserved_at: string
+          reserved_by: string | null
+          status: Database["public"]["Enums"]["reservation_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "inventory_reservations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       admin_customer_list: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           auth_user_id: string
           created_at: string
@@ -1484,8 +1697,14 @@ export type Database = {
           subscriber_status: Database["public"]["Enums"]["subscriber_status"]
         }[]
       }
+      admin_inventory_set_codes: {
+        Args: never
+        Returns: {
+          set_code: string
+        }[]
+      }
       admin_list_reservations: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           card_name: string
           collector_number: string
@@ -1521,33 +1740,26 @@ export type Database = {
           p_released_by?: string
           p_reservation_id: string
         }
-        Returns: Database["public"]["Tables"]["inventory_reservations"]["Row"]
-      }
-      admin_upsert_customer: {
-        Args: {
-          p_auth_user_id?: string
-          p_email: string
-          p_first_name?: string
-          p_last_name?: string
-          p_source?: Database["public"]["Enums"]["customer_source"]
-        }
-        Returns: Database["public"]["Tables"]["customers"]["Row"]
-      }
-      campaign_audience_count: {
-        Args: {
-          p_audience: Database["public"]["Enums"]["campaign_audience"]
-        }
-        Returns: number
-      }
-      admin_adjust_store_credit: {
-        Args: { p_amount_cents: number; p_reason?: string; p_user_id: string }
-        Returns: number
-      }
-      admin_inventory_set_codes: {
-        Args: Record<PropertyKey, never>
         Returns: {
-          set_code: string
-        }[]
+          created_at: string
+          customer_id: string
+          id: string
+          inventory_item_id: string
+          note: string | null
+          quantity: number
+          released_at: string | null
+          released_by: string | null
+          reserved_at: string
+          reserved_by: string | null
+          status: Database["public"]["Enums"]["reservation_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "inventory_reservations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       admin_search_inventory: {
         Args: {
@@ -1599,7 +1811,68 @@ export type Database = {
           p_id: string
           p_status: Database["public"]["Enums"]["inventory_status"]
         }
-        Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
+        Returns: {
+          card_name: string
+          collector_number: string
+          colors: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          cost_cents: number | null
+          created_at: string
+          creature_types: string[]
+          finish: Database["public"]["Enums"]["card_finish"]
+          foil: boolean | null
+          id: string
+          image_url: string | null
+          language: string
+          legacy_mongo_id: string | null
+          notes: string | null
+          oracle_id: string | null
+          price_cents: number | null
+          quantity: number
+          rarity: string | null
+          scryfall_id: string | null
+          scryfall_price_cents: number | null
+          set_code: string
+          set_name: string | null
+          sku: string | null
+          status: Database["public"]["Enums"]["inventory_status"]
+          storage_location: string | null
+          type_line: string | null
+          updated_at: string
+          variant_type: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "inventory_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      admin_upsert_customer: {
+        Args: {
+          p_auth_user_id?: string
+          p_email: string
+          p_first_name?: string
+          p_last_name?: string
+          p_source?: Database["public"]["Enums"]["customer_source"]
+        }
+        Returns: {
+          auth_user_id: string | null
+          created_at: string
+          email: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          source: Database["public"]["Enums"]["customer_source"]
+          status: Database["public"]["Enums"]["account_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "customers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       admin_upsert_inventory: {
         Args: {
@@ -1627,7 +1900,46 @@ export type Database = {
           p_type_line: string
           p_variant_type?: string
         }
-        Returns: Database["public"]["Tables"]["inventory_items"]["Row"]
+        Returns: {
+          card_name: string
+          collector_number: string
+          colors: string[]
+          condition: Database["public"]["Enums"]["card_condition"]
+          cost_cents: number | null
+          created_at: string
+          creature_types: string[]
+          finish: Database["public"]["Enums"]["card_finish"]
+          foil: boolean | null
+          id: string
+          image_url: string | null
+          language: string
+          legacy_mongo_id: string | null
+          notes: string | null
+          oracle_id: string | null
+          price_cents: number | null
+          quantity: number
+          rarity: string | null
+          scryfall_id: string | null
+          scryfall_price_cents: number | null
+          set_code: string
+          set_name: string | null
+          sku: string | null
+          status: Database["public"]["Enums"]["inventory_status"]
+          storage_location: string | null
+          type_line: string | null
+          updated_at: string
+          variant_type: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "inventory_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      campaign_audience_count: {
+        Args: { p_audience: Database["public"]["Enums"]["campaign_audience"] }
+        Returns: number
       }
       cancel_unpaid_order: {
         Args: { p_order_id: string; p_reason?: string }
@@ -1655,12 +1967,12 @@ export type Database = {
         }[]
       }
       current_app_role: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
-      get_or_create_my_cart: { Args: Record<PropertyKey, never>; Returns: string }
+      get_or_create_my_cart: { Args: never; Returns: string }
       inventory_facets: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           creature_types: string[]
           price_max_cents: number
@@ -1669,8 +1981,9 @@ export type Database = {
           sets: string[]
         }[]
       }
-      is_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
-      is_staff: { Args: Record<PropertyKey, never>; Returns: boolean }
+      inventory_write_authorized: { Args: never; Returns: boolean }
+      is_admin: { Args: never; Returns: boolean }
+      is_staff: { Args: never; Returns: boolean }
       mark_order_paid: {
         Args: {
           p_order_id: string
@@ -1679,7 +1992,11 @@ export type Database = {
         }
         Returns: undefined
       }
-      my_store_credit_balance: { Args: Record<PropertyKey, never>; Returns: number }
+      my_store_credit_balance: { Args: never; Returns: number }
+      reserved_quantity: {
+        Args: { p_inventory_item_id: string }
+        Returns: number
+      }
       search_inventory: {
         Args: {
           p_colors?: string[]
@@ -1719,7 +2036,8 @@ export type Database = {
           variant_type: string
         }[]
       }
-      reserved_quantity: { Args: { p_inventory_item_id: string }; Returns: number }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       store_credit_balance: { Args: { p_user_id: string }; Returns: number }
     }
     Enums: {
@@ -1737,13 +2055,6 @@ export type Database = {
         | "failed"
         | "cancelled"
       card_condition: "NM" | "LP" | "MP" | "HP" | "DMG"
-      customer_source:
-        | "manual"
-        | "newsletter"
-        | "account_signup"
-        | "checkout"
-        | "import"
-      reservation_status: "active" | "released" | "fulfilled"
       card_finish:
         | "nonfoil"
         | "foil"
@@ -1757,6 +2068,21 @@ export type Database = {
         | "mana"
         | "gilded"
         | "halo"
+      card_scan_review_status:
+        | "unreviewed"
+        | "pending_match"
+        | "matched"
+        | "needs_manual_match"
+        | "ready"
+        | "added"
+        | "rejected"
+        | "error"
+      customer_source:
+        | "manual"
+        | "newsletter"
+        | "account_signup"
+        | "checkout"
+        | "import"
       email_delivery_status:
         | "queued"
         | "sent"
@@ -1791,8 +2117,29 @@ export type Database = {
         | "refunded"
       payment_provider: "stripe" | "paypal" | "store_credit" | "manual"
       payment_status: "unpaid" | "processing" | "paid" | "refunded" | "failed"
+      recognition_status:
+        | "none"
+        | "queued"
+        | "processing"
+        | "recognized"
+        | "low_confidence"
+        | "failed"
+      reservation_status: "active" | "released" | "fulfilled"
       scan_job_status: "queued" | "processing" | "done" | "failed"
       scan_review_status: "pending" | "approved" | "corrected" | "rejected"
+      scan_session_status:
+        | "uploading"
+        | "processing"
+        | "pending_review"
+        | "reviewing"
+        | "completed"
+        | "partially_failed"
+        | "failed"
+      scan_source_type:
+        | "scanner_export"
+        | "file_upload"
+        | "folder_drop"
+        | "scanner_bridge"
       shipping_method: "tracked" | "pwe"
       store_credit_type:
         | "opening_balance"
@@ -1958,14 +2305,6 @@ export const Constants = {
         "failed",
         "cancelled",
       ],
-      customer_source: [
-        "manual",
-        "newsletter",
-        "account_signup",
-        "checkout",
-        "import",
-      ],
-      reservation_status: ["active", "released", "fulfilled"],
       card_condition: ["NM", "LP", "MP", "HP", "DMG"],
       card_finish: [
         "nonfoil",
@@ -1980,6 +2319,23 @@ export const Constants = {
         "mana",
         "gilded",
         "halo",
+      ],
+      card_scan_review_status: [
+        "unreviewed",
+        "pending_match",
+        "matched",
+        "needs_manual_match",
+        "ready",
+        "added",
+        "rejected",
+        "error",
+      ],
+      customer_source: [
+        "manual",
+        "newsletter",
+        "account_signup",
+        "checkout",
+        "import",
       ],
       email_delivery_status: [
         "queued",
@@ -2018,8 +2374,32 @@ export const Constants = {
       ],
       payment_provider: ["stripe", "paypal", "store_credit", "manual"],
       payment_status: ["unpaid", "processing", "paid", "refunded", "failed"],
+      recognition_status: [
+        "none",
+        "queued",
+        "processing",
+        "recognized",
+        "low_confidence",
+        "failed",
+      ],
+      reservation_status: ["active", "released", "fulfilled"],
       scan_job_status: ["queued", "processing", "done", "failed"],
       scan_review_status: ["pending", "approved", "corrected", "rejected"],
+      scan_session_status: [
+        "uploading",
+        "processing",
+        "pending_review",
+        "reviewing",
+        "completed",
+        "partially_failed",
+        "failed",
+      ],
+      scan_source_type: [
+        "scanner_export",
+        "file_upload",
+        "folder_drop",
+        "scanner_bridge",
+      ],
       shipping_method: ["tracked", "pwe"],
       store_credit_type: [
         "opening_balance",
