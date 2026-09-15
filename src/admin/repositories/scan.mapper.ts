@@ -11,6 +11,7 @@ import type {
   CardPrinting,
   CardRecognitionResult,
   CardScan,
+  ConditionFindings,
   PrintingTreatment,
   RecognitionStatus,
   ScanReviewStatus,
@@ -155,6 +156,7 @@ export interface CardScanRowLike {
   recognition_data: unknown;
   suggested_condition: CardCondition | null;
   suggested_condition_confidence: number | null;
+  condition_findings: unknown;
   confirmed_condition: CardCondition | null;
   selected_finish: CardFinish | null;
   quantity: number;
@@ -201,6 +203,7 @@ export function mapCardScanRow(
     recognitionData: row.recognition_data as CardRecognitionResult | null,
     suggestedCondition: row.suggested_condition,
     suggestedConditionConfidence: row.suggested_condition_confidence,
+    conditionFindings: (row.condition_findings as ConditionFindings | null) ?? null,
     confirmedCondition: row.confirmed_condition,
     selectedFinish: row.selected_finish,
     quantity: row.quantity,

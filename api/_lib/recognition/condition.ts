@@ -1,7 +1,12 @@
 import sharp from "sharp";
 import { cropRegion, type RegionName } from "./imageRegions.js";
 import { RECOGNITION_THRESHOLDS } from "./config.js";
-import type { CardCondition } from "../../../src/admin/types/index.js";
+import type {
+  CardCondition,
+  DefectFinding,
+  DefectSeverity,
+} from "../../../src/admin/types/index.js";
+export type { DefectFinding, DefectSeverity };
 
 // Condition analysis (Part 9). HONEST SCOPE: this is a heuristic, explainable
 // FIRST PASS built from objective per-region image metrics (edge/corner
@@ -16,24 +21,6 @@ import type { CardCondition } from "../../../src/admin/types/index.js";
 // condition fixture scans before this should be trusted at face value.
 // Treat suggestedCondition as exactly that: a suggestion for a human to
 // confirm or correct in one click, never auto-applied to confirmedCondition.
-
-export type DefectSeverity = "none" | "light" | "moderate" | "heavy";
-
-export interface DefectFinding {
-  /** e.g. "back upper-left corner", "front surface". */
-  region: string;
-  kind:
-    | "corner_wear"
-    | "edge_whitening"
-    | "surface_wear"
-    | "crease"
-    | "writing_or_ink"
-    | "stain_or_liquid"
-    | "structural";
-  severity: DefectSeverity;
-  /** Human-readable explanation, e.g. "moderate whitening". */
-  note: string;
-}
 
 export interface ConditionAnalysis {
   suggestedCondition: CardCondition;

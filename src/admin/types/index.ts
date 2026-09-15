@@ -349,6 +349,8 @@ export interface CardScan {
   recognitionData: CardRecognitionResult | null;
   suggestedCondition: CardCondition | null;
   suggestedConditionConfidence: number | null;
+  /** Explainable defect findings behind the suggestion — never a black box. */
+  conditionFindings: ConditionFindings | null;
 
   /* Human-confirmed inventory fields. */
   confirmedCondition: CardCondition | null;
@@ -413,6 +415,40 @@ export interface CardRecognitionResult {
   setSymbolMatch?: { setCode: string; confidence: number } | null;
   /** Combined visual similarity (full-card + art) to the accepted/best candidate. */
   visualSimilarity?: number | null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Condition analysis (Part 9) — explainable per-region defect findings
+ * behind a suggestedCondition. Shared between the server-side analyzer
+ * (api/_lib/recognition/condition.ts, which imports these) and the review
+ * UI, so there is exactly one definition of the shape.
+ * ------------------------------------------------------------------ */
+
+export type DefectSeverity = "none" | "light" | "moderate" | "heavy";
+
+export interface DefectFinding {
+  /** e.g. "back upper-left corner", "front surface". */
+  region: string;
+  kind:
+    | "corner_wear"
+    | "edge_whitening"
+    | "surface_wear"
+    | "crease"
+    | "writing_or_ink"
+    | "stain_or_liquid"
+    | "structural";
+  severity: DefectSeverity;
+  /** Human-readable explanation, e.g. "moderate whitening". */
+  note: string;
+}
+
+export interface ConditionFindings {
+  findings: DefectFinding[];
+  /** Short human summary, e.g. "minor whitening on 2 back edges." */
+  summary: string;
+  /** True when the back image was unavailable — confidence is lowered and
+   * this is surfaced explicitly, per Part 4/9's explicit requirement. */
+  backImageMissing: boolean;
 }
 
 /* ------------------------------------------------------------------ *

@@ -154,6 +154,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       recognition_data: recognitionResult as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["recognition_data"],
       suggested_condition: condition.suggestedCondition,
       suggested_condition_confidence: condition.confidence,
+      condition_findings: {
+        findings: condition.findings,
+        summary: condition.summary,
+        backImageMissing: condition.backImageMissing,
+      } as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["condition_findings"],
     };
 
     // Never override a human's own review decision — only move the scan

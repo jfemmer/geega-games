@@ -21,6 +21,7 @@ function fakeScan(): CardScan {
     recognitionData: null,
     suggestedCondition: null,
     suggestedConditionConfidence: null,
+    conditionFindings: null,
     confirmedCondition: null,
     selectedFinish: null,
     quantity: 1,

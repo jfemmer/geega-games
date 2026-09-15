@@ -1243,6 +1243,44 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-scanform__row { display: flex; gap: 8px; }
 .gg-scanform__actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+.gg-recog, .gg-condition {
+  display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px solid var(--gg-line); padding-top: 14px;
+}
+.gg-recog__head, .gg-condition__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gg-recog__detected { font-size: 0.84rem; color: var(--gg-text-soft); }
+.gg-recog__signals { display: flex; gap: 8px; flex-wrap: wrap; }
+.gg-recog__signal {
+  font-size: 0.76rem; padding: 3px 9px; border-radius: 999px;
+  background: var(--gg-surface-2); color: var(--gg-text-soft);
+}
+.gg-recog__signal--warn { background: #fbefdd; color: #7a5210; }
+
+.gg-candidates {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px;
+  background: var(--gg-surface-2); border-radius: var(--gg-radius); border: 1px solid var(--gg-line);
+}
+.gg-candidates__intro { font-size: 0.82rem; color: var(--gg-text-soft); margin: 0; }
+.gg-candidate {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; background: var(--gg-surface); border-radius: var(--gg-radius-sm); border: 1px solid var(--gg-line);
+}
+.gg-candidate__info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gg-candidate__name { font-size: 0.86rem; font-weight: 600; }
+.gg-candidate__meta { font-size: 0.76rem; color: var(--gg-text-soft); }
+.gg-candidate__reason { font-size: 0.72rem; color: var(--gg-text-faint); font-style: italic; }
+
+.gg-defects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.gg-defects__item {
+  display: flex; gap: 8px; font-size: 0.82rem; padding: 6px 10px; border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface-2); border-left: 3px solid var(--gg-line-strong);
+}
+.gg-defects__item--light { border-left-color: var(--gg-info); }
+.gg-defects__item--moderate { border-left-color: var(--gg-warning); }
+.gg-defects__item--heavy { border-left-color: var(--gg-danger); }
+.gg-defects__region { font-weight: 600; flex: 0 0 auto; white-space: nowrap; }
+.gg-defects__note { color: var(--gg-text-soft); }
+
 .gg-findmatch { display: grid; grid-template-columns: 200px 1fr; gap: 18px; }
 @media (max-width: 720px) { .gg-findmatch { grid-template-columns: 1fr; } }
 .gg-findmatch__scan { display: flex; flex-direction: column; gap: 8px; align-items: center; }

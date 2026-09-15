@@ -40,6 +40,14 @@ export const CONDITION_SHORT: Record<CardCondition, string> = {
   DMG: "DMG",
 };
 
+export const CONDITION_TONE: Record<CardCondition, BadgeTone> = {
+  NM: "success",
+  LP: "info",
+  MP: "gold",
+  HP: "warning",
+  DMG: "danger",
+};
+
 export const FINISH_LABELS: Record<CardFinish, string> = {
   nonfoil: "Nonfoil",
   foil: "Foil",

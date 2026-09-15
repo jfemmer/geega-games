@@ -18,21 +18,29 @@ import { ScryfallSearch } from "../../components/cards/ScryfallSearch";
 import { SelectedPrintingPreview } from "../../components/cards/PrintingPreview";
 import { useAsync } from "../../hooks/useAsync";
 import { useToast } from "../../hooks/useToast";
-import { scanRepository } from "../../repositories";
+import { scanRepository, scryfallRepository, recognitionProvider } from "../../repositories";
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
-import { CONDITION_LABELS, FINISH_LABELS } from "../../utils/labels";
+import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS } from "../../utils/labels";
 import type {
   BatchCommitPreview,
   CardCondition,
   CardFinish,
   CardPrinting,
   CardScan,
+  DefectFinding,
+  RecognitionCandidate,
+  RecognitionStatus,
   ScanFilterKey,
   ScanSession,
 } from "../../types";
 import type { BadgeTone } from "../../utils/labels";
+
+/** 0–1 confidence to a rounded percent string, e.g. 0.873 -> "87%". */
+function confidencePct(v: number | null | undefined): string {
+  return `${Math.round((v ?? 0) * 100)}%`;
+}
 
 const FILTERS: { key: ScanFilterKey; label: string }[] = [
   { key: "all", label: "All" },
@@ -203,24 +211,60 @@ export function ScanReviewPage({
     });
   }
 
+  // Shared by the "Find match" modal and one-click acceptance of a
+  // recognition candidate — both are a human confirming an exact printing.
+  const applyPrinting = useCallback(
+    async (scan: CardScan, printing: CardPrinting) => {
+      await scanRepository.updateScan(scan.id, {
+        selectedScryfallId: printing.scryfallId,
+        selectedPrinting: printing,
+        selectedFinish:
+          scan.selectedFinish && printing.availableFinishes.includes(scan.selectedFinish)
+            ? scan.selectedFinish
+            : printing.availableFinishes[0] ?? null,
+        priceCents: scan.priceCents ?? printing.scryfallPriceCents ?? null,
+      });
+      setActiveId(scan.id);
+      reloadAll();
+      toast.success(`Matched to ${printing.cardName} (${printing.setCode}).`);
+    },
+    [reloadAll, toast],
+  );
+
   async function handleMatchChosen(printing: CardPrinting) {
     if (!findMatchFor) return;
-    await scanRepository.updateScan(findMatchFor.id, {
-      selectedScryfallId: printing.scryfallId,
-      selectedPrinting: printing,
-      selectedFinish:
-        findMatchFor.selectedFinish &&
-        printing.availableFinishes.includes(findMatchFor.selectedFinish)
-          ? findMatchFor.selectedFinish
-          : printing.availableFinishes[0] ?? null,
-      priceCents:
-        findMatchFor.priceCents ?? printing.scryfallPriceCents ?? null,
-    });
-    setActiveId(findMatchFor.id);
+    await applyPrinting(findMatchFor, printing);
     setFindMatchFor(null);
-    reloadAll();
-    toast.success(`Matched to ${printing.cardName} (${printing.setCode}).`);
   }
+
+  const [recognizingId, setRecognizingId] = useState<string | null>(null);
+
+  const rerunRecognition = useCallback(
+    async (scan: CardScan) => {
+      setRecognizingId(scan.id);
+      try {
+        await recognitionProvider.recognize(scan);
+        reloadAll();
+      } catch {
+        toast.error("Recognition failed to run. Try again in a moment.");
+      } finally {
+        setRecognizingId(null);
+      }
+    },
+    [reloadAll, toast],
+  );
+
+  const selectCandidate = useCallback(
+    async (scan: CardScan, candidate: RecognitionCandidate) => {
+      const printing = await scryfallRepository.getByScryfallId(candidate.scryfallId);
+      if (!printing) {
+        toast.error("Couldn't load that printing's details — try Find match instead.");
+        return;
+      }
+      await applyPrinting(scan, printing);
+    },
+    [applyPrinting, toast],
+  );
 
   async function openCommit() {
     const preview = await scanRepository.previewCommit(sessionId);
@@ -352,6 +396,9 @@ export function ScanReviewPage({
               onPatch={patchActive}
               onApprove={approveActive}
               onReject={() => patchActive({ reviewStatus: "rejected" })}
+              onRerunRecognition={() => rerunRecognition(active)}
+              recognizing={recognizingId === active.id}
+              onSelectCandidate={(c) => selectCandidate(active, c)}
             />
           ) : (
             <div className="gg-scandetail__empty">
@@ -497,6 +544,24 @@ const REVIEW_TONE: Record<string, BadgeTone> = {
   error: "danger",
 };
 
+const RECOGNITION_TONE: Record<RecognitionStatus, BadgeTone> = {
+  none: "neutral",
+  queued: "neutral",
+  processing: "info",
+  recognized: "success",
+  low_confidence: "warning",
+  failed: "danger",
+};
+
+const RECOGNITION_LABEL: Record<RecognitionStatus, string> = {
+  none: "Not recognized yet",
+  queued: "Queued for recognition",
+  processing: "Recognizing…",
+  recognized: "Auto-matched",
+  low_confidence: "Low confidence",
+  failed: "Recognition failed",
+};
+
 function scanImages(url: string | null) {
   return url ? { small: url, normal: url, large: url, png: url, artCrop: url } : null;
 }
@@ -581,12 +646,18 @@ function ScanDetail({
   onPatch,
   onApprove,
   onReject,
+  onRerunRecognition,
+  recognizing,
+  onSelectCandidate,
 }: {
   scan: CardScan;
   onFindMatch: () => void;
   onPatch: (patch: Parameters<typeof scanRepository.updateScan>[1]) => Promise<void>;
   onApprove: () => void;
   onReject: () => void;
+  onRerunRecognition: () => void;
+  recognizing: boolean;
+  onSelectCandidate: (candidate: RecognitionCandidate) => Promise<void>;
 }) {
   const [price, setPrice] = useState(
     scan.priceCents != null ? (scan.priceCents / 100).toFixed(2) : "",
@@ -628,6 +699,12 @@ function ScanDetail({
               printing={scan.selectedPrinting}
               finish={scan.selectedFinish}
             />
+          ) : scan.recognitionData && scan.recognitionData.candidatePrintings.length > 0 ? (
+            <CandidateSuggestions
+              candidates={scan.recognitionData.candidatePrintings}
+              onSelect={onSelectCandidate}
+              onSearchInstead={onFindMatch}
+            />
           ) : (
             <div className="gg-compare__placeholder gg-compare__placeholder--match">
               <Icon name="search" size={24} />
@@ -639,6 +716,12 @@ function ScanDetail({
           )}
         </div>
       </div>
+
+      <RecognitionPanel scan={scan} recognizing={recognizing} onRerun={onRerunRecognition} />
+      <ConditionPanel
+        scan={scan}
+        onApplySuggestion={(condition) => onPatch({ confirmedCondition: condition })}
+      />
 
       <div className="gg-scanform">
         <div className="gg-scanform__row">
@@ -715,6 +798,224 @@ function ScanDetail({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Recognition results — status, detected fields, why a match was (or
+ * wasn't) accepted, and every low-confidence signal the pipeline found.
+ * Never a black box: decisionReason + warnings are the pipeline's own
+ * explanation, straight from api/_lib/recognition/pipeline.ts.
+ * ------------------------------------------------------------------ */
+
+function RecognitionPanel({
+  scan,
+  recognizing,
+  onRerun,
+}: {
+  scan: CardScan;
+  recognizing: boolean;
+  onRerun: () => void;
+}) {
+  const data = scan.recognitionData;
+  const status = scan.recognitionStatus;
+
+  return (
+    <div className="gg-recog">
+      <div className="gg-recog__head">
+        <Badge tone={RECOGNITION_TONE[status]} dot>
+          {RECOGNITION_LABEL[status]}
+        </Badge>
+        {scan.recognitionConfidence != null && (
+          <span className="gg-muted">{confidencePct(scan.recognitionConfidence)} confidence</span>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="sparkle"
+          loading={recognizing}
+          disabled={recognizing || status === "processing"}
+          onClick={onRerun}
+        >
+          {status === "none" ? "Run recognition" : "Re-run"}
+        </Button>
+      </div>
+
+      {data && (data.detectedName || data.detectedSetCode || data.detectedCollectorNumber) && (
+        <div className="gg-recog__detected">
+          Detected: {data.detectedName ?? "—"}
+          {data.detectedSetCode ? ` · ${data.detectedSetCode}` : ""}
+          {data.detectedCollectorNumber ? ` #${data.detectedCollectorNumber}` : ""}
+        </div>
+      )}
+
+      {data && (data.era === "vintage" || data.visualSimilarity != null || data.setSymbolMatch) && (
+        <div className="gg-recog__signals">
+          {data.era === "vintage" && (
+            <span className="gg-recog__signal gg-recog__signal--warn">
+              Possible vintage card — treated conservatively
+            </span>
+          )}
+          {data.visualSimilarity != null && (
+            <span className="gg-recog__signal">
+              Visual match {confidencePct(data.visualSimilarity)}
+            </span>
+          )}
+          {data.setSymbolMatch && (
+            <span className="gg-recog__signal">
+              Set symbol → {data.setSymbolMatch.setCode} ({confidencePct(data.setSymbolMatch.confidence)})
+            </span>
+          )}
+        </div>
+      )}
+
+      {data?.decisionReason && (
+        <div className="gg-inline-note gg-inline-note--info">
+          <Icon name="info" size={16} />
+          <div>{data.decisionReason}</div>
+        </div>
+      )}
+
+      {data && data.warnings.length > 0 && (
+        <div className="gg-inline-note gg-inline-note--warning">
+          <Icon name="warning" size={16} />
+          <div>
+            {data.warnings.map((w, i) => (
+              <div key={i}>{w}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Clickable recognition candidates shown in place of the empty "no match"
+ * placeholder — a human still confirms the printing with one click, same as
+ * picking from manual search, just pre-narrowed by the pipeline. */
+function CandidateSuggestions({
+  candidates,
+  onSelect,
+  onSearchInstead,
+}: {
+  candidates: RecognitionCandidate[];
+  onSelect: (candidate: RecognitionCandidate) => Promise<void>;
+  onSearchInstead: () => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function pick(c: RecognitionCandidate) {
+    setBusyId(c.scryfallId);
+    try {
+      await onSelect(c);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="gg-candidates">
+      <p className="gg-candidates__intro">
+        Not confident enough to auto-match — recognition found{" "}
+        {candidates.length === 1 ? "this possibility" : `these ${candidates.length} possibilities`}:
+      </p>
+      {candidates.map((c) => (
+        <div key={c.scryfallId} className="gg-candidate">
+          <div className="gg-candidate__info">
+            <span className="gg-candidate__name">{c.cardName}</span>
+            <span className="gg-candidate__meta">
+              {c.setCode} · #{c.collectorNumber} · {confidencePct(c.confidence)}
+            </span>
+            {c.reason && <span className="gg-candidate__reason">{c.reason}</span>}
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busyId === c.scryfallId}
+            disabled={busyId != null}
+            onClick={() => pick(c)}
+          >
+            Use this
+          </Button>
+        </div>
+      ))}
+      <Button variant="ghost" size="sm" icon="search" onClick={onSearchInstead}>
+        Search manually instead
+      </Button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Condition suggestion — explainable per-region defect findings, never
+ * silently promoted to confirmedCondition (Part 9).
+ * ------------------------------------------------------------------ */
+
+const DEFECT_KIND_LABEL: Record<DefectFinding["kind"], string> = {
+  corner_wear: "Corner wear",
+  edge_whitening: "Edge whitening",
+  surface_wear: "Surface wear",
+  crease: "Crease",
+  writing_or_ink: "Writing / ink",
+  stain_or_liquid: "Stain / liquid",
+  structural: "Structural damage",
+};
+
+function ConditionPanel({
+  scan,
+  onApplySuggestion,
+}: {
+  scan: CardScan;
+  onApplySuggestion: (condition: CardCondition) => void;
+}) {
+  const suggested = scan.suggestedCondition;
+  if (!suggested) return null;
+  const findings = scan.conditionFindings;
+
+  return (
+    <div className="gg-condition">
+      <div className="gg-condition__head">
+        <span className="gg-comparelabel">Condition suggestion</span>
+        <Badge tone={CONDITION_TONE[suggested]}>{CONDITION_LABELS[suggested]}</Badge>
+        {scan.suggestedConditionConfidence != null && (
+          <span className="gg-muted">
+            {confidencePct(scan.suggestedConditionConfidence)} confidence
+          </span>
+        )}
+        {scan.confirmedCondition !== suggested && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="check"
+            onClick={() => onApplySuggestion(suggested)}
+          >
+            Use suggestion
+          </Button>
+        )}
+      </div>
+
+      {findings?.backImageMissing && (
+        <div className="gg-inline-note gg-inline-note--warning">
+          <Icon name="info" size={16} />
+          <div>No back scan — this suggestion is based on the front side only.</div>
+        </div>
+      )}
+
+      {findings && findings.findings.length > 0 ? (
+        <ul className="gg-defects">
+          {findings.findings.map((f, i) => (
+            <li key={i} className={`gg-defects__item gg-defects__item--${f.severity}`}>
+              <span className="gg-defects__region">{f.region}</span>
+              <span className="gg-defects__note">
+                {DEFECT_KIND_LABEL[f.kind]} — {f.note}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        findings && <p className="gg-muted">No wear detected by automated analysis.</p>
+      )}
     </div>
   );
 }
