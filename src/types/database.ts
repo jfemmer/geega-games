@@ -729,6 +729,7 @@ export type Database = {
           inventory_item_id: string | null
           line_total_cents: number
           order_id: string
+          packed: boolean
           quantity: number
           scryfall_id: string | null
           set_code: string | null
@@ -747,6 +748,7 @@ export type Database = {
           inventory_item_id?: string | null
           line_total_cents: number
           order_id: string
+          packed?: boolean
           quantity: number
           scryfall_id?: string | null
           set_code?: string | null
@@ -765,6 +767,7 @@ export type Database = {
           inventory_item_id?: string | null
           line_total_cents?: number
           order_id?: string
+          packed?: boolean
           quantity?: number
           scryfall_id?: string | null
           set_code?: string | null
@@ -805,6 +808,7 @@ export type Database = {
           discount_cents: number
           email: string
           id: string
+          internal_notes: string | null
           legacy_mongo_id: string | null
           packed_at: string | null
           paid_at: string | null
@@ -841,6 +845,7 @@ export type Database = {
           discount_cents?: number
           email: string
           id?: string
+          internal_notes?: string | null
           legacy_mongo_id?: string | null
           packed_at?: string | null
           paid_at?: string | null
@@ -877,6 +882,7 @@ export type Database = {
           discount_cents?: number
           email?: string
           id?: string
+          internal_notes?: string | null
           legacy_mongo_id?: string | null
           packed_at?: string | null
           paid_at?: string | null

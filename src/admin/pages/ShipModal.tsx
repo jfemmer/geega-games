@@ -10,6 +10,13 @@ import type { Order, ShippingCarrier } from "../types";
 
 const CARRIERS: ShippingCarrier[] = ["USPS", "UPS", "FedEx", "Other"];
 
+// PWE (Plain White Envelope) orders are, by design, never tracked — the
+// customer chose that shipping method precisely because it's cheaper and
+// untracked. Requiring a carrier/tracking number here would force staff to
+// invent fake tracking data, which the storefront's "Track My Order" would
+// then present to the customer as real. So: `tracked` orders require carrier
+// + tracking; `pwe` orders ship with neither, and the UI never lets you type
+// tracking info into a PWE shipment in the first place.
 export function ShipModal({
   order,
   open,
@@ -26,9 +33,13 @@ export function ShipModal({
   const [tracking, setTracking] = useState("");
   const [busy, setBusy] = useState(false);
 
+  if (!order) return null;
+
+  const isPwe = order.shippingMethod === "pwe";
+
   async function confirmShip() {
     if (!order) return;
-    if (!tracking.trim()) {
+    if (!isPwe && !tracking.trim()) {
       toast.error("Enter a tracking number.");
       return;
     }
@@ -36,12 +47,14 @@ export function ShipModal({
     try {
       const updated = await orderRepository.ship(
         order.id,
-        carrier,
-        tracking.trim(),
+        isPwe ? null : carrier,
+        isPwe ? null : tracking.trim(),
         CURRENT_ADMIN.name,
       );
       toast.success(
-        `${order.orderNumber} marked shipped. Confirmation email simulated (not sent).`,
+        isPwe
+          ? `${order.orderNumber} marked shipped (Plain White Envelope — no tracking).`
+          : `${order.orderNumber} marked shipped. Confirmation email simulated (not sent).`,
       );
       onShipped(updated);
       setTracking("");
@@ -52,8 +65,6 @@ export function ShipModal({
       setBusy(false);
     }
   }
-
-  if (!order) return null;
 
   return (
     <Modal
@@ -73,26 +84,38 @@ export function ShipModal({
       }
     >
       <div className="gg-ship">
-        <div className="gg-form-grid">
-          <SelectField
-            label="Carrier"
-            value={carrier}
-            onChange={(e) => setCarrier(e.target.value as ShippingCarrier)}
-          >
-            {CARRIERS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </SelectField>
-          <TextField
-            label="Tracking number"
-            value={tracking}
-            autoFocus
-            onChange={(e) => setTracking(e.target.value)}
-            placeholder="e.g. 9400 1000 0000 0000 0000 00"
-          />
-        </div>
+        <p className="gg-tag" style={{ marginBottom: "0.75rem" }}>
+          Shipping method: <strong>{isPwe ? "Plain White Envelope" : "Tracked"}</strong>
+        </p>
+
+        {isPwe ? (
+          <div className="gg-alert gg-alert-warn" role="note">
+            This order was placed with Plain White Envelope shipping, which is
+            intentionally untracked. No carrier or tracking number is recorded —
+            marking it shipped will not create fake tracking data.
+          </div>
+        ) : (
+          <div className="gg-form-grid">
+            <SelectField
+              label="Carrier"
+              value={carrier}
+              onChange={(e) => setCarrier(e.target.value as ShippingCarrier)}
+            >
+              {CARRIERS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </SelectField>
+            <TextField
+              label="Tracking number"
+              value={tracking}
+              autoFocus
+              onChange={(e) => setTracking(e.target.value)}
+              placeholder="e.g. 9400 1000 0000 0000 0000 00"
+            />
+          </div>
+        )}
 
         <div className="gg-emailpreview">
           <div className="gg-emailpreview__head">
@@ -104,8 +127,10 @@ export function ShipModal({
             <p>Hi {order.customerName.split(" ")[0]},</p>
             <p>
               Great news — your Geega Games order {order.orderNumber} is on its
-              way via {carrier}
-              {tracking.trim() ? `, tracking ${tracking.trim()}` : ""}.
+              way{" "}
+              {isPwe
+                ? "via Plain White Envelope. This shipping method does not include tracking."
+                : `via ${carrier}${tracking.trim() ? `, tracking ${tracking.trim()}` : ""}.`}
             </p>
             <ul>
               {order.items.map((it) => (

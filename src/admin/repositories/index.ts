@@ -21,9 +21,15 @@
 //                                         writes: /api/admin/campaigns/*).
 //                                        Sending is NOT enabled — send() throws
 //                                        rather than faking delivery stats.
+//   • Orders (fulfillment) ............. supabaseOrderRepository
+//                                        (reads: orders/order_items RLS, staff
+//                                         see every order; writes:
+//                                         /api/admin/orders/* — status changes,
+//                                         shipping, notes, packing checklist).
+//                                        These are the SAME rows the customer
+//                                        account's Track My Order page reads.
 //
 // STILL MOCKED (intentionally, outside this phase's scope):
-//   • Orders ........................... mockOrderRepository
 //   • Analytics / trends / metrics ..... mockAnalyticsRepository
 //   • Scan sessions / batch ingest ..... mockScanRepository (OCR is a stub)
 //   • Card recognition (OCR) ........... stubRecognitionProvider
@@ -43,6 +49,7 @@ import { supabaseInventoryRepository } from "./inventory.supabase";
 import { supabaseUserRepository } from "./user.supabase";
 import { supabaseCampaignRepository } from "./campaign.supabase";
 import { supabaseReservationRepository } from "./reservation.supabase";
+import { supabaseOrderRepository } from "./order.supabase";
 import { mockScryfallRepository } from "./scryfall.mock";
 import { liveScryfallRepository } from "./scryfall.live";
 import { mockScanRepository } from "./scan.mock";
@@ -109,8 +116,16 @@ export const reservationRepository: ReservationRepository = useLiveData
   ? supabaseReservationRepository
   : mockReservationRepository;
 
+// Orders go LIVE whenever Supabase is configured, same as the repositories
+// above: reads via RLS (staff can SELECT every order), writes via staff-gated
+// /api/admin?resource=orders&action=* Vercel Functions (service role). This is
+// what lets a real "mark shipped" reach the same order row the customer's
+// Track My Order page reads.
+export const orderRepository: OrderRepository = useLiveData
+  ? supabaseOrderRepository
+  : mockOrderRepository;
+
 // Still mocked for this phase (see status banner above).
-export const orderRepository: OrderRepository = mockOrderRepository;
 export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
 export const scanRepository: ScanRepository = mockScanRepository;
 export const recognitionProvider: CardRecognitionProvider =
@@ -125,7 +140,7 @@ if (typeof console !== "undefined") {
       useLiveInventory ? "LIVE (Supabase)" : "mock"
     } · Scryfall source: ${
       useLiveScryfall ? "LIVE (/api/admin/scryfall)" : "mock catalog"
-    } · Users/Campaigns/Reservations: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
+    } · Users/Campaigns/Reservations/Orders: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
   );
 }
 

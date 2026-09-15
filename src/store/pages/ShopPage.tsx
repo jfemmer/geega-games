@@ -183,7 +183,9 @@ export default function ShopPage() {
             <div className="gg-grid" aria-hidden="true">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div className="gg-card" key={i}>
-                  <div className="gg-card-img gg-skeleton" />
+                  <div className="gg-card-imgwrap">
+                    <div className="gg-card-img gg-skeleton" />
+                  </div>
                   <div className="gg-card-body">
                     <div className="gg-skeleton" style={{ height: 16 }} />
                     <div className="gg-skeleton" style={{ height: 12, width: "60%" }} />

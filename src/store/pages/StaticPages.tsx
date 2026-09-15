@@ -1,7 +1,7 @@
 import { Link } from "../lib/router";
 import SignupForm from "../../SignupForm";
 
-const SUPPORT_EMAIL =
+export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
   "support@geega-games.com";
 

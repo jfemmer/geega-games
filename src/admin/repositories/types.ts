@@ -260,10 +260,15 @@ export interface OrderRepository {
   setStatus(id: string, status: Order["status"], adminName: string): Promise<Order>;
   toggleItemPacked(orderId: string, itemId: string): Promise<Order>;
   addNote(orderId: string, note: string): Promise<Order>;
+  /**
+   * Mark an order shipped. A `tracked` order requires a carrier + tracking
+   * number; a `pwe` (Plain White Envelope) order intentionally has neither —
+   * pass null for both rather than inventing tracking data.
+   */
   ship(
     orderId: string,
-    carrier: ShippingCarrier,
-    trackingNumber: string,
+    carrier: ShippingCarrier | null,
+    trackingNumber: string | null,
     adminName: string,
   ): Promise<Order>;
   counts(): Promise<Record<string, number>>;

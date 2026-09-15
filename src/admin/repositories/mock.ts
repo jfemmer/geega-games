@@ -505,7 +505,13 @@ export const mockOrderRepository: OrderRepository = {
             shippedAt: at,
             timeline: [
               ...o.timeline,
-              statusEvent("Shipped", `${carrier} ${trackingNumber}`, adminName),
+              statusEvent(
+                "Shipped",
+                carrier && trackingNumber
+                  ? `${carrier} ${trackingNumber}`
+                  : "Plain White Envelope (no tracking)",
+                adminName,
+              ),
             ],
             emails: [
               ...o.emails,

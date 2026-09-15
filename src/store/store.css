@@ -119,11 +119,19 @@
   }
 }
 
-/* ---- Product grid ---- */
+/* ---- Product grid ----
+   Fixed-width tracks (not 1fr) so a sparse result page (one or two cards)
+   never stretches art to giant sizes — cards stay near real trading-card
+   scale regardless of how much horizontal room the page has. */
 .gg-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 200px));
+  gap: 1.1rem 1rem;
+}
+@media (min-width: 1400px) {
+  .gg-grid {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 210px));
+  }
 }
 .gg-card {
   border: 1px solid var(--gg-line);
@@ -132,38 +140,76 @@
   background: #fff;
   display: flex;
   flex-direction: column;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+.gg-card:hover {
+  box-shadow: 0 6px 20px rgba(76, 29, 149, 0.14);
+  transform: translateY(-2px);
+  border-color: rgba(76, 29, 149, 0.3);
+}
+.gg-card:focus-within {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+.gg-card-imgwrap {
+  position: relative;
+  aspect-ratio: 488 / 680;
+  background: #ece6f7;
+  display: block;
 }
 .gg-card-img {
-  aspect-ratio: 488 / 680;
-  background: #f3f0fa;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  object-fit: cover;
+  height: 100%;
+  /* contain (not cover) so artwork is never cropped, even when a source
+     image's aspect ratio differs slightly from a real Magic card. */
+  object-fit: contain;
   display: block;
 }
 .gg-card-body {
-  padding: 0.65rem;
+  padding: 0.7rem 0.75rem 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.3rem;
   flex: 1;
 }
 .gg-card-name {
-  font-weight: 600;
-  font-size: 0.95rem;
-  line-height: 1.2;
+  font-weight: 700;
+  font-size: 0.92rem;
+  line-height: 1.25;
+  color: var(--gg-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.3em;
 }
 .gg-card-meta {
-  font-size: 0.8rem;
-  color: #555;
+  font-size: 0.78rem;
+  color: #666;
+  line-height: 1.3;
+}
+.gg-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.1rem 0 0.15rem;
 }
 .gg-badge {
   display: inline-block;
-  font-size: 0.7rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  font-size: 0.68rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
   background: #ede9fe;
   color: var(--gg-purple);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.gg-badge-foil {
+  background: #fef3c7;
+  color: #92400e;
 }
 .gg-card-foot {
   margin-top: auto;
@@ -171,11 +217,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding-top: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--gg-line);
 }
 .gg-price {
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 1.02rem;
   color: var(--gg-ink);
+}
+.gg-card-stock {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #92400e;
+}
+.gg-card-stock--out {
+  color: var(--gg-danger);
 }
 .gg-btn {
   padding: 0.5rem 0.9rem;
@@ -187,9 +243,13 @@
   font-weight: 600;
   cursor: pointer;
   min-height: 40px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
 }
 .gg-btn:hover:not(:disabled) {
   background: var(--gg-purple-2);
+}
+.gg-btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 .gg-btn:disabled {
   opacity: 0.5;
@@ -200,9 +260,13 @@
   outline-offset: 2px;
 }
 .gg-btn-sm {
-  padding: 0.35rem 0.6rem;
+  padding: 0.4rem 0.65rem;
   min-height: 34px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+}
+.gg-card-cta {
+  width: 100%;
+  justify-content: center;
 }
 .gg-btn-ghost {
   background: transparent;
@@ -217,33 +281,66 @@
 .gg-filters {
   border: 1px solid var(--gg-line);
   border-radius: 12px;
-  padding: 1rem;
+  padding: 1.1rem;
   align-self: start;
+  background: #fff;
 }
 .gg-filter-group {
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-filter-group:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0;
 }
 .gg-filter-group h3 {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #666;
-  margin: 0 0 0.5rem;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--gg-purple);
+  margin: 0 0 0.6rem;
 }
 .gg-check {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-  padding: 0.15rem 0;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: var(--gg-ink);
+  padding: 0.3rem 0;
+  cursor: pointer;
+}
+.gg-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gg-purple);
+  flex: none;
 }
 .gg-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--gg-line);
   flex-wrap: wrap;
+}
+.gg-toolbar select {
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--gg-line);
+  background: #fff;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--gg-ink);
+  min-height: 38px;
+}
+.gg-toolbar select:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
 }
 .gg-mobile-filter-btn {
   display: none;
@@ -254,6 +351,16 @@
   }
   .gg-filters.gg-filters-desktop {
     display: none;
+  }
+  .gg-grid {
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 0.75rem;
+  }
+}
+@media (max-width: 420px) {
+  .gg-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
   }
 }
 
@@ -392,8 +499,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 1.25rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--gg-line);
+  font-size: 0.9rem;
+  color: #555;
 }
 .gg-skeleton {
   background: linear-gradient(90deg, #f0f0f0 25%, #e6e6e6 50%, #f0f0f0 75%);
@@ -425,4 +536,354 @@
 .gg-prose h2 {
   color: var(--gg-purple);
   margin-top: 1.5rem;
+}
+
+/* ---- Account area ----
+   Deliberately its own light theme (white cards, purple/gold accents) rather
+   than reusing the dark .gg-header/.gg-nav styling, which reads wrong on a
+   white page. */
+.gg-account {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .gg-account {
+    grid-template-columns: 1fr;
+  }
+}
+.gg-account-nav {
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+@media (min-width: 801px) {
+  .gg-account-nav {
+    position: sticky;
+    top: 90px;
+  }
+}
+@media (max-width: 800px) {
+  .gg-account-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow-x: auto;
+  }
+}
+.gg-account-nav a {
+  display: block;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  color: var(--gg-ink);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gg-account-nav a:hover {
+  background: #f3f0fa;
+}
+.gg-account-nav a:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: -2px;
+}
+.gg-account-nav a.gg-active {
+  background: var(--gg-purple);
+  color: #fff;
+}
+.gg-account-nav__signout {
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--gg-line);
+}
+.gg-account-nav__signout button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--gg-danger);
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.gg-account-nav__signout button:hover {
+  background: #fef2f2;
+}
+.gg-account-main {
+  min-width: 0;
+}
+.gg-account-header {
+  margin-bottom: 1.25rem;
+}
+.gg-account-header h1 {
+  margin: 0 0 0.25rem;
+  color: var(--gg-ink);
+  font-size: 1.5rem;
+}
+.gg-account-header p {
+  margin: 0;
+  color: #666;
+}
+
+.gg-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.gg-dash-card {
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1.15rem;
+}
+.gg-dash-card--wide {
+  grid-column: 1 / -1;
+}
+.gg-dash-card h2 {
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gg-purple);
+  font-weight: 700;
+}
+.gg-dash-stat {
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: var(--gg-ink);
+  line-height: 1.2;
+}
+.gg-dash-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+}
+
+/* Order progress stepper */
+.gg-progress {
+  display: flex;
+  align-items: flex-start;
+  margin: 0.5rem 0 1.25rem;
+  overflow-x: auto;
+  padding-top: 0.25rem;
+}
+.gg-progress-step {
+  flex: 1 0 84px;
+  min-width: 84px;
+  text-align: center;
+  position: relative;
+  padding-top: 1.9rem;
+  font-size: 0.72rem;
+  color: #999;
+}
+.gg-progress-step::before {
+  content: "";
+  position: absolute;
+  top: 0.6rem;
+  left: -50%;
+  width: 100%;
+  height: 3px;
+  background: var(--gg-line);
+  z-index: 0;
+}
+.gg-progress-step:first-child::before {
+  display: none;
+}
+.gg-progress-dot {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--gg-line);
+  z-index: 1;
+}
+.gg-progress-step.gg-done {
+  color: var(--gg-ink);
+  font-weight: 600;
+}
+.gg-progress-step.gg-done::before {
+  background: var(--gg-purple);
+}
+.gg-progress-step.gg-done .gg-progress-dot {
+  background: var(--gg-purple);
+  border-color: var(--gg-purple);
+}
+.gg-progress-step.gg-current {
+  color: var(--gg-purple);
+  font-weight: 700;
+}
+.gg-progress-step.gg-current .gg-progress-dot {
+  border-color: var(--gg-gold);
+  background: var(--gg-gold);
+}
+.gg-progress-step small {
+  display: block;
+  font-weight: 400;
+  color: #aaa;
+  margin-top: 0.15rem;
+}
+.gg-order-halt {
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  font-weight: 700;
+  margin: 0.5rem 0 1.25rem;
+}
+.gg-order-halt--cancelled {
+  background: #fef2f2;
+  color: var(--gg-danger);
+  border: 1px solid #fecaca;
+}
+.gg-order-halt--refunded {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+/* Track My Order */
+.gg-track {
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  background: #faf9fd;
+}
+.gg-track--pwe {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.gg-track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.gg-track-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+}
+
+/* Status badges */
+.gg-badge-status {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.gg-badge-status-pending_payment {
+  background: #fef3c7;
+  color: #92400e;
+}
+.gg-badge-status-paid,
+.gg-badge-status-delivered {
+  background: #dcfce7;
+  color: #15803d;
+}
+.gg-badge-status-packing,
+.gg-badge-status-ready_to_ship,
+.gg-badge-status-refunded,
+.gg-badge-status-processing {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+.gg-badge-status-shipped {
+  background: #cffafe;
+  color: #155e75;
+}
+.gg-badge-status-cancelled,
+.gg-badge-status-failed,
+.gg-badge-status-unpaid {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Order list rows */
+.gg-orderrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  margin-bottom: 0.75rem;
+  text-decoration: none;
+  color: inherit;
+  background: #fff;
+  flex-wrap: wrap;
+}
+.gg-orderrow:hover {
+  border-color: var(--gg-purple);
+  box-shadow: 0 2px 10px rgba(76, 29, 149, 0.08);
+}
+.gg-orderrow:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+}
+.gg-orderrow-meta {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+  align-items: center;
+}
+.gg-orderrow-right {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.gg-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+}
+@media (max-width: 520px) {
+  .gg-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.gg-form-grid .gg-field-span2 {
+  grid-column: 1 / -1;
+}
+.gg-address-card {
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+  background: #fff;
+}
+.gg-address-card--default {
+  border-color: var(--gg-purple);
+  box-shadow: 0 0 0 1px var(--gg-purple);
+}
+.gg-address-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+.gg-address-card__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
 }

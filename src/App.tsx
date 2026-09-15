@@ -1,7 +1,7 @@
 import "./App.css";
 import "./store/store.css";
 import Footer from "./Footer";
-import { RouterProvider, useRouter, matchRoute } from "./store/lib/router";
+import { RouterProvider, useRouter } from "./store/lib/router";
 import { AuthProvider } from "./store/lib/AuthContext";
 import { CartProvider } from "./store/lib/CartContext";
 import Header from "./store/components/Header";
@@ -41,7 +41,7 @@ function Routes() {
   if (path === "/contact") return <ContactPage />;
   if (path === "/privacy") return <PrivacyPage />;
   if (path === "/terms") return <TermsPage />;
-  if (path === "/account" || matchRoute("/account/:rest", path)) {
+  if (path === "/account" || path.startsWith("/account/")) {
     return <AccountPage />;
   }
   return <NotFoundPage />;

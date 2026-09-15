@@ -38,6 +38,10 @@ import type { Database } from "../../src/types/database.js";
 //   resource=reservations action=list          GET
 //   resource=reservations action=create        POST
 //   resource=reservations action=release       POST
+//   resource=orders       action=set-status    POST
+//   resource=orders       action=ship          POST
+//   resource=orders       action=add-note      POST
+//   resource=orders       action=toggle-packed POST
 //   resource=campaigns   action=list           GET
 //   resource=campaigns   action=save           POST
 //   resource=campaigns   action=audience-count GET   (&audience=)
@@ -235,6 +239,147 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           400,
           "Provide either reservationId or customerId to release.",
         );
+      }
+    }
+
+    // ───────────────────────────── orders ─────────────────────────────
+    // Reads (list/get) go straight from the browser via RLS (orders/order_items
+    // select policies already allow `user_id = auth.uid() OR is_staff()`), so
+    // only the WRITES that RLS doesn't grant staff live here, service-role.
+    if (resource === "orders") {
+      const SETTABLE_STATUSES = new Set(["packing", "ready_to_ship", "cancelled"]);
+
+      if (action === "set-status" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        const status = String(body.status ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+        if (!SETTABLE_STATUSES.has(status)) {
+          throw new HttpError(
+            400,
+            "status must be one of: packing, ready_to_ship, cancelled. Use the ship action to mark an order shipped.",
+          );
+        }
+        const nextStatus = status as "packing" | "ready_to_ship" | "cancelled";
+        const { data: existing, error: readErr } = await admin
+          .from("orders")
+          .select("id, packed_at, ready_at, cancelled_at")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (readErr) throw new HttpError(500, readErr.message);
+        if (!existing) throw new HttpError(404, "Order not found.");
+
+        const now = new Date().toISOString();
+        // Only stamp the timestamp the first time an order reaches this status.
+        if (nextStatus === "packing") {
+          const { error } = await admin
+            .from("orders")
+            .update({ status: nextStatus, packed_at: existing.packed_at ?? now })
+            .eq("id", orderId);
+          if (error) throw new HttpError(500, error.message);
+        } else if (nextStatus === "ready_to_ship") {
+          const { error } = await admin
+            .from("orders")
+            .update({ status: nextStatus, ready_at: existing.ready_at ?? now })
+            .eq("id", orderId);
+          if (error) throw new HttpError(500, error.message);
+        } else {
+          const { error } = await admin
+            .from("orders")
+            .update({ status: nextStatus, cancelled_at: existing.cancelled_at ?? now })
+            .eq("id", orderId);
+          if (error) throw new HttpError(500, error.message);
+        }
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "ship" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+
+        const { data: order, error: readErr } = await admin
+          .from("orders")
+          .select("id, status, shipping_method")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (readErr) throw new HttpError(500, readErr.message);
+        if (!order) throw new HttpError(404, "Order not found.");
+        if (order.status !== "ready_to_ship") {
+          throw new HttpError(
+            409,
+            "This order must be ready to ship before it can be marked shipped.",
+          );
+        }
+
+        const isPwe = order.shipping_method === "pwe";
+        let carrier: string | null = null;
+        let trackingNumber: string | null = null;
+        if (isPwe) {
+          // PWE is intentionally untracked — never persist tracking data for
+          // it, even if the caller (a stale client) sent some.
+          carrier = null;
+          trackingNumber = null;
+        } else {
+          carrier = String(body.carrier ?? "").trim() || null;
+          trackingNumber = String(body.trackingNumber ?? "").trim() || null;
+          if (!carrier || !trackingNumber) {
+            throw new HttpError(
+              400,
+              "A carrier and tracking number are required for tracked shipping.",
+            );
+          }
+        }
+
+        const { error: updErr } = await admin
+          .from("orders")
+          .update({
+            status: "shipped",
+            shipped_at: new Date().toISOString(),
+            tracking_carrier: carrier,
+            tracking_number: trackingNumber,
+          })
+          .eq("id", orderId);
+        if (updErr) throw new HttpError(500, updErr.message);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "add-note" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+        const note = String(body.note ?? "").trim();
+
+        const { error } = await admin
+          .from("orders")
+          .update({ internal_notes: note || null })
+          .eq("id", orderId);
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "toggle-packed" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        const itemId = String(body.itemId ?? "");
+        if (!orderId || !itemId) {
+          throw new HttpError(400, "orderId and itemId are required.");
+        }
+        const { data: item, error: readErr } = await admin
+          .from("order_items")
+          .select("id, packed")
+          .eq("id", itemId)
+          .eq("order_id", orderId)
+          .maybeSingle();
+        if (readErr) throw new HttpError(500, readErr.message);
+        if (!item) throw new HttpError(404, "Order item not found.");
+
+        const { error: updErr } = await admin
+          .from("order_items")
+          .update({ packed: !item.packed })
+          .eq("id", itemId);
+        if (updErr) throw new HttpError(500, updErr.message);
+        return sendJson(res, 200, { ok: true });
       }
     }
 
