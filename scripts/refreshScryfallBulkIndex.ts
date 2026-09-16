@@ -104,17 +104,26 @@ async function main() {
   if (!dataRes.ok) {
     throw new Error(`Scryfall bulk data download failed: ${dataRes.status}`);
   }
-  // Loaded fully into memory — acceptable for a one-off/CI script (not a
-  // request-scoped serverless function), simpler and more robust than a
-  // hand-rolled streaming gunzip/JSONL parser for a file this size. The
-  // download itself is a literal gzip file (not HTTP content-encoding), so
-  // it needs an explicit gunzip before it's usable text.
+  // Loaded fully into memory as a Buffer — acceptable for a one-off/CI
+  // script. The download itself is a literal gzip file (not HTTP
+  // content-encoding), so it needs an explicit gunzip before use. Decompressed,
+  // default_cards is 500MB+ of text — well past V8's ~512MB max string
+  // length, so each line is converted to a string individually rather than
+  // calling .toString() on the whole buffer at once.
   const compressed = Buffer.from(await dataRes.arrayBuffer());
-  const decompressed = gunzipSync(compressed).toString("utf8");
-  const cards = decompressed
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as ScryfallCard);
+  const decompressed = gunzipSync(compressed);
+  const cards: ScryfallCard[] = [];
+  for (let start = 0; start < decompressed.length; ) {
+    let end = decompressed.indexOf(0x0a, start); // next '\n'
+    if (end === -1) end = decompressed.length;
+    if (end > start) {
+      const line = decompressed.toString("utf8", start, end);
+      if (line.trim().length > 0) {
+        cards.push(JSON.parse(line) as ScryfallCard);
+      }
+    }
+    start = end + 1;
+  }
   console.log(`Downloaded ${cards.length} printings. Upserting...`);
 
   let upserted = 0;
