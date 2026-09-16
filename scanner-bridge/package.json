@@ -1,0 +1,25 @@
+{
+  "name": "geega-scanner-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Watches a PaperStream IP output folder for Ricoh fi-8170 scans and pushes them into a Geega scan session over the same staff-gated API the browser uses.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
+    "chokidar": "^4.0.3",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2",
+    "vitest": "4.1.11"
+  }
+}
