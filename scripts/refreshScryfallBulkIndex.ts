@@ -22,7 +22,10 @@ import type { ScryfallCard } from "../src/admin/services/scryfall.types.js";
 
 const BULK_DATA_INDEX_URL = "https://api.scryfall.com/bulk-data";
 const USER_AGENT = "GeegaGames/1.0 (+https://geega-games.com)";
-const UPSERT_BATCH_SIZE = 500;
+const UPSERT_BATCH_SIZE = 200;
+const MIN_BATCH_SIZE = 10;
+const MAX_RETRIES_PER_BATCH = 3;
+const RETRY_BASE_DELAY_MS = 500;
 
 // Scryfall's bulk-data files are now gzip-compressed JSON Lines (one card
 // object per line), served from jsonl_download_uri — not the plain JSON
@@ -34,6 +37,55 @@ interface BulkDataEntry {
   jsonl_download_uri: string;
   updated_at: string;
   compressed_size: number;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type BulkCardRow = Database["public"]["Tables"]["scryfall_bulk_cards"]["Insert"];
+
+/**
+ * Upsert one batch, retrying transient failures with backoff. A statement
+ * timeout specifically (seen in practice around row ~96,500 of a full
+ * refresh — likely index-maintenance cost on the card_name trigram index
+ * compounding as the table grows) gets a different response: halve the
+ * batch and retry each half, recursively, rather than just retrying the
+ * same oversized batch again. Only throws once even a MIN_BATCH_SIZE batch
+ * still fails — at that point it's a real error, not a size problem.
+ */
+async function upsertBatch(
+  admin: ReturnType<typeof createClient<Database>>,
+  batch: BulkCardRow[],
+): Promise<number> {
+  for (let attempt = 0; attempt <= MAX_RETRIES_PER_BATCH; attempt++) {
+    const { error } = await admin
+      .from("scryfall_bulk_cards")
+      .upsert(batch, { onConflict: "scryfall_id" });
+    if (!error) return batch.length;
+
+    const isTimeout = /timeout/i.test(error.message);
+    if (isTimeout && batch.length > MIN_BATCH_SIZE) {
+      console.log(`  Batch of ${batch.length} timed out — splitting in half and retrying...`);
+      // Sequential, not concurrent — two upserts racing against the same
+      // table is exactly the kind of added contention that could make a
+      // timeout more likely, not less.
+      const mid = Math.ceil(batch.length / 2);
+      const first = await upsertBatch(admin, batch.slice(0, mid));
+      const second = await upsertBatch(admin, batch.slice(mid));
+      return first + second;
+    }
+    if (attempt < MAX_RETRIES_PER_BATCH) {
+      await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
+      continue;
+    }
+    throw new Error(
+      `Upsert failed after ${MAX_RETRIES_PER_BATCH + 1} attempt(s) on a batch of ${batch.length}: ${error.message}`,
+    );
+  }
+  // Unreachable (the loop above always returns or throws) — satisfies
+  // TypeScript's control-flow analysis.
+  throw new Error("Upsert failed: exhausted retries without a result.");
 }
 
 function requireEnv(name: string): string {
@@ -131,18 +183,21 @@ async function main() {
   const rows = cards.map(toRow).filter((r) => r !== null);
   skipped = cards.length - rows.length;
 
+  let batchIndex = 0;
   for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
     const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
-    const { error } = await admin
-      .from("scryfall_bulk_cards")
-      .upsert(batch, { onConflict: "scryfall_id" });
-    if (error) {
-      throw new Error(
-        `Upsert failed at rows ${i}-${i + batch.length}: ${error.message}`,
-      );
+    try {
+      upserted += await upsertBatch(admin, batch);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Upsert failed at rows ${i}-${i + batch.length}: ${message}`);
     }
-    upserted += batch.length;
-    if (upserted % 5000 === 0 || i + UPSERT_BATCH_SIZE >= rows.length) {
+    batchIndex += 1;
+    const isLastBatch = i + UPSERT_BATCH_SIZE >= rows.length;
+    // Roughly every 5000 rows (25 batches of 200), regardless of exactly
+    // how "upserted" landed — a mid-batch split can make it skip a round
+    // number, so this counts loop iterations instead.
+    if (batchIndex % 25 === 0 || isLastBatch) {
       console.log(`  ${upserted} / ${rows.length} upserted...`);
     }
   }
