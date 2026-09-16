@@ -18,10 +18,10 @@ import {
   ShippingPage,
   ReturnsPage,
   ContactPage,
-  PrivacyPage,
-  TermsPage,
   NotFoundPage,
 } from "./store/pages/StaticPages";
+import { PrivacyPage } from "./store/pages/PrivacyPage";
+import { TermsPage } from "./store/pages/TermsPage";
 import CheckoutPage from "./store/pages/CheckoutPage";
 import SellPage from "./store/pages/SellPage";
 import { AccountPage } from "./store/pages/AccountPages";

@@ -153,38 +153,6 @@ export function ContactPage() {
   );
 }
 
-export function PrivacyPage() {
-  return (
-    <div className="gg-page gg-prose">
-      <h1>Privacy policy</h1>
-      <p className="gg-alert gg-alert-warn">
-        This is a placeholder. A real privacy policy must be provided by the
-        store owner before launch. It should cover what data is collected
-        (account, orders, addresses), how it is used, payment processing, and
-        contact for data requests.
-      </p>
-      <p>
-        Questions in the meantime: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
-      </p>
-    </div>
-  );
-}
-
-export function TermsPage() {
-  return (
-    <div className="gg-page gg-prose">
-      <h1>Terms of service</h1>
-      <p className="gg-alert gg-alert-warn">
-        This is a placeholder. Real terms of service must be provided by the
-        store owner before launch.
-      </p>
-      <p>
-        Questions: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
-      </p>
-    </div>
-  );
-}
-
 export function NotFoundPage() {
   return (
     <div className="gg-page gg-empty">
