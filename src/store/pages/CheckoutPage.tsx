@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
@@ -24,6 +24,12 @@ import {
 //     Stripe webhook (api/webhooks/stripe.ts) reading back from Stripe — this
 //     page NEVER fabricates a paid state from the client-side confirmPayment
 //     result alone; it polls the order and shows whatever the DB says.
+//   - Which payment methods actually appear (cards, PayPal, Venmo, Apple
+//     Pay, ...) is controlled in the Stripe Dashboard, not here. Some of
+//     those redirect the customer away and back (return_url below); on
+//     return, the client re-reads the PaymentIntent by its client secret
+//     (in the URL Stripe appends) rather than trusting anything else in the
+//     URL, and resumes exactly like the non-redirect path.
 //
 // If VITE_STRIPE_PUBLISHABLE_KEY isn't set (e.g. a preview env without
 // Stripe configured yet), checkout falls back to the legacy path: the order
@@ -93,6 +99,56 @@ export default function CheckoutPage() {
       navigate("/login?next=/checkout", { replace: true });
     }
   }, [authLoading, user, navigate]);
+
+  // Handles the return trip from a redirect-based payment method (PayPal,
+  // Venmo, ...): Stripe appends payment_intent_client_secret to return_url.
+  // We never trust anything else in the URL — the PaymentIntent's own status,
+  // read back from Stripe, is the only thing that decides what happens next.
+  const handledReturnRef = useRef(false);
+  useEffect(() => {
+    if (handledReturnRef.current || !user) return;
+    const params = new URLSearchParams(window.location.search);
+    const returnedSecret = params.get("payment_intent_client_secret");
+    const intentId = params.get("payment_intent");
+    if (!returnedSecret || !intentId) return;
+    handledReturnRef.current = true;
+    window.history.replaceState({}, "", window.location.pathname);
+
+    (async () => {
+      const token = await getAccessToken();
+      const genericError =
+        "We couldn't confirm your payment. Please contact us and reference your order.";
+      if (!token) {
+        setError(genericError);
+        return;
+      }
+      const res = await fetch(
+        `/api/checkout/payment-intent-status?id=${encodeURIComponent(intentId)}`,
+        { headers: { Authorization: `Bearer ${token}` }, credentials: "same-origin" },
+      );
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.ok) {
+        setError(genericError);
+        return;
+      }
+      const orderId: string | null = body.orderId ?? null;
+      if (orderId) {
+        setPlacedOrderId(orderId);
+        await refresh(); // cart was already emptied server-side when the order was created
+      }
+      if (body.status === "succeeded" || body.status === "processing") {
+        if (orderId) await handlePaid(orderId);
+        else setCardPaymentDone(true);
+      } else if (body.status === "requires_payment_method") {
+        setDueCents(body.amountDueCents ?? 0);
+        setClientSecret(returnedSecret);
+        setError("Your payment wasn't completed. Please try again.");
+      } else if (orderId) {
+        setPaymentPendingSetup(true);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -247,13 +303,12 @@ export default function CheckoutPage() {
     }
   };
 
-  const handlePaid = async () => {
-    if (!placedOrderId) return;
+  const handlePaid = async (orderId: string) => {
     setConfirmingPayment(true);
-    await pollPaymentStatus(placedOrderId);
+    await pollPaymentStatus(orderId);
     // Whether or not the webhook had already landed by the time polling
-    // stopped, the card payment itself succeeded (Stripe confirmed it to
-    // us) — the order page will always show the true DB state either way.
+    // stopped, the payment itself succeeded (Stripe confirmed it to us) —
+    // the order page will always show the true DB state either way.
     setConfirmingPayment(false);
     setCardPaymentDone(true);
   };
@@ -284,10 +339,15 @@ export default function CheckoutPage() {
         <h1 style={{ color: "var(--gg-ink)" }}>Payment</h1>
         <p className="gg-card-meta">
           Order #{placedOrderId.slice(0, 8).toUpperCase()} — your cards are reserved.
-          Enter your card details to complete the order.
+          Complete payment below to finish your order.
         </p>
+        {error && (
+          <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
+            {error}
+          </div>
+        )}
         <Elements stripe={getStripePromise()} options={{ clientSecret }}>
-          <StripePaymentForm dueCents={dueCents} onPaid={handlePaid} />
+          <StripePaymentForm dueCents={dueCents} onPaid={() => handlePaid(placedOrderId)} />
         </Elements>
       </div>
     );
@@ -517,6 +577,12 @@ function StripePaymentForm({
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       redirect: "if_required",
+      confirmParams: {
+        // Only used for payment methods that require leaving the page
+        // (PayPal, Venmo, ...); confirmPayment() resolves in place for
+        // everything else because of redirect: "if_required" above.
+        return_url: `${window.location.origin}/checkout`,
+      },
     });
     if (confirmError) {
       setCardError(
