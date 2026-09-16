@@ -43,8 +43,8 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Legal",
     links: [
-      { label: "Privacy policy" },
-      { label: "Terms of service" },
+      { label: "Privacy policy", href: "/privacy" },
+      { label: "Terms of service", href: "/terms" },
     ],
   },
 ];
