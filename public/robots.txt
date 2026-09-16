@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /checkout
+Disallow: /kiosk
+Disallow: /reset-password
+
+Sitemap: https://geega-games.com/sitemap.xml

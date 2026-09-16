@@ -24,6 +24,7 @@ import { PrivacyPage } from "./store/pages/PrivacyPage";
 import { TermsPage } from "./store/pages/TermsPage";
 import CheckoutPage from "./store/pages/CheckoutPage";
 import SellPage from "./store/pages/SellPage";
+import SellCollectionPage from "./store/pages/SellCollectionPage";
 import { AccountPage } from "./store/pages/AccountPages";
 import KioskPage from "./store/pages/KioskPage";
 
@@ -38,6 +39,7 @@ function Routes() {
   if (path === "/reset-password") return <ResetPasswordPage />;
   if (path === "/checkout") return <CheckoutPage />;
   if (path === "/sell") return <SellPage />;
+  if (path === "/sell-my-collection") return <SellCollectionPage />;
   if (path === "/condition-guide") return <ConditionGuidePage />;
   if (path === "/shipping") return <ShippingPage />;
   if (path === "/returns") return <ReturnsPage />;

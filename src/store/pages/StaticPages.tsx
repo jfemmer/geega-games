@@ -29,7 +29,7 @@ export function HomePage() {
           From a few valuable singles to an entire Magic collection, Geega Games is always
           interested in seeing what you have.
         </p>
-        <Link to="/sell" className="gg-btn">
+        <Link to="/sell-my-collection" className="gg-btn">
           Sell Your Cards
         </Link>
       </section>

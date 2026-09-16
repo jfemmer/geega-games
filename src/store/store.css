@@ -1521,3 +1521,141 @@
   .gg-kiosk-list { position: static; }
   .gg-kiosk-topbar { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 }
+
+/* ---- "Sell my collection" SEO landing page ----
+   Reuses .gg-page/.gg-btn/.gg-line from the shared brand system; the classes
+   below are layout only, specific to this page's sections. */
+.gg-collect-hero {
+  text-align: center;
+  padding: 2.5rem 1rem 1.5rem;
+  max-width: 780px;
+  margin: 0 auto;
+}
+.gg-collect-hero h1 {
+  color: var(--gg-ink);
+  font-size: 2rem;
+  line-height: 1.25;
+  margin-bottom: 0.75rem;
+}
+.gg-collect-hero-sub {
+  color: #555;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+.gg-collect-hero-actions {
+  margin-top: 1.5rem;
+}
+
+.gg-collect-section {
+  max-width: 900px;
+  margin: 2.5rem auto;
+}
+.gg-collect-section h2 {
+  color: var(--gg-purple);
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.gg-collect-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+@media (max-width: 800px) {
+  .gg-collect-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.gg-collect-card {
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+.gg-collect-card h3 {
+  color: var(--gg-ink);
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+.gg-collect-card p {
+  color: #555;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.gg-collect-steps {
+  max-width: 680px;
+  margin: 0 auto;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+  color: #333;
+}
+.gg-collect-steps li {
+  margin-bottom: 0.85rem;
+}
+.gg-collect-steps strong {
+  color: var(--gg-ink);
+}
+
+.gg-collect-trust {
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 16px;
+  padding: 1.75rem 1.5rem;
+}
+.gg-collect-trustlist {
+  max-width: 680px;
+  margin: 0 auto;
+  padding-left: 1.25rem;
+  line-height: 1.7;
+  color: #333;
+}
+
+.gg-faq {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.gg-faq-item {
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  background: #fff;
+}
+.gg-faq-item summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--gg-ink);
+}
+.gg-faq-item p {
+  color: #555;
+  line-height: 1.6;
+  margin: 0.6rem 0 0;
+}
+.gg-collect-contact {
+  text-align: center;
+  color: #555;
+  max-width: 680px;
+  margin: 1.5rem auto 0;
+}
+
+.gg-collect-cta {
+  text-align: center;
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 16px;
+  padding: 2rem 1.25rem;
+  margin: 2.5rem 0 1rem;
+}
+.gg-collect-cta h2 {
+  color: var(--gg-ink);
+  margin: 0 0 0.5rem;
+}
+.gg-collect-cta p {
+  color: #555;
+  max-width: 560px;
+  margin: 0 auto 1.25rem;
+  line-height: 1.6;
+}
