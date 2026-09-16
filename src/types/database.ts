@@ -1536,6 +1536,226 @@ export type Database = {
         }
         Relationships: []
       }
+      sell_submission_cards: {
+        Row: {
+          card_name: string
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          created_at: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string | null
+          match_status: Database["public"]["Enums"]["sell_card_match_status"]
+          quantity: number
+          raw_input: string | null
+          scryfall_id: string | null
+          scryfall_price_cents: number | null
+          seller_notes: string | null
+          set_code: string | null
+          set_name: string | null
+          submission_id: string
+        }
+        Insert: {
+          card_name: string
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          match_status?: Database["public"]["Enums"]["sell_card_match_status"]
+          quantity?: number
+          raw_input?: string | null
+          scryfall_id?: string | null
+          scryfall_price_cents?: number | null
+          seller_notes?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          submission_id: string
+        }
+        Update: {
+          card_name?: string
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          match_status?: Database["public"]["Enums"]["sell_card_match_status"]
+          quantity?: number
+          raw_input?: string | null
+          scryfall_id?: string | null
+          scryfall_price_cents?: number | null
+          seller_notes?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          submission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_in_items_trade_in_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "sell_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sell_submission_photos: {
+        Row: {
+          created_at: string
+          id: string
+          mime_type: string
+          original_filename: string
+          size_bytes: number
+          storage_path: string
+          submission_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mime_type: string
+          original_filename: string
+          size_bytes: number
+          storage_path: string
+          submission_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mime_type?: string
+          original_filename?: string
+          size_bytes?: number
+          storage_path?: string
+          submission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sell_submission_photos_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "sell_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sell_submissions: {
+        Row: {
+          city: string | null
+          closed_at: string | null
+          collection_eras: string[]
+          collection_size:
+            | Database["public"]["Enums"]["sell_collection_size"]
+            | null
+          collection_types: string[]
+          contacted_at: string | null
+          created_at: string
+          email: string
+          estimated_value_cents: number | null
+          favorited: boolean
+          first_name: string
+          id: string
+          internal_notes: string | null
+          last_name: string
+          legacy_mongo_id: string | null
+          notes: string | null
+          offer_value_cents: number | null
+          phone: string | null
+          photo_count: number
+          preferred_contact_method: Database["public"]["Enums"]["sell_preferred_contact_method"]
+          priority: Database["public"]["Enums"]["sell_priority"]
+          purchase_amount_cents: number | null
+          reference_number: string
+          referral_source: string | null
+          source: string | null
+          state: string | null
+          status: Database["public"]["Enums"]["sell_submission_status"]
+          timeline: Database["public"]["Enums"]["sell_timeline"] | null
+          total_cards: number
+          transaction_preference: Database["public"]["Enums"]["sell_transaction_preference"]
+          updated_at: string
+          user_id: string | null
+          valuable_cards_notes: string | null
+          zip: string | null
+        }
+        Insert: {
+          city?: string | null
+          closed_at?: string | null
+          collection_eras?: string[]
+          collection_size?:
+            | Database["public"]["Enums"]["sell_collection_size"]
+            | null
+          collection_types?: string[]
+          contacted_at?: string | null
+          created_at?: string
+          email: string
+          estimated_value_cents?: number | null
+          favorited?: boolean
+          first_name: string
+          id?: string
+          internal_notes?: string | null
+          last_name: string
+          legacy_mongo_id?: string | null
+          notes?: string | null
+          offer_value_cents?: number | null
+          phone?: string | null
+          photo_count?: number
+          preferred_contact_method?: Database["public"]["Enums"]["sell_preferred_contact_method"]
+          priority?: Database["public"]["Enums"]["sell_priority"]
+          purchase_amount_cents?: number | null
+          reference_number: string
+          referral_source?: string | null
+          source?: string | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["sell_submission_status"]
+          timeline?: Database["public"]["Enums"]["sell_timeline"] | null
+          total_cards?: number
+          transaction_preference?: Database["public"]["Enums"]["sell_transaction_preference"]
+          updated_at?: string
+          user_id?: string | null
+          valuable_cards_notes?: string | null
+          zip?: string | null
+        }
+        Update: {
+          city?: string | null
+          closed_at?: string | null
+          collection_eras?: string[]
+          collection_size?:
+            | Database["public"]["Enums"]["sell_collection_size"]
+            | null
+          collection_types?: string[]
+          contacted_at?: string | null
+          created_at?: string
+          email?: string
+          estimated_value_cents?: number | null
+          favorited?: boolean
+          first_name?: string
+          id?: string
+          internal_notes?: string | null
+          last_name?: string
+          legacy_mongo_id?: string | null
+          notes?: string | null
+          offer_value_cents?: number | null
+          phone?: string | null
+          photo_count?: number
+          preferred_contact_method?: Database["public"]["Enums"]["sell_preferred_contact_method"]
+          priority?: Database["public"]["Enums"]["sell_priority"]
+          purchase_amount_cents?: number | null
+          reference_number?: string
+          referral_source?: string | null
+          source?: string | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["sell_submission_status"]
+          timeline?: Database["public"]["Enums"]["sell_timeline"] | null
+          total_cards?: number
+          transaction_preference?: Database["public"]["Enums"]["sell_transaction_preference"]
+          updated_at?: string
+          user_id?: string | null
+          valuable_cards_notes?: string | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
       store_credit_transactions: {
         Row: {
           amount_cents: number
@@ -1568,113 +1788,6 @@ export type Database = {
           reference_id?: string | null
           reference_type?: string | null
           type?: Database["public"]["Enums"]["store_credit_type"]
-          user_id?: string
-        }
-        Relationships: []
-      }
-      trade_in_items: {
-        Row: {
-          card_name: string
-          condition: Database["public"]["Enums"]["card_condition"] | null
-          created_at: string
-          finish: Database["public"]["Enums"]["card_finish"]
-          id: string
-          image_url: string | null
-          quantity: number
-          scryfall_id: string | null
-          set_code: string | null
-          set_name: string | null
-          trade_in_id: string
-        }
-        Insert: {
-          card_name: string
-          condition?: Database["public"]["Enums"]["card_condition"] | null
-          created_at?: string
-          finish?: Database["public"]["Enums"]["card_finish"]
-          id?: string
-          image_url?: string | null
-          quantity?: number
-          scryfall_id?: string | null
-          set_code?: string | null
-          set_name?: string | null
-          trade_in_id: string
-        }
-        Update: {
-          card_name?: string
-          condition?: Database["public"]["Enums"]["card_condition"] | null
-          created_at?: string
-          finish?: Database["public"]["Enums"]["card_finish"]
-          id?: string
-          image_url?: string | null
-          quantity?: number
-          scryfall_id?: string | null
-          set_code?: string | null
-          set_name?: string | null
-          trade_in_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "trade_in_items_trade_in_id_fkey"
-            columns: ["trade_in_id"]
-            isOneToOne: false
-            referencedRelation: "trade_ins"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      trade_ins: {
-        Row: {
-          created_at: string
-          email: string | null
-          estimated_value_cents: number | null
-          first_name: string | null
-          id: string
-          internal_notes: string | null
-          last_name: string | null
-          legacy_mongo_id: string | null
-          notes: string | null
-          offer_value_cents: number | null
-          phone: string | null
-          source: string | null
-          status: Database["public"]["Enums"]["trade_in_status"]
-          total_cards: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          email?: string | null
-          estimated_value_cents?: number | null
-          first_name?: string | null
-          id?: string
-          internal_notes?: string | null
-          last_name?: string | null
-          legacy_mongo_id?: string | null
-          notes?: string | null
-          offer_value_cents?: number | null
-          phone?: string | null
-          source?: string | null
-          status?: Database["public"]["Enums"]["trade_in_status"]
-          total_cards?: number
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          email?: string | null
-          estimated_value_cents?: number | null
-          first_name?: string | null
-          id?: string
-          internal_notes?: string | null
-          last_name?: string | null
-          legacy_mongo_id?: string | null
-          notes?: string | null
-          offer_value_cents?: number | null
-          phone?: string | null
-          source?: string | null
-          status?: Database["public"]["Enums"]["trade_in_status"]
-          total_cards?: number
-          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -2102,6 +2215,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      my_sell_submissions: {
+        Args: never
+        Returns: {
+          created_at: string
+          id: string
+          reference_number: string
+          status: Database["public"]["Enums"]["sell_submission_status"]
+        }[]
+      }
       my_store_credit_balance: { Args: never; Returns: number }
       recompute_scan_session: {
         Args: { p_session_id: string }
@@ -2297,6 +2419,28 @@ export type Database = {
         | "file_upload"
         | "folder_drop"
         | "scanner_bridge"
+      sell_card_match_status: "matched" | "ambiguous" | "unmatched"
+      sell_collection_size:
+        | "under_100"
+        | "100_to_500"
+        | "500_to_1000"
+        | "1000_to_5000"
+        | "5000_to_10000"
+        | "10000_plus"
+        | "not_sure"
+      sell_preferred_contact_method: "email" | "phone" | "text"
+      sell_priority: "normal" | "high_interest"
+      sell_submission_status:
+        | "new"
+        | "reviewing"
+        | "contacted"
+        | "offer_made"
+        | "accepted"
+        | "declined"
+        | "completed"
+        | "closed"
+      sell_timeline: "asap" | "within_week" | "within_month" | "no_rush"
+      sell_transaction_preference: "local" | "ship" | "either" | "not_sure"
       shipping_method: "tracked" | "pwe"
       store_credit_type:
         | "opening_balance"
@@ -2558,6 +2702,30 @@ export const Constants = {
         "folder_drop",
         "scanner_bridge",
       ],
+      sell_card_match_status: ["matched", "ambiguous", "unmatched"],
+      sell_collection_size: [
+        "under_100",
+        "100_to_500",
+        "500_to_1000",
+        "1000_to_5000",
+        "5000_to_10000",
+        "10000_plus",
+        "not_sure",
+      ],
+      sell_preferred_contact_method: ["email", "phone", "text"],
+      sell_priority: ["normal", "high_interest"],
+      sell_submission_status: [
+        "new",
+        "reviewing",
+        "contacted",
+        "offer_made",
+        "accepted",
+        "declined",
+        "completed",
+        "closed",
+      ],
+      sell_timeline: ["asap", "within_week", "within_month", "no_rush"],
+      sell_transaction_preference: ["local", "ship", "either", "not_sure"],
       shipping_method: ["tracked", "pwe"],
       store_credit_type: [
         "opening_balance",

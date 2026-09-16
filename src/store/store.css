@@ -887,3 +887,478 @@
   flex-wrap: wrap;
   margin-top: 0.7rem;
 }
+
+/* ---- Sell Your Cards ---- */
+.gg-sell {
+  max-width: 760px;
+}
+.gg-sellhero {
+  text-align: center;
+  padding: 0.5rem 0 1.25rem;
+}
+.gg-sellhero h1 {
+  color: var(--gg-ink);
+  font-size: 1.9rem;
+  margin: 0 0 0.75rem;
+}
+.gg-sellhero p {
+  color: #444;
+  max-width: 640px;
+  margin: 0 auto 0.5rem;
+  line-height: 1.6;
+}
+.gg-sellsteps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+@media (max-width: 640px) {
+  .gg-sellsteps {
+    grid-template-columns: 1fr;
+  }
+}
+.gg-sellsteps__item {
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+.gg-sellsteps__item strong {
+  display: block;
+  color: var(--gg-purple);
+  margin-bottom: 0.35rem;
+}
+.gg-sellsteps__item p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #555;
+  line-height: 1.5;
+}
+
+.gg-sellstep {
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 14px;
+  padding: 1.25rem 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.gg-sellstep h2 {
+  margin: 0 0 0.5rem;
+  color: var(--gg-ink);
+  font-size: 1.3rem;
+}
+.gg-sellsection {
+  margin: 1.5rem 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--gg-line);
+}
+.gg-sellsection:first-of-type {
+  border-top: none;
+  padding-top: 0.5rem;
+}
+.gg-sellsection h3 {
+  margin: 0 0 0.35rem;
+  color: var(--gg-purple);
+  font-size: 1.05rem;
+}
+.gg-sellstep__nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+@media (max-width: 480px) {
+  .gg-sellstep__nav {
+    flex-direction: column-reverse;
+  }
+  .gg-sellstep__nav .gg-btn {
+    width: 100%;
+  }
+}
+
+/* Card search */
+.gg-sellsearch__results {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.gg-sellsearch__result {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  min-height: 64px;
+}
+.gg-sellsearch__result:hover {
+  border-color: var(--gg-purple);
+  background: #faf9fd;
+}
+.gg-sellsearch__result:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+.gg-sellsearch__thumb {
+  width: 44px;
+  height: 61px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #ece6f7;
+  flex: none;
+}
+.gg-sellsearch__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.gg-sellsearch__name {
+  font-weight: 700;
+  color: var(--gg-ink);
+}
+
+/* Card list rows */
+.gg-sellcards {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.gg-sellcard-row {
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #fff;
+}
+.gg-sellcard-row__main {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.gg-sellcard-row__thumb {
+  width: 48px;
+  height: 67px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #ece6f7;
+  flex: none;
+}
+.gg-sellcard-row__info {
+  flex: 1;
+  min-width: 0;
+}
+.gg-sellcard-row__name {
+  font-weight: 700;
+  color: var(--gg-ink);
+}
+.gg-sellcard-row__notice {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+}
+.gg-sellcard-row__remove {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  flex: none;
+  min-width: 40px;
+  min-height: 40px;
+}
+.gg-sellcard-row__remove:hover {
+  color: var(--gg-danger);
+}
+.gg-sellcard-row__matcher {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--gg-line);
+}
+.gg-sellcard-row__fields {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.65rem;
+}
+.gg-sellcard-row__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #555;
+}
+.gg-sellcard-row__field input,
+.gg-sellcard-row__field select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  min-height: 38px;
+}
+.gg-sellcard-row__field input[type="number"] {
+  width: 4.5rem;
+}
+.gg-sellcard-row__notes {
+  margin-top: 0.6rem;
+}
+
+/* Bulk list paste */
+.gg-sellbulk textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+.gg-sellbulk textarea:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+.gg-sellbulk__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+/* Photo upload */
+.gg-sellphotos__drop {
+  border: 2px dashed var(--gg-line);
+  border-radius: 12px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  color: #555;
+}
+.gg-sellphotos__drop:hover,
+.gg-sellphotos__drop:focus-visible {
+  border-color: var(--gg-purple);
+  background: #faf9fd;
+}
+.gg-sellphotos__drop--over {
+  border-color: var(--gg-purple);
+  background: #f3f0fa;
+}
+.gg-sellphotos__drop--disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.gg-sellphotos__drop p {
+  margin: 0.2rem 0;
+}
+.gg-sellphotos__grid {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 0.6rem;
+}
+.gg-sellphotos__item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ece6f7;
+}
+.gg-sellphotos__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gg-sellphotos__status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.72rem;
+  text-align: center;
+  padding: 0.4rem;
+}
+.gg-sellphotos__status--error {
+  background: rgba(185, 28, 28, 0.75);
+}
+.gg-sellphotos__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Checkbox / radio groups */
+.gg-sellcheckgroup {
+  border: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+.gg-sellcheckgroup legend {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--gg-ink);
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+.gg-sellcheckgroup__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.2rem 0.75rem;
+}
+
+/* Collection details / contact — plain field stacks, full page width */
+.gg-selldetails .gg-field,
+.gg-sellcontact .gg-field {
+  margin-bottom: 0.85rem;
+}
+.gg-selldetails select,
+.gg-selldetails input,
+.gg-selldetails textarea,
+.gg-sellcontact select,
+.gg-sellcontact input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 1rem;
+}
+.gg-selldetails textarea {
+  resize: vertical;
+}
+
+/* Review */
+.gg-sellreview__section {
+  padding: 1rem 0;
+  border-top: 1px solid var(--gg-line);
+}
+.gg-sellreview__section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.gg-sellreview__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gg-sellreview__head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--gg-purple);
+}
+.gg-sellreview__cardpreview,
+.gg-sellreview__photopreview {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gg-sellreview__cardpreview li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  background: #faf9fd;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem 0.25rem 0.25rem;
+}
+.gg-sellreview__cardpreview img {
+  width: 24px;
+  height: 33px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.gg-sellreview__photopreview img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* Success screen */
+.gg-sellsuccess {
+  text-align: center;
+}
+.gg-sellsuccess__ref {
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin: 1.5rem auto;
+  max-width: 360px;
+}
+.gg-sellsuccess__ref strong {
+  display: block;
+  font-size: 1.6rem;
+  color: var(--gg-purple);
+  letter-spacing: 0.02em;
+  margin: 0.25rem 0;
+}
+
+/* Homepage sell CTA */
+.gg-sellcta {
+  text-align: center;
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 16px;
+  padding: 1.75rem 1.25rem;
+  margin: 2rem 0;
+}
+.gg-sellcta h2 {
+  color: var(--gg-ink);
+  margin: 0 0 0.5rem;
+}
+.gg-sellcta p {
+  color: #555;
+  max-width: 560px;
+  margin: 0 auto 1rem;
+  line-height: 1.6;
+}
+
+/* Header "Sell Your Cards" — a standout accent so it reads as a primary
+   action, not just another text nav link. */
+.gg-nav a.gg-nav-sell {
+  background: var(--gg-gold);
+  color: var(--gg-ink);
+  font-weight: 700;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+}
+.gg-nav a.gg-nav-sell:hover {
+  background: #fff;
+  color: var(--gg-ink);
+}

@@ -1,5 +1,7 @@
 import type {
   AccountStatus,
+  BuyingLeadPriority,
+  BuyingLeadStatus,
   CampaignStatus,
   CardCondition,
   CardFinish,
@@ -278,4 +280,75 @@ export const MOVEMENT_REASON_LABELS: Record<InventoryMovementReason, string> = {
   import: "CSV import",
   archive: "Archived",
   restore: "Restored",
+};
+
+export const BUYING_LEAD_STATUS_LABELS: Record<BuyingLeadStatus, string> = {
+  new: "New",
+  reviewing: "Reviewing",
+  contacted: "Contacted",
+  offer_made: "Offer made",
+  accepted: "Accepted",
+  declined: "Declined",
+  completed: "Completed",
+  closed: "Closed",
+};
+
+export const BUYING_LEAD_STATUS_TONE: Record<BuyingLeadStatus, BadgeTone> = {
+  new: "gold",
+  reviewing: "info",
+  contacted: "purple",
+  offer_made: "warning",
+  accepted: "success",
+  declined: "neutral",
+  completed: "success",
+  closed: "neutral",
+};
+
+export const BUYING_LEAD_PRIORITY_LABELS: Record<BuyingLeadPriority, string> = {
+  normal: "Normal",
+  high_interest: "High interest",
+};
+
+export const COLLECTION_SIZE_LABELS: Record<string, string> = {
+  under_100: "Under 100",
+  "100_to_500": "100–500",
+  "500_to_1000": "500–1,000",
+  "1000_to_5000": "1,000–5,000",
+  "5000_to_10000": "5,000–10,000",
+  "10000_plus": "10,000+",
+  not_sure: "Not sure",
+};
+
+export const COLLECTION_TYPE_LABELS: Record<string, string> = {
+  individual_singles: "Individual singles",
+  binder_collection: "Binder collection",
+  commander_decks: "Commander decks",
+  other_constructed_decks: "Other constructed decks",
+  bulk_cards: "Bulk cards",
+  foils: "Foils",
+  vintage_cards: "Older / vintage cards",
+  modern_cards: "Modern cards",
+  sealed_product: "Sealed product",
+  mixed_collection: "Mixed collection",
+  not_sure: "Not sure",
+};
+
+export const TIMELINE_LABELS: Record<string, string> = {
+  asap: "As soon as possible",
+  within_week: "Within a week",
+  within_month: "Within a month",
+  no_rush: "No rush",
+};
+
+export const PREFERRED_CONTACT_LABELS: Record<string, string> = {
+  email: "Email",
+  phone: "Phone call",
+  text: "Text message",
+};
+
+export const TRANSACTION_PREFERENCE_LABELS: Record<string, string> = {
+  local: "Local / in-person",
+  ship: "Ship the collection",
+  either: "Either is fine",
+  not_sure: "Not sure yet",
 };

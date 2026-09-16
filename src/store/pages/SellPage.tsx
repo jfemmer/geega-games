@@ -1,0 +1,433 @@
+import { useEffect, useState } from "react";
+import { Link } from "../lib/router";
+import { useAuth } from "../lib/AuthContext";
+import { supabase } from "../../supabase";
+import { SellProgress } from "../components/sell/SellProgress";
+import { SellCardSearch } from "../components/sell/SellCardSearch";
+import { SellCardList } from "../components/sell/SellCardList";
+import { BulkListInput } from "../components/sell/BulkListInput";
+import { CollectionPhotoUpload, MAX_PHOTO_BYTES } from "../components/sell/CollectionPhotoUpload";
+import { CollectionDetails } from "../components/sell/CollectionDetails";
+import { SellerContactForm } from "../components/sell/SellerContactForm";
+import { SellReview } from "../components/sell/SellReview";
+import { emptyDraft, loadDraft, saveDraft, clearDraft } from "../lib/sellDraft";
+import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
+import {
+  newLocalId,
+  type SellCardLine,
+  type SellDraft,
+  type SellPhoto,
+  type SellPrinting,
+} from "../lib/sellTypes";
+
+const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
+const TOTAL_STEPS = 4;
+
+function printingToCardLine(p: SellPrinting): SellCardLine {
+  return {
+    localId: newLocalId(),
+    scryfallId: p.scryfallId,
+    cardName: p.cardName,
+    setCode: p.setCode,
+    setName: p.setName,
+    collectorNumber: p.collectorNumber,
+    imageUrl: p.imageUrl,
+    condition: "NM",
+    finish: p.availableFinishes[0] ?? "nonfoil",
+    quantity: 1,
+    scryfallPriceCents: p.scryfallPriceCents,
+    sellerNotes: "",
+    matchStatus: "matched",
+    rawInput: null,
+  };
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+export default function SellPage() {
+  const { user } = useAuth();
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState<SellDraft>(() => loadDraft() ?? emptyDraft());
+  const [photos, setPhotos] = useState<SellPhoto[]>([]);
+  const [honeypot, setHoneypot] = useState("");
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ referenceNumber: string } | null>(null);
+
+  useEffect(() => {
+    saveDraft(draft);
+  }, [draft]);
+
+  // Prefill from the signed-in user's profile — never overwrites something
+  // already typed. Guests never see this; they aren't required to sign in.
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    supabase
+      .from("profiles")
+      .select("first_name, last_name, phone")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data: profile }) => {
+        if (!active) return;
+        setDraft((d) => ({
+          ...d,
+          contact: {
+            ...d.contact,
+            firstName: d.contact.firstName || profile?.first_name || "",
+            lastName: d.contact.lastName || profile?.last_name || "",
+            email: d.contact.email || user.email || "",
+            phone: d.contact.phone || profile?.phone || "",
+          },
+        }));
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    return () => {
+      photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function updateContact(patch: Partial<SellDraft["contact"]>) {
+    setDraft((d) => ({ ...d, contact: { ...d.contact, ...patch } }));
+  }
+  function updateCollection(patch: Partial<SellDraft["collection"]>) {
+    setDraft((d) => ({ ...d, collection: { ...d.collection, ...patch } }));
+  }
+  function addCards(lines: SellCardLine[]) {
+    setDraft((d) => ({ ...d, cards: [...d.cards, ...lines] }));
+  }
+  function updateCard(localId: string, patch: Partial<SellCardLine>) {
+    setDraft((d) => ({
+      ...d,
+      cards: d.cards.map((c) => (c.localId === localId ? { ...c, ...patch } : c)),
+    }));
+  }
+  function removeCard(localId: string) {
+    setDraft((d) => ({ ...d, cards: d.cards.filter((c) => c.localId !== localId) }));
+  }
+
+  function startUpload(photo: SellPhoto) {
+    setPhotos((prev) =>
+      prev.map((p) => (p.localId === photo.localId ? { ...p, status: "uploading" } : p)),
+    );
+    uploadSellPhoto(draft.draftId, photo)
+      .then((path) => {
+        setPhotos((prev) =>
+          prev.map((p) => (p.localId === photo.localId ? { ...p, status: "uploaded", uploadedPath: path } : p)),
+        );
+      })
+      .catch((err: unknown) => {
+        setPhotos((prev) =>
+          prev.map((p) =>
+            p.localId === photo.localId
+              ? { ...p, status: "error", errorMessage: err instanceof Error ? err.message : "Upload failed" }
+              : p,
+          ),
+        );
+      });
+  }
+
+  function handleFilesSelected(files: File[]) {
+    const additions: SellPhoto[] = files.map((file) => {
+      if (!ACCEPTED_PHOTO_TYPES.has(file.type)) {
+        return {
+          localId: newLocalId(),
+          file,
+          previewUrl: URL.createObjectURL(file),
+          status: "error",
+          errorMessage: "Unsupported file type",
+          originalFilename: file.name,
+        };
+      }
+      if (file.size > MAX_PHOTO_BYTES) {
+        return {
+          localId: newLocalId(),
+          file,
+          previewUrl: URL.createObjectURL(file),
+          status: "error",
+          errorMessage: "File is larger than 15 MB",
+          originalFilename: file.name,
+        };
+      }
+      return {
+        localId: newLocalId(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: "pending",
+        originalFilename: file.name,
+      };
+    });
+    setPhotos((prev) => [...prev, ...additions]);
+    additions.filter((p) => p.status === "pending").forEach(startUpload);
+  }
+
+  function removePhoto(localId: string) {
+    setPhotos((prev) => {
+      const found = prev.find((p) => p.localId === localId);
+      if (found) URL.revokeObjectURL(found.previewUrl);
+      return prev.filter((p) => p.localId !== localId);
+    });
+  }
+
+  function retryPhoto(localId: string) {
+    const photo = photos.find((p) => p.localId === localId);
+    if (photo) startUpload(photo);
+  }
+
+  function goNext() {
+    if (step === 2) {
+      if (!draft.contact.firstName.trim() || !draft.contact.lastName.trim() || !isValidEmail(draft.contact.email)) {
+        setContactError("Please enter your first name, last name, and a valid email address.");
+        return;
+      }
+    }
+    setContactError(null);
+    setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function goBack() {
+    setStep((s) => Math.max(s - 1, 0));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const photosStillUploading = photos.some((p) => p.status === "uploading");
+
+  async function handleSubmit() {
+    if (!draft.agreedToTerms) {
+      setSubmitError("Please confirm you own or are authorized to sell these items before submitting.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const uploaded = photos.filter((p) => p.status === "uploaded" && p.uploadedPath);
+      const res = await submitSellForm({
+        draftId: draft.draftId,
+        hp_ref: honeypot,
+        contact: draft.contact,
+        collection: draft.collection,
+        cards: draft.cards,
+        photos: uploaded.map((p) => ({ path: p.uploadedPath!, originalFilename: p.originalFilename })),
+        agreedToTerms: draft.agreedToTerms,
+      });
+      if (!res.ok) {
+        setSubmitError(res.message ?? "Something went wrong. Please try again.");
+        return;
+      }
+      clearDraft();
+      photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      setResult({ referenceNumber: res.referenceNumber! });
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="gg-page gg-prose gg-sellsuccess">
+        <h1>We received your collection!</h1>
+        <p>
+          Thanks for giving Geega Games the opportunity to look at your cards. We&rsquo;ll review the
+          information you submitted and contact you using your preferred contact method.
+        </p>
+        <div className="gg-sellsuccess__ref">
+          <span className="gg-card-meta">Your reference number</span>
+          <strong>{result.referenceNumber}</strong>
+          <p className="gg-card-meta">Save this for your records.</p>
+        </div>
+        <p>
+          <Link to="/shop" className="gg-btn">
+            Continue shopping
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="gg-page gg-sell">
+      {step === 0 && (
+        <>
+          <section className="gg-sellhero">
+            <h1>Sell Your Magic Cards to Geega Games</h1>
+            <p>
+              Selling a few valuable cards or an entire collection? Geega Games buys individual
+              cards, organized lists, binders, decks, and full Magic: The Gathering collections.
+              Tell us what you have, and we&rsquo;ll personally review it and get in touch.
+            </p>
+            <p className="gg-card-meta">
+              Have a huge collection? You don&rsquo;t need to enter every card. Upload photos and
+              tell us about it.
+            </p>
+          </section>
+
+          <section className="gg-sellsteps">
+            <div className="gg-sellsteps__item">
+              <strong>1. Tell us what you have</strong>
+              <p>Search individual cards, paste/upload a list, upload collection photos, or a combination.</p>
+            </div>
+            <div className="gg-sellsteps__item">
+              <strong>2. We review your collection</strong>
+              <p>We review the cards, printings, condition information, photos, and collection details.</p>
+            </div>
+            <div className="gg-sellsteps__item">
+              <strong>3. We contact you</strong>
+              <p>We reach out to discuss the collection, ask questions if needed, and go over next steps.</p>
+            </div>
+          </section>
+          <p className="gg-alert gg-alert-warn">
+            Submitting this form does not automatically constitute an offer or agreement to
+            purchase — we review every submission individually.
+          </p>
+        </>
+      )}
+
+      <SellProgress step={step} />
+
+      {step === 0 && (
+        <div className="gg-sellstep">
+          <h2>What are you selling?</h2>
+          <p className="gg-card-meta">
+            Use one, two, or all three — whatever&rsquo;s easiest for what you have.
+          </p>
+
+          <div className="gg-sellsection">
+            <h3>Search and add cards</h3>
+            <p className="gg-card-meta">
+              Have an organized list? Add the exact cards below to help us review your collection
+              faster.
+            </p>
+            <SellCardSearch onSelect={(p) => addCards([printingToCardLine(p)])} />
+          </div>
+
+          <div className="gg-sellsection">
+            <h3>Paste a card list</h3>
+            <BulkListInput onAddCards={addCards} onUpdateCard={updateCard} />
+          </div>
+
+          <SellCardList cards={draft.cards} onUpdate={updateCard} onRemove={removeCard} onRematch={(id, p) => updateCard(id, printingToCardLine(p))} />
+
+          <div className="gg-sellsection">
+            <h3>Selling a full collection? Upload photos instead.</h3>
+            <p className="gg-card-meta">
+              Thousands of cards? Don&rsquo;t enter them one at a time. Upload photos of binders,
+              boxes, decks, high-value cards, sealed items, or an overview of the whole collection.
+            </p>
+            <CollectionPhotoUpload
+              photos={photos}
+              onFilesSelected={handleFilesSelected}
+              onRemove={removePhoto}
+              onRetry={retryPhoto}
+            />
+          </div>
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="gg-sellstep">
+          <h2>Tell us about the collection</h2>
+          <CollectionDetails value={draft.collection} onChange={updateCollection} />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="gg-sellstep">
+          <h2>Your contact information</h2>
+          {contactError && (
+            <div className="gg-alert gg-alert-error" role="alert">
+              {contactError}
+            </div>
+          )}
+          <SellerContactForm value={draft.contact} onChange={updateContact} />
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="gg-sellstep">
+          <h2>Review &amp; submit</h2>
+          <SellReview
+            contact={draft.contact}
+            collection={draft.collection}
+            cards={draft.cards}
+            photos={photos}
+            onEditStep={setStep}
+          />
+
+          {photosStillUploading && (
+            <p className="gg-alert gg-alert-warn" role="status">
+              Please wait for your photos to finish uploading before submitting.
+            </p>
+          )}
+
+          {submitError && (
+            <div className="gg-alert gg-alert-error" role="alert">
+              {submitError}
+            </div>
+          )}
+
+          {/* Honeypot: hidden from real users via CSS, real sellers never fill it. */}
+          <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, overflow: "hidden" }}>
+            <label htmlFor="sell-hp">Leave this field blank</label>
+            <input
+              id="sell-hp"
+              type="text"
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
+
+          <label className="gg-check" style={{ marginTop: "1rem" }}>
+            <input
+              type="checkbox"
+              checked={draft.agreedToTerms}
+              onChange={(e) => setDraft((d) => ({ ...d, agreedToTerms: e.target.checked }))}
+            />
+            I confirm that I own these items or am authorized to sell them, and I understand that
+            submitting this form does not guarantee an offer or purchase.
+          </label>
+
+          <div className="gg-sellstep__nav">
+            <button type="button" className="gg-btn gg-btn-ghost" onClick={goBack} disabled={submitting}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="gg-btn"
+              onClick={handleSubmit}
+              disabled={submitting || photosStillUploading || !draft.agreedToTerms}
+            >
+              {submitting ? "Submitting…" : "Submit my collection"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step < 3 && (
+        <div className="gg-sellstep__nav">
+          {step > 0 && (
+            <button type="button" className="gg-btn gg-btn-ghost" onClick={goBack}>
+              Back
+            </button>
+          )}
+          <button type="button" className="gg-btn" onClick={goNext}>
+            {step === 0 ? "Start Your Submission" : "Continue"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -825,3 +825,90 @@ export interface BatchCommitResult {
   failedCount: number;
   failures: { scanId: string; sequenceNumber: number; reason: string }[];
 }
+
+/* ------------------------------------------------------------------ *
+ * Buying Leads — Sell Your Cards / Sell Your Collection submissions
+ * ------------------------------------------------------------------ */
+
+export type BuyingLeadStatus =
+  | "new"
+  | "reviewing"
+  | "contacted"
+  | "offer_made"
+  | "accepted"
+  | "declined"
+  | "completed"
+  | "closed";
+
+export type BuyingLeadPriority = "normal" | "high_interest";
+
+export interface BuyingLeadSummary {
+  id: string;
+  referenceNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  createdAt: string;
+  totalCards: number;
+  photoCount: number;
+  collectionSize: string | null;
+  preferredContactMethod: string;
+  transactionPreference: string;
+  status: BuyingLeadStatus;
+  priority: BuyingLeadPriority;
+  favorited: boolean;
+  estimatedValueCents: number | null;
+}
+
+export interface BuyingLeadCard {
+  id: string;
+  scryfallId: string | null;
+  cardName: string;
+  setName: string | null;
+  setCode: string | null;
+  collectorNumber: string | null;
+  imageUrl: string | null;
+  condition: CardCondition | null;
+  finish: CardFinish;
+  quantity: number;
+  scryfallPriceCents: number | null;
+  sellerNotes: string | null;
+  matchStatus: "matched" | "ambiguous" | "unmatched";
+}
+
+export interface BuyingLeadPhoto {
+  id: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  signedUrl: string | null;
+}
+
+export interface BuyingLeadDetail extends BuyingLeadSummary {
+  userId: string | null;
+  collectionTypes: string[];
+  collectionEras: string[];
+  timeline: string | null;
+  valuableCardsNotes: string | null;
+  notes: string | null;
+  internalNotes: string | null;
+  referralSource: string | null;
+  offerValueCents: number | null;
+  purchaseAmountCents: number | null;
+  contactedAt: string | null;
+  closedAt: string | null;
+  cards: BuyingLeadCard[];
+  photos: BuyingLeadPhoto[];
+}
+
+export interface BuyingLeadsQuery {
+  search?: string;
+  status?: BuyingLeadStatus | "all";
+  hasPhotos?: boolean;
+  hasCardList?: boolean;
+  largeCollection?: boolean;
+}

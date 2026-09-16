@@ -3,6 +3,8 @@ import { render } from "@react-email/render";
 import { ConfirmSubscription } from "../api/_lib/emails/ConfirmSubscription.js";
 import { SubscriptionConfirmed } from "../api/_lib/emails/SubscriptionConfirmed.js";
 import { OrderConfirmation } from "../api/_lib/emails/OrderConfirmation.js";
+import { SellSubmissionConfirmation } from "../api/_lib/emails/SellSubmissionConfirmation.js";
+import { SellSubmissionAdminNotification } from "../api/_lib/emails/SellSubmissionAdminNotification.js";
 import * as React from "react";
 
 describe("email templates render to HTML", () => {
@@ -76,5 +78,49 @@ describe("email templates render to HTML", () => {
     expect(html).toContain("Thanks, Jordan!");
     expect(html).toContain("$11.00"); // total
     expect(html).toContain("1 Main St");
+  });
+
+  it("SellSubmissionConfirmation renders the reference number and never promises a guaranteed offer", async () => {
+    const html = await render(
+      React.createElement(SellSubmissionConfirmation, {
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        cardCount: 3,
+        photoCount: 5,
+        hasCollectionDescription: true,
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("GG-S-100042");
+    expect(html).toContain("Thanks, Jordan!");
+    expect(html).toContain("We received your collection");
+    expect(html).not.toMatch(/instant cash|guaranteed offer|we will buy/i);
+    expect(html).toContain("does not guarantee an offer");
+  });
+
+  it("SellSubmissionAdminNotification renders lead details and a link to the admin dashboard", async () => {
+    const html = await render(
+      React.createElement(SellSubmissionAdminNotification, {
+        referenceNumber: "GG-S-100042",
+        sellerName: "Jordan Vega",
+        location: "Austin, TX",
+        collectionSizeLabel: "1,000–5,000 cards",
+        cardCount: 12,
+        photoCount: 4,
+        estimatedValueCents: 15000,
+        adminUrl: "https://geega-games.com/admin_dashboard/buying-leads?submission=abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("GG-S-100042");
+    expect(html).toContain("Jordan Vega");
+    expect(html).toContain("Austin, TX");
+    expect(html).toContain("$150.00");
+    expect(html).toContain("internal, not an offer");
+    expect(html).toContain("https://geega-games.com/admin_dashboard/buying-leads?submission=abc");
   });
 });

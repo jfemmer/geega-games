@@ -23,6 +23,7 @@ import {
   NotFoundPage,
 } from "./store/pages/StaticPages";
 import CheckoutPage from "./store/pages/CheckoutPage";
+import SellPage from "./store/pages/SellPage";
 import { AccountPage } from "./store/pages/AccountPages";
 
 function Routes() {
@@ -35,6 +36,7 @@ function Routes() {
   if (path === "/forgot-password") return <ForgotPasswordPage />;
   if (path === "/reset-password") return <ResetPasswordPage />;
   if (path === "/checkout") return <CheckoutPage />;
+  if (path === "/sell") return <SellPage />;
   if (path === "/condition-guide") return <ConditionGuidePage />;
   if (path === "/shipping") return <ShippingPage />;
   if (path === "/returns") return <ReturnsPage />;

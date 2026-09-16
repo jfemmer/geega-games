@@ -39,6 +39,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account", label: "Dashboard" },
   { to: "/account/profile", label: "Profile" },
   { to: "/account/orders", label: "Orders" },
+  { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
   { to: "/account/security", label: "Password & security" },
@@ -736,6 +737,86 @@ function OrdersSection() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Sell submissions — read-only status list. Deliberately shows ONLY
+ * reference number, date, and status: internal notes, staff valuation
+ * estimates, and offer/purchase amounts are staff-only and are never
+ * queried here (RLS also wouldn't allow it, but the column list itself is
+ * kept minimal on principle).
+ * ------------------------------------------------------------------ */
+
+type SellSubmissionRow = {
+  id: string;
+  reference_number: string;
+  created_at: string;
+  status: string;
+};
+
+const SELL_SUBMISSION_STATUS_LABELS: Record<string, string> = {
+  new: "New — awaiting review",
+  reviewing: "Being reviewed",
+  contacted: "We've been in touch",
+  offer_made: "Offer made",
+  accepted: "Offer accepted",
+  declined: "Declined",
+  completed: "Completed",
+  closed: "Closed",
+};
+
+function SellSubmissionsSection() {
+  const [rows, setRows] = useState<SellSubmissionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A narrow, staff-independent RPC (same pattern as my_store_credit_balance)
+    // rather than a direct table query — sell_submissions rows also carry
+    // staff-only columns (internal notes, offer/purchase amounts) that must
+    // never reach the seller, so reads go through RLS-safe function that
+    // only ever returns the four columns below, never the whole row.
+    supabase
+      .rpc("my_sell_submissions")
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setRows((data ?? []) as SellSubmissionRow[]);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <p>Loading your submissions…</p>;
+  if (error)
+    return (
+      <div className="gg-alert gg-alert-error" role="alert">
+        {error}
+      </div>
+    );
+  if (rows.length === 0)
+    return (
+      <div className="gg-empty">
+        <p>You haven&rsquo;t submitted a collection yet.</p>
+        <Link to="/sell" className="gg-btn gg-btn-ghost">
+          Sell your cards
+        </Link>
+      </div>
+    );
+
+  return (
+    <div>
+      {rows.map((r) => (
+        <div className="gg-orderrow" key={r.id} style={{ cursor: "default" }}>
+          <div>
+            <strong>{r.reference_number}</strong>{" "}
+            <span className="gg-card-meta">{new Date(r.created_at).toLocaleDateString()}</span>
+          </div>
+          <div className="gg-orderrow-right">
+            <span className="gg-card-meta">{SELL_SUBMISSION_STATUS_LABELS[r.status] ?? r.status}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Order detail
  * ------------------------------------------------------------------ */
 
@@ -1261,6 +1342,10 @@ export function AccountPage() {
     title = "Orders";
     subtitle = "Your order history and shipment status.";
     body = <OrdersSection />;
+  } else if (path === "/account/sell-submissions") {
+    title = "Sell submissions";
+    subtitle = "Collections and cards you've submitted to sell.";
+    body = <SellSubmissionsSection />;
   } else if (orderMatch) {
     title = "Order details";
     body = <OrderDetailSection orderId={orderMatch.id} />;

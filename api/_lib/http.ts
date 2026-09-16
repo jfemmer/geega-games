@@ -12,21 +12,25 @@ export class HttpError extends Error {
 }
 
 // Read + parse a JSON body with a hard size cap. Vercel may have already parsed
-// req.body; if so we re-serialize to enforce the cap consistently.
+// req.body; if so we re-serialize to enforce the cap consistently. Most public
+// POST endpoints only need an email + honeypot, hence the small 4 KB default —
+// pass `maxBytes` to raise it for an endpoint with a legitimately larger
+// payload (e.g. a card list with hundreds of lines).
 export async function readJsonBody(
   req: VercelRequest,
+  maxBytes: number = MAX_BODY_BYTES,
 ): Promise<Record<string, unknown>> {
   // Case 1: Vercel already parsed it.
   if (req.body && typeof req.body === "object") {
     const asString = JSON.stringify(req.body);
-    if (Buffer.byteLength(asString, "utf8") > MAX_BODY_BYTES) {
+    if (Buffer.byteLength(asString, "utf8") > maxBytes) {
       throw new HttpError(413, "Request body too large.");
     }
     return req.body as Record<string, unknown>;
   }
 
   // Case 2: raw stream.
-  const raw = await readRawBody(req, MAX_BODY_BYTES);
+  const raw = await readRawBody(req, maxBytes);
   if (raw.length === 0) return {};
   try {
     const parsed = JSON.parse(raw);

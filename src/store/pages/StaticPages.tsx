@@ -23,6 +23,17 @@ export function HomePage() {
         </div>
       </section>
 
+      <section className="gg-sellcta">
+        <h2>Looking to sell your collection?</h2>
+        <p>
+          From a few valuable singles to an entire Magic collection, Geega Games is always
+          interested in seeing what you have.
+        </p>
+        <Link to="/sell" className="gg-btn">
+          Sell Your Cards
+        </Link>
+      </section>
+
       <section style={{ marginTop: "2rem" }}>
         <div className="gg-prose">
           <h2 style={{ color: "var(--gg-purple)" }}>Stay in the loop</h2>
