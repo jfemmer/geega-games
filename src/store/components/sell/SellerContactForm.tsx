@@ -124,6 +124,31 @@ export function SellerContactForm({
           ))}
         </div>
       </fieldset>
+
+      {value.transactionPreference !== "local" && (
+        <div className="gg-alert gg-alert-warn" role="note">
+          <strong>Shipping your collection? Pack it securely.</strong>
+          <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
+            <li>Use penny sleeves and toploaders (or a semi-rigid holder) for valuable or graded cards.</li>
+            <li>
+              Ship in a rigid box or a bubble mailer reinforced with cardboard stiffeners — never a
+              plain envelope for anything beyond a few commons.
+            </li>
+            <li>Wrap binders and boxes in a sealed bag to protect against moisture.</li>
+            <li>Fill empty space with packing paper or bubble wrap so nothing shifts in transit.</li>
+            <li>Never secure cards directly with rubber bands — they can bend or dent them.</li>
+            <li>For higher-value collections, use tracked and insured shipping.</li>
+          </ul>
+        </div>
+      )}
+
+      <div className="gg-alert gg-alert-warn" role="note">
+        <strong>How we pay.</strong> We pay via <strong>PayPal Goods &amp; Services only</strong> —
+        never Friends &amp; Family — since Goods &amp; Services includes protections for both of us.
+        For some collections, especially larger or higher-value ones, we may ask you to ship the
+        collection to us for inspection and authentication before payment is sent, rather than
+        paying first.
+      </div>
     </div>
   );
 }

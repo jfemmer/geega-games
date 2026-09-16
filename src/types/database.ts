@@ -2433,6 +2433,8 @@ export type Database = {
       sell_submission_status:
         | "new"
         | "reviewing"
+        | "needs_more_photos"
+        | "needs_in_person_review"
         | "contacted"
         | "offer_made"
         | "accepted"
@@ -2717,6 +2719,8 @@ export const Constants = {
       sell_submission_status: [
         "new",
         "reviewing",
+        "needs_more_photos",
+        "needs_in_person_review",
         "contacted",
         "offer_made",
         "accepted",

@@ -24,6 +24,8 @@ type Priority = Database["public"]["Enums"]["sell_priority"];
 const STATUSES = new Set<Status>([
   "new",
   "reviewing",
+  "needs_more_photos",
+  "needs_in_person_review",
   "contacted",
   "offer_made",
   "accepted",

@@ -833,6 +833,8 @@ export interface BatchCommitResult {
 export type BuyingLeadStatus =
   | "new"
   | "reviewing"
+  | "needs_more_photos"
+  | "needs_in_person_review"
   | "contacted"
   | "offer_made"
   | "accepted"

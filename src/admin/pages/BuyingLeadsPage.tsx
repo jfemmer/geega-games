@@ -25,6 +25,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
   { key: "reviewing", label: "Reviewing" },
+  { key: "needs_more_photos", label: "Needs more photos" },
+  { key: "needs_in_person_review", label: "Needs in-person review" },
   { key: "contacted", label: "Contacted" },
   { key: "offer_made", label: "Offer made" },
   { key: "accepted", label: "Accepted" },

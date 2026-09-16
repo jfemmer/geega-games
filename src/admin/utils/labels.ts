@@ -285,6 +285,8 @@ export const MOVEMENT_REASON_LABELS: Record<InventoryMovementReason, string> = {
 export const BUYING_LEAD_STATUS_LABELS: Record<BuyingLeadStatus, string> = {
   new: "New",
   reviewing: "Reviewing",
+  needs_more_photos: "Needs more photos",
+  needs_in_person_review: "Needs in-person review",
   contacted: "Contacted",
   offer_made: "Offer made",
   accepted: "Accepted",
@@ -296,6 +298,8 @@ export const BUYING_LEAD_STATUS_LABELS: Record<BuyingLeadStatus, string> = {
 export const BUYING_LEAD_STATUS_TONE: Record<BuyingLeadStatus, BadgeTone> = {
   new: "gold",
   reviewing: "info",
+  needs_more_photos: "warning",
+  needs_in_person_review: "warning",
   contacted: "purple",
   offer_made: "warning",
   accepted: "success",

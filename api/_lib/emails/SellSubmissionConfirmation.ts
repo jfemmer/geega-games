@@ -77,6 +77,11 @@ export function SellSubmissionConfirmation(data: SellSubmissionEmailData) {
       { key: "p2", style: p },
       "Submitting this form does not guarantee an offer or purchase. We review every submission individually — condition, demand, and the overall collection all factor in — and we'll reach out with next steps or questions.",
     ),
+    h(
+      Text,
+      { key: "p3", style: p },
+      "If we agree on a purchase and you're shipping to us, pack cards in sleeves/toploaders and a sturdy box or reinforced mailer with no empty space — never a plain envelope. We pay via PayPal Goods & Services only (never Friends & Family), and for some collections we may ask you to ship first so we can verify condition and authenticity before payment goes out.",
+    ),
   );
 }
 
@@ -92,6 +97,8 @@ export function sellSubmissionConfirmationText(d: SellSubmissionEmailData): stri
     "Save this for your records.",
     "",
     "Submitting this form does not guarantee an offer or purchase. We review every submission individually.",
+    "",
+    "If we agree on a purchase and you're shipping to us, pack cards in sleeves/toploaders and a sturdy box or reinforced mailer with no empty space -- never a plain envelope. We pay via PayPal Goods & Services only (never Friends & Family), and for some collections we may ask you to ship first so we can verify condition and authenticity before payment goes out.",
     "",
     `Questions? ${d.supportEmail}`,
   ].join("\n");

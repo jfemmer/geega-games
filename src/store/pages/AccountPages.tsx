@@ -754,6 +754,8 @@ type SellSubmissionRow = {
 const SELL_SUBMISSION_STATUS_LABELS: Record<string, string> = {
   new: "New — awaiting review",
   reviewing: "Being reviewed",
+  needs_more_photos: "We need a few more photos from you",
+  needs_in_person_review: "We'd like to take a closer look in person",
   contacted: "We've been in touch",
   offer_made: "Offer made",
   accepted: "Offer accepted",

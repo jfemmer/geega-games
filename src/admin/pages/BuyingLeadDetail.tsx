@@ -24,6 +24,8 @@ import type { BuyingLeadDetail, BuyingLeadPriority, BuyingLeadStatus } from "../
 const STATUS_OPTIONS: BuyingLeadStatus[] = [
   "new",
   "reviewing",
+  "needs_more_photos",
+  "needs_in_person_review",
   "contacted",
   "offer_made",
   "accepted",

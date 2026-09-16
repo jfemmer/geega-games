@@ -166,6 +166,15 @@ export function TermsPage() {
         for their safekeeping, return, or value, and may decline delivery, return them at your
         expense, or treat them as abandoned property under applicable law.
       </p>
+      <p>
+        <strong>Payment for an accepted Submission is made exclusively via PayPal Goods &amp;
+        Services.</strong> We do not pay via PayPal Friends &amp; Family, cash, check, or any other
+        method. For some Submissions — including larger or higher-value collections, or where we
+        are unable to fully verify condition or authenticity from photographs alone — we may
+        require that you ship the items to us for inspection and authentication before any payment
+        is sent, rather than paying in advance of shipment. We will tell you which arrangement
+        applies to your Submission before you are asked to ship anything.
+      </p>
 
       <h2>10. Content You Submit; License</h2>
       <p>
