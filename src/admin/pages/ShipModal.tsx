@@ -5,7 +5,7 @@ import { TextField, SelectField } from "../components/ui/Field";
 import { Icon } from "../components/ui/Icon";
 import { orderRepository } from "../repositories";
 import { useToast } from "../hooks/useToast";
-import { CURRENT_ADMIN } from "../data/session.mock";
+import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import type { Order, ShippingCarrier } from "../types";
 
 const CARRIERS: ShippingCarrier[] = ["USPS", "UPS", "FedEx", "Other"];
@@ -29,6 +29,7 @@ export function ShipModal({
   onShipped: (updated: Order) => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
   const [carrier, setCarrier] = useState<ShippingCarrier>("USPS");
   const [tracking, setTracking] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,12 +50,12 @@ export function ShipModal({
         order.id,
         isPwe ? null : carrier,
         isPwe ? null : tracking.trim(),
-        CURRENT_ADMIN.name,
+        currentAdmin.name,
       );
       toast.success(
         isPwe
           ? `${order.orderNumber} marked shipped (Plain White Envelope — no tracking).`
-          : `${order.orderNumber} marked shipped. Confirmation email simulated (not sent).`,
+          : `${order.orderNumber} marked shipped. No confirmation email is sent automatically.`,
       );
       onShipped(updated);
       setTracking("");
@@ -121,7 +122,7 @@ export function ShipModal({
           <div className="gg-emailpreview__head">
             <Icon name="mail" size={16} />
             <span>Customer email preview</span>
-            <span className="gg-tag gg-tag--mock">Not sent in mock</span>
+            <span className="gg-tag gg-tag--mock">Preview only — not sent</span>
           </div>
           <div className="gg-emailpreview__body">
             <p>Hi {order.customerName.split(" ")[0]},</p>

@@ -16,7 +16,7 @@ import { CardPrintingBadges } from "../components/cards/CardPrintingBadges";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { orderRepository } from "../repositories";
-import { CURRENT_ADMIN } from "../data/session.mock";
+import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import {
   formatCents,
   formatDateTime,
@@ -61,6 +61,7 @@ export function OrdersPage({
   onNavigate: (path: string) => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
   const [tab, setTab] = useState<TabKey>("needs_packing");
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<Order | null>(null);
@@ -257,7 +258,7 @@ export function OrdersPage({
         title="Cancel this order?"
         message={
           cancelTarget
-            ? `${cancelTarget.orderNumber} will be marked cancelled. In production this would trigger a refund workflow. No email is sent in the mock.`
+            ? `${cancelTarget.orderNumber} will be marked cancelled. This does not trigger a Stripe refund or send an email automatically — handle those separately.`
             : ""
         }
         confirmLabel="Cancel order"
@@ -267,7 +268,7 @@ export function OrdersPage({
           await orderRepository.setStatus(
             cancelTarget.id,
             "cancelled",
-            CURRENT_ADMIN.name,
+            currentAdmin.name,
           );
           toast.success(`${cancelTarget.orderNumber} cancelled.`);
           const id = cancelTarget.id;
@@ -296,6 +297,7 @@ function OrderDetail({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
 
@@ -324,7 +326,7 @@ function OrderDetail({
     if (!order) return;
     setBusy(true);
     try {
-      await orderRepository.setStatus(order.id, status, CURRENT_ADMIN.name);
+      await orderRepository.setStatus(order.id, status, currentAdmin.name);
       toast.success(label);
       onChanged();
     } finally {

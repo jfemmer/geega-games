@@ -47,9 +47,13 @@
 //                                         once GOOGLE_CLOUD_VISION_API_KEY
 //                                         is set, for whoever wants to pay
 //                                         for a commercial API instead).
-//
-// STILL MOCKED (intentionally, outside this phase's scope):
-//   • Analytics / trends / metrics ..... mockAnalyticsRepository
+//   • Analytics / trends / metrics ..... supabaseAnalyticsRepository
+//                                        (reads: admin_analytics_overview /
+//                                         admin_analytics_trends RPCs — real
+//                                         aggregation over orders, order_items,
+//                                         inventory_items, inventory_movements,
+//                                         customers, newsletter_subscribers,
+//                                         and campaigns; no fabricated numbers).
 //
 // No component or page imports a mock directly — they all import from here, so
 // swapping any remaining mock for a live implementation is a one-line change.
@@ -62,6 +66,7 @@ import {
   mockReservationRepository,
   mockUserRepository,
 } from "./mock";
+import { supabaseAnalyticsRepository } from "./analytics.supabase";
 import { supabaseInventoryRepository } from "./inventory.supabase";
 import { supabaseUserRepository } from "./user.supabase";
 import { supabaseCampaignRepository } from "./campaign.supabase";
@@ -162,7 +167,9 @@ export const scanRepository: ScanRepository = useLiveData
 // the free local tesseract provider by default, or Google Cloud Vision once
 // GOOGLE_CLOUD_VISION_API_KEY is set — which the client never needs to know
 // about. The stub remains for local/no-backend dev.
-export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
+export const analyticsRepository: AnalyticsRepository = useLiveData
+  ? supabaseAnalyticsRepository
+  : mockAnalyticsRepository;
 export const recognitionProvider: CardRecognitionProvider = useLiveData
   ? supabaseRecognitionProvider
   : stubRecognitionProvider;
@@ -176,7 +183,7 @@ if (typeof console !== "undefined") {
       useLiveInventory ? "LIVE (Supabase)" : "mock"
     } · Scryfall source: ${
       useLiveScryfall ? "LIVE (/api/admin/scryfall)" : "mock catalog"
-    } · Users/Campaigns/Reservations/Orders/Scanning/Recognition: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
+    } · Users/Campaigns/Reservations/Orders/Scanning/Recognition/Analytics: ${useLiveData ? "LIVE (Supabase)" : "mock"}`,
   );
 }
 

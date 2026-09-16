@@ -5,6 +5,7 @@ import { GlobalSearch } from "./GlobalSearch";
 import { SECTION_TITLES } from "./nav";
 import { orderRepository } from "../../repositories";
 import { useToast } from "../../hooks/useToast";
+import { supabase } from "../../../supabase";
 
 export function AdminLayout({
   activeKey,
@@ -71,9 +72,10 @@ export function AdminLayout({
           breadcrumb={fullBreadcrumb}
           onOpenSearch={() => setSearchOpen(true)}
           onToggleSidebar={() => setMobileOpen((v) => !v)}
-          onSignOut={() =>
-            toast.info("Sign out is disabled in the mock — this is a preview.")
-          }
+          onSignOut={async () => {
+            const { error } = await supabase.auth.signOut();
+            if (error) toast.error(error.message);
+          }}
         />
         <main className="gg-content" id="gg-content" tabIndex={-1}>
           {children}

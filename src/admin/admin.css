@@ -795,8 +795,18 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 /* ------------------------------- Import ------------------------------- */
 
 .gg-import { display: flex; flex-direction: column; gap: 14px; }
-.gg-import__drop { border: 2px dashed var(--gg-line-strong); border-radius: var(--gg-radius); padding: 32px; text-align: center; color: var(--gg-text-soft); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.gg-import__drop { border: 2px dashed var(--gg-line-strong); border-radius: var(--gg-radius); padding: 32px; text-align: center; color: var(--gg-text-soft); display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; }
+.gg-import__drop:hover, .gg-import__drop:focus-visible { border-color: var(--gg-brand); color: var(--gg-text); }
 .gg-import__drop p { margin: 0; font-size: 0.88rem; }
+.gg-import__results { display: flex; flex-direction: column; gap: 10px; }
+.gg-import__resultlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.gg-import__resultrow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 8px 10px; border-radius: var(--gg-radius-sm); font-size: 0.82rem; background: var(--gg-surface-2); }
+.gg-import__resultrow--error { background: #fdeceb; color: #9a2a20; }
+.gg-import__resultrow--restocked { background: #eaf3ec; color: #1f6b3a; }
+.gg-import__resultrow--added { background: #eaf3ec; color: #1f6b3a; }
+.gg-import__resultline { font-weight: 600; opacity: 0.7; }
+.gg-import__resultname { font-weight: 600; }
+.gg-import__resultdetail { flex: 1 1 100%; opacity: 0.9; }
 
 .gg-rolerow { display: flex; gap: 10px; align-items: flex-end; }
 .gg-rolerow .gg-field { flex: 1; }

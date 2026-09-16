@@ -56,7 +56,6 @@ src/admin/
     inventory.mock.ts     # 12 real MTG printings, 14 inventory lines, ledger
     orders.mock.ts        # 7 orders across every status
     misc.mock.ts          # campaigns, customers, staff, analytics generators
-    session.mock.ts       # the "signed-in" admin (replace with Supabase auth)
   repositories/
     types.ts              # repository INTERFACES (the swap seam)
     mock.ts               # in-memory implementations + __resetMockState()
@@ -187,18 +186,25 @@ Guidelines carried over from the mock's design:
 
 ---
 
-## 8. What's mocked (and clearly labelled as such)
+## 8. Current status: live, not mocked
 
-- Sending any email (campaigns, test sends, shipment confirmations) — simulated.
-- CSV **import** — parses/validates in the real version; here it's a stub that
-  writes nothing. CSV **export** is real (downloads current rows).
-- Sign-out and a couple of secondary buttons show an informational toast.
-- The "signed-in" admin comes from `data/session.mock.ts`.
+This dashboard has since gone live against real Supabase + Vercel Functions
+(see the "DATA SOURCE STATUS" comment at the top of `repositories/index.ts`
+for the authoritative, per-domain breakdown). Nothing in the admin dashboard
+or storefront reads from the `*.mock.ts` files in production — they remain
+only as an explicit no-backend fallback for local UI work
+(`VITE_USE_MOCK_INVENTORY=1` etc.), never a silent production path.
 
-Everything else — filtering, sorting, pagination, quantity adjustments with
-ledger entries, the full packing→shipping workflow, campaign status transitions,
-role/status changes with safeguards, and all analytics — runs against the
-in-memory repositories and behaves as it will in production.
+Sign-out calls real Supabase `auth.signOut()`. CSV import parses and
+validates the file client-side, resolves each row against the live Scryfall
+printing index, and writes through the same repository calls the manual
+Add-card flow uses (dedup by scryfall_id + condition + finish). CSV export
+downloads the current live rows. Analytics/Trends run real aggregation over
+`orders`, `order_items`, `inventory_items`, `inventory_movements`,
+`customers`, `newsletter_subscribers`, and `campaigns` via the
+`admin_analytics_overview` / `admin_analytics_trends` RPCs. Sending a
+campaign email remains intentionally not enabled — `send()` throws rather
+than fabricating delivery stats.
 
 ---
 

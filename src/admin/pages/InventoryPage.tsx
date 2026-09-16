@@ -14,6 +14,7 @@ import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddInventoryDrawer } from "./AddInventoryDrawer";
 import { EditInventoryDrawer } from "./EditInventoryDrawer";
+import { ImportInventoryModal } from "./ImportInventoryModal";
 import { useAsync } from "../hooks/useAsync";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
@@ -610,45 +611,14 @@ export function InventoryPage({
         onCancel={() => setDeleteTarget(null)}
       />
 
-      <Modal
+      <ImportInventoryModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        title="Import inventory (CSV)"
-        size="md"
-        footer={
-          <div className="gg-drawer-actions__buttons">
-            <Button variant="ghost" onClick={() => setImportOpen(false)}>
-              Close
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setImportOpen(false);
-                toast.info(
-                  "CSV import is stubbed in the mock — no rows were written.",
-                );
-              }}
-            >
-              Upload file
-            </Button>
-          </div>
-        }
-      >
-        <div className="gg-import">
-          <div className="gg-import__drop">
-            <Icon name="upload" size={28} />
-            <p>Drag a CSV here, or click Upload file.</p>
-            <p className="gg-muted">
-              Expected columns: Card, Set, Collector #, Condition, Finish,
-              Quantity, Price.
-            </p>
-          </div>
-          <p className="gg-muted">
-            Import validates rows, detects duplicates, and previews changes
-            before writing in production. This preview does not modify data.
-          </p>
-        </div>
-      </Modal>
+        onImported={() => {
+          inv.reload();
+          setCodes.reload();
+        }}
+      />
       <ReserveModal
         item={reserveTarget}
         open={!!reserveTarget}

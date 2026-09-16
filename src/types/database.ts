@@ -1757,6 +1757,8 @@ export type Database = {
         Args: { p_amount_cents: number; p_reason?: string; p_user_id: string }
         Returns: number
       }
+      admin_analytics_overview: { Args: { p_range?: string }; Returns: Json }
+      admin_analytics_trends: { Args: { p_range?: string }; Returns: Json }
       admin_create_reservation: {
         Args: {
           p_customer_id: string
