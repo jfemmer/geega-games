@@ -15,6 +15,7 @@
 // present, but nothing here is ever bundled into the browser).
 
 import "dotenv/config";
+import { gunzipSync } from "node:zlib";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../src/types/database.js";
 import type { ScryfallCard } from "../src/admin/services/scryfall.types.js";
@@ -23,11 +24,16 @@ const BULK_DATA_INDEX_URL = "https://api.scryfall.com/bulk-data";
 const USER_AGENT = "GeegaGames/1.0 (+https://geega-games.com)";
 const UPSERT_BATCH_SIZE = 500;
 
+// Scryfall's bulk-data files are now gzip-compressed JSON Lines (one card
+// object per line), served from jsonl_download_uri — not the plain JSON
+// array at download_uri this script originally targeted. Confirmed live
+// against api.scryfall.com on 2026-09-16; update this shape again if
+// Scryfall changes it further.
 interface BulkDataEntry {
   type: string;
-  download_uri: string;
+  jsonl_download_uri: string;
   updated_at: string;
-  size: number;
+  compressed_size: number;
 }
 
 function requireEnv(name: string): string {
@@ -89,19 +95,26 @@ async function main() {
   if (!entry) throw new Error("Scryfall bulk-data index has no default_cards entry.");
 
   console.log(
-    `Downloading default_cards (${(entry.size / 1024 / 1024).toFixed(0)} MB, ` +
+    `Downloading default_cards (${(entry.compressed_size / 1024 / 1024).toFixed(0)} MB compressed, ` +
       `Scryfall-side updated ${entry.updated_at})...`,
   );
-  const dataRes = await fetch(entry.download_uri, {
-    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+  const dataRes = await fetch(entry.jsonl_download_uri, {
+    headers: { "User-Agent": USER_AGENT },
   });
   if (!dataRes.ok) {
     throw new Error(`Scryfall bulk data download failed: ${dataRes.status}`);
   }
   // Loaded fully into memory — acceptable for a one-off/CI script (not a
   // request-scoped serverless function), simpler and more robust than a
-  // hand-rolled streaming JSON parser for a file this size.
-  const cards = (await dataRes.json()) as ScryfallCard[];
+  // hand-rolled streaming gunzip/JSONL parser for a file this size. The
+  // download itself is a literal gzip file (not HTTP content-encoding), so
+  // it needs an explicit gunzip before it's usable text.
+  const compressed = Buffer.from(await dataRes.arrayBuffer());
+  const decompressed = gunzipSync(compressed).toString("utf8");
+  const cards = decompressed
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as ScryfallCard);
   console.log(`Downloaded ${cards.length} printings. Upserting...`);
 
   let upserted = 0;
