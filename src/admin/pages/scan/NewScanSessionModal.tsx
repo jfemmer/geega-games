@@ -24,6 +24,21 @@ function pairingForMode(mode: ScanRecognitionMode): "front_only" | "front_back_p
   return mode === "card_matching" ? "front_only" : "front_back_pairs";
 }
 
+// Source is a record for the audit trail only — it never changes how a
+// session's files get processed (that's entirely driven by "Scanning for"
+// above). It exists so a later reviewer looking at session history can tell
+// how the images actually got here.
+const SOURCE_TYPE_HINTS: Record<ScanSourceType, string> = {
+  scanner_export:
+    "You scanned these cards with dedicated scanner software (e.g. PaperStream) and are uploading the exported image files here yourself. The usual choice for a manual batch.",
+  file_upload:
+    "The images didn't come from scanner software — phone photos, a one-off image someone sent you, etc.",
+  folder_drop:
+    "Files were saved into a shared or network folder, and you're pulling this batch in from there.",
+  scanner_bridge:
+    "Reserved for sessions the automated scanner-bridge program (scanner-bridge/) creates on its own — you normally won't pick this by hand here.",
+};
+
 /** Derive a stable ordering key from a filename (numbers sort naturally). */
 function orderKey(name: string): number {
   const m = name.match(/(\d+)/g);
@@ -164,11 +179,12 @@ export function NewScanSessionModal({
             label="Source"
             value={sourceType}
             onChange={(e) => setSourceType(e.target.value as ScanSourceType)}
+            hint={SOURCE_TYPE_HINTS[sourceType]}
           >
-            <option value="scanner_export">Scanner export</option>
-            <option value="file_upload">File upload</option>
-            <option value="folder_drop">Folder drop</option>
-            <option value="scanner_bridge">Scanner bridge</option>
+            <option value="scanner_export">Scanner software export</option>
+            <option value="file_upload">Manual file upload</option>
+            <option value="folder_drop">Shared folder drop</option>
+            <option value="scanner_bridge">Automated scanner bridge</option>
           </SelectField>
         </div>
 
