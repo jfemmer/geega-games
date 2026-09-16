@@ -49,6 +49,9 @@ export async function sendOrderStatusEmail(
   if (orderErr || !order) {
     return { status: "skipped", reason: "order-not-found" };
   }
+  if (!order.email) {
+    return { status: "skipped", reason: "no-email" };
+  }
 
   let firstName: string | null = null;
   if (order.user_id) {

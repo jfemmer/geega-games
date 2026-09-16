@@ -43,6 +43,10 @@ export async function sendOrderConfirmation(
   if (order.payment_status !== "paid") {
     return { status: "skipped", reason: `payment_status=${order.payment_status}` };
   }
+  // POS sales can be anonymous walk-ins with no email on file — nothing to send to.
+  if (!order.email) {
+    return { status: "skipped", reason: "no-email" };
+  }
 
   const { data: items, error: itemsErr } = await db
     .from("order_items")

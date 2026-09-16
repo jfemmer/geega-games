@@ -148,6 +148,8 @@ function mapOrder(
   return {
     id: o.id,
     orderNumber: orderNumberFromId(o.id),
+    channel: o.channel,
+    customerId: o.customer_id,
     customerName,
     customerEmail: o.email,
     shipRecipient: o.ship_recipient ?? "",
@@ -167,7 +169,7 @@ function mapOrder(
     subtotalCents: o.subtotal_cents,
     discountCents: o.discount_cents,
     shippingCents: o.shipping_cents,
-    taxCents: 0,
+    taxCents: o.tax_cents,
     totalCents: o.total_cents,
     internalNotes: o.internal_notes,
     timeline: buildTimeline(o),
@@ -180,26 +182,54 @@ function mapOrder(
   };
 }
 
-/** Batch-resolve "First Last" (falling back to the order's own email) for a set of orders. */
+/**
+ * Batch-resolve "First Last" for a set of orders. Online orders are keyed by
+ * user_id (profiles); POS orders linked to a walk-in are keyed by
+ * customer_id (customers) instead, since a POS sale often has no auth user.
+ */
 async function resolveCustomerNames(
   orders: OrderRowWithItems[],
-): Promise<Map<string, string>> {
-  const userIds = Array.from(new Set(orders.map((o) => o.user_id)));
-  const names = new Map<string, string>();
-  if (userIds.length === 0) return names;
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name")
-    .in("id", userIds);
-  for (const p of data ?? []) {
-    const full = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
-    if (full) names.set(p.id, full);
+): Promise<{ byUser: Map<string, string>; byCustomer: Map<string, string> }> {
+  const userIds = Array.from(
+    new Set(orders.map((o) => o.user_id).filter((id): id is string => id != null)),
+  );
+  const customerIds = Array.from(
+    new Set(orders.map((o) => o.customer_id).filter((id): id is string => id != null)),
+  );
+  const byUser = new Map<string, string>();
+  const byCustomer = new Map<string, string>();
+
+  if (userIds.length > 0) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .in("id", userIds);
+    for (const p of data ?? []) {
+      const full = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
+      if (full) byUser.set(p.id, full);
+    }
   }
-  return names;
+  if (customerIds.length > 0) {
+    const { data } = await supabase
+      .from("customers")
+      .select("id, first_name, last_name")
+      .in("id", customerIds);
+    for (const c of data ?? []) {
+      const full = `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim();
+      if (full) byCustomer.set(c.id, full);
+    }
+  }
+  return { byUser, byCustomer };
 }
 
-function nameFor(names: Map<string, string>, o: OrderRowWithItems): string {
-  return names.get(o.user_id) ?? o.email;
+function nameFor(
+  names: { byUser: Map<string, string>; byCustomer: Map<string, string> },
+  o: OrderRowWithItems,
+): string {
+  const known =
+    (o.user_id ? names.byUser.get(o.user_id) : undefined) ??
+    (o.customer_id ? names.byCustomer.get(o.customer_id) : undefined);
+  return known ?? o.email ?? "Walk-in customer";
 }
 
 export const supabaseOrderRepository: OrderRepository = {
@@ -222,7 +252,7 @@ export const supabaseOrderRepository: OrderRepository = {
       rows = rows.filter(
         (o) =>
           orderNumberFromId(o.id).toLowerCase().includes(term) ||
-          o.email.toLowerCase().includes(term) ||
+          (o.email ?? "").toLowerCase().includes(term) ||
           (o.ship_recipient ?? "").toLowerCase().includes(term),
       );
     }

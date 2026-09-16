@@ -529,8 +529,10 @@ export interface OrderEmailEvent {
 export interface Order {
   id: string;
   orderNumber: string;
+  channel: "online" | "pos";
+  customerId: string | null;
   customerName: string;
-  customerEmail: string;
+  customerEmail: string | null;
   shipRecipient: string;
   shipLine1: string;
   shipLine2: string | null;
@@ -543,7 +545,7 @@ export interface Order {
   status: OrderStatus;
   carrier: ShippingCarrier | null;
   trackingNumber: string | null;
-  shippingMethod: string;
+  shippingMethod: string | null;
   items: OrderItem[];
   subtotalCents: number;
   discountCents: number;
@@ -558,6 +560,39 @@ export interface Order {
   shippedAt: string | null;
   deliveredAt: string | null;
   cancelledAt: string | null;
+}
+
+/* ------------------------------------------------------------------ *
+ * POS — the in-store register
+ * ------------------------------------------------------------------ */
+
+export interface PosSaleItem {
+  inventoryItemId: string;
+  quantity: number;
+}
+
+export interface PosSaleResult {
+  orderId: string;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  amountDueCents: number;
+}
+
+export interface PosSettings {
+  salesTaxBps: number;
+}
+
+export interface PosTerminalLocation {
+  id: string;
+  displayName: string;
+}
+
+export interface PosTerminalReader {
+  id: string;
+  label: string;
+  status: string;
+  deviceType: string;
 }
 
 /* ------------------------------------------------------------------ *

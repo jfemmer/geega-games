@@ -20,6 +20,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1042",
     orderNumber: "GG-1042",
+    channel: "online",
+    customerId: null,
     customerName: "Alex Rivera",
     customerEmail: "alex.rivera@example.com",
     shipRecipient: "Alex Rivera",
@@ -98,6 +100,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1041",
     orderNumber: "GG-1041",
+    channel: "online",
+    customerId: null,
     customerName: "Morgan Lee",
     customerEmail: "morgan.lee@example.com",
     shipRecipient: "Morgan Lee",
@@ -162,6 +166,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1040",
     orderNumber: "GG-1040",
+    channel: "online",
+    customerId: null,
     customerName: "Priya Nair",
     customerEmail: "priya.nair@example.com",
     shipRecipient: "Priya Nair",
@@ -247,6 +253,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1039",
     orderNumber: "GG-1039",
+    channel: "online",
+    customerId: null,
     customerName: "Devin Brooks",
     customerEmail: "devin.brooks@example.com",
     shipRecipient: "Devin Brooks",
@@ -318,6 +326,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1038",
     orderNumber: "GG-1038",
+    channel: "online",
+    customerId: null,
     customerName: "Casey Kim",
     customerEmail: "casey.kim@example.com",
     shipRecipient: "Casey Kim",
@@ -396,6 +406,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1035",
     orderNumber: "GG-1035",
+    channel: "online",
+    customerId: null,
     customerName: "Taylor Reed",
     customerEmail: "taylor.reed@example.com",
     shipRecipient: "Taylor Reed",
@@ -481,6 +493,8 @@ export const ORDERS_SEED: Order[] = [
   {
     id: "ord_1030",
     orderNumber: "GG-1030",
+    channel: "online",
+    customerId: null,
     customerName: "Jamie Fox",
     customerEmail: "jamie.fox@example.com",
     shipRecipient: "Jamie Fox",

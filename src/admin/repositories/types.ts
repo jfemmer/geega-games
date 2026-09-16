@@ -29,6 +29,11 @@ import type {
   OrderQuery,
   OverviewMetrics,
   Page,
+  PosSaleItem,
+  PosSaleResult,
+  PosSettings,
+  PosTerminalLocation,
+  PosTerminalReader,
   PriceFloorRepriceCounts,
   Reservation,
   ScanQuery,
@@ -383,6 +388,46 @@ export interface UserRepository {
     id: string,
     status: StaffMember["status"],
   ): Promise<StaffMember>;
+}
+
+/* ------------------------------------------------------------------ *
+ * POS — the in-store register
+ * ------------------------------------------------------------------ */
+
+export interface PosRepository {
+  /**
+   * Create a sale against live inventory (server revalidates stock the same
+   * way online checkout does — this can never oversell). Always creates the
+   * order pending/unpaid; call markCashPaid or the Terminal flow next.
+   */
+  createSale(
+    items: PosSaleItem[],
+    customerId: string | null,
+    notes?: string | null,
+  ): Promise<PosSaleResult>;
+  /** Record a cash payment. Rejects if tenderedCents is short. */
+  markCashPaid(orderId: string, tenderedCents: number): Promise<{ changeCents: number }>;
+  /** Cancel an unpaid sale, restoring stock. Refuses an already-paid order. */
+  voidSale(orderId: string, reason?: string): Promise<void>;
+  getSettings(): Promise<PosSettings>;
+  saveSettings(salesTaxBps: number): Promise<PosSettings>;
+  /** A short-lived token the Stripe Terminal SDK uses to connect to a reader. */
+  terminalConnectionToken(): Promise<string>;
+  /** Creates a card-present PaymentIntent for the order's amount due. */
+  terminalCreateIntent(
+    orderId: string,
+  ): Promise<{ clientSecret: string; paymentIntentId: string }>;
+  terminalLocations(): Promise<PosTerminalLocation[]>;
+  terminalCreateLocation(input: {
+    displayName: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country?: string;
+  }): Promise<PosTerminalLocation>;
+  terminalReaders(locationId?: string): Promise<PosTerminalReader[]>;
 }
 
 export interface AnalyticsRepository {

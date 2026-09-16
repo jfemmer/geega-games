@@ -63,6 +63,7 @@ import {
   mockCampaignRepository,
   mockInventoryRepository,
   mockOrderRepository,
+  mockPosRepository,
   mockReservationRepository,
   mockUserRepository,
 } from "./mock";
@@ -72,6 +73,7 @@ import { supabaseUserRepository } from "./user.supabase";
 import { supabaseCampaignRepository } from "./campaign.supabase";
 import { supabaseReservationRepository } from "./reservation.supabase";
 import { supabaseOrderRepository } from "./order.supabase";
+import { supabasePosRepository } from "./pos.supabase";
 import { mockScryfallRepository } from "./scryfall.mock";
 import { liveScryfallRepository } from "./scryfall.live";
 import { mockScanRepository } from "./scan.mock";
@@ -85,6 +87,7 @@ import type {
   CardRecognitionProvider,
   InventoryRepository,
   OrderRepository,
+  PosRepository,
   ReservationRepository,
   ScanRepository,
   ScryfallRepository,
@@ -149,6 +152,13 @@ export const orderRepository: OrderRepository = useLiveData
   ? supabaseOrderRepository
   : mockOrderRepository;
 
+// The in-store register goes LIVE whenever Supabase is configured, same
+// condition as orders (it creates the same orders/order_items rows via the
+// pos_create_sale RPC, service-role-gated the same way).
+export const posRepository: PosRepository = useLiveData
+  ? supabasePosRepository
+  : mockPosRepository;
+
 // Scan sessions / batch ingest go LIVE whenever Supabase is configured, same
 // condition as users/campaigns/reservations/orders: reads via RLS +
 // scan_filter_counts(), writes via staff-gated /api/admin/scan-sessions/* and
@@ -193,6 +203,7 @@ export type {
   CardRecognitionProvider,
   InventoryRepository,
   OrderRepository,
+  PosRepository,
   ReservationRepository,
   ScanRepository,
   ScryfallRepository,

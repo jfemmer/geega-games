@@ -35,6 +35,11 @@ import type {
   Order,
   OrderQuery,
   Page,
+  PosSaleItem,
+  PosSaleResult,
+  PosSettings,
+  PosTerminalLocation,
+  PosTerminalReader,
   ShippingCarrier,
   StaffMember,
 } from "../types";
@@ -45,6 +50,7 @@ import type {
   CampaignRepository,
   InventoryRepository,
   OrderRepository,
+  PosRepository,
   ReservationRepository,
   UserRepository,
 } from "./types";
@@ -85,6 +91,11 @@ let staff: StaffMember[] = STAFF_SEED.map((s) => ({
   ...s,
   recentActivity: [...s.recentActivity],
 }));
+let posSettings: PosSettings = { salesTaxBps: 0 };
+let posTerminalLocations: PosTerminalLocation[] = [];
+let posTerminalReaders: PosTerminalReader[] = [
+  { id: "tmr_mock1", label: "Front Counter", status: "online", deviceType: "stripe_s700" },
+];
 
 const LOW_STOCK_THRESHOLD = 2;
 
@@ -484,7 +495,7 @@ export const mockOrderRepository: OrderRepository = {
         !q ||
         o.orderNumber.toLowerCase().includes(q) ||
         o.customerName.toLowerCase().includes(q) ||
-        o.customerEmail.toLowerCase().includes(q);
+        (o.customerEmail ?? "").toLowerCase().includes(q);
       let matchesStatus = true;
       if (status === "needs_packing") matchesStatus = o.status === "paid";
       else if (status !== "all") matchesStatus = o.status === status;
@@ -581,7 +592,7 @@ export const mockOrderRepository: OrderRepository = {
               {
                 id: mockId("em"),
                 emailType: "shipping_confirmation",
-                toEmail: o.customerEmail,
+                toEmail: o.customerEmail ?? "unknown",
                 status: "sent",
                 at,
               },
@@ -788,6 +799,184 @@ export const mockReservationRepository: ReservationRepository = {
 };
 
 /* ------------------------------------------------------------------ *
+ * POS — the in-store register
+ * ------------------------------------------------------------------ */
+
+export const mockPosRepository: PosRepository = {
+  async createSale(items: PosSaleItem[], customerId, notes) {
+    if (items.length === 0) throw new Error("Add at least one item to the sale.");
+    const customer = customerId ? customers.find((c) => c.id === customerId) : undefined;
+
+    let subtotalCents = 0;
+    const orderItems = items.map((line) => {
+      const inv = inventory.find((i) => i.id === line.inventoryItemId);
+      if (!inv) throw new Error("Item no longer available.");
+      if (inv.priceCents == null) throw new Error(`Item has no price: ${inv.cardName}`);
+      if (inv.quantity < line.quantity) {
+        throw new Error(
+          `Insufficient stock for ${inv.cardName} (sellable ${inv.quantity}, need ${line.quantity})`,
+        );
+      }
+      const lineTotal = inv.priceCents * line.quantity;
+      subtotalCents += lineTotal;
+      return {
+        id: mockId("oi"),
+        cardName: inv.cardName,
+        setCode: inv.setCode,
+        setName: inv.setName,
+        collectorNumber: inv.collectorNumber,
+        condition: inv.condition,
+        finish: inv.finish,
+        quantity: line.quantity,
+        unitPriceCents: inv.priceCents,
+        lineTotalCents: lineTotal,
+        imageUrl: inv.imageUrl,
+        packed: false,
+      };
+    });
+    if (subtotalCents === 0) throw new Error("A sale needs at least one priced item.");
+
+    inventory = inventory.map((inv) => {
+      const line = items.find((l) => l.inventoryItemId === inv.id);
+      return line ? { ...inv, quantity: inv.quantity - line.quantity } : inv;
+    });
+
+    const taxCents = Math.round((subtotalCents * posSettings.salesTaxBps) / 10000);
+    const totalCents = subtotalCents + taxCents;
+    const now = new Date().toISOString();
+    const orderId = mockId("ord");
+
+    const order: Order = {
+      id: orderId,
+      orderNumber: `#${orderId.slice(-8).toUpperCase()}`,
+      channel: "pos",
+      customerId: customerId ?? null,
+      customerName: customer
+        ? `${customer.firstName} ${customer.lastName}`.trim()
+        : "Walk-in customer",
+      customerEmail: customer?.email ?? null,
+      shipRecipient: "",
+      shipLine1: "",
+      shipLine2: null,
+      shipCity: "",
+      shipState: "",
+      shipPostalCode: "",
+      shipCountry: "",
+      paymentStatus: "unpaid",
+      paymentProvider: null,
+      status: "pending_payment",
+      carrier: null,
+      trackingNumber: null,
+      shippingMethod: null,
+      items: orderItems,
+      subtotalCents,
+      discountCents: 0,
+      shippingCents: 0,
+      taxCents,
+      totalCents,
+      internalNotes: notes ?? null,
+      timeline: [statusEvent("Sale started at register", null, "Staff")],
+      emails: [],
+      createdAt: now,
+      paidAt: null,
+      shippedAt: null,
+      deliveredAt: null,
+      cancelledAt: null,
+    };
+    orders = [order, ...orders];
+
+    return delay(
+      { orderId, subtotalCents, taxCents, totalCents, amountDueCents: totalCents } as PosSaleResult,
+      200,
+    );
+  },
+
+  async markCashPaid(orderId, tenderedCents) {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || order.channel !== "pos") throw new Error("Order not found.");
+    if (order.paymentStatus === "paid") throw new Error("This sale is already paid.");
+    if (tenderedCents < order.totalCents) throw new Error("Cash tendered must cover the amount due.");
+    const changeCents = tenderedCents - order.totalCents;
+    const now = new Date().toISOString();
+    orders = orders.map((o) =>
+      o.id === orderId
+        ? {
+            ...o,
+            paymentStatus: "paid",
+            paymentProvider: "manual",
+            status: "paid",
+            paidAt: now,
+            timeline: [
+              ...o.timeline,
+              statusEvent(
+                `Paid with cash (tendered $${(tenderedCents / 100).toFixed(2)}, change $${(changeCents / 100).toFixed(2)})`,
+                null,
+                "Staff",
+              ),
+            ],
+          }
+        : o,
+    );
+    return delay({ changeCents }, 150);
+  },
+
+  async voidSale(orderId, reason) {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || order.channel !== "pos") throw new Error("Order not found.");
+    if (order.paymentStatus === "paid") throw new Error("A paid sale can't be voided here.");
+    inventory = inventory.map((inv) => {
+      const line = order.items.find((it) => it.cardName === inv.cardName);
+      return line ? { ...inv, quantity: inv.quantity + line.quantity } : inv;
+    });
+    orders = orders.map((o) =>
+      o.id === orderId
+        ? {
+            ...o,
+            status: "cancelled",
+            cancelledAt: new Date().toISOString(),
+            timeline: [...o.timeline, statusEvent("Voided at register", reason ?? null, "Staff")],
+          }
+        : o,
+    );
+    return delay(undefined, 100);
+  },
+
+  async getSettings() {
+    return delay({ ...posSettings }, 80);
+  },
+
+  async saveSettings(salesTaxBps) {
+    posSettings = { salesTaxBps };
+    return delay({ ...posSettings }, 120);
+  },
+
+  async terminalConnectionToken() {
+    return delay("mock_connection_token", 100);
+  },
+
+  async terminalCreateIntent(orderId) {
+    return delay(
+      { clientSecret: `pi_mock_${orderId}_secret`, paymentIntentId: `pi_mock_${orderId}` },
+      150,
+    );
+  },
+
+  async terminalLocations() {
+    return delay([...posTerminalLocations], 100);
+  },
+
+  async terminalCreateLocation(input) {
+    const location: PosTerminalLocation = { id: mockId("tml"), displayName: input.displayName };
+    posTerminalLocations = [...posTerminalLocations, location];
+    return delay(location, 150);
+  },
+
+  async terminalReaders() {
+    return delay([...posTerminalReaders], 100);
+  },
+};
+
+/* ------------------------------------------------------------------ *
  * Analytics
  * ------------------------------------------------------------------ */
 
@@ -822,6 +1011,8 @@ export function __resetMockState() {
   campaigns = CAMPAIGNS_SEED.map((c) => ({ ...c }));
   customers = CUSTOMERS_SEED.map((c) => ({ ...c }));
   staff = STAFF_SEED.map((s) => ({ ...s, recentActivity: [...s.recentActivity] }));
+  posSettings = { salesTaxBps: 0 };
+  posTerminalLocations = [];
   __resetScanState();
 }
 

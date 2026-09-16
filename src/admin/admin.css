@@ -1434,3 +1434,91 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 .gg-leaddetail__photos { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
 .gg-leaddetail__photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+
+/* ------------------------------------------------------------------ *
+ * POS — in-store register
+ * ------------------------------------------------------------------ */
+
+.gg-pos {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  align-items: start;
+}
+
+.gg-pos__main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.gg-pos__search-loading { padding: 24px 0; display: flex; justify-content: center; }
+.gg-pos__results { display: flex; flex-direction: column; gap: 6px; }
+
+.gg-pos__result {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 10px 12px; border-radius: var(--gg-radius-sm);
+  border: 1px solid var(--gg-line); background: var(--gg-surface);
+  cursor: pointer; text-align: left;
+}
+.gg-pos__result:hover { background: var(--gg-surface-2); border-color: var(--gg-line-strong); }
+.gg-pos__result:disabled { opacity: 0.5; cursor: not-allowed; }
+.gg-pos__result-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.gg-pos__result-name { font-weight: 600; color: var(--gg-ink); }
+.gg-pos__result-price { font-weight: 700; color: var(--gg-brand); white-space: nowrap; }
+
+.gg-pos__ticket {
+  position: sticky; top: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--gg-surface); border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius); box-shadow: var(--gg-shadow-sm);
+  padding: 18px;
+}
+.gg-pos__ticket-head { display: flex; align-items: center; justify-content: space-between; }
+.gg-pos__ticket-head h2 { margin: 0; font-size: 1.1rem; }
+
+.gg-pos__customer {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 10px 12px; border-radius: var(--gg-radius-sm);
+  border: 1px dashed var(--gg-line-strong); background: var(--gg-surface-2);
+  cursor: pointer; font-weight: 600; color: var(--gg-text);
+}
+
+.gg-pos__lines { display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow-y: auto; }
+.gg-pos__line {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-pos__line-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.gg-pos__line-name { font-weight: 600; font-size: 0.9rem; }
+.gg-pos__line-qty { display: flex; align-items: center; gap: 8px; }
+.gg-pos__line-qty span { min-width: 1.5em; text-align: center; }
+.gg-pos__line-total { font-weight: 700; white-space: nowrap; min-width: 64px; text-align: right; }
+
+.gg-pos__totals { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid var(--gg-line); }
+.gg-pos__totals-row { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--gg-text-soft); }
+.gg-pos__totals-row--strong { font-size: 1.15rem; font-weight: 700; color: var(--gg-ink); padding-top: 6px; border-top: 1px solid var(--gg-line); }
+
+.gg-pos__charge { width: 100%; font-size: 1.05rem; padding: 14px; }
+
+.gg-pos__payment { display: flex; flex-direction: column; gap: 14px; }
+.gg-pos__payment-methods { display: flex; gap: 10px; }
+.gg-pos__payment-methods .gg-btn { flex: 1; padding: 16px; font-size: 1rem; }
+.gg-pos__cash, .gg-pos__card { display: flex; flex-direction: column; gap: 10px; }
+.gg-pos__payment-actions { display: flex; justify-content: space-between; gap: 8px; }
+.gg-pos__void { align-self: center; color: var(--gg-danger); }
+
+.gg-pos__confirming { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 0; }
+
+.gg-pos__receipt { display: flex; flex-direction: column; gap: 10px; }
+.gg-pos__receipt-actions { display: flex; gap: 8px; }
+.gg-pos__receipt-actions .gg-btn { flex: 1; }
+
+.gg-pos__customer-results { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.gg-pos__customer-result {
+  display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px;
+  border-radius: var(--gg-radius-sm); border: 1px solid var(--gg-line);
+  background: var(--gg-surface); cursor: pointer; text-align: left;
+}
+.gg-pos__customer-result:hover { background: var(--gg-surface-2); }
+.gg-pos__customer-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .gg-pos { grid-template-columns: 1fr; }
+  .gg-pos__ticket { position: static; }
+}

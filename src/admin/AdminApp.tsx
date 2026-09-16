@@ -7,6 +7,7 @@ import { useRouter, adminSection, ADMIN_BASE } from "./hooks/useRouter";
 import { OverviewPage } from "./pages/OverviewPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { PosPage } from "./pages/PosPage";
 import { ScanSessionsPage } from "./pages/scan/ScanSessionsPage";
 import { ScanReviewPage } from "./pages/scan/ScanReviewPage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
@@ -52,6 +53,8 @@ function AdminDashboard() {
         return <InventoryPage query={query} onNavigate={navigate} />;
       case "orders":
         return <OrdersPage query={query} onNavigate={navigate} />;
+      case "pos":
+        return <PosPage />;
       case "scanning": {
         // /scanning or /scanning/:sessionId
         const clean = path.split("?")[0].replace(/\/+$/, "");

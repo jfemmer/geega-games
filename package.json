@@ -19,6 +19,7 @@
     "@react-email/render": "2.1.0",
     "@stripe/react-stripe-js": "^6.10.0",
     "@stripe/stripe-js": "^9.16.0",
+    "@stripe/terminal-js": "^0.26.0",
     "@supabase/supabase-js": "^2.112.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

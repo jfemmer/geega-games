@@ -947,10 +947,12 @@ export type Database = {
         Row: {
           amount_due_cents: number
           cancelled_at: string | null
+          channel: Database["public"]["Enums"]["order_channel"]
           created_at: string
+          customer_id: string | null
           delivered_at: string | null
           discount_cents: number
-          email: string
+          email: string | null
           id: string
           internal_notes: string | null
           legacy_mongo_id: string | null
@@ -971,23 +973,26 @@ export type Database = {
           ship_state: string | null
           shipped_at: string | null
           shipping_cents: number
-          shipping_method: Database["public"]["Enums"]["shipping_method"]
+          shipping_method: Database["public"]["Enums"]["shipping_method"] | null
           status: Database["public"]["Enums"]["order_status"]
           store_credit_used_cents: number
           subtotal_cents: number
+          tax_cents: number
           total_cents: number
           tracking_carrier: string | null
           tracking_number: string | null
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           amount_due_cents: number
           cancelled_at?: string | null
+          channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
+          customer_id?: string | null
           delivered_at?: string | null
           discount_cents?: number
-          email: string
+          email?: string | null
           id?: string
           internal_notes?: string | null
           legacy_mongo_id?: string | null
@@ -1008,23 +1013,28 @@ export type Database = {
           ship_state?: string | null
           shipped_at?: string | null
           shipping_cents?: number
-          shipping_method: Database["public"]["Enums"]["shipping_method"]
+          shipping_method?:
+            | Database["public"]["Enums"]["shipping_method"]
+            | null
           status?: Database["public"]["Enums"]["order_status"]
           store_credit_used_cents?: number
           subtotal_cents: number
+          tax_cents?: number
           total_cents: number
           tracking_carrier?: string | null
           tracking_number?: string | null
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           amount_due_cents?: number
           cancelled_at?: string | null
+          channel?: Database["public"]["Enums"]["order_channel"]
           created_at?: string
+          customer_id?: string | null
           delivered_at?: string | null
           discount_cents?: number
-          email?: string
+          email?: string | null
           id?: string
           internal_notes?: string | null
           legacy_mongo_id?: string | null
@@ -1045,17 +1055,28 @@ export type Database = {
           ship_state?: string | null
           shipped_at?: string | null
           shipping_cents?: number
-          shipping_method?: Database["public"]["Enums"]["shipping_method"]
+          shipping_method?:
+            | Database["public"]["Enums"]["shipping_method"]
+            | null
           status?: Database["public"]["Enums"]["order_status"]
           store_credit_used_cents?: number
           subtotal_cents?: number
+          tax_cents?: number
           total_cents?: number
           tracking_carrier?: string | null
           tracking_number?: string | null
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payment_events: {
         Row: {
@@ -1094,6 +1115,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pos_settings: {
+        Row: {
+          id: number
+          sales_tax_bps: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: number
+          sales_tax_bps?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: number
+          sales_tax_bps?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -2250,6 +2292,16 @@ export type Database = {
         }[]
       }
       my_store_credit_balance: { Args: never; Returns: number }
+      pos_create_sale: {
+        Args: { p_customer_id?: string; p_items: Json; p_notes?: string }
+        Returns: {
+          amount_due_cents: number
+          order_id: string
+          subtotal_cents: number
+          tax_cents: number
+          total_cents: number
+        }[]
+      }
       recompute_scan_session: {
         Args: { p_session_id: string }
         Returns: {
@@ -2409,6 +2461,7 @@ export type Database = {
         | "archive"
         | "restore"
       inventory_status: "active" | "reserved" | "archived"
+      order_channel: "online" | "pos"
       order_status:
         | "pending_payment"
         | "paid"
@@ -2690,6 +2743,7 @@ export const Constants = {
         "restore",
       ],
       inventory_status: ["active", "reserved", "archived"],
+      order_channel: ["online", "pos"],
       order_status: [
         "pending_payment",
         "paid",

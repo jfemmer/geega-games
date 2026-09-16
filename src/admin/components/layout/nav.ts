@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: `${ADMIN_BASE}/inventory`,
   },
   { key: "orders", label: "Orders", icon: "orders", path: `${ADMIN_BASE}/orders` },
+  { key: "pos", label: "Register", icon: "dollar", path: `${ADMIN_BASE}/pos` },
   {
     key: "scanning",
     label: "Card Scanning",
@@ -43,6 +44,7 @@ export const SECTION_TITLES: Record<string, string> = {
   overview: "Overview",
   inventory: "Inventory",
   orders: "Orders",
+  pos: "Register",
   scanning: "Card Scanning",
   announcements: "Announcements",
   "buying-leads": "Buying Leads",

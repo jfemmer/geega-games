@@ -17,6 +17,7 @@ import {
 } from "../_lib/staff.js";
 import type { Database } from "../../src/types/database.js";
 import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
+import { getStripe } from "../_lib/stripe.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Consolidated admin API router.
@@ -49,6 +50,16 @@ import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
 //   resource=staff       action=list           GET
 //   resource=staff       action=invite         POST
 //   resource=staff       action=update  &id=   PATCH
+//   resource=pos          action=settings          GET
+//   resource=pos          action=save-settings     POST
+//   resource=pos          action=create-sale       POST
+//   resource=pos          action=mark-cash-paid    POST
+//   resource=pos          action=void-sale         POST
+//   resource=pos          action=terminal-connection-token  POST
+//   resource=pos          action=terminal-create-intent     POST
+//   resource=pos          action=terminal-locations         GET
+//   resource=pos          action=terminal-create-location   POST
+//   resource=pos          action=terminal-readers           GET
 // ─────────────────────────────────────────────────────────────────────────────
 
 type CampaignRow = Database["public"]["Tables"]["campaigns"]["Row"];
@@ -240,6 +251,210 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           400,
           "Provide either reservationId or customerId to release.",
         );
+      }
+    }
+
+    // ────────────────────────────── pos ──────────────────────────────
+    // In-store register: staff-only sale creation against the same
+    // inventory_items pool the storefront sells from (pos_create_sale), plus
+    // cash tendering, voiding an unpaid sale, tax-rate settings, and the
+    // Stripe Terminal plumbing (card-present PaymentIntents run through the
+    // SAME webhook that marks online orders paid — no separate mark-paid
+    // path for card here).
+    if (resource === "pos") {
+      async function loadPosOrder(orderId: string) {
+        const { data, error } = await admin
+          .from("orders")
+          .select("id, channel, payment_status, amount_due_cents")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (error) throw new HttpError(500, error.message);
+        if (!data) throw new HttpError(404, "Order not found.");
+        if (data.channel !== "pos") {
+          throw new HttpError(400, "That order wasn't created at the register.");
+        }
+        return data;
+      }
+
+      if (action === "settings" && method === "GET") {
+        const { data, error } = await admin
+          .from("pos_settings")
+          .select("sales_tax_bps, updated_at, updated_by")
+          .eq("id", 1)
+          .single();
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true, settings: data as unknown as Record<string, unknown> });
+      }
+
+      if (action === "save-settings" && method === "POST") {
+        const body = await readJsonBody(req);
+        const bps = Math.round(Number(body.salesTaxBps));
+        if (!Number.isFinite(bps) || bps < 0 || bps > 10000) {
+          throw new HttpError(400, "salesTaxBps must be between 0 and 10000 (0%-100%).");
+        }
+        const { data, error } = await admin
+          .from("pos_settings")
+          .update({ sales_tax_bps: bps, updated_by: actorLabel(staff, null) })
+          .eq("id", 1)
+          .select("sales_tax_bps, updated_at, updated_by")
+          .single();
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true, settings: data as unknown as Record<string, unknown> });
+      }
+
+      if (action === "create-sale" && method === "POST") {
+        const body = await readJsonBody(req);
+        const items = Array.isArray(body.items) ? body.items : [];
+        if (items.length === 0) throw new HttpError(400, "Add at least one item to the sale.");
+        const rpcItems = items.map((raw) => {
+          const item = raw as Record<string, unknown>;
+          const inventoryItemId = String(item.inventoryItemId ?? "");
+          const quantity = Math.floor(Number(item.quantity));
+          if (!inventoryItemId || !Number.isFinite(quantity) || quantity < 1) {
+            throw new HttpError(400, "Each item needs a valid inventoryItemId and quantity.");
+          }
+          return { inventory_item_id: inventoryItemId, quantity };
+        });
+
+        const { data, error } = await admin.rpc("pos_create_sale", {
+          p_items: rpcItems,
+          p_customer_id: (body.customerId as string) || undefined,
+          p_notes: (body.notes as string) || undefined,
+        });
+        if (error) {
+          const msg = error.message.toLowerCase();
+          const status =
+            msg.includes("insufficient stock") || msg.includes("no longer available")
+              ? 409
+              : msg.includes("no price") || msg.includes("invalid") || msg.includes("at least one")
+                ? 400
+                : 500;
+          throw new HttpError(status, error.message);
+        }
+        const sale = Array.isArray(data) ? data[0] : data;
+        if (!sale) throw new HttpError(500, "Sale did not return a result.");
+        return sendJson(res, 201, { ok: true, sale: sale as unknown as Record<string, unknown> });
+      }
+
+      if (action === "mark-cash-paid" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+        const order = await loadPosOrder(orderId);
+        if (order.payment_status === "paid") {
+          throw new HttpError(409, "This sale is already paid.");
+        }
+        const tenderedCents = Math.round(Number(body.tenderedCents));
+        if (!Number.isFinite(tenderedCents) || tenderedCents < order.amount_due_cents) {
+          throw new HttpError(400, "Cash tendered must cover the amount due.");
+        }
+        const changeCents = tenderedCents - order.amount_due_cents;
+        const reference = `Cash — tendered $${(tenderedCents / 100).toFixed(2)}, change $${(changeCents / 100).toFixed(2)}`;
+        const { error } = await admin.rpc("mark_order_paid", {
+          p_order_id: orderId,
+          p_provider: "manual",
+          p_reference: reference,
+        });
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true, changeCents });
+      }
+
+      if (action === "void-sale" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+        const order = await loadPosOrder(orderId);
+        if (order.payment_status === "paid") {
+          throw new HttpError(409, "A paid sale can't be voided here.");
+        }
+        const { error } = await admin.rpc("cancel_unpaid_order", {
+          p_order_id: orderId,
+          p_reason: (body.reason as string) || "Voided at register",
+        });
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "terminal-connection-token" && method === "POST") {
+        const stripe = getStripe();
+        const token = await stripe.terminal.connectionTokens.create();
+        return sendJson(res, 200, { ok: true, secret: token.secret });
+      }
+
+      if (action === "terminal-create-intent" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+        const order = await loadPosOrder(orderId);
+        if (order.payment_status === "paid") {
+          throw new HttpError(409, "This sale is already paid.");
+        }
+        if (order.amount_due_cents <= 0) {
+          throw new HttpError(400, "This sale has nothing due.");
+        }
+        const stripe = getStripe();
+        try {
+          const intent = await stripe.paymentIntents.create(
+            {
+              amount: order.amount_due_cents,
+              currency: "usd",
+              payment_method_types: ["card_present"],
+              capture_method: "automatic",
+              metadata: { order_id: orderId, channel: "pos" },
+            },
+            { idempotencyKey: `pos_pi_${orderId}` },
+          );
+          return sendJson(res, 200, {
+            ok: true,
+            clientSecret: intent.client_secret,
+            paymentIntentId: intent.id,
+          });
+        } catch (err) {
+          console.error("[pos] terminal paymentIntents.create failed", err);
+          throw new HttpError(502, "Could not start a card payment. Please try again.");
+        }
+      }
+
+      if (action === "terminal-locations" && method === "GET") {
+        const stripe = getStripe();
+        const locations = await stripe.terminal.locations.list({ limit: 20 });
+        return sendJson(res, 200, { ok: true, locations: locations.data });
+      }
+
+      if (action === "terminal-create-location" && method === "POST") {
+        const body = await readJsonBody(req);
+        const displayName = String(body.displayName ?? "").trim();
+        const line1 = String(body.line1 ?? "").trim();
+        const city = String(body.city ?? "").trim();
+        const state = String(body.state ?? "").trim();
+        const postalCode = String(body.postalCode ?? "").trim();
+        const country = String(body.country ?? "US").trim();
+        if (!displayName || !line1 || !city || !state || !postalCode) {
+          throw new HttpError(400, "displayName, line1, city, state, and postalCode are required.");
+        }
+        const stripe = getStripe();
+        const location = await stripe.terminal.locations.create({
+          display_name: displayName,
+          address: {
+            line1,
+            line2: (body.line2 as string) || undefined,
+            city,
+            state,
+            postal_code: postalCode,
+            country,
+          },
+        });
+        return sendJson(res, 201, { ok: true, location });
+      }
+
+      if (action === "terminal-readers" && method === "GET") {
+        const stripe = getStripe();
+        const locationId = q(req, "locationId");
+        const readers = await stripe.terminal.readers.list({
+          location: locationId || undefined,
+          limit: 20,
+        });
+        return sendJson(res, 200, { ok: true, readers: readers.data });
       }
     }
 
