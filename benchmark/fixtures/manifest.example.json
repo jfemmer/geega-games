@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "id": "modern-bolt-nm",
+      "frontImage": "modern-bolt-nm-front.jpg",
+      "backImage": "modern-bolt-nm-back.jpg",
+      "expectedScryfallId": "00000000-0000-0000-0000-000000000000",
+      "expectedName": "Lightning Bolt",
+      "expectedSetCode": "MH2",
+      "expectedCollectorNumber": "138",
+      "expectedCondition": "NM",
+      "era": "modern",
+      "treatments": []
+    },
+    {
+      "id": "showcase-borderless-lp",
+      "frontImage": "showcase-borderless-lp-front.jpg",
+      "backImage": "showcase-borderless-lp-back.jpg",
+      "expectedScryfallId": "00000000-0000-0000-0000-000000000001",
+      "expectedCondition": "LP",
+      "era": "modern",
+      "treatments": ["showcase", "borderless"]
+    },
+    {
+      "id": "vintage-alpha-front-only",
+      "frontImage": "vintage-alpha-front-only-front.jpg",
+      "expectedScryfallId": "00000000-0000-0000-0000-000000000002",
+      "era": "vintage",
+      "treatments": [],
+      "note": "No back scan on purpose — exercises the missing-back / conservative-vintage path. Not every fixture needs every field: only expectedScryfallId is required."
+    }
+  ]
+}

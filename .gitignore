@@ -15,3 +15,8 @@ dist-ssr
 
 # Test / coverage artifacts
 coverage
+
+# Recognition benchmark fixtures — real scan photos + Scryfall reference
+# images, never committed (copyrighted card art). See benchmark/README.md.
+benchmark/fixtures/*
+!benchmark/fixtures/manifest.example.json

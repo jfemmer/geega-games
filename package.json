@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "email:dev": "email dev --dir api/_lib/emails",
-    "scryfall:refresh": "tsx scripts/refreshScryfallBulkIndex.ts"
+    "scryfall:refresh": "tsx scripts/refreshScryfallBulkIndex.ts",
+    "benchmark": "tsx scripts/benchmarkRecognition.ts"
   },
   "dependencies": {
     "@react-email/components": "1.0.12",
