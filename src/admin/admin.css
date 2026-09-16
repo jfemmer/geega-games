@@ -872,6 +872,23 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   /* Footer buttons wrap and go full-width for easy tapping. */
   .gg-drawer-actions__buttons { width: 100%; }
   .gg-drawer-actions__buttons .gg-btn { flex: 1 1 auto; }
+
+  /* Filter pill bars (Buying Leads, Orders, Inventory, Users, …): wrapping a
+   * long row of pills inside a fully-rounded (999px) capsule produces a
+   * lopsided blob once it spans several rows, with uneven row breaks and
+   * pills crowding the container edges. On narrow screens, keep it a single
+   * row and let it scroll horizontally instead — the standard mobile
+   * pattern for a segmented filter bar, and it keeps the capsule shape
+   * intact since it never actually wraps. */
+  .gg-toolbar { margin-bottom: 10px; }
+  .gg-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .gg-tabs::-webkit-scrollbar { display: none; }
+  .gg-tab { flex: 0 0 auto; white-space: nowrap; }
 }
 
 @media (max-width: 560px) {
