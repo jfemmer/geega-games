@@ -1,6 +1,15 @@
-import { useState } from "react";
-import { useCatalog, DEFAULT_FILTERS, type CatalogCard } from "../lib/useCatalog";
+import { useEffect, useMemo, useState } from "react";
+import {
+  useCatalog,
+  useFacets,
+  DEFAULT_FILTERS,
+  PAGE_SIZE,
+  type CatalogCard,
+  type CatalogFilters,
+  type CatalogSort,
+} from "../lib/useCatalog";
 import { formatCents } from "../lib/money";
+import KioskProductCard from "../components/KioskProductCard";
 
 // The in-store kiosk. Runs on a computer physically in the shop — NOT the
 // staff register (see the admin "Register" page) and NOT the regular
@@ -14,7 +23,18 @@ import { formatCents } from "../lib/money";
 // CartContext/AuthContext (see App.tsx, which renders this route standalone,
 // without Header/Footer/Cart/Auth) so nothing here can leak into or be
 // confused with a signed-in customer's own account or cart on a shared,
-// walk-up store computer.
+// walk-up store computer. Browsing (filters, sort, card grid) deliberately
+// mirrors the real Shop page's look and feel — same brand, same components
+// where they don't depend on a cart — rather than a stripped-down page.
+
+const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
+const SORTS: { value: CatalogSort; label: string }[] = [
+  { value: "name_asc", label: "Name A → Z" },
+  { value: "name_desc", label: "Name Z → A" },
+  { value: "price_asc", label: "Price low → high" },
+  { value: "price_desc", label: "Price high → low" },
+  { value: "newest", label: "Newest" },
+];
 
 type KioskLine = {
   card: CatalogCard;
@@ -24,7 +44,9 @@ type KioskLine = {
 type Phase = "browsing" | "details" | "submitted";
 
 export default function KioskPage() {
-  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<CatalogFilters>(DEFAULT_FILTERS);
+  const [page, setPage] = useState(0);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [list, setList] = useState<KioskLine[]>([]);
   const [phase, setPhase] = useState<Phase>("browsing");
   const [customerName, setCustomerName] = useState("");
@@ -32,10 +54,26 @@ export default function KioskPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { cards, loading } = useCatalog(
-    { ...DEFAULT_FILTERS, query },
-    0,
-  );
+  const facets = useFacets();
+  const { cards, total, loading, error: catalogError } = useCatalog(filters, page);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filters.query, filters.sort, filters.sets, filters.rarities, filters.conditions]);
+
+  const toggle = (key: "sets" | "rarities" | "conditions", value: string) => {
+    setFilters((f) => {
+      const arr = f[key];
+      return { ...f, [key]: arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value] };
+    });
+  };
+
+  const activeFilterCount =
+    filters.sets.length + filters.rarities.length + filters.conditions.length;
+
+  function quantityInList(cardId: string): number {
+    return list.find((l) => l.card.id === cardId)?.quantity ?? 0;
+  }
 
   function addToList(card: CatalogCard) {
     setList((prev) => {
@@ -97,126 +135,256 @@ export default function KioskPage() {
     }
   }
 
-  const totalCents = list.reduce((sum, l) => sum + (l.card.priceCents ?? 0) * l.quantity, 0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const listTotalCents = list.reduce((sum, l) => sum + (l.card.priceCents ?? 0) * l.quantity, 0);
+
+  const FiltersPanel = useMemo(
+    () => (
+      <>
+        {facets?.sets && facets.sets.length > 0 && (
+          <div className="gg-filter-group">
+            <h3>Set</h3>
+            {facets.sets.slice(0, 30).map((s) => (
+              <label className="gg-check" key={s.code}>
+                <input
+                  type="checkbox"
+                  checked={filters.sets.includes(s.code)}
+                  onChange={() => toggle("sets", s.code)}
+                />
+                {s.name}
+              </label>
+            ))}
+          </div>
+        )}
+        {facets?.rarities && facets.rarities.length > 0 && (
+          <div className="gg-filter-group">
+            <h3>Rarity</h3>
+            {facets.rarities.map((r) => (
+              <label className="gg-check" key={r}>
+                <input
+                  type="checkbox"
+                  checked={filters.rarities.includes(r)}
+                  onChange={() => toggle("rarities", r)}
+                />
+                {r}
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="gg-filter-group">
+          <h3>Condition</h3>
+          {CONDITIONS.map((c) => (
+            <label className="gg-check" key={c}>
+              <input
+                type="checkbox"
+                checked={filters.conditions.includes(c)}
+                onChange={() => toggle("conditions", c)}
+              />
+              {c}
+            </label>
+          ))}
+        </div>
+        {activeFilterCount > 0 && (
+          <button className="gg-btn gg-btn-ghost gg-btn-sm" onClick={() => setFilters(DEFAULT_FILTERS)}>
+            Clear filters ({activeFilterCount})
+          </button>
+        )}
+      </>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [facets, filters.sets, filters.rarities, filters.conditions, activeFilterCount],
+  );
 
   if (phase === "submitted") {
     return (
-      <div className="gg-kiosk gg-kiosk--done">
-        <h1>You're all set, {customerName}! 🎉</h1>
-        <p>
-          Staff are pulling your cards now. Feel free to keep browsing the shop — we'll come find
-          you when everything's ready to pay for.
-        </p>
-        <button className="gg-btn gg-kiosk__restart" onClick={startOver}>
-          Start a new pickup list
-        </button>
+      <div className="gg-page gg-kiosk-page">
+        <KioskTopBar />
+        <div className="gg-page gg-empty">
+          <h1>You're all set, {customerName}! 🎉</h1>
+          <p>
+            Staff are pulling your cards now. Feel free to keep browsing the shop — we'll come
+            find you when everything's ready to pay for.
+          </p>
+          <button className="gg-btn" onClick={startOver}>
+            Start a new pickup list
+          </button>
+        </div>
       </div>
     );
   }
 
   if (phase === "details") {
     return (
-      <div className="gg-kiosk">
-        <h1>Almost done</h1>
-        <p className="gg-card-meta">So staff know who's picking these up.</p>
+      <div className="gg-page gg-kiosk-page">
+        <KioskTopBar />
+        <h1 style={{ color: "var(--gg-ink)" }}>Almost done</h1>
         {error && (
           <div className="gg-alert gg-alert-error" role="alert">
             {error}
           </div>
         )}
-        <div className="gg-kiosk__form">
-          <label>
-            Your name
-            <input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              autoFocus
-              placeholder="First name is fine"
-            />
-          </label>
-          <label>
-            Phone (optional)
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="In case staff need to reach you"
-            />
-          </label>
-        </div>
-        <div className="gg-kiosk__list">
-          {list.map((line) => (
-            <div className="gg-line" key={line.card.id}>
-              <div className="gg-line-info">
-                <div className="gg-card-name">{line.card.name}</div>
-                <div className="gg-card-meta">
-                  {line.card.setName ?? line.card.set} × {line.quantity}
-                </div>
+        <div className="gg-shop gg-kiosk-details">
+          <div>
+            <h2>Your info</h2>
+            <p className="gg-card-meta">So staff know who's picking these up.</p>
+            <div className="gg-form" style={{ maxWidth: "none" }}>
+              <div className="gg-field">
+                <label>Your name</label>
+                <input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  autoFocus
+                  placeholder="First name is fine"
+                />
               </div>
-              <div className="gg-price">{formatCents((line.card.priceCents ?? 0) * line.quantity)}</div>
+              <div className="gg-field">
+                <label>Phone (optional)</label>
+                <input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="In case staff need to reach you"
+                />
+              </div>
             </div>
-          ))}
-        </div>
-        <div className="gg-kiosk__total">Estimated total: {formatCents(totalCents)}</div>
-        <p className="gg-card-meta">
-          This is an estimate — staff will confirm final pricing when you check out.
-        </p>
-        <div className="gg-kiosk__actions">
-          <button className="gg-btn gg-btn-ghost" onClick={() => setPhase("browsing")}>
-            Back
-          </button>
-          <button className="gg-btn" disabled={submitting} onClick={submit}>
-            {submitting ? "Submitting…" : "Submit pickup request"}
-          </button>
+          </div>
+
+          <aside className="gg-filters" style={{ alignSelf: "start" }}>
+            <h2 style={{ marginTop: 0 }}>Your list</h2>
+            {list.map((line) => (
+              <div className="gg-line" key={line.card.id}>
+                <div className="gg-line-info">
+                  <div className="gg-card-name">{line.card.name}</div>
+                  <div className="gg-card-meta">
+                    {line.card.setName ?? line.card.set} × {line.quantity}
+                  </div>
+                </div>
+                <div className="gg-price">{formatCents((line.card.priceCents ?? 0) * line.quantity)}</div>
+              </div>
+            ))}
+            <div className="gg-kiosk-total">Estimated total: {formatCents(listTotalCents)}</div>
+            <p className="gg-card-meta">Staff will confirm final pricing at checkout.</p>
+            <div className="gg-kiosk-actions">
+              <button className="gg-btn gg-btn-ghost" onClick={() => setPhase("browsing")}>
+                Back
+              </button>
+              <button className="gg-btn" disabled={submitting} onClick={submit}>
+                {submitting ? "Submitting…" : "Submit pickup request"}
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="gg-kiosk">
-      <h1>Find your cards</h1>
-      <p className="gg-card-meta">
-        Search our full inventory below, build your list, and staff will pull everything for you
-        while you keep browsing.
-      </p>
-      <input
-        className="gg-kiosk__search"
-        type="search"
-        placeholder="Search by card name…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        autoFocus
-      />
+    <div className="gg-page gg-kiosk-page">
+      <KioskTopBar />
 
-      <div className="gg-kiosk__body">
-        <div className="gg-kiosk__results">
-          {loading && <p className="gg-card-meta">Searching…</p>}
-          {!loading && query.trim().length >= 2 && cards.length === 0 && (
-            <p className="gg-card-meta">No in-stock cards match “{query}”.</p>
+      <div className="gg-kiosk-search">
+        <input
+          type="search"
+          placeholder="Search by card name…"
+          value={filters.query}
+          onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))}
+          autoFocus
+        />
+      </div>
+
+      <div className="gg-shop gg-kiosk-shop">
+        <aside className="gg-filters gg-filters-desktop" aria-label="Filters">
+          {FiltersPanel}
+        </aside>
+
+        <div>
+          <div className="gg-toolbar">
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <button
+                className="gg-btn gg-btn-ghost gg-btn-sm gg-mobile-filter-btn"
+                onClick={() => setMobileFiltersOpen(true)}
+              >
+                ⚙ Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
+              </button>
+              <p className="gg-card-meta" role="status" aria-live="polite" style={{ margin: 0 }}>
+                {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
+              </p>
+            </div>
+            <label>
+              <span className="visually-hidden">Sort</span>
+              <select
+                value={filters.sort}
+                onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value as CatalogSort }))}
+              >
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {catalogError && (
+            <div className="gg-alert gg-alert-error" role="alert">
+              {catalogError}
+            </div>
           )}
-          {cards.map((card) => (
-            <button
-              key={card.id}
-              type="button"
-              className="gg-line gg-kiosk__result"
-              onClick={() => addToList(card)}
-            >
-              {card.imageUrl && <img className="gg-line-img" src={card.imageUrl} alt="" loading="lazy" />}
-              <div className="gg-line-info">
-                <div className="gg-card-name">{card.name}</div>
-                <div className="gg-card-meta">
-                  {card.setName ?? card.set} · {card.condition} · {card.quantity} in stock
+
+          {loading ? (
+            <div className="gg-grid" aria-hidden="true">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div className="gg-card" key={i}>
+                  <div className="gg-card-imgwrap">
+                    <div className="gg-card-img gg-skeleton" />
+                  </div>
+                  <div className="gg-card-body">
+                    <div className="gg-skeleton" style={{ height: 16 }} />
+                    <div className="gg-skeleton" style={{ height: 12, width: "60%" }} />
+                  </div>
                 </div>
-              </div>
-              <div className="gg-price">{formatCents(card.priceCents)}</div>
-            </button>
-          ))}
+              ))}
+            </div>
+          ) : cards.length === 0 && !catalogError ? (
+            <div className="gg-empty">
+              <p>No cards match your search.</p>
+              {activeFilterCount > 0 && (
+                <button className="gg-btn gg-btn-ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="gg-grid">
+              {cards.map((c) => (
+                <KioskProductCard
+                  key={c.id}
+                  card={c}
+                  quantityInList={quantityInList(c.id)}
+                  onAdd={() => addToList(c)}
+                />
+              ))}
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="gg-pagination">
+              <button className="gg-btn gg-btn-ghost" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                ← Previous
+              </button>
+              <span aria-live="polite">
+                Page {page + 1} of {totalPages}
+              </span>
+              <button className="gg-btn gg-btn-ghost" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next →
+              </button>
+            </div>
+          )}
         </div>
 
-        <aside className="gg-kiosk__cart">
-          <h2>Your list</h2>
+        <aside className="gg-filters gg-kiosk-list" aria-label="Your pickup list">
+          <h2 style={{ marginTop: 0 }}>Your list</h2>
           {list.length === 0 ? (
-            <p className="gg-card-meta">Search and tap a card to add it here.</p>
+            <p className="gg-card-meta">Tap "Add to list" on a card to start.</p>
           ) : (
             <>
               {list.map((line) => (
@@ -225,12 +393,8 @@ export default function KioskPage() {
                     <div className="gg-card-name">{line.card.name}</div>
                     <div className="gg-card-meta">{formatCents(line.card.priceCents)} each</div>
                   </div>
-                  <div className="gg-kiosk__qty">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(line.card.id, line.quantity - 1)}
-                      aria-label="Decrease quantity"
-                    >
+                  <div className="gg-kiosk-qty">
+                    <button type="button" onClick={() => setQuantity(line.card.id, line.quantity - 1)} aria-label="Decrease quantity">
                       −
                     </button>
                     <span>{line.quantity}</span>
@@ -245,7 +409,7 @@ export default function KioskPage() {
                   </div>
                   <button
                     type="button"
-                    className="gg-kiosk__remove"
+                    className="gg-kiosk-remove"
                     onClick={() => removeLine(line.card.id)}
                     aria-label={`Remove ${line.card.name}`}
                   >
@@ -253,13 +417,53 @@ export default function KioskPage() {
                   </button>
                 </div>
               ))}
-              <div className="gg-kiosk__total">Estimated total: {formatCents(totalCents)}</div>
-              <button className="gg-btn gg-kiosk__continue" onClick={() => setPhase("details")}>
+              <div className="gg-kiosk-total">Estimated total: {formatCents(listTotalCents)}</div>
+              <button className="gg-btn" style={{ width: "100%", marginTop: "0.5rem" }} onClick={() => setPhase("details")}>
                 Continue
               </button>
             </>
           )}
         </aside>
+      </div>
+
+      {mobileFiltersOpen && (
+        <>
+          <div className="gg-drawer-overlay" onClick={() => setMobileFiltersOpen(false)} aria-hidden="true" />
+          <div className="gg-drawer" role="dialog" aria-modal="true" aria-label="Filters">
+            <div className="gg-drawer-head">
+              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Filters</h2>
+              <button
+                className="gg-iconbtn"
+                style={{ color: "var(--gg-ink)", borderColor: "var(--gg-line)" }}
+                onClick={() => setMobileFiltersOpen(false)}
+                aria-label="Close filters"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="gg-drawer-body">{FiltersPanel}</div>
+            <div className="gg-drawer-foot">
+              <button className="gg-btn" style={{ width: "100%" }} onClick={() => setMobileFiltersOpen(false)}>
+                Show {total} result{total === 1 ? "" : "s"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function KioskTopBar() {
+  return (
+    <div className="gg-kiosk-topbar">
+      <img className="gg-logo" src="/logo.png" alt="Geega Games" />
+      <div>
+        <h1>Find your cards</h1>
+        <p className="gg-card-meta">
+          Search our full inventory, build your pickup list, and staff will pull everything while
+          you keep browsing.
+        </p>
       </div>
     </div>
   );
