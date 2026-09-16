@@ -8,5 +8,10 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/admin/scans/[scanId]/recognize.ts": {
+      "includeFiles": "api/_lib/ocr/data/**"
+    }
+  }
 }

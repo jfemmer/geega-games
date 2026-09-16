@@ -38,8 +38,8 @@ export const ServerEnv = {
   // API keeps working before Stripe is configured.
   stripeSecretKey: () => requireEnv("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: () => requireEnv("STRIPE_WEBHOOK_SECRET"),
-  // Optional: the scan recognition pipeline degrades to an honest
-  // "unavailable" state (see api/_lib/ocr) rather than failing hard when
-  // this isn't set.
+  // Optional: an upgrade path, not a requirement. Without this set, OCR
+  // uses the free, local tesseract provider (see api/_lib/ocr) — setting
+  // this switches to the paid Google Cloud Vision API instead.
   googleCloudVisionApiKey: () => optionalEnv("GOOGLE_CLOUD_VISION_API_KEY"),
 } as const;

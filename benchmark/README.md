@@ -62,9 +62,9 @@ npm run benchmark
 ```
 
 Requires `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the environment (same
-service-role credentials `scryfall:refresh` uses), and
-`GOOGLE_CLOUD_VISION_API_KEY` if you want OCR-dependent metrics to reflect
-real OCR rather than the honest "OCR unavailable" fallback result.
+service-role credentials `scryfall:refresh` uses). OCR runs against the
+free local tesseract provider by default — set `GOOGLE_CLOUD_VISION_API_KEY`
+to benchmark against Google Cloud Vision instead.
 
 ## Reading the output
 

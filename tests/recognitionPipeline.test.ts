@@ -303,10 +303,12 @@ describe("imageHash (Part 6.4 visual verification primitive)", () => {
 });
 
 describe("runRecognitionPipeline scan modes (pick card matching / condition / both)", () => {
-  // Never actually queried: with the OCR stub (no API key in this test env),
-  // identity never reaches a readable collector line or name, so the DB-
-  // querying candidate-generation branches are never entered — proven by
-  // these tests passing with a client that would throw on any real call.
+  // Never actually queried: OCR runs for real here (the free local
+  // tesseract provider, no API key needed), but a solid-color image with no
+  // text on it reads back empty, so identity never reaches a readable
+  // collector line or name and the DB-querying candidate-generation
+  // branches are never entered — proven by these tests passing with a
+  // client that would throw on any real call.
   const fakeAdmin = {} as unknown as SupabaseClient<Database>;
 
   async function fakeCardImage(): Promise<Buffer> {
@@ -333,10 +335,12 @@ describe("runRecognitionPipeline scan modes (pick card matching / condition / bo
     const back = await fakeCardImage();
     const result = await runRecognitionPipeline(fakeAdmin, front, back, "card_matching");
     expect(result.condition).toBeNull();
-    // Identity was genuinely attempted (the normal OCR-unavailable path),
+    // Identity was genuinely attempted (the normal no-readable-text path),
     // not the condition-only skip stub.
     expect(result.recognitionResult.decisionReason).not.toMatch(/condition-only/i);
-    expect(result.recognitionResult.warnings.some((w) => /OCR provider/i.test(w))).toBe(true);
+    expect(
+      result.recognitionResult.warnings.some((w) => /no readable identity signal/i.test(w)),
+    ).toBe(true);
   });
 
   it('mode "both" (default): runs identity and grades condition', async () => {
@@ -344,6 +348,8 @@ describe("runRecognitionPipeline scan modes (pick card matching / condition / bo
     const back = await fakeCardImage();
     const result = await runRecognitionPipeline(fakeAdmin, front, back);
     expect(result.condition).not.toBeNull();
-    expect(result.recognitionResult.warnings.some((w) => /OCR provider/i.test(w))).toBe(true);
+    expect(
+      result.recognitionResult.warnings.some((w) => /no readable identity signal/i.test(w)),
+    ).toBe(true);
   });
 });

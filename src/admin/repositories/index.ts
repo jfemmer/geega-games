@@ -42,11 +42,11 @@
 //                                         recognize, which runs the
 //                                         multi-signal pipeline in
 //                                         api/_lib/recognition/ — OCR via
-//                                         Google Cloud Vision when
-//                                         GOOGLE_CLOUD_VISION_API_KEY is
-//                                         set, else an honest per-call
-//                                         "unavailable" result, never a
-//                                         fake success).
+//                                         the free local tesseract provider
+//                                         by default, or Google Cloud Vision
+//                                         once GOOGLE_CLOUD_VISION_API_KEY
+//                                         is set, for whoever wants to pay
+//                                         for a commercial API instead).
 //
 // STILL MOCKED (intentionally, outside this phase's scope):
 //   • Analytics / trends / metrics ..... mockAnalyticsRepository
@@ -158,12 +158,10 @@ export const scanRepository: ScanRepository = useLiveData
 
 // Recognition goes LIVE whenever Supabase is configured, same condition as
 // scanning: it calls the real multi-signal pipeline (api/_lib/recognition/)
-// via /api/admin/scans/:id/recognize. Whether OCR itself is configured
-// (GOOGLE_CLOUD_VISION_API_KEY) is a PER-CALL outcome the server decides,
-// not a static capability check here — an unconfigured OCR provider still
-// returns a real, honest recognition_status='failed' result with a clear
-// warning, never a silent fake success. The stub remains for local/no-
-// backend dev.
+// via /api/admin/scans/:id/recognize. OCR itself always runs server-side —
+// the free local tesseract provider by default, or Google Cloud Vision once
+// GOOGLE_CLOUD_VISION_API_KEY is set — which the client never needs to know
+// about. The stub remains for local/no-backend dev.
 export const analyticsRepository: AnalyticsRepository = mockAnalyticsRepository;
 export const recognitionProvider: CardRecognitionProvider = useLiveData
   ? supabaseRecognitionProvider

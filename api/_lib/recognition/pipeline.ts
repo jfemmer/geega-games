@@ -224,10 +224,6 @@ export async function runRecognitionPipeline(
     warnings.push("No front scan — identification requires a front image.");
   }
 
-  if (!ocrProvider.implemented) {
-    warnings.push(`OCR provider (${ocrProvider.name}) is not configured — recognition unavailable.`);
-  }
-
   const ocr = frontNormalized
     ? await ocrCardFields(ocrProvider, frontNormalized.buffer, frontNormalized.width, frontNormalized.height)
     : {

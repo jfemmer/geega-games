@@ -4,7 +4,6 @@ import { requireStaff } from "../../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../../_lib/supabaseAdmin.js";
 import { SCAN_BUCKET, recomputeSession } from "../../../_lib/scan.js";
 import { runRecognitionPipeline } from "../../../_lib/recognition/pipeline.js";
-import { ocrProvider } from "../../../_lib/ocr/index.js";
 import type { Database } from "../../../../src/types/database.js";
 
 // POST /api/admin/scans/:scanId/recognize
@@ -160,13 +159,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // than being marked "failed" for something that was never attempted.
     if (doIdentity) {
       const recognitionStatus: Database["public"]["Enums"]["recognition_status"] =
-        !ocrProvider.implemented
-          ? "failed"
-          : autoMatchedPrinting
-            ? "recognized"
-            : recognitionResult.candidatePrintings.length > 0
-              ? "low_confidence"
-              : "failed";
+        autoMatchedPrinting
+          ? "recognized"
+          : recognitionResult.candidatePrintings.length > 0
+            ? "low_confidence"
+            : "failed";
 
       patch.recognition_status = recognitionStatus;
       patch.recognition_confidence = recognitionResult.confidence;
