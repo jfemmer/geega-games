@@ -97,6 +97,14 @@ describe("parseCollectorLine (Part 7 era signals)", () => {
     const r = parseCollectorLine("   ");
     expect(r.collectorNumber).toBeNull();
   });
+
+  it("extracts a bare collector number with no set-code token (a partial/damaged OCR crop) rather than guessing a set", () => {
+    const r = parseCollectorLine("138/281");
+    expect(r.collectorNumber).toBe("138");
+    expect(r.setCode).toBeNull();
+    expect(r.rarity).toBeNull();
+    expect(r.language).toBeNull();
+  });
 });
 
 describe("scoreAndRank + combineAndDecide (Part 10 precision-over-recall)", () => {
@@ -175,6 +183,17 @@ describe("scoreAndRank + combineAndDecide (Part 10 precision-over-recall)", () =
     const ranked = scoreAndRank([fullArt], [visual(fullArt, 0.99)], "Lightning Bolt");
     const { autoMatch } = combineAndDecide(ranked);
     expect(autoMatch?.printing.treatments).toContain("full_art");
+  });
+
+  it("auto-matches an extended-art treatment on strong visual agreement, same as a normal printing", () => {
+    const extendedArt = printing({
+      id: "extended-art-id",
+      scryfallId: "extended-art-id",
+      treatments: ["extended_art"],
+    });
+    const ranked = scoreAndRank([extendedArt], [visual(extendedArt, 0.97)], "Lightning Bolt");
+    const { autoMatch } = combineAndDecide(ranked);
+    expect(autoMatch?.printing.treatments).toContain("extended_art");
   });
 
   it("a card without a collector number (pre-Exodus) still needs strong agreement to auto-match", () => {
