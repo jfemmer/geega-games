@@ -90,6 +90,7 @@ export function SignupPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [notificationsOptIn, setNotificationsOptIn] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,6 +110,7 @@ export function SignupPage() {
         password,
         firstName,
         lastName,
+        notificationsOptIn,
       });
       if (needsEmailConfirmation) {
         setMsg(
@@ -180,12 +182,22 @@ export function SignupPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+        <label className="gg-check" style={{ margin: "0.25rem 0 0" }}>
+          <input
+            type="checkbox"
+            checked={notificationsOptIn}
+            onChange={(e) => setNotificationsOptIn(e.target.checked)}
+          />
+          Email me about my order &amp; shipping status and Sell Your Cards submission
+          updates
+        </label>
         <button className="gg-btn" type="submit" disabled={busy}>
           {busy ? "Creating…" : "Create account"}
         </button>
         <p className="gg-card-meta" style={{ textAlign: "center" }}>
-          Creating an account does not sign you up for marketing email. You can
-          subscribe separately any time.
+          These notifications are off by default and you can turn them on or off
+          any time from your account. Creating an account does not sign you up
+          for marketing email — you can subscribe separately any time.
         </p>
         <div style={{ textAlign: "center", fontSize: "0.9rem" }}>
           Already have an account? <Link to="/login">Sign in</Link>

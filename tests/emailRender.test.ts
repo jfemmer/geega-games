@@ -5,6 +5,8 @@ import { SubscriptionConfirmed } from "../api/_lib/emails/SubscriptionConfirmed.
 import { OrderConfirmation } from "../api/_lib/emails/OrderConfirmation.js";
 import { SellSubmissionConfirmation } from "../api/_lib/emails/SellSubmissionConfirmation.js";
 import { SellSubmissionAdminNotification } from "../api/_lib/emails/SellSubmissionAdminNotification.js";
+import { OrderStatusUpdate } from "../api/_lib/emails/OrderStatusUpdate.js";
+import { SellSubmissionStatusUpdate } from "../api/_lib/emails/SellSubmissionStatusUpdate.js";
 import * as React from "react";
 
 describe("email templates render to HTML", () => {
@@ -122,5 +124,121 @@ describe("email templates render to HTML", () => {
     expect(html).toContain("$150.00");
     expect(html).toContain("internal, not an offer");
     expect(html).toContain("https://geega-games.com/admin_dashboard/buying-leads?submission=abc");
+  });
+
+  it("OrderStatusUpdate renders tracking info for a shipped order", async () => {
+    const html = await render(
+      React.createElement(OrderStatusUpdate, {
+        status: "shipped",
+        orderNumber: "GG-ABC12345",
+        firstName: "Jordan",
+        isPwe: false,
+        trackingCarrier: "usps",
+        trackingNumber: "9400111899561234567890",
+        orderUrl: "https://geega-games.com/account/orders/abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("has shipped");
+    expect(html).toContain("USPS");
+    expect(html).toContain("9400111899561234567890");
+    expect(html).toContain("tools.usps.com");
+  });
+
+  it("OrderStatusUpdate renders a PWE notice instead of a tracking number", async () => {
+    const html = await render(
+      React.createElement(OrderStatusUpdate, {
+        status: "shipped",
+        orderNumber: "GG-ABC12345",
+        firstName: null,
+        isPwe: true,
+        trackingCarrier: null,
+        trackingNumber: null,
+        orderUrl: "https://geega-games.com/account/orders/abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("Plain White Envelope");
+    expect(html).not.toContain("Tracking number");
+  });
+
+  it("OrderStatusUpdate renders cancelled and refunded copy", async () => {
+    const cancelled = await render(
+      React.createElement(OrderStatusUpdate, {
+        status: "cancelled",
+        orderNumber: "GG-ABC12345",
+        firstName: "Jordan",
+        isPwe: false,
+        trackingCarrier: null,
+        trackingNumber: null,
+        orderUrl: "https://geega-games.com/account/orders/abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(cancelled).toContain("cancelled");
+
+    const refunded = await render(
+      React.createElement(OrderStatusUpdate, {
+        status: "refunded",
+        orderNumber: "GG-ABC12345",
+        firstName: "Jordan",
+        isPwe: false,
+        trackingCarrier: null,
+        trackingNumber: null,
+        orderUrl: "https://geega-games.com/account/orders/abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(refunded).toContain("refunded");
+  });
+
+  it("SellSubmissionStatusUpdate renders the PayPal / pre-payment-shipment reminder on acceptance", async () => {
+    const html = await render(
+      React.createElement(SellSubmissionStatusUpdate, {
+        status: "accepted",
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("GG-S-100042");
+    expect(html).toContain("Offer accepted");
+    expect(html).toContain("PayPal Goods");
+  });
+
+  it("SellSubmissionStatusUpdate renders needs-more-photos and needs-in-person-review copy", async () => {
+    const morePhotos = await render(
+      React.createElement(SellSubmissionStatusUpdate, {
+        status: "needs_more_photos",
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(morePhotos).toContain("more photos");
+
+    const inPerson = await render(
+      React.createElement(SellSubmissionStatusUpdate, {
+        status: "needs_in_person_review",
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(inPerson).toContain("closer look");
   });
 });

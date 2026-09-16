@@ -42,6 +42,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
+  { to: "/account/notifications", label: "Notifications" },
   { to: "/account/security", label: "Password & security" },
 ];
 
@@ -1323,6 +1324,140 @@ function StoreCreditSection() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Notifications — order/shipping + sell submission email preferences.
+ * Both default OFF at signup (see handle_new_user() / the signup checkbox);
+ * this page is where a customer turns them on or off any time after. Only
+ * the `enabled` flag is exposed — byEmail/byText stay fixed (email-only;
+ * there's no SMS provider wired up) so we always write back the same shape.
+ * ------------------------------------------------------------------ */
+
+type NotificationPrefs = { enabled: boolean; byEmail: boolean; byText: boolean };
+
+function toPrefs(value: unknown): NotificationPrefs {
+  const v = (value ?? {}) as Partial<NotificationPrefs>;
+  return { enabled: v.enabled === true, byEmail: true, byText: false };
+}
+
+function NotificationToggle({
+  label,
+  description,
+  checked,
+  saving,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  saving: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="gg-check" style={{ alignItems: "flex-start", marginBottom: "1rem" }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={saving}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <strong style={{ display: "block" }}>{label}</strong>
+        <span className="gg-card-meta">{description}</span>
+      </span>
+    </label>
+  );
+}
+
+function NotificationsSection() {
+  const { user } = useAuth();
+  const [shipping, setShipping] = useState<NotificationPrefs>({ enabled: false, byEmail: true, byText: false });
+  const [sellSubmission, setSellSubmission] = useState<NotificationPrefs>({
+    enabled: false,
+    byEmail: true,
+    byText: false,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<"shipping" | "sell" | null>(null);
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("shipping_notifications, sell_submission_notifications")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setShipping(toPrefs(data.shipping_notifications));
+          setSellSubmission(toPrefs(data.sell_submission_notifications));
+        }
+        setLoading(false);
+      });
+  }, [user]);
+
+  async function updateShipping(enabled: boolean) {
+    if (!user) return;
+    setStatus(null);
+    setSaving("shipping");
+    const next = { ...shipping, enabled };
+    const { error } = await supabase
+      .from("profiles")
+      .update({ shipping_notifications: next })
+      .eq("id", user.id);
+    setSaving(null);
+    if (error) setStatus({ text: error.message, error: true });
+    else setShipping(next);
+  }
+
+  async function updateSellSubmission(enabled: boolean) {
+    if (!user) return;
+    setStatus(null);
+    setSaving("sell");
+    const next = { ...sellSubmission, enabled };
+    const { error } = await supabase
+      .from("profiles")
+      .update({ sell_submission_notifications: next })
+      .eq("id", user.id);
+    setSaving(null);
+    if (error) setStatus({ text: error.message, error: true });
+    else setSellSubmission(next);
+  }
+
+  if (loading) return <p>Loading your notification preferences…</p>;
+
+  return (
+    <div className="gg-dash-card" style={{ maxWidth: 480 }}>
+      <h2>Notifications</h2>
+      {status && (
+        <div className={`gg-alert ${status.error ? "gg-alert-error" : "gg-alert-ok"}`} role="status">
+          {status.text}
+        </div>
+      )}
+      <div style={{ margin: "0.75rem 0 0" }}>
+        <NotificationToggle
+          label="Order & shipping updates"
+          description="Email me when an order ships, is delivered, cancelled, or refunded."
+          checked={shipping.enabled}
+          saving={saving === "shipping"}
+          onChange={updateShipping}
+        />
+        <NotificationToggle
+          label="Sell submission updates"
+          description="Email me about status changes on a Sell Your Cards / Sell Your Collection submission."
+          checked={sellSubmission.enabled}
+          saving={saving === "sell"}
+          onChange={updateSellSubmission}
+        />
+      </div>
+      <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>
+        These are off by default for new accounts. Turning them off does not affect your
+        order confirmation or sell submission confirmation receipts — those always send.
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Top-level router
  * ------------------------------------------------------------------ */
 
@@ -1348,6 +1483,10 @@ export function AccountPage() {
     title = "Sell submissions";
     subtitle = "Collections and cards you've submitted to sell.";
     body = <SellSubmissionsSection />;
+  } else if (path === "/account/notifications") {
+    title = "Notifications";
+    subtitle = "Choose which email updates you'd like to receive.";
+    body = <NotificationsSection />;
   } else if (orderMatch) {
     title = "Order details";
     body = <OrderDetailSection orderId={orderMatch.id} />;

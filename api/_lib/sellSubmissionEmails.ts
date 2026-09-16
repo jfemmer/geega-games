@@ -11,8 +11,29 @@ import {
   sellSubmissionAdminNotificationText,
   type SellSubmissionAdminEmailData,
 } from "./emails/SellSubmissionAdminNotification.js";
+import {
+  SellSubmissionStatusUpdate,
+  sellSubmissionStatusUpdateSubject,
+  sellSubmissionStatusUpdateText,
+  type NotifiableSellStatus,
+  type SellSubmissionStatusEmailData,
+} from "./emails/SellSubmissionStatusUpdate.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
+
+const NOTIFIABLE_SELL_STATUSES: ReadonlySet<string> = new Set([
+  "needs_more_photos",
+  "needs_in_person_review",
+  "contacted",
+  "offer_made",
+  "accepted",
+  "declined",
+  "completed",
+]);
+
+export function isNotifiableSellStatus(status: string): status is NotifiableSellStatus {
+  return NOTIFIABLE_SELL_STATUSES.has(status);
+}
 
 // Both functions accept ONLY a submission id and load everything else from
 // Supabase server-side — never browser-supplied details — mirroring
@@ -133,5 +154,62 @@ export async function sendSellSubmissionAdminNotification(
     subject: `New buying lead — ${submission.reference_number}`,
     react: React.createElement(SellSubmissionAdminNotification, data),
     text: sellSubmissionAdminNotificationText(data),
+  });
+}
+
+// Sends the status-update email to the seller (needs more photos, needs
+// in-person review, contacted, offer made, accepted, declined, completed).
+// Same trust model and idempotency pattern as the confirmation emails above.
+//
+// Preference gating: a signed-in seller's profiles.sell_submission_notifications
+// (enabled) controls whether this actually sends. Guest submissions (no
+// user_id) have no profile to opt out from, so they always receive status
+// emails for their own submission — there is no other way for a guest to
+// find out.
+export async function sendSellSubmissionStatusUpdate(
+  submissionId: string,
+  status: NotifiableSellStatus,
+): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
+  const db = getSupabaseAdmin();
+
+  const { data: submission, error } = await db
+    .from("sell_submissions")
+    .select("id, first_name, email, user_id, reference_number")
+    .eq("id", submissionId)
+    .single();
+  if (error || !submission) {
+    return { status: "skipped", reason: "submission-not-found" };
+  }
+
+  if (submission.user_id) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("sell_submission_notifications")
+      .eq("id", submission.user_id)
+      .maybeSingle();
+    const prefs = profile?.sell_submission_notifications as { enabled?: boolean } | null;
+    if (profile && prefs?.enabled !== true) {
+      return { status: "skipped", reason: "notifications-disabled" };
+    }
+  }
+
+  const data: SellSubmissionStatusEmailData = {
+    status,
+    firstName: submission.first_name,
+    referenceNumber: submission.reference_number,
+    siteUrl: siteUrl(),
+    logoUrl: logoUrl(),
+    supportEmail: ServerEnv.replyTo(),
+  };
+
+  return sendTrackedEmail({
+    emailType: `sell_submission_${status}`,
+    idempotencyKey: `sell-submission-${status}-${submission.id}`,
+    to: submission.email,
+    from: ServerEnv.fromOrders(),
+    replyTo: ServerEnv.replyTo(),
+    subject: sellSubmissionStatusUpdateSubject(data),
+    react: React.createElement(SellSubmissionStatusUpdate, data),
+    text: sellSubmissionStatusUpdateText(data),
   });
 }

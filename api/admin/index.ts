@@ -16,6 +16,7 @@ import {
   type StaffRole,
 } from "../_lib/staff.js";
 import type { Database } from "../../src/types/database.js";
+import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Consolidated admin API router.
@@ -289,6 +290,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .update({ status: nextStatus, cancelled_at: existing.cancelled_at ?? now })
             .eq("id", orderId);
           if (error) throw new HttpError(500, error.message);
+          // Email failure must not fail the status change — the order is
+          // already cancelled in the DB either way.
+          try {
+            await sendOrderStatusEmail(orderId, "cancelled");
+          } catch (mailErr) {
+            console.error("[admin/orders/set-status] cancellation email failed", mailErr);
+          }
         }
         return sendJson(res, 200, { ok: true });
       }
@@ -341,6 +349,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           })
           .eq("id", orderId);
         if (updErr) throw new HttpError(500, updErr.message);
+        // Email failure must not fail the ship action — the order is already
+        // marked shipped in the DB either way.
+        try {
+          await sendOrderStatusEmail(orderId, "shipped");
+        } catch (mailErr) {
+          console.error("[admin/orders/ship] shipped email failed", mailErr);
+        }
         return sendJson(res, 200, { ok: true });
       }
 

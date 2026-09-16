@@ -26,6 +26,7 @@ type AuthContextValue = {
     password: string;
     firstName: string;
     lastName: string;
+    notificationsOptIn: boolean;
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -92,15 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string;
       firstName: string;
       lastName: string;
+      notificationsOptIn: boolean;
     }) => {
       const { data, error } = await supabase.auth.signUp({
         email: input.email,
         password: input.password,
         options: {
           // Keys consumed by public.handle_new_user() (raw_user_meta_data).
+          // notifications_opt_in seeds profiles.shipping_notifications /
+          // sell_submission_notifications — both default disabled, so this is
+          // the only way a brand-new account starts with them enabled.
           data: {
             first_name: input.firstName.trim(),
             last_name: input.lastName.trim(),
+            notifications_opt_in: input.notificationsOptIn,
           },
           emailRedirectTo: `${window.location.origin}/login`,
         },

@@ -1083,6 +1083,7 @@ export type Database = {
           last_name: string | null
           legacy_mongo_id: string | null
           phone: string | null
+          sell_submission_notifications: Json
           shipping_notifications: Json
           updated_at: string
           username: string | null
@@ -1095,6 +1096,7 @@ export type Database = {
           last_name?: string | null
           legacy_mongo_id?: string | null
           phone?: string | null
+          sell_submission_notifications?: Json
           shipping_notifications?: Json
           updated_at?: string
           username?: string | null
@@ -1107,6 +1109,7 @@ export type Database = {
           last_name?: string | null
           legacy_mongo_id?: string | null
           phone?: string | null
+          sell_submission_notifications?: Json
           shipping_notifications?: Json
           updated_at?: string
           username?: string | null

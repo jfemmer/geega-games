@@ -7,6 +7,10 @@ import {
 } from "../../_lib/http.js";
 import { requireStaff } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
+import {
+  isNotifiableSellStatus,
+  sendSellSubmissionStatusUpdate,
+} from "../../_lib/sellSubmissionEmails.js";
 import type { Database } from "../../../src/types/database.js";
 
 // PATCH /api/admin/sell-submissions/:id
@@ -109,6 +113,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .maybeSingle();
     if (error) throw new HttpError(500, error.message);
     if (!data) throw new HttpError(404, "Submission not found.");
+
+    // Email failure must not fail the status change — the submission is
+    // already updated in the DB either way.
+    if (patch.status && isNotifiableSellStatus(patch.status)) {
+      try {
+        await sendSellSubmissionStatusUpdate(id, patch.status);
+      } catch (mailErr) {
+        console.error("[admin/sell-submissions] status update email failed", mailErr);
+      }
+    }
 
     return sendJson(res, 200, { ok: true });
   } catch (err) {
