@@ -346,10 +346,14 @@ export default function KioskPage() {
             </div>
           ) : cards.length === 0 && !catalogError ? (
             <div className="gg-empty">
-              <p>No cards match your search.</p>
-              {activeFilterCount > 0 && (
+              <p>
+                {filters.query.trim() || activeFilterCount > 0
+                  ? "No cards match your search."
+                  : "Nothing's available to browse right now — check back soon, or ask staff what's new in stock."}
+              </p>
+              {(filters.query.trim() || activeFilterCount > 0) && (
                 <button className="gg-btn gg-btn-ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>
-                  Clear filters
+                  Clear search &amp; filters
                 </button>
               )}
             </div>
