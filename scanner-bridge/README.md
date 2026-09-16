@@ -36,7 +36,7 @@ with these settings, per Part 4's condition-analysis-grade requirements:
 |---|---|---|
 | Image mode | 24-bit Color | Preserves foil/holo color and print detail condition analysis needs. |
 | Resolution | 600 DPI | High enough to read collector numbers/set symbols and see edge wear. |
-| Duplex | On (scan both sides) | Front is required for ID; front + back for condition grading. |
+| Duplex | On (scan both sides), unless `SCAN_MODE=card_matching` | Front is required for ID; front + back for condition grading. |
 | File format | TIFF, uncompressed (or LZW) | Lossless — JPEG's compression artifacts corrupt edge/corner analysis. |
 | Image processing | Off (no auto-crop/auto-color/auto-rotate "enhancement") | The pipeline does its own deskew/crop from a consistent, unprocessed source; destructive scanner-side processing works against it. |
 | Orientation | Fixed, consistent per batch | The pipeline expects a consistent orientation; don't mix portrait/landscape within one run. |
@@ -52,8 +52,11 @@ With duplex scanning, PaperStream writes pages in strict feed order: front
 of card 1, back of card 1, front of card 2, back of card 2, and so on. This
 bridge sorts the files it sees by the trailing number in their filename
 (`card_00001.tif`, `card_00002.tif`, ...) and pairs them two at a time in
-that order. Set `DUPLEX=false` in `.env` for a single-sided batch, where
-every file is treated as its own front-only card.
+that order. Whether it expects pairs at all follows directly from
+`SCAN_MODE` — there's no separate duplex setting: `card_matching` treats
+every file as its own front-only card (identification only needs a front),
+while `condition` and `both` expect front+back pairs (condition grading
+needs to see the back). Scan your ADF in duplex or single-sided accordingly.
 
 If your batch ever loses strict alternation (a jam, a re-feed out of order),
 don't resume mid-batch — clear the watch folder and re-scan that batch from

@@ -39,12 +39,16 @@ export interface BridgeConfig {
   watchFolder: string;
   processedFolder: string;
   failedFolder: string;
-  /** True: consecutive files alternate front/back of the same card (fi-8170 duplex ADF batch). */
+  /** True: consecutive files alternate front/back of the same card (fi-8170
+   * duplex ADF batch). Derived from scanMode, not a separate choice —
+   * condition grading needs both sides, card-matching-only needs just the
+   * front. See scanMode below. */
   duplex: boolean;
   scannerName: string;
   /** What the recognition pipeline does for every card in sessions this
    * bridge creates. "both" (default) identifies and grades condition;
-   * "card_matching" skips condition; "condition" skips identity. */
+   * "card_matching" skips condition (and only needs a front scan);
+   * "condition" skips identity (and needs both sides). */
   scanMode: "card_matching" | "condition" | "both";
   /** How long to wait for no new files before processing an accumulated batch — PaperStream writes a whole feed run's pages in a burst, not one at a time. */
   batchQuietMs: number;
@@ -59,6 +63,11 @@ export function parseScanMode(value: string): "card_matching" | "condition" | "b
   throw new Error(
     `Invalid SCAN_MODE "${value}" — must be "card_matching", "condition", or "both".`,
   );
+}
+
+/** Condition grading needs both sides; card-matching-only needs just the front. */
+export function duplexForMode(mode: "card_matching" | "condition" | "both"): boolean {
+  return mode !== "card_matching";
 }
 
 export function loadConfig(): BridgeConfig {
@@ -78,6 +87,8 @@ export function loadConfig(): BridgeConfig {
     mkdirSync(dir, { recursive: true });
   }
 
+  const scanMode = parseScanMode(optional("SCAN_MODE", "both"));
+
   return {
     apiBaseUrl,
     supabaseUrl: required("SUPABASE_URL"),
@@ -87,9 +98,9 @@ export function loadConfig(): BridgeConfig {
     watchFolder,
     processedFolder,
     failedFolder,
-    duplex: optional("DUPLEX", "true").toLowerCase() !== "false",
+    duplex: duplexForMode(scanMode),
     scannerName: optional("SCANNER_NAME", "Ricoh fi-8170"),
-    scanMode: parseScanMode(optional("SCAN_MODE", "both")),
+    scanMode,
     batchQuietMs: optionalInt("BATCH_QUIET_MS", 5000),
     statusPort: optionalInt("STATUS_PORT", 8787),
     sessionStateFile: path.join(watchFolder, ".geega-session-id"),

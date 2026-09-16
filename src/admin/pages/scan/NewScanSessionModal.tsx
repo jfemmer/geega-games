@@ -10,13 +10,19 @@ import type { UploadedScanFile } from "../../repositories/types";
 
 // New scan session + batch import.
 //
-// The operator names the scanner, picks how the batch pairs (front-only, or
-// front/back alternating as fi-8170 duplex emits), then drops a large number of
-// files. Files are turned into UploadedScanFile records — the sequence hint
-// preserves scanner order, and the side (front/back) drives pairing in the
-// repository. Ingestion reports progress; one bad file never fails the batch.
+// The operator names the scanner and picks what this session scans FOR —
+// pairing (front-only vs. front+back) follows directly from that, never a
+// separate choice: card matching only needs a front to identify the card,
+// while condition grading (alone or with matching) needs both sides to
+// grade the back. Files are turned into UploadedScanFile records — the
+// sequence hint preserves scanner order, and the side (front/back) drives
+// pairing in the repository. Ingestion reports progress; one bad file never
+// fails the batch.
 
-type PairingMode = "front_only" | "front_back_pairs";
+/** Condition grading needs both sides; card-matching-only needs just the front. */
+function pairingForMode(mode: ScanRecognitionMode): "front_only" | "front_back_pairs" {
+  return mode === "card_matching" ? "front_only" : "front_back_pairs";
+}
 
 /** Derive a stable ordering key from a filename (numbers sort naturally). */
 function orderKey(name: string): number {
@@ -44,7 +50,6 @@ export function NewScanSessionModal({
   const [scannerName, setScannerName] = useState("Ricoh fi-8170");
   const [sourceType, setSourceType] = useState<ScanSourceType>("scanner_export");
   const [scanMode, setScanMode] = useState<ScanRecognitionMode>("both");
-  const [pairing, setPairing] = useState<PairingMode>("front_only");
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -57,7 +62,6 @@ export function NewScanSessionModal({
     setFiles([]);
     setProgress(null);
     setBusy(false);
-    setPairing("front_only");
     setScanMode("both");
   }
 
@@ -71,7 +75,7 @@ export function NewScanSessionModal({
   /** Convert selected files into UploadedScanFile records with pairing hints. */
   function buildUploads(): UploadedScanFile[] {
     const sorted = [...files].sort((a, b) => orderKey(a.name) - orderKey(b.name));
-    if (pairing === "front_only") {
+    if (pairingForMode(scanMode) === "front_only") {
       return sorted.map((f, i) => ({
         file: f,
         fileName: f.name,
@@ -174,25 +178,15 @@ export function NewScanSessionModal({
           onChange={(e) => setScanMode(e.target.value as ScanRecognitionMode)}
           hint={
             scanMode === "card_matching"
-              ? "Identifies each card. Condition stays fully manual — set it yourself before adding to inventory."
+              ? "Identifies each card from a front scan only. Condition stays fully manual — set it yourself before adding to inventory."
               : scanMode === "condition"
-                ? "Grades condition only. Match each card to a printing manually (Find Match) before adding to inventory."
-                : "Identifies each card and suggests its condition — the full pipeline."
+                ? "Grades condition from front + back scans. Match each card to a printing manually (Find Match) before adding to inventory."
+                : "Identifies each card from the front and grades condition from front + back — the full pipeline."
           }
         >
           <option value="both">Card matching + condition (recommended)</option>
           <option value="card_matching">Card matching only</option>
           <option value="condition">Condition only</option>
-        </SelectField>
-
-        <SelectField
-          label="Pairing"
-          value={pairing}
-          onChange={(e) => setPairing(e.target.value as PairingMode)}
-          hint="How front/back scans map to cards. fi-8170 duplex emits front then back per card."
-        >
-          <option value="front_only">Front scans only (1 file = 1 card)</option>
-          <option value="front_back_pairs">Front + back pairs (2 files = 1 card)</option>
         </SelectField>
 
         <div
