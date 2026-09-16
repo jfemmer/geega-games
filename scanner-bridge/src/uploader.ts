@@ -100,7 +100,7 @@ export async function ensureSession(
 
   const session = await api.call<{ id: string }>("/api/admin/scan-sessions", {
     method: "POST",
-    body: { scannerName: config.scannerName, sourceType: "scanner_bridge" },
+    body: { scannerName: config.scannerName, sourceType: "scanner_bridge", scanMode: config.scanMode },
   });
   writeFileSync(config.sessionStateFile, session.id, "utf8");
   return session.id;

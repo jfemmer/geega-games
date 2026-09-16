@@ -23,9 +23,13 @@ const SOURCE_TYPES = new Set<SourceType>([
   "scanner_bridge",
 ]);
 
+type ScanMode = Database["public"]["Enums"]["scan_recognition_mode"];
+const SCAN_MODES = new Set<ScanMode>(["card_matching", "condition", "both"]);
+
 interface Body {
   scannerName?: string | null;
   sourceType?: SourceType;
+  scanMode?: ScanMode;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -37,6 +41,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sourceType = body.sourceType ?? "scanner_export";
     if (!SOURCE_TYPES.has(sourceType)) {
       throw new HttpError(400, "Invalid source type.");
+    }
+
+    const scanMode = body.scanMode ?? "both";
+    if (!SCAN_MODES.has(scanMode)) {
+      throw new HttpError(400, "Invalid scan mode.");
     }
 
     const admin = getSupabaseAdmin();
@@ -56,6 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         created_by: staff.email ?? staff.userId,
         scanner_name: body.scannerName?.trim() || null,
         source_type: sourceType,
+        scan_mode: scanMode,
         status: "uploading",
       })
       .select("*")

@@ -5,6 +5,7 @@ import type {
   CardRecognitionResult,
   RecognitionCandidate,
   RecognitionEra,
+  ScanRecognitionMode,
 } from "../../../src/admin/types/index.js";
 import { ocrProvider } from "../ocr/index.js";
 import { normalizeCardImage } from "./imageRegions.js";
@@ -32,7 +33,9 @@ export interface RecognitionPipelineResult {
   recognitionResult: CardRecognitionResult;
   /** Non-null only when confidence clears the auto-match bar. */
   autoMatchedPrinting: CardPrinting | null;
-  condition: ConditionAnalysis;
+  /** Null when the session's scan mode is "card_matching" — condition
+   * analysis never ran, rather than running it and discarding the result. */
+  condition: ConditionAnalysis | null;
 }
 
 export interface ScoredCandidate {
@@ -181,14 +184,45 @@ export async function runRecognitionPipeline(
   admin: Admin,
   frontImage: Buffer | null,
   backImage: Buffer | null,
+  mode: ScanRecognitionMode = "both",
 ): Promise<RecognitionPipelineResult> {
+  const doIdentity = mode !== "condition";
+  const doCondition = mode !== "card_matching";
+
+  const frontNormalized = frontImage ? await normalizeCardImage(frontImage) : null;
+  const backNormalized = backImage ? await normalizeCardImage(backImage) : null;
+
+  if (!doIdentity) {
+    // Card-matching intentionally skipped for this session — identity stays
+    // fully manual (Find Match). Never run OCR/candidate generation/visual
+    // verification just to discard the result, and never report "failed" —
+    // that would wrongly imply an attempt was made and came up empty.
+    const condition = doCondition ? await analyzeCondition(frontNormalized, backNormalized) : null;
+    return {
+      recognitionResult: {
+        detectedName: null,
+        detectedSetCode: null,
+        detectedCollectorNumber: null,
+        detectedLanguage: null,
+        finishGuess: null,
+        candidatePrintings: [],
+        confidence: 0,
+        fieldConfidence: {},
+        warnings: [],
+        era: "unknown",
+        decisionReason: "Card matching not run — this session is condition-only. Match this card manually to add it to inventory.",
+        setSymbolMatch: null,
+        visualSimilarity: null,
+      },
+      autoMatchedPrinting: null,
+      condition,
+    };
+  }
+
   const warnings: string[] = [];
   if (!frontImage) {
     warnings.push("No front scan — identification requires a front image.");
   }
-
-  const frontNormalized = frontImage ? await normalizeCardImage(frontImage) : null;
-  const backNormalized = backImage ? await normalizeCardImage(backImage) : null;
 
   if (!ocrProvider.implemented) {
     warnings.push(`OCR provider (${ocrProvider.name}) is not configured — recognition unavailable.`);
@@ -233,7 +267,7 @@ export async function runRecognitionPipeline(
     );
   }
 
-  const condition = await analyzeCondition(frontNormalized, backNormalized);
+  const condition = doCondition ? await analyzeCondition(frontNormalized, backNormalized) : null;
 
   if (!autoMatch && ranked.length > 0) {
     warnings.push("Candidates found but not confident enough to auto-match — needs manual review.");

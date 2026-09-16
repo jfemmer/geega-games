@@ -14,6 +14,7 @@ import type {
   ConditionFindings,
   PrintingTreatment,
   RecognitionStatus,
+  ScanRecognitionMode,
   ScanReviewStatus,
   ScanSession,
   ScanSessionStatus,
@@ -27,6 +28,7 @@ export interface ScanSessionRowLike {
   created_by: string | null;
   scanner_name: string | null;
   source_type: ScanSourceType;
+  scan_mode: ScanRecognitionMode;
   status: ScanSessionStatus;
   total_files: number;
   total_cards: number;
@@ -49,6 +51,7 @@ export function mapScanSessionRow(row: ScanSessionRowLike): ScanSession {
     createdBy: row.created_by ?? "",
     scannerName: row.scanner_name,
     sourceType: row.source_type,
+    scanMode: row.scan_mode,
     status: row.status,
     totalFiles: row.total_files,
     totalCards: row.total_cards,

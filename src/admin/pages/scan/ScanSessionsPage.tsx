@@ -11,6 +11,7 @@ import { isScanRepositoryLive, scanRepository } from "../../repositories";
 import { ensureScanSeed } from "../../repositories/scan.mock";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatDateTime, timeAgo } from "../../utils/format";
+import { SCAN_MODE_SHORT } from "../../utils/labels";
 import { NewScanSessionModal } from "./NewScanSessionModal";
 import type { ScanSession, ScanSessionStatus } from "../../types";
 import type { BadgeTone } from "../../utils/labels";
@@ -148,6 +149,9 @@ function SessionRow({
           <Badge tone={STATUS_TONE[session.status]}>
             {STATUS_LABELS[session.status]}
           </Badge>
+          {session.scanMode !== "both" && (
+            <Badge tone="purple">{SCAN_MODE_SHORT[session.scanMode]}</Badge>
+          )}
         </span>
         <span className="gg-sessionrow__sub">
           {session.scannerName ?? "Manual import"} ·{" "}

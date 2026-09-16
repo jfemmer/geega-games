@@ -267,6 +267,14 @@ export type ScanSourceType =
   | "scanner_export"
   | "scanner_bridge";
 
+/** What /api/admin/scans/:scanId/recognize does for every scan in a session.
+ * "card_matching": identify only, condition stays fully manual (e.g. staff
+ * will grade it themselves, or already know the condition). "condition":
+ * grade condition only, identity stays fully manual (e.g. re-grading
+ * existing stock, or a card already picked by hand via Find Match).
+ * "both": the full pipeline (default — matches the original behavior). */
+export type ScanRecognitionMode = "card_matching" | "condition" | "both";
+
 export type ScanSessionStatus =
   | "uploading"
   | "processing"
@@ -285,6 +293,9 @@ export interface ScanSession {
   /** e.g. "Ricoh fi-8170" — recorded, never used to branch business logic. */
   scannerName: string | null;
   sourceType: ScanSourceType;
+  /** What recognition does for every scan in this session — set once at
+   * creation, applies to the whole batch. */
+  scanMode: ScanRecognitionMode;
   status: ScanSessionStatus;
   totalFiles: number;
   totalCards: number;

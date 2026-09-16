@@ -5,7 +5,7 @@ import { TextField, SelectField } from "../../components/ui/Field";
 import { Icon } from "../../components/ui/Icon";
 import { scanRepository } from "../../repositories";
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
-import type { ScanSession, ScanSourceType } from "../../types";
+import type { ScanRecognitionMode, ScanSession, ScanSourceType } from "../../types";
 import type { UploadedScanFile } from "../../repositories/types";
 
 // New scan session + batch import.
@@ -43,6 +43,7 @@ export function NewScanSessionModal({
   const currentAdmin = useCurrentAdmin();
   const [scannerName, setScannerName] = useState("Ricoh fi-8170");
   const [sourceType, setSourceType] = useState<ScanSourceType>("scanner_export");
+  const [scanMode, setScanMode] = useState<ScanRecognitionMode>("both");
   const [pairing, setPairing] = useState<PairingMode>("front_only");
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -57,6 +58,7 @@ export function NewScanSessionModal({
     setProgress(null);
     setBusy(false);
     setPairing("front_only");
+    setScanMode("both");
   }
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
@@ -102,6 +104,7 @@ export function NewScanSessionModal({
       const session = await scanRepository.createSession({
         scannerName: scannerName.trim() || null,
         sourceType,
+        scanMode,
         createdBy: currentAdmin.name,
       });
 
@@ -164,6 +167,23 @@ export function NewScanSessionModal({
             <option value="scanner_bridge">Scanner bridge</option>
           </SelectField>
         </div>
+
+        <SelectField
+          label="Scanning for"
+          value={scanMode}
+          onChange={(e) => setScanMode(e.target.value as ScanRecognitionMode)}
+          hint={
+            scanMode === "card_matching"
+              ? "Identifies each card. Condition stays fully manual — set it yourself before adding to inventory."
+              : scanMode === "condition"
+                ? "Grades condition only. Match each card to a printing manually (Find Match) before adding to inventory."
+                : "Identifies each card and suggests its condition — the full pipeline."
+          }
+        >
+          <option value="both">Card matching + condition (recommended)</option>
+          <option value="card_matching">Card matching only</option>
+          <option value="condition">Condition only</option>
+        </SelectField>
 
         <SelectField
           label="Pairing"

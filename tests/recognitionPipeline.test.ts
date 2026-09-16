@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoreAndRank, combineAndDecide } from "../api/_lib/recognition/pipeline";
+import { scoreAndRank, combineAndDecide, runRecognitionPipeline } from "../api/_lib/recognition/pipeline";
 import { parseCollectorLine } from "../api/_lib/recognition/ocrFields";
 import { gradeFromFindings, type DefectFinding } from "../api/_lib/recognition/condition";
 import {
@@ -9,6 +9,8 @@ import {
 } from "../api/_lib/recognition/imageHash";
 import type { CardPrinting } from "../src/admin/types";
 import type { VisualVerification } from "../api/_lib/recognition/verification";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../src/types/database";
 import sharp from "sharp";
 
 // The pipeline's core promise: precision over recall. These tests exercise
@@ -297,5 +299,51 @@ describe("imageHash (Part 6.4 visual verification primitive)", () => {
     expect(hashSimilarity(0)).toBe(1);
     expect(hashSimilarity(64)).toBe(0);
     expect(hashSimilarity(32)).toBeCloseTo(0.5);
+  });
+});
+
+describe("runRecognitionPipeline scan modes (pick card matching / condition / both)", () => {
+  // Never actually queried: with the OCR stub (no API key in this test env),
+  // identity never reaches a readable collector line or name, so the DB-
+  // querying candidate-generation branches are never entered — proven by
+  // these tests passing with a client that would throw on any real call.
+  const fakeAdmin = {} as unknown as SupabaseClient<Database>;
+
+  async function fakeCardImage(): Promise<Buffer> {
+    return sharp({
+      create: { width: 200, height: 280, channels: 3, background: { r: 20, g: 20, b: 40 } },
+    })
+      .jpeg()
+      .toBuffer();
+  }
+
+  it('mode "condition": skips identity entirely (never a false "failed") and still grades condition', async () => {
+    const front = await fakeCardImage();
+    const back = await fakeCardImage();
+    const result = await runRecognitionPipeline(fakeAdmin, front, back, "condition");
+    expect(result.recognitionResult.candidatePrintings).toEqual([]);
+    expect(result.autoMatchedPrinting).toBeNull();
+    expect(result.recognitionResult.decisionReason).toMatch(/condition-only/i);
+    expect(result.condition).not.toBeNull();
+    expect(result.condition?.suggestedCondition).toBeTruthy();
+  });
+
+  it('mode "card_matching": runs identity normally but never computes a condition suggestion', async () => {
+    const front = await fakeCardImage();
+    const back = await fakeCardImage();
+    const result = await runRecognitionPipeline(fakeAdmin, front, back, "card_matching");
+    expect(result.condition).toBeNull();
+    // Identity was genuinely attempted (the normal OCR-unavailable path),
+    // not the condition-only skip stub.
+    expect(result.recognitionResult.decisionReason).not.toMatch(/condition-only/i);
+    expect(result.recognitionResult.warnings.some((w) => /OCR provider/i.test(w))).toBe(true);
+  });
+
+  it('mode "both" (default): runs identity and grades condition', async () => {
+    const front = await fakeCardImage();
+    const back = await fakeCardImage();
+    const result = await runRecognitionPipeline(fakeAdmin, front, back);
+    expect(result.condition).not.toBeNull();
+    expect(result.recognitionResult.warnings.some((w) => /OCR provider/i.test(w))).toBe(true);
   });
 });

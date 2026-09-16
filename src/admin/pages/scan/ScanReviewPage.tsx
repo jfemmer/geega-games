@@ -22,7 +22,7 @@ import { scanRepository, scryfallRepository, recognitionProvider } from "../../r
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
-import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS } from "../../utils/labels";
+import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS, SCAN_MODE_LABELS } from "../../utils/labels";
 import type {
   BatchCommitPreview,
   CardCondition,
@@ -33,6 +33,7 @@ import type {
   RecognitionCandidate,
   RecognitionStatus,
   ScanFilterKey,
+  ScanRecognitionMode,
   ScanSession,
 } from "../../types";
 import type { BadgeTone } from "../../utils/labels";
@@ -300,7 +301,8 @@ export function ScanReviewPage({
         title={session.data?.label ?? "Scan session"}
         description={
           session.data
-            ? `${session.data.scannerName ?? "Manual import"} · ${session.data.totalCards} cards scanned`
+            ? `${session.data.scannerName ?? "Manual import"} · ${session.data.totalCards} cards scanned` +
+              (session.data.scanMode !== "both" ? ` · ${SCAN_MODE_LABELS[session.data.scanMode]}` : "")
             : undefined
         }
         actions={
@@ -392,6 +394,7 @@ export function ScanReviewPage({
             <ScanDetail
               key={active.id}
               scan={active}
+              scanMode={session.data?.scanMode ?? "both"}
               onFindMatch={() => setFindMatchFor(active)}
               onPatch={patchActive}
               onApprove={approveActive}
@@ -642,6 +645,7 @@ function ScanRow({
 
 function ScanDetail({
   scan,
+  scanMode,
   onFindMatch,
   onPatch,
   onApprove,
@@ -651,6 +655,7 @@ function ScanDetail({
   onSelectCandidate,
 }: {
   scan: CardScan;
+  scanMode: ScanRecognitionMode;
   onFindMatch: () => void;
   onPatch: (patch: Parameters<typeof scanRepository.updateScan>[1]) => Promise<void>;
   onApprove: () => void;
@@ -717,11 +722,25 @@ function ScanDetail({
         </div>
       </div>
 
-      <RecognitionPanel scan={scan} recognizing={recognizing} onRerun={onRerunRecognition} />
-      <ConditionPanel
-        scan={scan}
-        onApplySuggestion={(condition) => onPatch({ confirmedCondition: condition })}
-      />
+      {scanMode !== "condition" ? (
+        <RecognitionPanel scan={scan} recognizing={recognizing} onRerun={onRerunRecognition} />
+      ) : (
+        <div className="gg-inline-note gg-inline-note--info">
+          <Icon name="info" size={16} />
+          <div>Card matching is off for this session — match this card manually with Find Match.</div>
+        </div>
+      )}
+      {scanMode !== "card_matching" ? (
+        <ConditionPanel
+          scan={scan}
+          onApplySuggestion={(condition) => onPatch({ confirmedCondition: condition })}
+        />
+      ) : (
+        <div className="gg-inline-note gg-inline-note--info">
+          <Icon name="info" size={16} />
+          <div>Condition grading is off for this session — set the condition manually below.</div>
+        </div>
+      )}
 
       <div className="gg-scanform">
         <div className="gg-scanform__row">

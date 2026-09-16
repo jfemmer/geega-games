@@ -42,12 +42,23 @@ export interface BridgeConfig {
   /** True: consecutive files alternate front/back of the same card (fi-8170 duplex ADF batch). */
   duplex: boolean;
   scannerName: string;
+  /** What the recognition pipeline does for every card in sessions this
+   * bridge creates. "both" (default) identifies and grades condition;
+   * "card_matching" skips condition; "condition" skips identity. */
+  scanMode: "card_matching" | "condition" | "both";
   /** How long to wait for no new files before processing an accumulated batch — PaperStream writes a whole feed run's pages in a burst, not one at a time. */
   batchQuietMs: number;
   /** Bound to 127.0.0.1 only — never exposed beyond this machine. */
   statusPort: number;
   /** Where the current session id is persisted so a restart resumes instead of fragmenting into a new session. */
   sessionStateFile: string;
+}
+
+export function parseScanMode(value: string): "card_matching" | "condition" | "both" {
+  if (value === "card_matching" || value === "condition" || value === "both") return value;
+  throw new Error(
+    `Invalid SCAN_MODE "${value}" — must be "card_matching", "condition", or "both".`,
+  );
 }
 
 export function loadConfig(): BridgeConfig {
@@ -78,6 +89,7 @@ export function loadConfig(): BridgeConfig {
     failedFolder,
     duplex: optional("DUPLEX", "true").toLowerCase() !== "false",
     scannerName: optional("SCANNER_NAME", "Ricoh fi-8170"),
+    scanMode: parseScanMode(optional("SCAN_MODE", "both")),
     batchQuietMs: optionalInt("BATCH_QUIET_MS", 5000),
     statusPort: optionalInt("STATUS_PORT", 8787),
     sessionStateFile: path.join(watchFolder, ".geega-session-id"),

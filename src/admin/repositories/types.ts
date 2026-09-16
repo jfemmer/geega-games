@@ -29,6 +29,7 @@ import type {
   Page,
   Reservation,
   ScanQuery,
+  ScanRecognitionMode,
   ScanReviewPatch,
   ScanSession,
   ScanSourceType,
@@ -188,6 +189,8 @@ export interface ScanRepository {
     scannerName: string | null;
     sourceType: ScanSourceType;
     createdBy: string;
+    /** Defaults to "both" (the original full-pipeline behavior) when omitted. */
+    scanMode?: ScanRecognitionMode;
   }): Promise<ScanSession>;
   updateSessionStatus(
     id: string,

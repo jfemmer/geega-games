@@ -1127,6 +1127,7 @@ export type Database = {
           ready_cards: number
           rejected_cards: number
           reviewed_cards: number
+          scan_mode: Database["public"]["Enums"]["scan_recognition_mode"]
           scanner_name: string | null
           source_type: Database["public"]["Enums"]["scan_source_type"]
           status: Database["public"]["Enums"]["scan_session_status"]
@@ -1147,6 +1148,7 @@ export type Database = {
           ready_cards?: number
           rejected_cards?: number
           reviewed_cards?: number
+          scan_mode?: Database["public"]["Enums"]["scan_recognition_mode"]
           scanner_name?: string | null
           source_type?: Database["public"]["Enums"]["scan_source_type"]
           status?: Database["public"]["Enums"]["scan_session_status"]
@@ -1167,6 +1169,7 @@ export type Database = {
           ready_cards?: number
           rejected_cards?: number
           reviewed_cards?: number
+          scan_mode?: Database["public"]["Enums"]["scan_recognition_mode"]
           scanner_name?: string | null
           source_type?: Database["public"]["Enums"]["scan_source_type"]
           status?: Database["public"]["Enums"]["scan_session_status"]
@@ -2113,6 +2116,7 @@ export type Database = {
           ready_cards: number
           rejected_cards: number
           reviewed_cards: number
+          scan_mode: Database["public"]["Enums"]["scan_recognition_mode"]
           scanner_name: string | null
           source_type: Database["public"]["Enums"]["scan_source_type"]
           status: Database["public"]["Enums"]["scan_session_status"]
@@ -2276,6 +2280,7 @@ export type Database = {
         | "failed"
       reservation_status: "active" | "released" | "fulfilled"
       scan_job_status: "queued" | "processing" | "done" | "failed"
+      scan_recognition_mode: "card_matching" | "condition" | "both"
       scan_review_status: "pending" | "approved" | "corrected" | "rejected"
       scan_session_status:
         | "uploading"
@@ -2534,6 +2539,7 @@ export const Constants = {
       ],
       reservation_status: ["active", "released", "fulfilled"],
       scan_job_status: ["queued", "processing", "done", "failed"],
+      scan_recognition_mode: ["card_matching", "condition", "both"],
       scan_review_status: ["pending", "approved", "corrected", "rejected"],
       scan_session_status: [
         "uploading",

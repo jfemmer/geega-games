@@ -135,10 +135,10 @@ async function runFixture(
     ? recognitionResult.detectedCollectorNumber === fixture.expectedCollectorNumber
     : null;
 
-  const conditionCorrect = fixture.expectedCondition
+  const conditionCorrect = fixture.expectedCondition && condition
     ? condition.suggestedCondition === fixture.expectedCondition
     : null;
-  const conditionOffByOne = fixture.expectedCondition
+  const conditionOffByOne = fixture.expectedCondition && condition
     ? conditionDistance(condition.suggestedCondition, fixture.expectedCondition) <= 1
     : null;
 

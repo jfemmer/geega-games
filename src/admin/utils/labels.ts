@@ -10,6 +10,7 @@ import type {
   OrderStatus,
   PaymentStatus,
   PrintingTreatment,
+  ScanRecognitionMode,
   StaffRole,
   SubscriberStatus,
 } from "../types";
@@ -252,6 +253,18 @@ export const CAMPAIGN_AUDIENCE_LABELS = {
   confirmed_recent: "Confirmed in last 90 days",
   all_customers: "All customers",
 } as const;
+
+export const SCAN_MODE_LABELS: Record<ScanRecognitionMode, string> = {
+  card_matching: "Card matching only",
+  condition: "Condition only",
+  both: "Card matching + condition",
+};
+
+export const SCAN_MODE_SHORT: Record<ScanRecognitionMode, string> = {
+  card_matching: "Matching",
+  condition: "Condition",
+  both: "Full",
+};
 
 export const MOVEMENT_REASON_LABELS: Record<InventoryMovementReason, string> = {
   manual_add: "Manual add",

@@ -179,7 +179,7 @@ export const supabaseScanRepository: ScanRepository = {
     // privileged write in this app).
     const row = await adminFetch<ScanSessionRowLike>("/api/admin/scan-sessions", {
       method: "POST",
-      body: { scannerName: input.scannerName, sourceType: input.sourceType },
+      body: { scannerName: input.scannerName, sourceType: input.sourceType, scanMode: input.scanMode },
     });
     return mapScanSessionRow(row);
   },

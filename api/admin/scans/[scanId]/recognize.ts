@@ -57,23 +57,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const admin = getSupabaseAdmin();
     const { data: scan, error: scanErr } = await admin
       .from("card_scans")
-      .select("*")
+      .select("*, scan_sessions!scan_session_id(scan_mode)")
       .eq("id", scanId)
       .maybeSingle();
     if (scanErr) throw new HttpError(500, "Could not load the scan.");
     if (!scan) throw new HttpError(404, "Scan not found.");
 
-    await admin
-      .from("card_scans")
-      .update({ recognition_status: "processing" })
-      .eq("id", scanId);
+    const sessionRow = Array.isArray(scan.scan_sessions) ? scan.scan_sessions[0] : scan.scan_sessions;
+    const scanMode: Database["public"]["Enums"]["scan_recognition_mode"] = sessionRow?.scan_mode ?? "both";
+    const doIdentity = scanMode !== "condition";
+
+    // Only touch recognition_status for a session that actually attempts
+    // identity — otherwise a condition-only scan would flip to "processing"
+    // here and then never get set back (the identity branch below, which is
+    // the only place that resolves it, never runs for this mode).
+    if (doIdentity) {
+      await admin
+        .from("card_scans")
+        .update({ recognition_status: "processing" })
+        .eq("id", scanId);
+    }
 
     const [front, back] = await Promise.all([
       downloadImage(admin, scan.front_image_path),
       downloadImage(admin, scan.back_image_path),
     ]);
 
-    if (!front) {
+    // Identification needs a front image; condition-only mode does not (it
+    // grades whatever sides exist) — so this short-circuit only applies when
+    // this session actually attempts identity.
+    if (doIdentity && !front) {
       await admin
         .from("card_scans")
         .update({
@@ -100,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { recognitionResult, autoMatchedPrinting, condition } =
-      await runRecognitionPipeline(admin, front, back);
+      await runRecognitionPipeline(admin, front, back, scanMode);
 
     // Cache the auto-matched (or best-candidate) printing so the review UI
     // can show it even without an inventory line yet.
@@ -139,48 +152,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
 
-    const recognitionStatus: Database["public"]["Enums"]["recognition_status"] =
-      !ocrProvider.implemented
-        ? "failed"
-        : autoMatchedPrinting
-          ? "recognized"
-          : recognitionResult.candidatePrintings.length > 0
-            ? "low_confidence"
-            : "failed";
+    const patch: Database["public"]["Tables"]["card_scans"]["Update"] = {};
 
-    const patch: Database["public"]["Tables"]["card_scans"]["Update"] = {
-      recognition_status: recognitionStatus,
-      recognition_confidence: recognitionResult.confidence,
-      recognition_data: recognitionResult as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["recognition_data"],
-      suggested_condition: condition.suggestedCondition,
-      suggested_condition_confidence: condition.confidence,
-      condition_findings: {
+    // Identity fields: only touched when this session actually attempts
+    // card matching. A condition-only session's scans keep whatever
+    // recognition_status they already had (their default, 'none') rather
+    // than being marked "failed" for something that was never attempted.
+    if (doIdentity) {
+      const recognitionStatus: Database["public"]["Enums"]["recognition_status"] =
+        !ocrProvider.implemented
+          ? "failed"
+          : autoMatchedPrinting
+            ? "recognized"
+            : recognitionResult.candidatePrintings.length > 0
+              ? "low_confidence"
+              : "failed";
+
+      patch.recognition_status = recognitionStatus;
+      patch.recognition_confidence = recognitionResult.confidence;
+      patch.recognition_data = recognitionResult as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["recognition_data"];
+
+      // Never override a human's own review decision — only move the scan
+      // between the PRE-review states.
+      if (OVERWRITABLE_REVIEW_STATUSES.has(scan.review_status)) {
+        if (autoMatchedPrinting) {
+          patch.selected_scryfall_id = autoMatchedPrinting.scryfallId;
+          patch.review_status = "matched";
+          // Constrain finish to the printing's finishes if a previously-
+          // selected one is no longer valid; otherwise leave finish alone —
+          // it's always a manual field (Part 5).
+          if (
+            scan.selected_finish &&
+            !autoMatchedPrinting.availableFinishes.includes(scan.selected_finish)
+          ) {
+            patch.selected_finish = autoMatchedPrinting.availableFinishes[0] ?? null;
+          }
+        } else if (recognitionResult.candidatePrintings.length > 0) {
+          patch.review_status = "needs_manual_match";
+        } else {
+          patch.review_status = "pending_match";
+        }
+      }
+    }
+
+    // Condition fields: only touched when this session actually attempts
+    // condition grading — `condition` is null for a card-matching-only
+    // session, and omitting these keys entirely (rather than writing null)
+    // leaves any prior suggestion untouched on a re-run.
+    if (condition) {
+      patch.suggested_condition = condition.suggestedCondition;
+      patch.suggested_condition_confidence = condition.confidence;
+      patch.condition_findings = {
         findings: condition.findings,
         summary: condition.summary,
         backImageMissing: condition.backImageMissing,
-      } as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["condition_findings"],
-    };
-
-    // Never override a human's own review decision — only move the scan
-    // between the PRE-review states.
-    if (OVERWRITABLE_REVIEW_STATUSES.has(scan.review_status)) {
-      if (autoMatchedPrinting) {
-        patch.selected_scryfall_id = autoMatchedPrinting.scryfallId;
-        patch.review_status = "matched";
-        // Constrain finish to the printing's finishes if a previously-
-        // selected one is no longer valid; otherwise leave finish alone —
-        // it's always a manual field (Part 5).
-        if (
-          scan.selected_finish &&
-          !autoMatchedPrinting.availableFinishes.includes(scan.selected_finish)
-        ) {
-          patch.selected_finish = autoMatchedPrinting.availableFinishes[0] ?? null;
-        }
-      } else if (recognitionResult.candidatePrintings.length > 0) {
-        patch.review_status = "needs_manual_match";
-      } else {
-        patch.review_status = "pending_match";
-      }
+      } as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["condition_findings"];
     }
 
     const { error: updateErr } = await admin.from("card_scans").update(patch).eq("id", scanId);

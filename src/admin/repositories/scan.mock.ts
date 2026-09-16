@@ -143,6 +143,7 @@ export const mockScanRepository: ScanRepository = {
       createdBy: input.createdBy,
       scannerName: input.scannerName,
       sourceType: input.sourceType,
+      scanMode: input.scanMode ?? "both",
       status: "uploading",
       totalFiles: 0,
       totalCards: 0,
