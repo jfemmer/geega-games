@@ -102,6 +102,21 @@
   color: var(--gg-gold);
 }
 
+/* On narrow screens the search input has to share one row with the logo and
+   the Sign in/Cart buttons, which squeezes it down to a sliver a couple of
+   characters wide. Give it its own full-width row instead, so it's actually
+   usable and visible as the primary way to find a card. */
+@media (max-width: 640px) {
+  .gg-header-row {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+  .gg-header-search {
+    order: 3;
+    flex: 1 1 100%;
+  }
+}
+
 /* ---- Layout ---- */
 .gg-page {
   max-width: 1200px;
@@ -668,13 +683,18 @@
   margin-top: 0.85rem;
 }
 
-/* Order progress stepper */
+/* Order progress stepper. This is a <ol> for semantics, but the numbering
+   is drawn with .gg-progress-dot, not the browser's own list markers — the
+   default marker + its UA-stylesheet padding-inline-start were never reset,
+   so "1. 2. 3. 4." rendered on top of the step labels, badly overlapping
+   once a label wrapped to a second line on a narrow screen. */
 .gg-progress {
   display: flex;
   align-items: flex-start;
   margin: 0.5rem 0 1.25rem;
   overflow-x: auto;
-  padding-top: 0.25rem;
+  padding: 0.25rem 0 0;
+  list-style: none;
 }
 .gg-progress-step {
   flex: 1 0 84px;
@@ -1242,11 +1262,18 @@
 .gg-sellcontact .gg-field {
   margin-bottom: 0.85rem;
 }
+/* :not(checkbox/radio) is load-bearing: without it this rule (same
+   specificity as, and later in the cascade than, .gg-check input) wins and
+   stretches every checkbox/radio inside .gg-sellcheckgroup__grid to 100% of
+   its row. The box model width still applies to a checkbox even though its
+   rendered widget stays tiny, so the label text after it gets shoved off to
+   the right of that full-width invisible box — badly broken on mobile,
+   where there's no room to spare. */
 .gg-selldetails select,
-.gg-selldetails input,
+.gg-selldetails input:not([type="checkbox"]):not([type="radio"]),
 .gg-selldetails textarea,
 .gg-sellcontact select,
-.gg-sellcontact input {
+.gg-sellcontact input:not([type="checkbox"]):not([type="radio"]) {
   width: 100%;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--gg-line);
