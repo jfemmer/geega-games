@@ -233,8 +233,6 @@ export async function runRecognitionPipeline(
     : {
         title: { text: "", confidence: 0, winningVariant: "none" },
         collectorInfo: { text: "", confidence: 0, winningVariant: "none" },
-        typeLine: { text: "", confidence: 0, winningVariant: "none" },
-        footer: { text: "", confidence: 0, winningVariant: "none" },
       };
 
   const { candidates, era, setCodeGuess, collectorGuess } = frontNormalized

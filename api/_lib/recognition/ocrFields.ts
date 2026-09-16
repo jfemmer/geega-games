@@ -49,7 +49,14 @@ export async function ocrRegion(
   return best;
 }
 
-/** OCR the fields the recognition pipeline actually cares about, in parallel. */
+/**
+ * OCR the fields the recognition pipeline actually cares about, in parallel.
+ * Deliberately just title + collectorInfo — generateCandidates() only ever
+ * reads those two, so OCR'ing typeLine/footer too (as this used to do) cost
+ * a full extra 2 regions x 5 preprocessing variants of billable Vision API
+ * calls per card for results nothing consumed. Add a field back here only
+ * once something downstream actually reads it.
+ */
 export async function ocrCardFields(
   provider: OcrProvider,
   normalizedCard: Buffer,
@@ -58,16 +65,12 @@ export async function ocrCardFields(
 ): Promise<{
   title: FieldOcrResult;
   collectorInfo: FieldOcrResult;
-  typeLine: FieldOcrResult;
-  footer: FieldOcrResult;
 }> {
-  const [title, collectorInfo, typeLine, footer] = await Promise.all([
+  const [title, collectorInfo] = await Promise.all([
     ocrRegion(provider, normalizedCard, width, height, "title"),
     ocrRegion(provider, normalizedCard, width, height, "collectorInfo"),
-    ocrRegion(provider, normalizedCard, width, height, "typeLine"),
-    ocrRegion(provider, normalizedCard, width, height, "footer"),
   ]);
-  return { title, collectorInfo, typeLine, footer };
+  return { title, collectorInfo };
 }
 
 /**
