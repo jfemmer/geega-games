@@ -93,38 +93,14 @@ export default function Header() {
         </div>
 
         <div className="gg-header-actions">
-          {user ? (
-            <>
-              <Link
-                to="/account"
-                className="gg-iconbtn gg-iconbtn--icon"
-                aria-label="Account"
-                title="Account"
-              >
-                <Icon name="user" />
-              </Link>
-              <button
-                className="gg-iconbtn gg-iconbtn--icon"
-                aria-label="Sign out"
-                title="Sign out"
-                onClick={async () => {
-                  await signOut();
-                  navigate("/");
-                }}
-              >
-                <Icon name="logout" />
-              </button>
-            </>
-          ) : (
-            <Link
-              to="/login"
-              className="gg-iconbtn gg-iconbtn--icon"
-              aria-label="Sign in"
-              title="Sign in"
-            >
-              <Icon name="user" />
-            </Link>
-          )}
+          <Link
+            to={user ? "/account" : "/login"}
+            className="gg-iconbtn gg-iconbtn--icon"
+            aria-label={user ? "Account" : "Sign in"}
+            title={user ? "Account" : "Sign in"}
+          >
+            <Icon name="user" />
+          </Link>
           <button
             className="gg-iconbtn gg-iconbtn--icon gg-cartbtn"
             onClick={() => setCartOpen(true)}
@@ -136,6 +112,19 @@ export default function Header() {
               <span className="gg-cart-count">{itemCount}</span>
             )}
           </button>
+          {user && (
+            <button
+              className="gg-iconbtn gg-iconbtn--icon"
+              aria-label="Sign out"
+              title="Sign out"
+              onClick={async () => {
+                await signOut();
+                navigate("/");
+              }}
+            >
+              <Icon name="logout" />
+            </button>
+          )}
         </div>
       </div>
 
