@@ -263,20 +263,20 @@ export default function SellPage() {
           <section className="gg-sellhero">
             <h1>Sell Your Magic Cards to Geega Games</h1>
             <p>
-              Selling a few valuable cards or an entire collection? Geega Games buys individual
-              cards, organized lists, binders, decks, and full Magic: The Gathering collections.
-              Tell us what you have, and we&rsquo;ll personally review it and get in touch.
+              Have a full collection — binders, boxes, or bags of cards? You don&rsquo;t need to
+              know what any of it is or enter cards one at a time. Just upload a few photos and
+              tell us about it; we&rsquo;ll handle the rest.
             </p>
             <p className="gg-card-meta">
-              Have a huge collection? You don&rsquo;t need to enter every card. Upload photos and
-              tell us about it.
+              Selling a specific handful of cards instead? You can search and add them
+              individually further down.
             </p>
           </section>
 
           <section className="gg-sellsteps">
             <div className="gg-sellsteps__item">
               <strong>1. Tell us what you have</strong>
-              <p>Search individual cards, paste/upload a list, upload collection photos, or a combination.</p>
+              <p>Upload photos of a full collection, search individual cards, paste/upload a list, or a combination.</p>
             </div>
             <div className="gg-sellsteps__item">
               <strong>2. We review your collection</strong>
@@ -300,30 +300,18 @@ export default function SellPage() {
         <div className="gg-sellstep">
           <h2>What are you selling?</h2>
           <p className="gg-card-meta">
-            Use one, two, or all three — whatever&rsquo;s easiest for what you have.
+            Use one, some, or all of the options below — whatever&rsquo;s easiest for what you
+            have.
           </p>
 
-          <div className="gg-sellsection">
-            <h3>Search and add cards</h3>
+          <div className="gg-sellsection gg-sellsection--featured">
+            <h3>
+              Have a full collection? Upload photos <span className="gg-badge">No card entry needed</span>
+            </h3>
             <p className="gg-card-meta">
-              Have an organized list? Add the exact cards below to help us review your collection
-              faster.
-            </p>
-            <SellCardSearch onSelect={(p) => addCards([printingToCardLine(p)])} />
-          </div>
-
-          <div className="gg-sellsection">
-            <h3>Paste a card list</h3>
-            <BulkListInput onAddCards={addCards} onUpdateCard={updateCard} />
-          </div>
-
-          <SellCardList cards={draft.cards} onUpdate={updateCard} onRemove={removeCard} onRematch={(id, p) => updateCard(id, printingToCardLine(p))} />
-
-          <div className="gg-sellsection">
-            <h3>Selling a full collection? Upload photos instead.</h3>
-            <p className="gg-card-meta">
-              Thousands of cards? Don&rsquo;t enter them one at a time. Upload photos of binders,
-              boxes, decks, high-value cards, sealed items, or an overview of the whole collection.
+              Don&rsquo;t know Magic cards well, or have thousands to go through? Skip typing
+              anything in — just upload photos of binders, boxes, decks, sealed items, or an
+              overview of the whole collection, and add any notes you have in the next step.
             </p>
             <CollectionPhotoUpload
               photos={photos}
@@ -332,6 +320,22 @@ export default function SellPage() {
               onRetry={retryPhoto}
             />
           </div>
+
+          <div className="gg-sellsection">
+            <h3>Selling specific cards? Search and add them</h3>
+            <p className="gg-card-meta">
+              Know exactly which cards you have? Add them below to help us review your submission
+              faster.
+            </p>
+            <SellCardSearch onSelect={(p) => addCards([printingToCardLine(p)])} />
+          </div>
+
+          <div className="gg-sellsection">
+            <h3>Or paste a card list</h3>
+            <BulkListInput onAddCards={addCards} onUpdateCard={updateCard} />
+          </div>
+
+          <SellCardList cards={draft.cards} onUpdate={updateCard} onRemove={removeCard} onRematch={(id, p) => updateCard(id, printingToCardLine(p))} />
         </div>
       )}
 

@@ -1015,6 +1015,29 @@
   margin: 0 0 0.35rem;
   color: var(--gg-purple);
   font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.gg-sellsection h3 .gg-badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* The full-collection photo-upload path is the easiest option for a seller
+   unfamiliar with individual Magic cards, so it's surfaced first and
+   visually set apart rather than just being another item in the list. */
+.gg-sellsection--featured {
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 0;
+}
+.gg-sellsection--featured:first-of-type {
+  padding-top: 1.25rem;
 }
 .gg-sellstep__nav {
   display: flex;
