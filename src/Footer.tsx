@@ -1,4 +1,15 @@
+import type { ReactNode } from "react";
 import { FOOTER_GROUPS, SITE } from "./siteConfig";
+import { Link } from "./store/lib/router";
+
+/** Internal SPA routes get client-side navigation; anything else (#anchors,
+ * external URLs) stays a plain anchor. */
+function FooterLinkAnchor({ href, children }: { href: string; children: ReactNode }) {
+  if (href.startsWith("/")) {
+    return <Link to={href}>{children}</Link>;
+  }
+  return <a href={href}>{children}</a>;
+}
 
 export default function Footer() {
   return (
@@ -28,7 +39,7 @@ export default function Footer() {
                 {group.links.map((link) => (
                   <li key={link.label}>
                     {link.href ? (
-                      <a href={link.href}>{link.label}</a>
+                      <FooterLinkAnchor href={link.href}>{link.label}</FooterLinkAnchor>
                     ) : (
                       <span className="footer-soon">
                         {link.label}

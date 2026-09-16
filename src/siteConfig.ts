@@ -34,10 +34,10 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Help",
     links: [
-      { label: "Contact" }, // add href when a contact page/inbox exists
-      { label: "Shipping" },
-      { label: "Returns & refunds" },
-      { label: "Card-condition guide" },
+      { label: "Contact", href: "/contact" },
+      { label: "Shipping", href: "/shipping" },
+      { label: "Returns & refunds", href: "/returns" },
+      { label: "Card-condition guide", href: "/condition-guide" },
     ],
   },
   {

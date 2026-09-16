@@ -131,9 +131,6 @@ export default function Header() {
         <Link to="/sell" className="gg-nav-sell">
           Sell Your Cards
         </Link>
-        <Link to="/condition-guide">Condition guide</Link>
-        <Link to="/shipping">Shipping</Link>
-        <Link to="/returns">Returns</Link>
       </nav>
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
