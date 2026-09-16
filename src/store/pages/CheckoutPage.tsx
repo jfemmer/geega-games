@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
 import { Link, useRouter } from "../lib/router";
+import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import {
   formatCents,
   previewOrderTotals,
@@ -10,25 +12,23 @@ import {
   type ShippingMethod,
 } from "../lib/money";
 
-// Checkout. The SERVER (checkout_create_order) computes the canonical, charged
-// amounts and atomically revalidates SELLABLE stock (physical minus active
-// reservations) — the preview below is display-only and never trusted for money.
+// Checkout. The SERVER is the only pricing authority:
+//   - checkout_create_order (called via /api/checkout/create-payment-intent)
+//     atomically revalidates SELLABLE stock (physical minus active
+//     reservations) and computes the canonical amount due. The totals shown
+//     below are display-only previews, never trusted for money.
+//   - A zero-balance order (fully covered by store credit) is marked paid by
+//     that trusted DB path — no Stripe involved.
+//   - A balance-due order gets a Stripe PaymentIntent for EXACTLY the
+//     server-computed amount. The order is only ever marked "paid" by the
+//     Stripe webhook (api/webhooks/stripe.ts) reading back from Stripe — this
+//     page NEVER fabricates a paid state from the client-side confirmPayment
+//     result alone; it polls the order and shows whatever the DB says.
 //
-// Payment boundary: Stripe is not yet wired. An order whose amount due is $0
-// after store credit is completed by the trusted zero-balance path in the RPC.
-// An order with a balance due is created as pending_payment and the customer is
-// told, honestly, that card payment is not live yet — we NEVER fake a payment.
-//
-// TO ENABLE CARD PAYMENTS (one integration point):
-//   1. `npm i @stripe/stripe-js @stripe/react-stripe-js` on the client.
-//   2. Replace the direct `checkout_create_order` call in placeOrder() below
-//      with a POST to /api/checkout/create-payment-intent (already built,
-//      server-authoritative). It returns { orderId, clientSecret } for
-//      balance-due orders, or { paid: true } when store credit covered it.
-//   3. Confirm the clientSecret with Stripe Elements <PaymentElement>, then on
-//      success show the confirmation from the DB (the webhook marks it paid).
-// Until then, the flow below creates the canonical order and stops cleanly at
-// the payment boundary.
+// If VITE_STRIPE_PUBLISHABLE_KEY isn't set (e.g. a preview env without
+// Stripe configured yet), checkout falls back to the legacy path: the order
+// is created pending_payment and the customer is told, honestly, that card
+// payment isn't live yet.
 
 type Address = {
   id: string;
@@ -40,6 +40,31 @@ type Address = {
   postal_code: string;
   country: string;
 };
+
+async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Polls the order's payment_status until it leaves "unpaid" or attempts run out. */
+async function pollPaymentStatus(orderId: string, attempts = 6, intervalMs = 2000): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    await sleep(intervalMs);
+    const { data } = await supabase
+      .from("orders")
+      .select("payment_status")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (data && data.payment_status !== "unpaid") {
+      return data.payment_status === "paid";
+    }
+  }
+  return false;
+}
 
 export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
@@ -54,8 +79,14 @@ export default function CheckoutPage() {
   const [useCredit, setUseCredit] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
-  const [paidComplete, setPaidComplete] = useState(false);
+  const [paidComplete, setPaidComplete] = useState(false); // zero-balance (store credit) order
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [dueCents, setDueCents] = useState(0);
+  const [paymentPendingSetup, setPaymentPendingSetup] = useState(false); // legacy / Stripe unavailable
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [cardPaymentDone, setCardPaymentDone] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -124,33 +155,11 @@ export default function CheckoutPage() {
         });
       }
 
-      // SERVER computes canonical totals + revalidates sellable stock atomically.
-      const { data, error: rpcError } = await supabase.rpc(
-        "checkout_create_order",
-        {
-          p_shipping_method: method,
-          p_store_credit_requested_cents: useCredit ? creditBalance : 0,
-          p_ship_recipient: chosenAddress?.recipient ?? null,
-          p_ship_line1: chosenAddress?.line1 ?? null,
-          p_ship_line2: chosenAddress?.line2 ?? null,
-          p_ship_city: chosenAddress?.city ?? null,
-          p_ship_state: chosenAddress?.state ?? null,
-          p_ship_postal_code: chosenAddress?.postal_code ?? null,
-          p_ship_country: chosenAddress?.country ?? "US",
-        },
-      );
-      if (rpcError) throw new Error(friendlyCheckoutError(rpcError.message));
-      const result = Array.isArray(data) ? data[0] : data;
-      if (!result) throw new Error("Order could not be created.");
-
-      setPlacedOrderId(result.order_id);
-      await refresh(); // cart was emptied server-side
-
-      if (result.amount_due_cents === 0) {
-        // Zero-balance order was marked paid by the trusted DB path.
-        setPaidComplete(true);
+      if (isStripeConfigured) {
+        await placeOrderViaStripe();
+      } else {
+        await placeOrderLegacy();
       }
-      // else: order is pending_payment; card payment is not live yet (see UI).
     } catch (e) {
       setError(e instanceof Error ? e.message : "Checkout failed.");
     } finally {
@@ -158,17 +167,108 @@ export default function CheckoutPage() {
     }
   };
 
+  // Stripe-enabled path: server creates the canonical order AND (if a
+  // balance is due) a PaymentIntent for exactly that amount, in one call.
+  const placeOrderViaStripe = async () => {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Please sign in to check out.");
+    const res = await fetch("/api/checkout/create-payment-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        shippingMethod: method,
+        storeCreditRequestedCents: useCredit ? creditBalance : 0,
+        ship: {
+          recipient: chosenAddress?.recipient ?? undefined,
+          line1: chosenAddress?.line1 ?? undefined,
+          line2: chosenAddress?.line2 ?? undefined,
+          city: chosenAddress?.city ?? undefined,
+          state: chosenAddress?.state ?? undefined,
+          postalCode: chosenAddress?.postal_code ?? undefined,
+          country: chosenAddress?.country ?? "US",
+        },
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.ok) {
+      // The order may still have been created (e.g. PaymentIntent creation
+      // failed after order creation) — surface that honestly if so.
+      if (body?.orderId) {
+        setPlacedOrderId(body.orderId);
+        setPaymentPendingSetup(true);
+        await refresh();
+        return;
+      }
+      throw new Error(friendlyCheckoutError(body?.message || ""));
+    }
+
+    setPlacedOrderId(body.orderId);
+    await refresh(); // cart was emptied server-side
+
+    if (body.paid) {
+      setPaidComplete(true);
+      return;
+    }
+    if (body.clientSecret) {
+      setDueCents(body.amountDueCents ?? 0);
+      setClientSecret(body.clientSecret);
+      return;
+    }
+    // Shouldn't happen, but fail honestly rather than silently.
+    setPaymentPendingSetup(true);
+  };
+
+  // Legacy path (no VITE_STRIPE_PUBLISHABLE_KEY configured): create the
+  // order directly; any balance due stays pending_payment.
+  const placeOrderLegacy = async () => {
+    const { data, error: rpcError } = await supabase.rpc("checkout_create_order", {
+      p_shipping_method: method,
+      p_store_credit_requested_cents: useCredit ? creditBalance : 0,
+      p_ship_recipient: chosenAddress?.recipient ?? null,
+      p_ship_line1: chosenAddress?.line1 ?? null,
+      p_ship_line2: chosenAddress?.line2 ?? null,
+      p_ship_city: chosenAddress?.city ?? null,
+      p_ship_state: chosenAddress?.state ?? null,
+      p_ship_postal_code: chosenAddress?.postal_code ?? null,
+      p_ship_country: chosenAddress?.country ?? "US",
+    });
+    if (rpcError) throw new Error(friendlyCheckoutError(rpcError.message));
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result) throw new Error("Order could not be created.");
+
+    setPlacedOrderId(result.order_id);
+    await refresh(); // cart was emptied server-side
+
+    if (result.amount_due_cents === 0) {
+      setPaidComplete(true);
+    } else {
+      setPaymentPendingSetup(true);
+    }
+  };
+
+  const handlePaid = async () => {
+    if (!placedOrderId) return;
+    setConfirmingPayment(true);
+    await pollPaymentStatus(placedOrderId);
+    // Whether or not the webhook had already landed by the time polling
+    // stopped, the card payment itself succeeded (Stripe confirmed it to
+    // us) — the order page will always show the true DB state either way.
+    setConfirmingPayment(false);
+    setCardPaymentDone(true);
+  };
+
   if (authLoading || cartLoading) {
     return <div className="gg-page">Loading…</div>;
   }
 
   // ---- Confirmation states -------------------------------------------------
-  if (placedOrderId && paidComplete) {
+  if (placedOrderId && (paidComplete || cardPaymentDone)) {
     return (
       <div className="gg-page gg-empty">
         <h1>Order confirmed 🎉</h1>
         <p>
-          Your store-credit order is paid and confirmed. Order #
+          Your order is paid and confirmed. Order #
           {placedOrderId.slice(0, 8).toUpperCase()}.
         </p>
         <Link to={`/account/orders/${placedOrderId}`} className="gg-btn">
@@ -177,18 +277,43 @@ export default function CheckoutPage() {
       </div>
     );
   }
-  if (placedOrderId && !paidComplete) {
+
+  if (placedOrderId && clientSecret && !confirmingPayment) {
+    return (
+      <div className="gg-page">
+        <h1 style={{ color: "var(--gg-ink)" }}>Payment</h1>
+        <p className="gg-card-meta">
+          Order #{placedOrderId.slice(0, 8).toUpperCase()} — your cards are reserved.
+          Enter your card details to complete the order.
+        </p>
+        <Elements stripe={getStripePromise()} options={{ clientSecret }}>
+          <StripePaymentForm dueCents={dueCents} onPaid={handlePaid} />
+        </Elements>
+      </div>
+    );
+  }
+
+  if (placedOrderId && confirmingPayment) {
     return (
       <div className="gg-page gg-empty">
-        <h1>Order created — payment not yet enabled</h1>
+        <h1>Confirming your payment…</h1>
+        <p>This only takes a moment. Please don&rsquo;t close this page.</p>
+      </div>
+    );
+  }
+
+  if (placedOrderId && paymentPendingSetup) {
+    return (
+      <div className="gg-page gg-empty">
+        <h1>Order created — payment pending</h1>
         <p>
           We created your order (#{placedOrderId.slice(0, 8).toUpperCase()}) and
-          reserved your cards, but online card payment isn&rsquo;t live yet, so{" "}
-          <strong>no money has been charged</strong>.
+          reserved your cards, but <strong>no money has been charged</strong>.
         </p>
         <p className="gg-alert gg-alert-warn" style={{ maxWidth: 560, margin: "1rem auto" }}>
-          The store owner is finishing payment setup. Your order is saved as
-          pending — you can view it in your account.
+          {isStripeConfigured
+            ? "We couldn't start payment just now — please try again shortly, or contact us and reference this order."
+            : "The store owner is finishing payment setup. Your order is saved as pending — you can view it in your account."}
         </p>
         <Link to={`/account/orders/${placedOrderId}`} className="gg-btn">
           View order
@@ -341,7 +466,7 @@ export default function CheckoutPage() {
             <SummaryRow label="Amount due" value={totals.amountDueCents} strong />
           </div>
 
-          {totals.amountDueCents > 0 && (
+          {totals.amountDueCents > 0 && !isStripeConfigured && (
             <p className="gg-alert gg-alert-warn" style={{ fontSize: "0.85rem" }}>
               Card payment isn&rsquo;t live yet. Placing this order reserves your
               cards as <strong>pending</strong>; you won&rsquo;t be charged now.
@@ -358,7 +483,9 @@ export default function CheckoutPage() {
               ? "Placing…"
               : totals.amountDueCents === 0
                 ? "Place order (store credit)"
-                : "Place order"}
+                : isStripeConfigured
+                  ? "Continue to payment"
+                  : "Place order"}
           </button>
           <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>
             Final totals are confirmed by our server; stock is re-checked when you
@@ -367,6 +494,66 @@ export default function CheckoutPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function StripePaymentForm({
+  dueCents,
+  onPaid,
+}: {
+  dueCents: number;
+  onPaid: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+  const [cardError, setCardError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setSubmitting(true);
+    setCardError(null);
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+    });
+    if (confirmError) {
+      setCardError(
+        confirmError.message ??
+          "Payment failed. Please check your card details and try again.",
+      );
+      setSubmitting(false);
+      return;
+    }
+    if (
+      paymentIntent &&
+      (paymentIntent.status === "succeeded" || paymentIntent.status === "processing")
+    ) {
+      onPaid();
+      return;
+    }
+    setCardError("Payment could not be completed. Please try a different payment method.");
+    setSubmitting(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="gg-form" style={{ maxWidth: 480, marginTop: "1rem" }}>
+      <PaymentElement />
+      {cardError && (
+        <div className="gg-alert gg-alert-error" role="alert" style={{ marginTop: "1rem" }}>
+          {cardError}
+        </div>
+      )}
+      <button
+        className="gg-btn"
+        style={{ width: "100%", marginTop: "1rem" }}
+        disabled={!stripe || !elements || submitting}
+        type="submit"
+      >
+        {submitting ? "Processing…" : `Pay ${formatCents(dueCents)}`}
+      </button>
+    </form>
   );
 }
 
@@ -396,11 +583,12 @@ function SummaryRow({
 
 function friendlyCheckoutError(msg: string): string {
   const m = msg.toLowerCase();
-  if (m.includes("insufficient stock"))
+  if (m.includes("insufficient stock") || m.includes("stock_conflict"))
     return "Some items just sold out or changed availability. Your cart was updated — please review and try again.";
   if (m.includes("no price"))
     return "One of your items isn’t priced and can’t be purchased right now.";
   if (m.includes("cart is empty")) return "Your cart is empty.";
-  if (m.includes("not authenticated")) return "Please sign in to check out.";
+  if (m.includes("not authenticated") || m.includes("session expired"))
+    return "Please sign in to check out.";
   return "Checkout could not be completed. Please try again.";
 }

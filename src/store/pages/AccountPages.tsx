@@ -5,6 +5,7 @@ import { Link, useRouter, matchRoute } from "../lib/router";
 import { formatCents } from "../lib/money";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
+import { isStripeConfigured } from "../lib/stripeClient";
 import {
   ORDER_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -990,8 +991,16 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
         <Row label="Total" value={order.total_cents} strong />
         {order.amount_due_cents > 0 && order.payment_status === "unpaid" && (
           <p className="gg-alert gg-alert-warn" style={{ marginTop: "0.5rem" }}>
-            Amount due: {formatCents(order.amount_due_cents)} — card payment isn&rsquo;t
-            live yet, so nothing has been charged.
+            Amount due: {formatCents(order.amount_due_cents)} —{" "}
+            {isStripeConfigured
+              ? "this order is awaiting payment. Nothing has been charged."
+              : "card payment isn’t live yet, so nothing has been charged."}
+          </p>
+        )}
+        {order.amount_due_cents > 0 && order.payment_status === "processing" && (
+          <p className="gg-alert gg-alert-warn" style={{ marginTop: "0.5rem" }}>
+            Amount due: {formatCents(order.amount_due_cents)} — we&rsquo;re confirming
+            your payment now. This page will update once it&rsquo;s complete.
           </p>
         )}
       </div>

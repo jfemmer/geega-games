@@ -138,7 +138,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           order_id: order.order_id,
           user_id: userData.user.id,
         },
-        automatic_payment_methods: { enabled: true },
+        // Redirect-free: the client always resolves confirmPayment() on this
+        // page (no return_url/page-reload handling to build), and a declined
+        // card can be retried in place against the same PaymentIntent.
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
       },
       // Idempotency: retrying the same order won't create duplicate intents.
       { idempotencyKey: `pi_${order.order_id}` },
