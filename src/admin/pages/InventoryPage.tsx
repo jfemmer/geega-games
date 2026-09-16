@@ -27,6 +27,7 @@ import { formatCents, formatDateTime, timeAgo, fullName } from "../utils/format"
 import {
   CONDITION_LABELS,
   FINISH_LABELS,
+  RARITY_LABELS,
   rarityLabel,
   rarityTone,
   LISTING_STATUS_LABELS,
@@ -38,6 +39,7 @@ import type {
   CardFinish,
   Customer,
   CustomerReservations,
+  FloorableRarity,
   InventoryItem,
   InventoryMovement,
   InventoryQuery,
@@ -103,8 +105,9 @@ export function InventoryPage({
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
   const [reserveTarget, setReserveTarget] = useState<InventoryItem | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [priceFloorsOpen, setPriceFloorsOpen] = useState(false);
 
-  const setCodes = useAsync(() => inventoryRepository.setCodes(), []);
+  const setOptions = useAsync(() => inventoryRepository.setOptions(), []);
 
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0];
 
@@ -251,7 +254,7 @@ export function InventoryPage({
           <div className="gg-cardcell__text">
             <span className="gg-cardcell__name">{r.cardName}</span>
             <span className="gg-cardcell__set">
-              {r.setCode} · #{r.collectorNumber} ·{" "}
+              {r.setName ?? r.setCode} · #{r.collectorNumber} ·{" "}
               <Badge tone={rarityTone(r.rarity)}>{rarityLabel(r.rarity)}</Badge>
             </span>
           </div>
@@ -356,6 +359,13 @@ export function InventoryPage({
         description="Every sellable line — one printing, condition, and finish per row."
         actions={
           <div className="gg-btn-row">
+            <Button
+              variant="secondary"
+              icon="dollar"
+              onClick={() => setPriceFloorsOpen(true)}
+            >
+              Price floors
+            </Button>
             <Button variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>
               Import
             </Button>
@@ -445,9 +455,9 @@ export function InventoryPage({
               onChange={(e) => setSetCode(e.target.value)}
             >
               <option value="all">All sets</option>
-              {(setCodes.data ?? []).map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {(setOptions.data ?? []).map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name}
                 </option>
               ))}
             </SelectField>
@@ -524,7 +534,7 @@ export function InventoryPage({
         onClose={() => setAddOpen(false)}
         onSaved={() => {
           inv.reload();
-          setCodes.reload();
+          setOptions.reload();
         }}
       />
 
@@ -536,7 +546,7 @@ export function InventoryPage({
           setEditItem(null);
           setDetailItem(updated);
           inv.reload();
-          setCodes.reload();
+          setOptions.reload();
         }}
       />
 
@@ -597,7 +607,7 @@ export function InventoryPage({
             setDeleteTarget(null);
             setDetailItem(null);
             inv.reload();
-            setCodes.reload();
+            setOptions.reload();
           } catch (err) {
             // Blocked (409) or other error — keep the dialog context but inform.
             setDeleteTarget(null);
@@ -616,8 +626,13 @@ export function InventoryPage({
         onClose={() => setImportOpen(false)}
         onImported={() => {
           inv.reload();
-          setCodes.reload();
+          setOptions.reload();
         }}
+      />
+      <PriceFloorsModal
+        open={priceFloorsOpen}
+        onClose={() => setPriceFloorsOpen(false)}
+        onSaved={() => {}}
       />
       <ReserveModal
         item={reserveTarget}
@@ -1024,7 +1039,7 @@ function ReservedView({ onNavigate }: { onNavigate: (path: string) => void }) {
                             {r.cardName}
                           </span>
                           <span className="gg-reserved__cardmeta">
-                            {r.setCode} · #{r.collectorNumber} ·{" "}
+                            {r.setName ?? r.setCode} · #{r.collectorNumber} ·{" "}
                             {r.condition} · {FINISH_LABELS[r.finish]}
                           </span>
                           <span className="gg-reserved__cardmeta gg-muted">
@@ -1277,6 +1292,122 @@ function ReserveModal({
               hint={`Up to ${available}.`}
             />
           </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+const FLOOR_RARITIES: FloorableRarity[] = ["common", "uncommon", "rare", "mythic"];
+
+function dollarsFromCents(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+function centsFromDollars(input: string): number {
+  const n = Number.parseFloat(input);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0;
+}
+
+/**
+ * Per-rarity minimum sell price. When staff price a card from its market
+ * (Scryfall) reference — in Add Card or when matching a printing during
+ * scan review — the suggested price is raised to this minimum if the
+ * market price is below it. A price staff types in by hand is never
+ * overridden, and existing inventory is never retroactively repriced.
+ */
+function PriceFloorsModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [values, setValues] = useState<Record<FloorableRarity, string>>({
+    common: "0.00",
+    uncommon: "0.00",
+    rare: "0.00",
+    mythic: "0.00",
+  });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    inventoryRepository
+      .getPriceFloors()
+      .then((floors) => {
+        const next = { common: "0.00", uncommon: "0.00", rare: "0.00", mythic: "0.00" };
+        for (const f of floors) next[f.rarity] = dollarsFromCents(f.minPriceCents);
+        setValues(next);
+      })
+      .catch(() => toast.error("Could not load price floors."))
+      .finally(() => setLoading(false));
+  }, [open, toast]);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      await inventoryRepository.savePriceFloors({
+        common: centsFromDollars(values.common),
+        uncommon: centsFromDollars(values.uncommon),
+        rare: centsFromDollars(values.rare),
+        mythic: centsFromDollars(values.mythic),
+      });
+      toast.success("Price floors saved.");
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save price floors.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Price floors"
+      size="sm"
+      footer={
+        <div className="gg-drawer-actions__buttons">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={saving} onClick={submit}>
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="gg-detail">
+        <p className="gg-muted">
+          Set a minimum sell price per rarity. When a card is priced from its market
+          (Scryfall) reference — in Add Card or when matching a scan — the suggested
+          price is raised to this minimum if the market price is below it. Leave a
+          rarity at $0.00 for no minimum. This never changes existing inventory or a
+          price you type in yourself.
+        </p>
+        {loading ? (
+          <p className="gg-muted">Loading…</p>
+        ) : (
+          FLOOR_RARITIES.map((rarity) => (
+            <TextField
+              key={rarity}
+              label={RARITY_LABELS[rarity]}
+              type="number"
+              min={0}
+              step="0.01"
+              value={values[rarity]}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [rarity]: e.target.value }))
+              }
+            />
+          ))
         )}
       </div>
     </Modal>

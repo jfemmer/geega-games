@@ -104,13 +104,13 @@ export default function ShopPage() {
           <div className="gg-filter-group">
             <h3>Set</h3>
             {facets.sets.slice(0, 30).map((s) => (
-              <label className="gg-check" key={s}>
+              <label className="gg-check" key={s.code}>
                 <input
                   type="checkbox"
-                  checked={filters.sets.includes(s)}
-                  onChange={() => toggle("sets", s)}
+                  checked={filters.sets.includes(s.code)}
+                  onChange={() => toggle("sets", s.code)}
                 />
-                {s.toUpperCase()}
+                {s.name}
               </label>
             ))}
           </div>

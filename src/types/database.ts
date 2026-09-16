@@ -725,6 +725,27 @@ export type Database = {
           },
         ]
       }
+      inventory_price_floors: {
+        Row: {
+          min_price_cents: number
+          rarity: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          min_price_cents?: number
+          rarity: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          min_price_cents?: number
+          rarity?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       inventory_reservations: {
         Row: {
           created_at: string
@@ -1926,6 +1947,7 @@ export type Database = {
         Args: never
         Returns: {
           set_code: string
+          set_name: string
         }[]
       }
       admin_list_reservations: {
@@ -2204,7 +2226,7 @@ export type Database = {
           price_max_cents: number
           price_min_cents: number
           rarities: string[]
-          sets: string[]
+          sets: Json
         }[]
       }
       inventory_write_authorized: { Args: never; Returns: boolean }

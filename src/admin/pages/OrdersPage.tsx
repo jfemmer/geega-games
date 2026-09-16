@@ -458,7 +458,7 @@ function OrderDetail({
                         {it.quantity}× {it.cardName}
                       </span>
                       <span className="gg-packitem__meta">
-                        {it.setCode ? `${it.setCode} · ` : ""}
+                        {(it.setName ?? it.setCode) ? `${it.setName ?? it.setCode} · ` : ""}
                         {it.collectorNumber ? `#${it.collectorNumber} · ` : ""}
                         {it.condition} · {FINISH_LABELS[it.finish]}
                       </span>

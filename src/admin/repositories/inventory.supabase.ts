@@ -22,8 +22,10 @@ import { supabase } from "../../supabase";
 import type {
   CardCondition,
   CardFinish,
+  FloorableRarity,
   InventoryItem,
   InventoryMovement,
+  InventoryPriceFloor,
   InventoryPrintingEdit,
   InventoryQuery,
   Page,
@@ -149,10 +151,13 @@ export const supabaseInventoryRepository: InventoryRepository = {
     return data ? mapInventoryRow(data as InventoryRowLike) : null;
   },
 
-  async setCodes(): Promise<string[]> {
+  async setOptions(): Promise<{ code: string; name: string }[]> {
     const { data, error } = await supabase.rpc("admin_inventory_set_codes");
     if (error) throw new Error(error.message);
-    return ((data ?? []) as { set_code: string }[]).map((r) => r.set_code);
+    return ((data ?? []) as { set_code: string; set_name: string | null }[]).map((r) => ({
+      code: r.set_code,
+      name: r.set_name ?? r.set_code,
+    }));
   },
 
   async create(
@@ -326,5 +331,38 @@ export const supabaseInventoryRepository: InventoryRepository = {
     // guess; kept to satisfy the interface.
     void term;
     return [];
+  },
+
+  async getPriceFloors(): Promise<InventoryPriceFloor[]> {
+    const { data, error } = await supabase
+      .from("inventory_price_floors")
+      .select("rarity, min_price_cents, updated_at, updated_by")
+      .order("rarity");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({
+      rarity: r.rarity as FloorableRarity,
+      minPriceCents: r.min_price_cents,
+      updatedAt: r.updated_at,
+      updatedBy: r.updated_by,
+    }));
+  },
+
+  async savePriceFloors(
+    floors: Record<FloorableRarity, number>,
+  ): Promise<InventoryPriceFloor[]> {
+    const res = await authFetch<{
+      floors: {
+        rarity: FloorableRarity;
+        min_price_cents: number;
+        updated_at: string;
+        updated_by: string | null;
+      }[];
+    }>("/price-floors", { method: "PUT", body: floors });
+    return res.floors.map((r) => ({
+      rarity: r.rarity,
+      minPriceCents: r.min_price_cents,
+      updatedAt: r.updated_at,
+      updatedBy: r.updated_by,
+    }));
   },
 };

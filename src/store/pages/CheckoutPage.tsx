@@ -231,7 +231,7 @@ export default function CheckoutPage() {
               <div className="gg-line-info">
                 <div className="gg-card-name">{l.name}</div>
                 <div className="gg-card-meta">
-                  {l.setCode?.toUpperCase()} · {l.condition} × {l.quantity}
+                  {l.setName ?? l.setCode?.toUpperCase()} · {l.condition} × {l.quantity}
                 </div>
               </div>
               <div className="gg-price">

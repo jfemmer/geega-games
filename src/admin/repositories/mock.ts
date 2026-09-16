@@ -28,6 +28,7 @@ import type {
   DateRangeKey,
   InventoryItem,
   InventoryMovement,
+  InventoryPriceFloor,
   InventoryPrintingEdit,
   InventoryQuery,
   Order,
@@ -59,6 +60,14 @@ const REFERENCED_INVENTORY_IDS = new Set<string>(["inv_1"]);
 
 // Clone seeds so the module owns its own mutable state.
 let inventory: InventoryItem[] = INVENTORY_SEED.map((i) => ({ ...i }));
+let priceFloors: InventoryPriceFloor[] = (
+  ["common", "uncommon", "rare", "mythic"] as const
+).map((rarity) => ({
+  rarity,
+  minPriceCents: 0,
+  updatedAt: new Date().toISOString(),
+  updatedBy: null,
+}));
 let movements: InventoryMovement[] = INVENTORY_MOVEMENTS_SEED.map((m) => ({
   ...m,
 }));
@@ -154,9 +163,13 @@ export const mockInventoryRepository: InventoryRepository = {
     return delay(inventory.find((i) => i.id === id) ?? null, 150);
   },
 
-  async setCodes() {
+  async setOptions() {
+    const byCode = new Map<string, string>();
+    for (const i of inventory) byCode.set(i.setCode, i.setName ?? i.setCode);
     return delay(
-      Array.from(new Set(inventory.map((i) => i.setCode))).sort(),
+      Array.from(byCode, ([code, name]) => ({ code, name })).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
       100,
     );
   },
@@ -393,6 +406,27 @@ export const mockInventoryRepository: InventoryRepository = {
           p.setCode.toLowerCase().includes(q),
       ),
       250,
+    );
+  },
+
+  async getPriceFloors() {
+    return delay(
+      priceFloors.map((f) => ({ ...f })),
+      100,
+    );
+  },
+
+  async savePriceFloors(floors) {
+    const now = new Date().toISOString();
+    priceFloors = priceFloors.map((f) => ({
+      ...f,
+      minPriceCents: floors[f.rarity],
+      updatedAt: now,
+      updatedBy: "you@geega-games.com",
+    }));
+    return delay(
+      priceFloors.map((f) => ({ ...f })),
+      150,
     );
   },
 };

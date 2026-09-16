@@ -252,7 +252,7 @@ export function OverviewPage({
                     <span className="gg-attention__main">
                       <span className="gg-attention__title">{i.cardName}</span>
                       <span className="gg-attention__sub">
-                        {i.setCode} · {i.condition} · {i.finish}
+                        {i.setName ?? i.setCode} · {i.condition} · {i.finish}
                       </span>
                     </span>
                     <span className="gg-attention__meta">

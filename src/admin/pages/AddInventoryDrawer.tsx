@@ -13,11 +13,13 @@ import { useToast } from "../hooks/useToast";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { formatCents } from "../utils/format";
 import { CONDITION_LABELS, FINISH_LABELS } from "../utils/labels";
+import { applyPriceFloor } from "../utils/pricing";
 import type {
   CardCondition,
   CardFinish,
   CardPrinting,
   InventoryItem,
+  InventoryPriceFloor,
 } from "../types";
 
 const CONDITIONS: CardCondition[] = ["NM", "LP", "MP", "HP", "DMG"];
@@ -57,12 +59,26 @@ export function AddInventoryDrawer({
   const [addAnother, setAddAnother] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dupe, setDupe] = useState<InventoryItem | null>(null);
+  const [priceFloors, setPriceFloors] = useState<InventoryPriceFloor[]>([]);
 
   useEffect(() => {
     if (!open) {
       setSelected(null);
       resetForm();
     }
+  }, [open]);
+
+  // Loaded once when the drawer opens so the price auto-fill below can floor
+  // the Scryfall reference price to the seller's per-rarity minimum.
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    inventoryRepository.getPriceFloors().then((floors) => {
+      if (active) setPriceFloors(floors);
+    });
+    return () => {
+      active = false;
+    };
   }, [open]);
 
   function resetForm() {
@@ -87,14 +103,20 @@ export function AddInventoryDrawer({
   }, [selected]);
 
   // Reference price follows the selected finish; only prefill when price empty.
+  // Floored to the rarity's minimum (if staff has set one above 0) so a
+  // below-market Scryfall reference never gets suggested as-is.
   useEffect(() => {
     if (!selected) return;
-    const ref = priceForFinish(selected, finish);
+    const ref = applyPriceFloor(
+      priceForFinish(selected, finish),
+      selected.rarity,
+      priceFloors,
+    );
     if (ref != null) {
       setPrice((prev) => (prev === "" ? (ref / 100).toFixed(2) : prev));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finish, selected]);
+  }, [finish, selected, priceFloors]);
 
   // Dupe detection: prefer scryfall identity, fall back to set/collector.
   useEffect(() => {

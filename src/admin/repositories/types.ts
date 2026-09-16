@@ -19,8 +19,10 @@ import type {
   CustomerQuery,
   CustomerReservations,
   DateRangeKey,
+  FloorableRarity,
   InventoryItem,
   InventoryMovement,
+  InventoryPriceFloor,
   InventoryPrintingEdit,
   InventoryQuery,
   Order,
@@ -43,8 +45,8 @@ import type {
 export interface InventoryRepository {
   list(query: InventoryQuery): Promise<Page<InventoryItem>>;
   get(id: string): Promise<InventoryItem | null>;
-  /** Distinct set codes present in inventory, for the set filter. */
-  setCodes(): Promise<string[]>;
+  /** Distinct sets present in inventory, code + full name, for the set filter. */
+  setOptions(): Promise<{ code: string; name: string }[]>;
   create(
     input: Omit<InventoryItem, "id" | "createdAt" | "updatedAt">,
     adminName: string,
@@ -100,6 +102,12 @@ export interface InventoryRepository {
     finish: CardFinish,
   ): Promise<InventoryItem | null>;
   searchPrintings(term: string): Promise<CardPrinting[]>;
+  /** Current per-rarity price floors (one row per rarity). */
+  getPriceFloors(): Promise<InventoryPriceFloor[]>;
+  /** Replace all 4 floors in one call. */
+  savePriceFloors(
+    floors: Record<FloorableRarity, number>,
+  ): Promise<InventoryPriceFloor[]>;
 }
 
 /* ------------------------------------------------------------------ *

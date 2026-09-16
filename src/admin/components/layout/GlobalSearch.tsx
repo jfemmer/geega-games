@@ -62,7 +62,7 @@ export function GlobalSearch({
         ...inv.rows.slice(0, 4).map((i) => ({
           id: `inv_${i.id}`,
           label: i.cardName,
-          sub: `${i.setCode} · ${i.condition} · ${i.finish}`,
+          sub: `${i.setName ?? i.setCode} · ${i.condition} · ${i.finish}`,
           icon: "inventory" as IconName,
           path: `${ADMIN_BASE}/inventory?item=${i.id}`,
         })),

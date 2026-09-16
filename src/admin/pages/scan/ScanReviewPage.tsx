@@ -18,11 +18,17 @@ import { ScryfallSearch } from "../../components/cards/ScryfallSearch";
 import { SelectedPrintingPreview } from "../../components/cards/PrintingPreview";
 import { useAsync } from "../../hooks/useAsync";
 import { useToast } from "../../hooks/useToast";
-import { scanRepository, scryfallRepository, recognitionProvider } from "../../repositories";
+import {
+  inventoryRepository,
+  scanRepository,
+  scryfallRepository,
+  recognitionProvider,
+} from "../../repositories";
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
 import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS, SCAN_MODE_LABELS } from "../../utils/labels";
+import { applyPriceFloor } from "../../utils/pricing";
 import type {
   BatchCommitPreview,
   CardCondition,
@@ -30,6 +36,7 @@ import type {
   CardPrinting,
   CardScan,
   DefectFinding,
+  InventoryPriceFloor,
   RecognitionCandidate,
   RecognitionStatus,
   ScanFilterKey,
@@ -90,7 +97,20 @@ export function ScanReviewPage({
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [priceFloors, setPriceFloors] = useState<InventoryPriceFloor[]>([]);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Loaded once so the auto-suggested price (below, when a printing is
+  // matched) can be floored to the seller's per-rarity minimum.
+  useEffect(() => {
+    let active = true;
+    inventoryRepository.getPriceFloors().then((floors) => {
+      if (active) setPriceFloors(floors);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const session = useAsync(() => scanRepository.getSession(sessionId), [sessionId, nonce]);
   const counts = useAsync(() => scanRepository.filterCounts(sessionId), [sessionId, nonce]);
@@ -223,13 +243,15 @@ export function ScanReviewPage({
           scan.selectedFinish && printing.availableFinishes.includes(scan.selectedFinish)
             ? scan.selectedFinish
             : printing.availableFinishes[0] ?? null,
-        priceCents: scan.priceCents ?? printing.scryfallPriceCents ?? null,
+        priceCents:
+          scan.priceCents ??
+          applyPriceFloor(printing.scryfallPriceCents, printing.rarity, priceFloors),
       });
       setActiveId(scan.id);
       reloadAll();
-      toast.success(`Matched to ${printing.cardName} (${printing.setCode}).`);
+      toast.success(`Matched to ${printing.cardName} (${printing.setName}).`);
     },
-    [reloadAll, toast],
+    [reloadAll, toast, priceFloors],
   );
 
   async function handleMatchChosen(printing: CardPrinting) {
@@ -621,7 +643,7 @@ function ScanRow({
         </span>
         <span className="gg-scanrow__sub">
           {scan.selectedPrinting
-            ? `${scan.selectedPrinting.setCode} · #${scan.selectedPrinting.collectorNumber}`
+            ? `${scan.selectedPrinting.setName} · #${scan.selectedPrinting.collectorNumber}`
             : "No Scryfall match yet"}
           {scan.confirmedCondition && ` · ${scan.confirmedCondition}`}
           {scan.selectedFinish && ` · ${FINISH_LABELS[scan.selectedFinish]}`}

@@ -153,8 +153,10 @@ export function useCatalog(filters: CatalogFilters, page: number) {
   return { cards, total, loading, error, refetch: run };
 }
 
+export type FacetSet = { code: string; name: string };
+
 export type Facets = {
-  sets: string[];
+  sets: FacetSet[];
   rarities: string[];
   creatureTypes: string[];
   priceMinCents: number | null;
@@ -172,7 +174,7 @@ export function useFacets() {
       .then(({ data, error }) => {
         if (!active || error || !data || !data[0]) return;
         const f = data[0] as {
-          sets: string[] | null;
+          sets: FacetSet[] | null;
           rarities: string[] | null;
           creature_types: string[] | null;
           price_min_cents: number | null;

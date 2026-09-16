@@ -121,7 +121,7 @@ export default function CartDrawer({
               <div className="gg-line-info">
                 <div className="gg-card-name">{l.name}</div>
                 <div className="gg-card-meta">
-                  {l.setCode?.toUpperCase()} · {l.condition}
+                  {l.setName ?? l.setCode?.toUpperCase()} · {l.condition}
                   {l.finish !== "nonfoil" ? ` · ${l.finish}` : ""}
                 </div>
                 <div className="gg-card-meta">{formatCents(l.priceCents)} each</div>
