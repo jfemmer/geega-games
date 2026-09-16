@@ -75,6 +75,17 @@
   outline: 3px solid var(--gg-gold);
   outline-offset: 2px;
 }
+/* Account/Sign in/Sign out/Cart: icon-only, so drop the text button's
+   horizontal padding for a compact circular tap target instead. */
+.gg-iconbtn--icon {
+  gap: 0;
+  padding: 0;
+  width: 40px;
+  justify-content: center;
+}
+.gg-cartbtn {
+  position: relative;
+}
 .gg-cart-count {
   background: var(--gg-gold);
   color: var(--gg-ink);
@@ -84,6 +95,16 @@
   font-size: 0.8rem;
   min-width: 1.25rem;
   text-align: center;
+}
+.gg-cartbtn .gg-cart-count {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 1.1rem;
+  font-size: 0.72rem;
+  line-height: 1.1rem;
+  padding: 0 0.3rem;
+  border: 2px solid var(--gg-ink);
 }
 .gg-nav {
   display: flex;

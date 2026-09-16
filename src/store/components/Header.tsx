@@ -3,6 +3,7 @@ import { Link, useRouter } from "../lib/router";
 import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import CartDrawer from "./CartDrawer";
+import { Icon } from "./Icon";
 
 // Debounce before we write a keystroke into the URL. This is independent of
 // useCatalog's own 300ms fetch debounce (which fires off filters.query) — the
@@ -94,30 +95,43 @@ export default function Header() {
         <div className="gg-header-actions">
           {user ? (
             <>
-              <Link to="/account" className="gg-iconbtn">
-                Account
+              <Link
+                to="/account"
+                className="gg-iconbtn gg-iconbtn--icon"
+                aria-label="Account"
+                title="Account"
+              >
+                <Icon name="user" />
               </Link>
               <button
-                className="gg-iconbtn"
+                className="gg-iconbtn gg-iconbtn--icon"
+                aria-label="Sign out"
+                title="Sign out"
                 onClick={async () => {
                   await signOut();
                   navigate("/");
                 }}
               >
-                Sign out
+                <Icon name="logout" />
               </button>
             </>
           ) : (
-            <Link to="/login" className="gg-iconbtn">
-              Sign in
+            <Link
+              to="/login"
+              className="gg-iconbtn gg-iconbtn--icon"
+              aria-label="Sign in"
+              title="Sign in"
+            >
+              <Icon name="user" />
             </Link>
           )}
           <button
-            className="gg-iconbtn"
+            className="gg-iconbtn gg-iconbtn--icon gg-cartbtn"
             onClick={() => setCartOpen(true)}
             aria-label={`Open cart, ${itemCount} item${itemCount === 1 ? "" : "s"}`}
+            title="Cart"
           >
-            Cart
+            <Icon name="cart" />
             {itemCount > 0 && (
               <span className="gg-cart-count">{itemCount}</span>
             )}
