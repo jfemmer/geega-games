@@ -749,10 +749,11 @@ export type Database = {
       inventory_reservations: {
         Row: {
           created_at: string
-          customer_id: string
+          customer_id: string | null
           id: string
           inventory_item_id: string
           note: string | null
+          pickup_request_id: string | null
           quantity: number
           released_at: string | null
           released_by: string | null
@@ -763,10 +764,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          customer_id: string
+          customer_id?: string | null
           id?: string
           inventory_item_id: string
           note?: string | null
+          pickup_request_id?: string | null
           quantity: number
           released_at?: string | null
           released_by?: string | null
@@ -777,10 +779,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          customer_id?: string
+          customer_id?: string | null
           id?: string
           inventory_item_id?: string
           note?: string | null
+          pickup_request_id?: string | null
           quantity?: number
           released_at?: string | null
           released_by?: string | null
@@ -809,6 +812,13 @@ export type Database = {
             columns: ["inventory_item_id"]
             isOneToOne: false
             referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_pickup_request_id_fkey"
+            columns: ["pickup_request_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -1109,6 +1119,129 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "payment_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_request_items: {
+        Row: {
+          card_name: string
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          created_at: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string | null
+          inventory_item_id: string | null
+          pickup_request_id: string
+          pulled: boolean
+          quantity: number
+          set_code: string | null
+          set_name: string | null
+          unit_price_cents: number
+        }
+        Insert: {
+          card_name: string
+          collector_number?: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          inventory_item_id?: string | null
+          pickup_request_id: string
+          pulled?: boolean
+          quantity: number
+          set_code?: string | null
+          set_name?: string | null
+          unit_price_cents: number
+        }
+        Update: {
+          card_name?: string
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"]
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          inventory_item_id?: string | null
+          pickup_request_id?: string
+          pulled?: boolean
+          quantity?: number
+          set_code?: string | null
+          set_name?: string | null
+          unit_price_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_request_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_request_items_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_request_items_pickup_request_id_fkey"
+            columns: ["pickup_request_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_requests: {
+        Row: {
+          cancelled_at: string | null
+          completed_at: string | null
+          created_at: string
+          customer_name: string
+          id: string
+          notes: string | null
+          order_id: string | null
+          phone: string | null
+          ready_at: string | null
+          status: Database["public"]["Enums"]["pickup_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          customer_name: string
+          id?: string
+          notes?: string | null
+          order_id?: string | null
+          phone?: string | null
+          ready_at?: string | null
+          status?: Database["public"]["Enums"]["pickup_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          customer_name?: string
+          id?: string
+          notes?: string | null
+          order_id?: string | null
+          phone?: string | null
+          ready_at?: string | null
+          status?: Database["public"]["Enums"]["pickup_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_requests_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
@@ -1948,10 +2081,11 @@ export type Database = {
         }
         Returns: {
           created_at: string
-          customer_id: string
+          customer_id: string | null
           id: string
           inventory_item_id: string
           note: string | null
+          pickup_request_id: string | null
           quantity: number
           released_at: string | null
           released_by: string | null
@@ -2031,10 +2165,11 @@ export type Database = {
         }
         Returns: {
           created_at: string
-          customer_id: string
+          customer_id: string | null
           id: string
           inventory_item_id: string
           note: string | null
+          pickup_request_id: string | null
           quantity: number
           released_at: string | null
           released_by: string | null
@@ -2274,6 +2409,10 @@ export type Database = {
       inventory_write_authorized: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_staff: { Args: never; Returns: boolean }
+      kiosk_create_pickup_request: {
+        Args: { p_customer_name: string; p_items: Json; p_phone: string }
+        Returns: string
+      }
       mark_order_paid: {
         Args: {
           p_order_id: string
@@ -2292,6 +2431,20 @@ export type Database = {
         }[]
       }
       my_store_credit_balance: { Args: never; Returns: number }
+      pos_cancel_pickup_request: {
+        Args: { p_pickup_request_id: string; p_reason?: string }
+        Returns: undefined
+      }
+      pos_complete_pickup_sale: {
+        Args: { p_customer_id?: string; p_pickup_request_id: string }
+        Returns: {
+          amount_due_cents: number
+          order_id: string
+          subtotal_cents: number
+          tax_cents: number
+          total_cents: number
+        }[]
+      }
       pos_create_sale: {
         Args: { p_customer_id?: string; p_items: Json; p_notes?: string }
         Returns: {
@@ -2473,6 +2626,7 @@ export type Database = {
         | "refunded"
       payment_provider: "stripe" | "paypal" | "store_credit" | "manual"
       payment_status: "unpaid" | "processing" | "paid" | "refunded" | "failed"
+      pickup_request_status: "waiting" | "ready" | "completed" | "cancelled"
       recognition_status:
         | "none"
         | "queued"
@@ -2756,6 +2910,7 @@ export const Constants = {
       ],
       payment_provider: ["stripe", "paypal", "store_credit", "manual"],
       payment_status: ["unpaid", "processing", "paid", "refunded", "failed"],
+      pickup_request_status: ["waiting", "ready", "completed", "cancelled"],
       recognition_status: [
         "none",
         "queued",

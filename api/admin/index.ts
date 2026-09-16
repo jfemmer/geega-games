@@ -60,6 +60,11 @@ import { getStripe } from "../_lib/stripe.js";
 //   resource=pos          action=terminal-locations         GET
 //   resource=pos          action=terminal-create-location   POST
 //   resource=pos          action=terminal-readers           GET
+//   resource=pickup        action=list                       GET
+//   resource=pickup        action=toggle-item                POST
+//   resource=pickup        action=mark-ready                 POST
+//   resource=pickup        action=cancel                     POST
+//   resource=pickup        action=complete-sale              POST
 // ─────────────────────────────────────────────────────────────────────────────
 
 type CampaignRow = Database["public"]["Tables"]["campaigns"]["Row"];
@@ -455,6 +460,111 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           limit: 20,
         });
         return sendJson(res, 200, { ok: true, readers: readers.data });
+      }
+    }
+
+    // ─────────────────────────── pickup requests ───────────────────────────
+    // Kiosk-submitted pickup requests (see api/kiosk/submit.ts for how a
+    // customer creates one, with no login). Staff work the queue here: pull
+    // items, mark ready, cancel (releases the hold), or complete the sale
+    // (converts it into a real payable order via pos_complete_pickup_sale,
+    // then the client collects payment through the normal Register flow).
+    if (resource === "pickup") {
+      if (action === "list" && method === "GET") {
+        const { data: requests, error } = await admin
+          .from("pickup_requests")
+          .select("*")
+          .in("status", ["waiting", "ready"])
+          .order("created_at", { ascending: true });
+        if (error) throw new HttpError(500, error.message);
+
+        const ids = (requests ?? []).map((r) => r.id);
+        let itemsByRequest = new Map<string, unknown[]>();
+        if (ids.length > 0) {
+          const { data: items, error: itemsErr } = await admin
+            .from("pickup_request_items")
+            .select("*")
+            .in("pickup_request_id", ids);
+          if (itemsErr) throw new HttpError(500, itemsErr.message);
+          itemsByRequest = new Map();
+          for (const item of items ?? []) {
+            const list = itemsByRequest.get(item.pickup_request_id) ?? [];
+            list.push(item);
+            itemsByRequest.set(item.pickup_request_id, list);
+          }
+        }
+        const rows = (requests ?? []).map((r) => ({
+          ...r,
+          items: itemsByRequest.get(r.id) ?? [],
+        }));
+        return sendJson(res, 200, { ok: true, rows });
+      }
+
+      if (action === "toggle-item" && method === "POST") {
+        const body = await readJsonBody(req);
+        const itemId = String(body.itemId ?? "");
+        if (!itemId) throw new HttpError(400, "itemId is required.");
+        const { data: item, error: readErr } = await admin
+          .from("pickup_request_items")
+          .select("id, pulled")
+          .eq("id", itemId)
+          .maybeSingle();
+        if (readErr) throw new HttpError(500, readErr.message);
+        if (!item) throw new HttpError(404, "Pickup item not found.");
+        const { error } = await admin
+          .from("pickup_request_items")
+          .update({ pulled: !item.pulled })
+          .eq("id", itemId);
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "mark-ready" && method === "POST") {
+        const body = await readJsonBody(req);
+        const requestId = String(body.requestId ?? "");
+        if (!requestId) throw new HttpError(400, "requestId is required.");
+        const { error } = await admin
+          .from("pickup_requests")
+          .update({ status: "ready", ready_at: new Date().toISOString() })
+          .eq("id", requestId)
+          .eq("status", "waiting");
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "cancel" && method === "POST") {
+        const body = await readJsonBody(req);
+        const requestId = String(body.requestId ?? "");
+        if (!requestId) throw new HttpError(400, "requestId is required.");
+        const { error } = await admin.rpc("pos_cancel_pickup_request", {
+          p_pickup_request_id: requestId,
+          p_reason: (body.reason as string) || "Cancelled at register",
+        });
+        if (error) throw new HttpError(500, error.message);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (action === "complete-sale" && method === "POST") {
+        const body = await readJsonBody(req);
+        const requestId = String(body.requestId ?? "");
+        if (!requestId) throw new HttpError(400, "requestId is required.");
+        const { data, error } = await admin.rpc("pos_complete_pickup_sale", {
+          p_pickup_request_id: requestId,
+          p_customer_id: (body.customerId as string) || undefined,
+        });
+        if (error) {
+          const msg = error.message.toLowerCase();
+          const status =
+            msg.includes("insufficient") || msg.includes("no longer available") || msg.includes("missing or was released")
+              ? 409
+              : msg.includes("not found") || msg.includes("cancelled") || msg.includes("already completed")
+                ? 400
+                : 500;
+          throw new HttpError(status, error.message);
+        }
+        const sale = Array.isArray(data) ? data[0] : data;
+        if (!sale) throw new HttpError(500, "Sale did not return a result.");
+        return sendJson(res, 200, { ok: true, sale: sale as unknown as Record<string, unknown> });
       }
     }
 

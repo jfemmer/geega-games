@@ -63,6 +63,7 @@ import {
   mockCampaignRepository,
   mockInventoryRepository,
   mockOrderRepository,
+  mockPickupRequestRepository,
   mockPosRepository,
   mockReservationRepository,
   mockUserRepository,
@@ -74,6 +75,7 @@ import { supabaseCampaignRepository } from "./campaign.supabase";
 import { supabaseReservationRepository } from "./reservation.supabase";
 import { supabaseOrderRepository } from "./order.supabase";
 import { supabasePosRepository } from "./pos.supabase";
+import { supabasePickupRequestRepository } from "./pickup.supabase";
 import { mockScryfallRepository } from "./scryfall.mock";
 import { liveScryfallRepository } from "./scryfall.live";
 import { mockScanRepository } from "./scan.mock";
@@ -87,6 +89,7 @@ import type {
   CardRecognitionProvider,
   InventoryRepository,
   OrderRepository,
+  PickupRequestRepository,
   PosRepository,
   ReservationRepository,
   ScanRepository,
@@ -159,6 +162,10 @@ export const posRepository: PosRepository = useLiveData
   ? supabasePosRepository
   : mockPosRepository;
 
+export const pickupRequestRepository: PickupRequestRepository = useLiveData
+  ? supabasePickupRequestRepository
+  : mockPickupRequestRepository;
+
 // Scan sessions / batch ingest go LIVE whenever Supabase is configured, same
 // condition as users/campaigns/reservations/orders: reads via RLS +
 // scan_filter_counts(), writes via staff-gated /api/admin/scan-sessions/* and
@@ -203,6 +210,7 @@ export type {
   CardRecognitionProvider,
   InventoryRepository,
   OrderRepository,
+  PickupRequestRepository,
   PosRepository,
   ReservationRepository,
   ScanRepository,

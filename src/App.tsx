@@ -25,6 +25,7 @@ import { TermsPage } from "./store/pages/TermsPage";
 import CheckoutPage from "./store/pages/CheckoutPage";
 import SellPage from "./store/pages/SellPage";
 import { AccountPage } from "./store/pages/AccountPages";
+import KioskPage from "./store/pages/KioskPage";
 
 function Routes() {
   const { path } = useRouter();
@@ -50,6 +51,14 @@ function Routes() {
 }
 
 export default function App() {
+  // The in-store kiosk is deliberately standalone: no signed-in account, no
+  // cart, no header/footer chrome — just the kiosk experience on whatever
+  // computer in the shop has this URL open, so a customer's kiosk session
+  // can never touch or be confused with someone else's account/cart.
+  if (window.location.pathname === "/kiosk") {
+    return <KioskPage />;
+  }
+
   return (
     <AuthProvider>
       <CartProvider>

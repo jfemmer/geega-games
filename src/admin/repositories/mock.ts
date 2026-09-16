@@ -35,6 +35,7 @@ import type {
   Order,
   OrderQuery,
   Page,
+  PickupRequest,
   PosSaleItem,
   PosSaleResult,
   PosSettings,
@@ -50,6 +51,7 @@ import type {
   CampaignRepository,
   InventoryRepository,
   OrderRepository,
+  PickupRequestRepository,
   PosRepository,
   ReservationRepository,
   UserRepository,
@@ -96,6 +98,7 @@ let posTerminalLocations: PosTerminalLocation[] = [];
 let posTerminalReaders: PosTerminalReader[] = [
   { id: "tmr_mock1", label: "Front Counter", status: "online", deviceType: "stripe_s700" },
 ];
+let pickupRequests: PickupRequest[] = [];
 
 const LOW_STOCK_THRESHOLD = 2;
 
@@ -977,6 +980,131 @@ export const mockPosRepository: PosRepository = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Pickup requests (kiosk queue)
+ * ------------------------------------------------------------------ */
+
+export const mockPickupRequestRepository: PickupRequestRepository = {
+  async list() {
+    return delay(
+      pickupRequests.filter((r) => r.status === "waiting" || r.status === "ready"),
+      120,
+    );
+  },
+
+  async toggleItem(itemId) {
+    pickupRequests = pickupRequests.map((r) => ({
+      ...r,
+      items: r.items.map((it) => (it.id === itemId ? { ...it, pulled: !it.pulled } : it)),
+    }));
+    return delay(undefined, 80);
+  },
+
+  async markReady(requestId) {
+    pickupRequests = pickupRequests.map((r) =>
+      r.id === requestId && r.status === "waiting" ? { ...r, status: "ready" } : r,
+    );
+    return delay(undefined, 80);
+  },
+
+  async cancel(requestId) {
+    const request = pickupRequests.find((r) => r.id === requestId);
+    if (request) {
+      inventory = inventory.map((inv) => {
+        const line = request.items.find((it) => it.inventoryItemId === inv.id);
+        return line ? { ...inv, quantity: inv.quantity + line.quantity } : inv;
+      });
+    }
+    pickupRequests = pickupRequests.map((r) =>
+      r.id === requestId ? { ...r, status: "cancelled" } : r,
+    );
+    return delay(undefined, 100);
+  },
+
+  async completeSale(requestId, customerId) {
+    const request = pickupRequests.find((r) => r.id === requestId);
+    if (!request) throw new Error("Pickup request not found.");
+    const customer = customerId ? customers.find((c) => c.id === customerId) : undefined;
+
+    let subtotalCents = 0;
+    for (const line of request.items) {
+      const inv = inventory.find((i) => i.id === line.inventoryItemId);
+      if (!inv) throw new Error(`Item no longer available: ${line.cardName}`);
+      subtotalCents += inv.priceCents * line.quantity;
+    }
+
+    inventory = inventory.map((inv) => {
+      const line = request.items.find((it) => it.inventoryItemId === inv.id);
+      return line ? { ...inv, quantity: inv.quantity - line.quantity } : inv;
+    });
+
+    const taxCents = Math.round((subtotalCents * posSettings.salesTaxBps) / 10000);
+    const totalCents = subtotalCents + taxCents;
+    const orderId = mockId("ord");
+    const now = new Date().toISOString();
+
+    const order: Order = {
+      id: orderId,
+      orderNumber: `#${orderId.slice(-8).toUpperCase()}`,
+      channel: "pos",
+      customerId: customerId ?? null,
+      customerName: customer
+        ? `${customer.firstName} ${customer.lastName}`.trim()
+        : request.customerName,
+      customerEmail: customer?.email ?? null,
+      shipRecipient: "",
+      shipLine1: "",
+      shipLine2: null,
+      shipCity: "",
+      shipState: "",
+      shipPostalCode: "",
+      shipCountry: "",
+      paymentStatus: "unpaid",
+      paymentProvider: null,
+      status: "pending_payment",
+      carrier: null,
+      trackingNumber: null,
+      shippingMethod: null,
+      items: request.items.map((it) => ({
+        id: mockId("oi"),
+        cardName: it.cardName,
+        setCode: it.setCode,
+        setName: it.setName,
+        collectorNumber: it.collectorNumber,
+        condition: it.condition,
+        finish: it.finish,
+        quantity: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+        lineTotalCents: it.unitPriceCents * it.quantity,
+        imageUrl: it.imageUrl,
+        packed: false,
+      })),
+      subtotalCents,
+      discountCents: 0,
+      shippingCents: 0,
+      taxCents,
+      totalCents,
+      internalNotes: `Kiosk pickup for ${request.customerName}`,
+      timeline: [statusEvent("Pickup request completed at register", null, "Staff")],
+      emails: [],
+      createdAt: now,
+      paidAt: null,
+      shippedAt: null,
+      deliveredAt: null,
+      cancelledAt: null,
+    };
+    orders = [order, ...orders];
+    pickupRequests = pickupRequests.map((r) =>
+      r.id === requestId ? { ...r, status: "completed" } : r,
+    );
+
+    return delay(
+      { orderId, subtotalCents, taxCents, totalCents, amountDueCents: totalCents },
+      200,
+    );
+  },
+};
+
+/* ------------------------------------------------------------------ *
  * Analytics
  * ------------------------------------------------------------------ */
 
@@ -1013,6 +1141,7 @@ export function __resetMockState() {
   staff = STAFF_SEED.map((s) => ({ ...s, recentActivity: [...s.recentActivity] }));
   posSettings = { salesTaxBps: 0 };
   posTerminalLocations = [];
+  pickupRequests = [];
   __resetScanState();
 }
 

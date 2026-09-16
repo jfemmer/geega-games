@@ -596,6 +596,37 @@ export interface PosTerminalReader {
 }
 
 /* ------------------------------------------------------------------ *
+ * Pickup requests — kiosk-submitted "hold these while I browse" lists
+ * ------------------------------------------------------------------ */
+
+export type PickupRequestStatus = "waiting" | "ready" | "completed" | "cancelled";
+
+export interface PickupRequestItem {
+  id: string;
+  inventoryItemId: string | null;
+  cardName: string;
+  setName: string | null;
+  setCode: string | null;
+  collectorNumber: string | null;
+  condition: CardCondition;
+  finish: CardFinish;
+  imageUrl: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  pulled: boolean;
+}
+
+export interface PickupRequest {
+  id: string;
+  customerName: string;
+  phone: string | null;
+  status: PickupRequestStatus;
+  notes: string | null;
+  createdAt: string;
+  items: PickupRequestItem[];
+}
+
+/* ------------------------------------------------------------------ *
  * Campaigns / announcements
  * ------------------------------------------------------------------ */
 

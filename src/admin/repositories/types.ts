@@ -29,6 +29,7 @@ import type {
   OrderQuery,
   OverviewMetrics,
   Page,
+  PickupRequest,
   PosSaleItem,
   PosSaleResult,
   PosSettings,
@@ -428,6 +429,27 @@ export interface PosRepository {
     country?: string;
   }): Promise<PosTerminalLocation>;
   terminalReaders(locationId?: string): Promise<PosTerminalReader[]>;
+}
+
+/* ------------------------------------------------------------------ *
+ * Pickup requests — the kiosk queue staff work from
+ * ------------------------------------------------------------------ */
+
+export interface PickupRequestRepository {
+  /** Waiting + ready requests, oldest first. */
+  list(): Promise<PickupRequest[]>;
+  /** Toggle whether one line item has been physically pulled. */
+  toggleItem(itemId: string): Promise<void>;
+  /** Mark a request ready for checkout (all items pulled). */
+  markReady(requestId: string): Promise<void>;
+  /** Cancel an unfulfilled request, releasing its holds. */
+  cancel(requestId: string, reason?: string): Promise<void>;
+  /**
+   * Convert a ready request into a real payable order (pos_complete_pickup_sale):
+   * revalidates + decrements stock at LIVE prices and releases the holds as
+   * fulfilled. The caller collects payment next via the normal Register flow.
+   */
+  completeSale(requestId: string, customerId?: string | null): Promise<PosSaleResult>;
 }
 
 export interface AnalyticsRepository {

@@ -6,13 +6,13 @@ import { Spinner } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { InventoryCardImage } from "../components/cards/InventoryCardImage";
+import { PosPaymentStep, PosReceipt, PosTotals, usePosCheckoutState } from "../components/pos/PosShared";
 import { inventoryRepository, orderRepository, posRepository, userRepository } from "../repositories";
 import { useToast } from "../hooks/useToast";
 import { usePosTerminal } from "../hooks/usePosTerminal";
 import { formatCents } from "../utils/format";
 import { CONDITION_LABELS, FINISH_LABELS } from "../utils/labels";
 import type { Customer, InventoryItem, PosSaleResult } from "../types";
-import type { Reader } from "@stripe/terminal-js";
 
 // The in-store register. Shares the SAME inventory_items pool the storefront
 // sells from (search hits admin_search_inventory, sale creation goes through
@@ -52,10 +52,8 @@ export function PosPage() {
   const [error, setError] = useState<string | null>(null);
   const [voidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | null>(null);
-  const [cashTendered, setCashTendered] = useState("");
-  const [changeCents, setChangeCents] = useState<number | null>(null);
-  const [paidVia, setPaidVia] = useState<"cash" | "card" | null>(null);
+  const checkout = usePosCheckoutState();
+  const { paymentMethod, setPaymentMethod, cashTendered, setCashTendered, changeCents, paidVia } = checkout;
 
   const terminal = usePosTerminal();
 
@@ -132,10 +130,7 @@ export function PosPage() {
     setCreating(false);
     setSale(null);
     setError(null);
-    setPaymentMethod(null);
-    setCashTendered("");
-    setChangeCents(null);
-    setPaidVia(null);
+    checkout.reset();
   }
 
   async function startSale() {
@@ -166,8 +161,8 @@ export function PosPage() {
     setError(null);
     try {
       const res = await posRepository.markCashPaid(sale.orderId, tendered);
-      setChangeCents(res.changeCents);
-      setPaidVia("cash");
+      checkout.setChangeCents(res.changeCents);
+      checkout.setPaidVia("cash");
       setPhase("done");
       toast.success("Sale complete.");
     } catch (err) {
@@ -181,7 +176,7 @@ export function PosPage() {
     try {
       const { clientSecret } = await posRepository.terminalCreateIntent(sale.orderId);
       await terminal.collectAndProcess(clientSecret);
-      setPaidVia("card");
+      checkout.setPaidVia("card");
       setPhase("confirming");
       // The Stripe webhook is the only place the order actually becomes
       // "paid" — poll briefly rather than trusting the reader result alone.
@@ -373,8 +368,15 @@ export function PosPage() {
         {phase === "done" && sale && (
           <PosReceipt
             sale={sale}
-            ticket={ticket}
-            customer={customer}
+            lines={ticket.map((l) => ({
+              id: l.item.id,
+              name: l.item.cardName,
+              quantity: l.quantity,
+              lineTotalCents: l.item.priceCents * l.quantity,
+            }))}
+            customerLabel={
+              customer ? `${customer.firstName} ${customer.lastName}`.trim() : "Walk-in customer"
+            }
             paidVia={paidVia}
             changeCents={changeCents}
             onNewSale={resetSale}
@@ -411,205 +413,6 @@ export function PosPage() {
         onConfirm={voidSale}
         onCancel={() => setVoidConfirmOpen(false)}
       />
-    </div>
-  );
-}
-
-function PosTotals({
-  subtotalCents,
-  taxCents,
-  totalCents,
-}: {
-  subtotalCents: number;
-  taxCents: number;
-  totalCents: number;
-}) {
-  return (
-    <div className="gg-pos__totals">
-      <div className="gg-pos__totals-row">
-        <span>Subtotal</span>
-        <span>{formatCents(subtotalCents)}</span>
-      </div>
-      {taxCents > 0 && (
-        <div className="gg-pos__totals-row">
-          <span>Tax</span>
-          <span>{formatCents(taxCents)}</span>
-        </div>
-      )}
-      <div className="gg-pos__totals-row gg-pos__totals-row--strong">
-        <span>Total</span>
-        <span>{formatCents(totalCents)}</span>
-      </div>
-    </div>
-  );
-}
-
-function PosPaymentStep({
-  sale,
-  paymentMethod,
-  setPaymentMethod,
-  cashTendered,
-  setCashTendered,
-  onPayCash,
-  onPayCard,
-  terminal,
-  onVoid,
-}: {
-  sale: PosSaleResult;
-  paymentMethod: "cash" | "card" | null;
-  setPaymentMethod: (m: "cash" | "card" | null) => void;
-  cashTendered: string;
-  setCashTendered: (v: string) => void;
-  onPayCash: () => void;
-  onPayCard: () => void;
-  terminal: ReturnType<typeof usePosTerminal>;
-  onVoid: () => void;
-}) {
-  const tenderedCents = Math.round(parseFloat(cashTendered || "0") * 100);
-  const changeCents = Number.isFinite(tenderedCents) ? tenderedCents - sale.amountDueCents : 0;
-
-  return (
-    <div className="gg-pos__payment">
-      <PosTotals subtotalCents={sale.subtotalCents} taxCents={sale.taxCents} totalCents={sale.totalCents} />
-
-      {!paymentMethod && (
-        <div className="gg-pos__payment-methods">
-          <Button variant="primary" size="md" onClick={() => setPaymentMethod("cash")}>
-            Cash
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => {
-              setPaymentMethod("card");
-              terminal.discoverReaders();
-            }}
-          >
-            Card (Terminal)
-          </Button>
-        </div>
-      )}
-
-      {paymentMethod === "cash" && (
-        <div className="gg-pos__cash">
-          <TextField
-            label="Cash tendered"
-            type="number"
-            step="0.01"
-            min="0"
-            value={cashTendered}
-            onChange={(e) => setCashTendered(e.target.value)}
-            autoFocus
-          />
-          {cashTendered && (
-            <p className={changeCents >= 0 ? "gg-muted" : "gg-inline-note gg-inline-note--warning"}>
-              {changeCents >= 0
-                ? `Change due: ${formatCents(changeCents)}`
-                : `Short ${formatCents(-changeCents)}`}
-            </p>
-          )}
-          <div className="gg-pos__payment-actions">
-            <Button variant="ghost" onClick={() => setPaymentMethod(null)}>
-              Back
-            </Button>
-            <Button variant="primary" disabled={changeCents < 0} onClick={onPayCash}>
-              Complete cash sale
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {paymentMethod === "card" && (
-        <div className="gg-pos__card">
-          {terminal.connection !== "connected" ? (
-            <>
-              <p className="gg-muted">
-                {terminal.busy ? "Looking for a reader…" : "Connect the register's card reader."}
-              </p>
-              {terminal.error && (
-                <div className="gg-inline-note gg-inline-note--warning" role="alert">
-                  {terminal.error}
-                </div>
-              )}
-              {terminal.readers.map((r: Reader) => (
-                <Button
-                  key={r.id}
-                  variant="secondary"
-                  size="sm"
-                  loading={terminal.busy}
-                  onClick={() => terminal.connectReader(r)}
-                >
-                  Connect {r.label || r.id}
-                </Button>
-              ))}
-              <Button variant="ghost" size="sm" loading={terminal.busy} onClick={() => terminal.discoverReaders()}>
-                Search again
-              </Button>
-            </>
-          ) : (
-            <p className="gg-muted">Reader connected. Ready to charge {formatCents(sale.amountDueCents)}.</p>
-          )}
-          <div className="gg-pos__payment-actions">
-            <Button variant="ghost" onClick={() => setPaymentMethod(null)}>
-              Back
-            </Button>
-            <Button variant="primary" disabled={terminal.connection !== "connected"} onClick={onPayCard}>
-              Charge card
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <Button variant="ghost" size="sm" className="gg-pos__void" onClick={onVoid}>
-        Void sale
-      </Button>
-    </div>
-  );
-}
-
-function PosReceipt({
-  sale,
-  ticket,
-  customer,
-  paidVia,
-  changeCents,
-  onNewSale,
-}: {
-  sale: PosSaleResult;
-  ticket: TicketLine[];
-  customer: Customer | null;
-  paidVia: "cash" | "card" | null;
-  changeCents: number | null;
-  onNewSale: () => void;
-}) {
-  return (
-    <div className="gg-pos__receipt">
-      <h3>Sale complete</h3>
-      <p className="gg-muted">Order #{sale.orderId.slice(0, 8).toUpperCase()}</p>
-      <p className="gg-muted">{customer ? `${customer.firstName} ${customer.lastName}`.trim() : "Walk-in customer"}</p>
-      <div className="gg-pos__lines">
-        {ticket.map((line) => (
-          <div className="gg-pos__line" key={line.item.id}>
-            <span className="gg-pos__line-name">
-              {line.item.cardName} × {line.quantity}
-            </span>
-            <span>{formatCents(line.item.priceCents * line.quantity)}</span>
-          </div>
-        ))}
-      </div>
-      <PosTotals subtotalCents={sale.subtotalCents} taxCents={sale.taxCents} totalCents={sale.totalCents} />
-      <p>
-        Paid by {paidVia === "cash" ? "cash" : "card"}
-        {changeCents != null ? ` — change given: ${formatCents(changeCents)}` : ""}
-      </p>
-      <div className="gg-pos__receipt-actions">
-        <Button variant="secondary" onClick={() => window.print()}>
-          Print receipt
-        </Button>
-        <Button variant="primary" onClick={onNewSale}>
-          New sale
-        </Button>
-      </div>
     </div>
   );
 }
