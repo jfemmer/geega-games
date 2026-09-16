@@ -43,6 +43,7 @@ import type {
   InventoryItem,
   InventoryMovement,
   InventoryQuery,
+  PriceFloorRepriceCounts,
 } from "../types";
 
 const PAGE_SIZE = 10;
@@ -632,7 +633,7 @@ export function InventoryPage({
       <PriceFloorsModal
         open={priceFloorsOpen}
         onClose={() => setPriceFloorsOpen(false)}
-        onSaved={() => {}}
+        onSaved={() => inv.reload()}
       />
       <ReserveModal
         item={reserveTarget}
@@ -1333,9 +1334,11 @@ function PriceFloorsModal({
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmCounts, setConfirmCounts] = useState<PriceFloorRepriceCounts | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setConfirmCounts(null);
     setLoading(true);
     inventoryRepository
       .getPriceFloors()
@@ -1348,16 +1351,24 @@ function PriceFloorsModal({
       .finally(() => setLoading(false));
   }, [open, toast]);
 
-  async function submit() {
+  function currentFloors(): Record<FloorableRarity, number> {
+    return {
+      common: centsFromDollars(values.common),
+      uncommon: centsFromDollars(values.uncommon),
+      rare: centsFromDollars(values.rare),
+      mythic: centsFromDollars(values.mythic),
+    };
+  }
+
+  async function doSave() {
     setSaving(true);
     try {
-      await inventoryRepository.savePriceFloors({
-        common: centsFromDollars(values.common),
-        uncommon: centsFromDollars(values.uncommon),
-        rare: centsFromDollars(values.rare),
-        mythic: centsFromDollars(values.mythic),
-      });
-      toast.success("Price floors saved.");
+      const { repriced } = await inventoryRepository.savePriceFloors(currentFloors());
+      toast.success(
+        repriced.total > 0
+          ? `Price floors saved — ${repriced.total} card${repriced.total === 1 ? "" : "s"} raised to the new minimum.`
+          : "Price floors saved.",
+      );
       onSaved();
       onClose();
     } catch (err) {
@@ -1367,49 +1378,91 @@ function PriceFloorsModal({
     }
   }
 
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Price floors"
-      size="sm"
-      footer={
-        <div className="gg-drawer-actions__buttons">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" loading={saving} onClick={submit}>
-            Save
-          </Button>
-        </div>
+  // Check first how many existing cards a floor increase would touch, so
+  // staff can see the impact before applying a potentially large repricing.
+  async function submit() {
+    setSaving(true);
+    try {
+      const repriced = await inventoryRepository.previewPriceFloors(currentFloors());
+      if (repriced.total > 0) {
+        setConfirmCounts(repriced);
+      } else {
+        await doSave();
       }
-    >
-      <div className="gg-detail">
-        <p className="gg-muted">
-          Set a minimum sell price per rarity. When a card is priced from its market
-          (Scryfall) reference — in Add Card or when matching a scan — the suggested
-          price is raised to this minimum if the market price is below it. Leave a
-          rarity at $0.00 for no minimum. This never changes existing inventory or a
-          price you type in yourself.
-        </p>
-        {loading ? (
-          <p className="gg-muted">Loading…</p>
-        ) : (
-          FLOOR_RARITIES.map((rarity) => (
-            <TextField
-              key={rarity}
-              label={RARITY_LABELS[rarity]}
-              type="number"
-              min={0}
-              step="0.01"
-              value={values[rarity]}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, [rarity]: e.target.value }))
-              }
-            />
-          ))
-        )}
-      </div>
-    </Modal>
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not check price floors.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const confirmMessage = confirmCounts
+    ? [
+        `This will raise the price of ${confirmCounts.total} card${confirmCounts.total === 1 ? "" : "s"} up to the new minimum — never lowered, and never touching a rarity whose floor didn't change:`,
+        FLOOR_RARITIES.filter((r) => confirmCounts[r] > 0)
+          .map((r) => `${RARITY_LABELS[r]}: ${confirmCounts[r]}`)
+          .join(", "),
+        "Continue?",
+      ].join(" ")
+    : "";
+
+  return (
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Price floors"
+        size="sm"
+        footer={
+          <div className="gg-drawer-actions__buttons">
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={saving} onClick={submit}>
+              Save
+            </Button>
+          </div>
+        }
+      >
+        <div className="gg-detail">
+          <p className="gg-muted">
+            Set a minimum sell price per rarity. When a card is priced from its market
+            (Scryfall) reference — in Add Card or when matching a scan — the suggested
+            price is raised to this minimum if the market price is below it. Raising a
+            floor also raises any existing card of that rarity priced below it — never
+            lowered, and never touching a price staff typed in below the floor on
+            purpose after the fact. Leave a rarity at $0.00 for no minimum.
+          </p>
+          {loading ? (
+            <p className="gg-muted">Loading…</p>
+          ) : (
+            FLOOR_RARITIES.map((rarity) => (
+              <TextField
+                key={rarity}
+                label={RARITY_LABELS[rarity]}
+                type="number"
+                min={0}
+                step="0.01"
+                value={values[rarity]}
+                onChange={(e) =>
+                  setValues((v) => ({ ...v, [rarity]: e.target.value }))
+                }
+              />
+            ))
+          )}
+        </div>
+      </Modal>
+      <ConfirmDialog
+        open={!!confirmCounts}
+        title="Reprice existing inventory?"
+        message={confirmMessage}
+        confirmLabel="Raise prices"
+        onConfirm={async () => {
+          setConfirmCounts(null);
+          await doSave();
+        }}
+        onCancel={() => setConfirmCounts(null)}
+      />
+    </>
   );
 }

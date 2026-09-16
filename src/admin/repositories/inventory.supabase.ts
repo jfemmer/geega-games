@@ -30,6 +30,7 @@ import type {
   InventoryQuery,
   Page,
   CardPrinting,
+  PriceFloorRepriceCounts,
 } from "../types";
 import type { InventoryRepository } from "./types";
 import {
@@ -347,9 +348,20 @@ export const supabaseInventoryRepository: InventoryRepository = {
     }));
   },
 
-  async savePriceFloors(
+  async previewPriceFloors(
     floors: Record<FloorableRarity, number>,
-  ): Promise<InventoryPriceFloor[]> {
+  ): Promise<PriceFloorRepriceCounts> {
+    const res = await authFetch<{ repriced: PriceFloorRepriceCounts }>("/price-floors", {
+      method: "PUT",
+      body: { ...floors, dryRun: true },
+    });
+    return res.repriced;
+  },
+
+  async savePriceFloors(floors: Record<FloorableRarity, number>): Promise<{
+    floors: InventoryPriceFloor[];
+    repriced: PriceFloorRepriceCounts;
+  }> {
     const res = await authFetch<{
       floors: {
         rarity: FloorableRarity;
@@ -357,12 +369,16 @@ export const supabaseInventoryRepository: InventoryRepository = {
         updated_at: string;
         updated_by: string | null;
       }[];
+      repriced: PriceFloorRepriceCounts;
     }>("/price-floors", { method: "PUT", body: floors });
-    return res.floors.map((r) => ({
-      rarity: r.rarity,
-      minPriceCents: r.min_price_cents,
-      updatedAt: r.updated_at,
-      updatedBy: r.updated_by,
-    }));
+    return {
+      floors: res.floors.map((r) => ({
+        rarity: r.rarity,
+        minPriceCents: r.min_price_cents,
+        updatedAt: r.updated_at,
+        updatedBy: r.updated_by,
+      })),
+      repriced: res.repriced,
+    };
   },
 };

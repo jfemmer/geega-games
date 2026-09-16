@@ -29,6 +29,7 @@ import type {
   OrderQuery,
   OverviewMetrics,
   Page,
+  PriceFloorRepriceCounts,
   Reservation,
   ScanQuery,
   ScanRecognitionMode,
@@ -104,10 +105,22 @@ export interface InventoryRepository {
   searchPrintings(term: string): Promise<CardPrinting[]>;
   /** Current per-rarity price floors (one row per rarity). */
   getPriceFloors(): Promise<InventoryPriceFloor[]>;
-  /** Replace all 4 floors in one call. */
-  savePriceFloors(
+  /**
+   * Preview how many existing (non-archived) inventory lines these floors
+   * would raise, without changing anything — call before savePriceFloors
+   * so the UI can confirm a potentially large repricing first.
+   */
+  previewPriceFloors(
     floors: Record<FloorableRarity, number>,
-  ): Promise<InventoryPriceFloor[]>;
+  ): Promise<PriceFloorRepriceCounts>;
+  /**
+   * Replace all 4 floors in one call, and raise any existing non-archived
+   * inventory line of a rarity priced below its new floor up to that floor.
+   */
+  savePriceFloors(floors: Record<FloorableRarity, number>): Promise<{
+    floors: InventoryPriceFloor[];
+    repriced: PriceFloorRepriceCounts;
+  }>;
 }
 
 /* ------------------------------------------------------------------ *

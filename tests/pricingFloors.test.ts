@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { applyPriceFloor } from "../src/admin/utils/pricing";
-import type { InventoryPriceFloor } from "../src/admin/types";
+import { applyPriceFloor, countRepriceable, isRepriceable } from "../src/admin/utils/pricing";
+import type { FloorableRarity, InventoryPriceFloor } from "../src/admin/types";
 
 function floors(overrides: Partial<Record<InventoryPriceFloor["rarity"], number>>): InventoryPriceFloor[] {
   const base: Record<InventoryPriceFloor["rarity"], number> = {
@@ -50,5 +50,63 @@ describe("applyPriceFloor", () => {
     expect(applyPriceFloor(10, "uncommon", f)).toBe(50);
     expect(applyPriceFloor(10, "rare", f)).toBe(100);
     expect(applyPriceFloor(10, "mythic", f)).toBe(300);
+  });
+});
+
+type Item = { rarity: string | null; status: string; priceCents: number };
+
+describe("isRepriceable", () => {
+  it("is true for a matching, non-archived, below-floor item", () => {
+    const item: Item = { rarity: "rare", status: "active", priceCents: 50 };
+    expect(isRepriceable(item, "rare", 200)).toBe(true);
+  });
+
+  it("is false when the item is already at or above the floor", () => {
+    expect(isRepriceable({ rarity: "rare", status: "active", priceCents: 200 }, "rare", 200)).toBe(false);
+    expect(isRepriceable({ rarity: "rare", status: "active", priceCents: 500 }, "rare", 200)).toBe(false);
+  });
+
+  it("is false for a different rarity", () => {
+    expect(isRepriceable({ rarity: "common", status: "active", priceCents: 10 }, "rare", 200)).toBe(false);
+  });
+
+  it("is false for an archived item, even if reserved stays eligible", () => {
+    expect(isRepriceable({ rarity: "rare", status: "archived", priceCents: 10 }, "rare", 200)).toBe(false);
+    expect(isRepriceable({ rarity: "rare", status: "reserved", priceCents: 10 }, "rare", 200)).toBe(true);
+  });
+
+  it("is false when the floor is 0 (unset), regardless of price", () => {
+    expect(isRepriceable({ rarity: "rare", status: "active", priceCents: 10 }, "rare", 0)).toBe(false);
+  });
+});
+
+describe("countRepriceable", () => {
+  const items: Item[] = [
+    { rarity: "common", status: "active", priceCents: 10 },
+    { rarity: "common", status: "active", priceCents: 100 },
+    { rarity: "common", status: "archived", priceCents: 10 },
+    { rarity: "rare", status: "active", priceCents: 50 },
+    { rarity: "rare", status: "reserved", priceCents: 50 },
+    { rarity: "mythic", status: "active", priceCents: 1000 },
+  ];
+  const floorsByRarity: Record<FloorableRarity, number> = {
+    common: 25,
+    uncommon: 0,
+    rare: 200,
+    mythic: 0,
+  };
+
+  it("counts affected items per rarity and in total", () => {
+    const counts = countRepriceable(items, floorsByRarity);
+    expect(counts.common).toBe(1); // the $0.10 active one; archived and the $1.00 one are excluded
+    expect(counts.uncommon).toBe(0); // no floor set
+    expect(counts.rare).toBe(2); // both the active and reserved lines
+    expect(counts.mythic).toBe(0); // no floor set, even though $10.00 is a real card
+    expect(counts.total).toBe(3);
+  });
+
+  it("returns all zeros when no floors are set", () => {
+    const counts = countRepriceable(items, { common: 0, uncommon: 0, rare: 0, mythic: 0 });
+    expect(counts.total).toBe(0);
   });
 });

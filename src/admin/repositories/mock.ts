@@ -26,6 +26,7 @@ import type {
   Customer,
   CustomerQuery,
   DateRangeKey,
+  FloorableRarity,
   InventoryItem,
   InventoryMovement,
   InventoryPriceFloor,
@@ -38,6 +39,7 @@ import type {
   StaffMember,
 } from "../types";
 import { delay, mockId } from "../utils/format";
+import { countRepriceable, isRepriceable, type RepriceCounts } from "../utils/pricing";
 import type {
   AnalyticsRepository,
   CampaignRepository,
@@ -85,6 +87,28 @@ let staff: StaffMember[] = STAFF_SEED.map((s) => ({
 }));
 
 const LOW_STOCK_THRESHOLD = 2;
+
+/**
+ * Mirrors the server's repriceExistingInventory using the same shared
+ * isRepriceable/countRepriceable rule: for each rarity with a floor above
+ * 0, raises (apply=true) or just counts (apply=false) non-archived lines
+ * priced below that floor. Never lowers a price.
+ */
+function repriceMockInventory(
+  floors: Record<FloorableRarity, number>,
+  apply: boolean,
+): RepriceCounts {
+  const counts = countRepriceable(inventory, floors);
+  if (apply && counts.total > 0) {
+    const rarities: FloorableRarity[] = ["common", "uncommon", "rare", "mythic"];
+    const now = new Date().toISOString();
+    inventory = inventory.map((i) => {
+      const rarity = rarities.find((r) => isRepriceable(i, r, floors[r]));
+      return rarity ? { ...i, priceCents: floors[rarity], updatedAt: now } : i;
+    });
+  }
+  return counts;
+}
 
 /* ------------------------------------------------------------------ *
  * Inventory
@@ -416,6 +440,10 @@ export const mockInventoryRepository: InventoryRepository = {
     );
   },
 
+  async previewPriceFloors(floors) {
+    return delay(repriceMockInventory(floors, false), 100);
+  },
+
   async savePriceFloors(floors) {
     const now = new Date().toISOString();
     priceFloors = priceFloors.map((f) => ({
@@ -424,8 +452,9 @@ export const mockInventoryRepository: InventoryRepository = {
       updatedAt: now,
       updatedBy: "you@geega-games.com",
     }));
+    const repriced = repriceMockInventory(floors, true);
     return delay(
-      priceFloors.map((f) => ({ ...f })),
+      { floors: priceFloors.map((f) => ({ ...f })), repriced },
       150,
     );
   },

@@ -89,14 +89,25 @@ export type CardRarity = "common" | "uncommon" | "rare" | "mythic" | "special";
 export type FloorableRarity = "common" | "uncommon" | "rare" | "mythic";
 
 /** A per-rarity minimum sell price, used to floor an auto-suggested
- * (Scryfall reference) price in Add Card and scan review. Never overrides a
- * price staff types in by hand, and never retroactively changes existing
- * inventory. */
+ * (Scryfall reference) price in Add Card and scan review, and to raise any
+ * existing non-archived inventory line of that rarity priced below it.
+ * Never overrides a price staff types in by hand, and never lowers a price
+ * — only raises one up to the floor. */
 export interface InventoryPriceFloor {
   rarity: FloorableRarity;
   minPriceCents: number;
   updatedAt: string;
   updatedBy: string | null;
+}
+
+/** How many existing inventory lines a set of price floors would raise
+ * (preview) or did raise (after saving), per rarity. */
+export interface PriceFloorRepriceCounts {
+  common: number;
+  uncommon: number;
+  rare: number;
+  mythic: number;
+  total: number;
 }
 
 /** A concrete, sellable inventory line: one printing + condition + finish. */
