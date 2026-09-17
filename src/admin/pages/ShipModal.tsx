@@ -60,8 +60,8 @@ export function ShipModal({
       );
       toast.success(
         isPwe
-          ? `${order.orderNumber} marked shipped (Plain White Envelope — no tracking).`
-          : `${order.orderNumber} marked shipped. No confirmation email is sent automatically.`,
+          ? `${order.orderNumber} marked shipped (Plain White Envelope — no tracking). A shipping email was sent to the customer.`
+          : `${order.orderNumber} marked shipped. A shipping email was sent to the customer.`,
       );
       onShipped(updated);
       setTracking("");
@@ -191,7 +191,9 @@ export function ShipModal({
             <div className="gg-emailpreview__head">
               <Icon name="mail" size={16} />
               <span>Customer email preview</span>
-              <span className="gg-tag gg-tag--mock">Preview only — not sent</span>
+              <span className="gg-tag gg-tag--mock">
+                Approximate preview — the real email sends automatically on confirm
+              </span>
             </div>
             <div className="gg-emailpreview__body">
               <p>Hi {order.customerName.split(" ")[0]},</p>

@@ -258,7 +258,7 @@ export function OrdersPage({
         title="Cancel this order?"
         message={
           cancelTarget
-            ? `${cancelTarget.orderNumber} will be marked cancelled. This does not trigger a Stripe refund or send an email automatically — handle those separately.`
+            ? `${cancelTarget.orderNumber} will be marked cancelled and the customer will be emailed. This does not trigger a Stripe refund — handle that separately.`
             : ""
         }
         confirmLabel="Cancel order"

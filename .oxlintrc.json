@@ -11,6 +11,26 @@
       "rules": {
         "react/only-export-components": "off"
       }
+    },
+    {
+      "files": ["src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "sharp",
+                "message": "sharp is a native Node module for server-side image processing — it cannot run in the browser. Do this work in an api/ function instead."
+              },
+              {
+                "name": "tesseract.js",
+                "message": "tesseract.js OCR is meant to run server-side (api/_lib/ocr) — bundling it into the storefront/admin client would ship a large, unnecessary payload to every visitor."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

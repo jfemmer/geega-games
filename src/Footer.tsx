@@ -58,7 +58,6 @@ export default function Footer() {
         <span>
           &copy; {new Date().getFullYear()} {SITE.name}
         </span>
-        <span>Checkout &amp; accounts go live at launch</span>
       </div>
     </footer>
   );

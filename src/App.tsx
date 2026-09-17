@@ -1,17 +1,11 @@
 import "./App.css";
 import "./store/store.css";
+import { lazy, Suspense } from "react";
 import Footer from "./Footer";
 import { RouterProvider, useRouter } from "./store/lib/router";
 import { AuthProvider } from "./store/lib/AuthContext";
 import { CartProvider } from "./store/lib/CartContext";
 import Header from "./store/components/Header";
-import ShopPage from "./store/pages/ShopPage";
-import {
-  LoginPage,
-  SignupPage,
-  ForgotPasswordPage,
-  ResetPasswordPage,
-} from "./store/pages/AuthPages";
 import {
   HomePage,
   ConditionGuidePage,
@@ -20,13 +14,46 @@ import {
   ContactPage,
   NotFoundPage,
 } from "./store/pages/StaticPages";
-import { PrivacyPage } from "./store/pages/PrivacyPage";
-import { TermsPage } from "./store/pages/TermsPage";
-import CheckoutPage from "./store/pages/CheckoutPage";
-import SellPage from "./store/pages/SellPage";
-import SellCollectionPage from "./store/pages/SellCollectionPage";
-import { AccountPage } from "./store/pages/AccountPages";
-import KioskPage from "./store/pages/KioskPage";
+
+// Lazy-loaded: keeps the initial bundle down to just the homepage/shop-adjacent
+// static pages above (already one small shared chunk). Everything below pulls
+// in noticeably more code (Stripe on checkout, the multi-step sell/photo-
+// upload flow, the full account dashboard) that a visitor browsing the shop
+// or homepage should never have to download up front.
+const ShopPage = lazy(() => import("./store/pages/ShopPage"));
+const LoginPage = lazy(() =>
+  import("./store/pages/AuthPages").then((m) => ({ default: m.LoginPage })),
+);
+const SignupPage = lazy(() =>
+  import("./store/pages/AuthPages").then((m) => ({ default: m.SignupPage })),
+);
+const ForgotPasswordPage = lazy(() =>
+  import("./store/pages/AuthPages").then((m) => ({ default: m.ForgotPasswordPage })),
+);
+const ResetPasswordPage = lazy(() =>
+  import("./store/pages/AuthPages").then((m) => ({ default: m.ResetPasswordPage })),
+);
+const PrivacyPage = lazy(() =>
+  import("./store/pages/PrivacyPage").then((m) => ({ default: m.PrivacyPage })),
+);
+const TermsPage = lazy(() =>
+  import("./store/pages/TermsPage").then((m) => ({ default: m.TermsPage })),
+);
+const CheckoutPage = lazy(() => import("./store/pages/CheckoutPage"));
+const SellPage = lazy(() => import("./store/pages/SellPage"));
+const SellCollectionPage = lazy(() => import("./store/pages/SellCollectionPage"));
+const AccountPage = lazy(() =>
+  import("./store/pages/AccountPages").then((m) => ({ default: m.AccountPage })),
+);
+const KioskPage = lazy(() => import("./store/pages/KioskPage"));
+
+function RouteFallback() {
+  return (
+    <div className="gg-page">
+      <p className="gg-card-meta">Loading…</p>
+    </div>
+  );
+}
 
 function Routes() {
   const { path } = useRouter();
@@ -58,7 +85,11 @@ export default function App() {
   // computer in the shop has this URL open, so a customer's kiosk session
   // can never touch or be confused with someone else's account/cart.
   if (window.location.pathname === "/kiosk") {
-    return <KioskPage />;
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <KioskPage />
+      </Suspense>
+    );
   }
 
   return (
@@ -70,7 +101,9 @@ export default function App() {
           </a>
           <Header />
           <main id="main">
-            <Routes />
+            <Suspense fallback={<RouteFallback />}>
+              <Routes />
+            </Suspense>
           </main>
           <Footer />
         </RouterProvider>

@@ -8,6 +8,10 @@ import {
 } from "./_lib/http.js";
 import { normalizeEmail } from "./_lib/tokens.js";
 import { subscribe } from "./_lib/subscribers.js";
+import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
+
+const RATE_LIMIT_PER_WINDOW = 10;
+const RATE_WINDOW_MS = 60_000;
 
 // POST /api/subscribe
 // Body: { email: string, website?: string /* honeypot */, source?: string }
@@ -24,14 +28,15 @@ export default async function handler(
   }
 
   try {
+    const ip = getClientIp(req);
+    const rl = checkRateLimit("subscribe", ip, RATE_LIMIT_PER_WINDOW, RATE_WINDOW_MS);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(Math.ceil((rl.retryAfterMs ?? 1000) / 1000)));
+      throw new HttpError(429, "Too many attempts. Please wait a moment and try again.");
+    }
+
     requireJsonContentType(req);
     const body = await readJsonBody(req);
-
-        // TEMP DIAGNOSTIC — remove after debugging
-    console.log("[subscribe:diag] keys=", Object.keys(body),
-      "hasEmail=", typeof body.email === "string" && body.email.length > 0,
-      "hp_ref=", JSON.stringify(body.hp_ref ?? null),
-      "website=", JSON.stringify(body.website ?? null));
 
     // Honeypot: real users never fill this hidden field. Silently succeed so
     // bots get no signal, but do nothing. The field is named 'hp_ref' (the old

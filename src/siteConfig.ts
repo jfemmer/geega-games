@@ -1,9 +1,10 @@
 // Central place for business + policy links used in the footer and metadata.
 //
-// IMPORTANT: These are intentionally placeholders. Do NOT treat any value here
-// as a real published policy until you (the owner) fill it in. Links that are
-// not ready are rendered as clearly-labeled "coming soon" items rather than
-// dead links or invented content.
+// The storefront is live — checkout, accounts, and the shop catalog all
+// work today. Links here should point at real pages; a link with no href
+// renders as a clearly-labeled "coming soon" item rather than a dead link
+// or invented content, for anything not actually published yet (e.g. a
+// finalized return-window policy).
 
 export type FooterLink = {
   label: string;
@@ -17,9 +18,12 @@ export const SITE = {
     (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) ??
     "https://geega-games.com",
   tagline: "Magic: The Gathering singles",
-  // Set this to a real, monitored inbox before launch, then it will render.
-  // Leave empty to hide the support line entirely (no fake address shown).
-  supportEmail: (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ?? "",
+  // Matches the default used on the storefront's other support-contact
+  // surfaces (see SUPPORT_EMAIL in store/pages/StaticPages.tsx) so the
+  // footer doesn't disagree with every other page about whether a support
+  // inbox exists. Override via VITE_SUPPORT_EMAIL if it ever changes.
+  supportEmail:
+    (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ?? "support@geega-games.com",
 } as const;
 
 // Footer link groups. Fill in hrefs as real pages/policies are published.
@@ -27,8 +31,8 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Shop",
     links: [
-      { label: "Browse catalog", href: "#catalog" },
-      { label: "Get the launch notice", href: "#launch" },
+      { label: "Browse catalog", href: "/shop" },
+      { label: "Sell your cards", href: "/sell-my-collection" },
     ],
   },
   {

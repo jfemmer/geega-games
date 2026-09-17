@@ -11,10 +11,10 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#663399" />
 
-    <title>Geega Games — Magic: The Gathering singles, coming soon</title>
+    <title>Geega Games — Magic: The Gathering Singles</title>
     <meta
       name="description"
-      content="Geega Games is a Magic: The Gathering card shop. Browse singles now — checkout and accounts go live at launch. Join the list to know the moment we open."
+      content="Shop Magic: The Gathering singles at Geega Games — buy, sell, and trade cards online or in-store, with fast shipping and honest condition grading."
     />
 
     <!-- Canonical + robots -->
@@ -24,10 +24,10 @@
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Geega Games" />
-    <meta property="og:title" content="Geega Games — Magic: The Gathering singles" />
+    <meta property="og:title" content="Geega Games — Magic: The Gathering Singles" />
     <meta
       property="og:description"
-      content="Browse Magic: The Gathering singles now. Checkout goes live at launch — join the list to be first to know."
+      content="Shop Magic: The Gathering singles — buy, sell, and trade cards online or in-store."
     />
     <meta property="og:url" content="https://geega-games.com/" />
     <meta property="og:image" content="https://geega-games.com/og-image.png" />
@@ -36,10 +36,10 @@
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Geega Games — Magic: The Gathering singles" />
+    <meta name="twitter:title" content="Geega Games — Magic: The Gathering Singles" />
     <meta
       name="twitter:description"
-      content="Browse Magic: The Gathering singles now. Checkout goes live at launch."
+      content="Shop Magic: The Gathering singles — buy, sell, and trade cards online or in-store."
     />
     <meta name="twitter:image" content="https://geega-games.com/og-image.png" />
 
@@ -63,6 +63,14 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Warm up connections to origins on the critical path for data,
+         checkout, and card images — shaves a DNS+TLS round trip off the
+         first request to each. -->
+    <link rel="preconnect" href="https://ggqgzlqcysmwbpnawfwg.supabase.co" crossorigin />
+    <link rel="preconnect" href="https://js.stripe.com" />
+    <link rel="preconnect" href="https://api.stripe.com" />
+    <link rel="preconnect" href="https://cards.scryfall.io" crossorigin />
   </head>
   <body>
     <div id="root"></div>

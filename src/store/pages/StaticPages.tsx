@@ -110,10 +110,9 @@ export function ShippingPage() {
       <p>
         Exact shipping costs are always calculated and shown before you pay.
       </p>
-      <p className="gg-alert gg-alert-warn">
-        Delivery time estimates and carrier details are configured by the store
-        owner. If you have a shipping question, contact{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+      <p className="gg-card-meta">
+        Delivery times vary by carrier and destination. If you have a shipping
+        question, contact <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
       </p>
     </div>
   );
@@ -132,9 +131,9 @@ export function ReturnsPage() {
         <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with your order
         number and a description (photos help for damage claims).
       </p>
-      <p className="gg-alert gg-alert-warn">
-        The full return window, restocking policy, and who pays return shipping
-        are business decisions the store owner should finalize before launch.
+      <p className="gg-card-meta">
+        Every situation is a little different — email us and we&rsquo;ll work out
+        the details with you directly.
       </p>
     </div>
   );

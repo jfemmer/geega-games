@@ -165,12 +165,6 @@ export function TopBar({
                   <div className="gg-popover__email">{adminEmail ?? "—"}</div>
                 </div>
               </div>
-              <button className="gg-popover__item" role="menuitem">
-                <Icon name="user" size={16} /> Profile
-              </button>
-              <button className="gg-popover__item" role="menuitem">
-                <Icon name="settings" size={16} /> Settings
-              </button>
               <button
                 className="gg-popover__item gg-popover__item--danger"
                 role="menuitem"
