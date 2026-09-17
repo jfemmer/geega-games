@@ -5,7 +5,11 @@ import {
   readJsonBody,
   sendJson,
 } from "../../_lib/http.js";
-import { requireStaff, type StaffContext } from "../../_lib/adminAuth.js";
+import {
+  requireStaff,
+  requireCapability,
+  type StaffContext,
+} from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import { cachePrinting, type InventoryRow } from "../../_lib/inventory.js";
@@ -62,6 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
   try {
     const staff = await requireStaff(req);
+    requireCapability(staff, "inventory.write");
     const body = (await readJsonBody(req)) as Body;
 
     const quantity = Math.floor(Number(body.quantity));

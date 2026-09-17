@@ -5,7 +5,11 @@ import {
   readJsonBody,
   sendJson,
 } from "../../_lib/http.js";
-import { requireStaff, type StaffContext } from "../../_lib/adminAuth.js";
+import {
+  requireStaff,
+  requireCapability,
+  type StaffContext,
+} from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import {
@@ -128,6 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 async function handlePatch(req: VercelRequest, res: VercelResponse) {
   const staff = await requireStaff(req);
+  requireCapability(staff, "inventory.write");
   const id = readId(req);
   const body = (await readJsonBody(req)) as Body;
   const admin = getSupabaseAdmin();
@@ -324,7 +329,8 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
  * ------------------------------------------------------------------ */
 
 async function handleDelete(req: VercelRequest, res: VercelResponse) {
-  await requireStaff(req);
+  const staff = await requireStaff(req);
+  requireCapability(staff, "inventory.write");
   const id = readId(req);
   const admin = getSupabaseAdmin();
 

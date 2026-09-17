@@ -5,7 +5,7 @@ import {
   readJsonBody,
   sendJson,
 } from "../../_lib/http.js";
-import { requireStaff } from "../../_lib/adminAuth.js";
+import { requireStaff, requireCapability } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import { cachePrinting } from "../../_lib/inventory.js";
@@ -110,7 +110,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return methodNotAllowed(res, ["POST"]);
   }
   try {
-    await requireStaff(req);
+    const staff = await requireStaff(req);
+    requireCapability(staff, "inventory.write");
 
     const body = (await readJsonBody(req).catch(() => ({}))) as Body;
     const limit = Math.min(Math.max(Number(body.limit) || 50, 1), 200);

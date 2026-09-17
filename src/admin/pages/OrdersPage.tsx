@@ -355,7 +355,7 @@ function OrderDetail({
       }
       footer={
         <div className="gg-drawer-actions__buttons">
-          {!isClosed && (
+          {!isClosed && currentAdmin.can("orders.cancel") && (
             <Button
               variant="ghost"
               onClick={() => onCancel(order)}
@@ -364,7 +364,7 @@ function OrderDetail({
               Cancel order
             </Button>
           )}
-          {canStartPacking && (
+          {canStartPacking && currentAdmin.can("orders.pack_ship") && (
             <Button
               variant="primary"
               icon="package"
@@ -374,7 +374,7 @@ function OrderDetail({
               Start packing
             </Button>
           )}
-          {order.status === "packing" && (
+          {order.status === "packing" && currentAdmin.can("orders.pack_ship") && (
             <Button
               variant="primary"
               icon="check"
@@ -389,7 +389,7 @@ function OrderDetail({
                 : `Pack all items (${packedCount}/${order.items.length})`}
             </Button>
           )}
-          {canShip && (
+          {canShip && currentAdmin.can("orders.pack_ship") && (
             <Button variant="primary" icon="truck" onClick={onShip}>
               Ship order
             </Button>

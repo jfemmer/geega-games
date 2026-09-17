@@ -5,7 +5,7 @@ import {
   readJsonBody,
   sendJson,
 } from "../../_lib/http.js";
-import { requireStaff } from "../../_lib/adminAuth.js";
+import { requireStaff, requireCapability } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 
 // GET/PUT /api/admin/inventory/price-floors
@@ -101,6 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // PUT
+    requireCapability(staff, "inventory.write");
     const body = (await readJsonBody(req, 4 * 1024)) as PutBody;
     for (const rarity of RARITIES) {
       if (!isNonNegativeInt(body[rarity])) {

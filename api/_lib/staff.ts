@@ -1,23 +1,20 @@
 import type { User } from "@supabase/supabase-js";
+import { STAFF_ROLES, type StaffRole } from "../../src/admin/permissions.js";
 
 // Staff identity helpers shared by the /api/admin/staff/* Functions.
 //
 // AUTHORIZATION SOURCE OF TRUTH (never user-editable):
 //   * app_metadata.role       — 'staff' | 'admin' (gates is_staff()/requireStaff)
-//   * app_metadata.staff_role — richer UI role: owner | administrator |
-//                               fulfillment | inventory
+//   * app_metadata.staff_role — richer role: owner | administrator |
+//                               fulfillment | inventory — see
+//                               src/admin/permissions.ts for what each one
+//                               may actually do (the single source of truth,
+//                               shared with the client and re-exported here).
 // user_metadata is user-writable and is used ONLY for display (name), never for
 // authorization. When no staff_role is present, an app role of 'admin' maps to
 // 'owner' and 'staff' maps to 'fulfillment' so legacy users render sensibly.
 
-export const STAFF_ROLES = [
-  "owner",
-  "administrator",
-  "fulfillment",
-  "inventory",
-] as const;
-
-export type StaffRole = (typeof STAFF_ROLES)[number];
+export { STAFF_ROLES, type StaffRole };
 
 export interface StaffMemberDTO {
   id: string;

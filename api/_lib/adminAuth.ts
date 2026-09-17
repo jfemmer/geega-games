@@ -1,6 +1,12 @@
 import type { VercelRequest } from "@vercel/node";
 import { HttpError } from "./http.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
+import { staffRoleOf } from "./staff.js";
+import {
+  roleCan,
+  type StaffCapability,
+  type StaffRole,
+} from "../../src/admin/permissions.js";
 
 // Staff/admin authorization for /api/admin/* endpoints.
 //
@@ -19,6 +25,8 @@ export interface StaffContext {
   userId: string;
   email: string | null;
   role: string;
+  /** Fine-grained role (owner/administrator/fulfillment/inventory). */
+  staffRole: StaffRole;
 }
 
 /** Read the app role from a user's app_metadata, defaulting to 'customer'. */
@@ -60,5 +68,29 @@ export async function requireStaff(req: VercelRequest): Promise<StaffContext> {
     throw new HttpError(403, "Admin access required.");
   }
 
-  return { userId: user.id, email: user.email ?? null, role };
+  return {
+    userId: user.id,
+    email: user.email ?? null,
+    role,
+    staffRole: staffRoleOf(user),
+  };
+}
+
+/**
+ * Gate a specific action to the staff roles allowed to perform it, per the
+ * shared matrix in src/admin/permissions.ts. Call this INSIDE a resource/
+ * action branch, after the top-level requireStaff(req) has already
+ * confirmed the caller is staff at all — this is the finer-grained check on
+ * top of that coarse one, not a replacement for it.
+ */
+export function requireCapability(
+  staff: StaffContext,
+  capability: StaffCapability,
+): void {
+  if (!roleCan(staff.staffRole, capability)) {
+    throw new HttpError(
+      403,
+      `Your staff role (${staff.staffRole}) isn't allowed to do this.`,
+    );
+  }
 }

@@ -5,7 +5,11 @@ import {
   readJsonBody,
   sendJson,
 } from "../_lib/http.js";
-import { requireStaff, type StaffContext } from "../_lib/adminAuth.js";
+import {
+  requireStaff,
+  requireCapability,
+  type StaffContext,
+} from "../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { normalizeEmail } from "../_lib/tokens.js";
 import {
@@ -588,6 +592,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
         const nextStatus = status as "packing" | "ready_to_ship" | "cancelled";
+        requireCapability(
+          staff,
+          nextStatus === "cancelled" ? "orders.cancel" : "orders.pack_ship",
+        );
         const { data: existing, error: readErr } = await admin
           .from("orders")
           .select("id, packed_at, ready_at, cancelled_at")
@@ -628,6 +636,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (action === "ship" && method === "POST") {
+        requireCapability(staff, "orders.pack_ship");
         const body = await readJsonBody(req);
         const orderId = String(body.orderId ?? "");
         if (!orderId) throw new HttpError(400, "orderId is required.");
@@ -692,6 +701,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // design) and print a plain address label client-side instead, which
       // needs no server call at all.
       if (action === "buy-label" && method === "POST") {
+        requireCapability(staff, "orders.pack_ship");
         const body = await readJsonBody(req);
         const orderId = String(body.orderId ?? "");
         if (!orderId) throw new HttpError(400, "orderId is required.");
@@ -778,6 +788,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (action === "toggle-packed" && method === "POST") {
+        requireCapability(staff, "orders.pack_ship");
         const body = await readJsonBody(req);
         const orderId = String(body.orderId ?? "");
         const itemId = String(body.itemId ?? "");
@@ -912,9 +923,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (action === "invite" && method === "POST") {
-        if (staff.role !== "admin") {
-          throw new HttpError(403, "Only an admin/owner can invite staff.");
-        }
+        requireCapability(staff, "staff.manage");
         const body = await readJsonBody(req);
         const email = normalizeEmail(body.email as string | undefined);
         if (!email) throw new HttpError(400, "A valid email address is required.");
@@ -948,9 +957,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (action === "update" && method === "PATCH") {
-        if (staff.role !== "admin") {
-          throw new HttpError(403, "Only an admin/owner can manage staff.");
-        }
+        requireCapability(staff, "staff.manage");
         const id = q(req, "id");
         if (!id) throw new HttpError(400, "Staff id is required.");
         const body = await readJsonBody(req);

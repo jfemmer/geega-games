@@ -439,6 +439,8 @@ function CustomerDetail({
 
 function StaffView() {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
+  const canManageStaff = currentAdmin.can("staff.manage");
   const staff = useAsync(() => userRepository.listStaff(), []);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [detail, setDetail] = useState<StaffMember | null>(null);
@@ -489,9 +491,11 @@ function StaffView() {
     <SectionCard
       title=""
       action={
-        <Button variant="primary" icon="plus" onClick={() => setInviteOpen(true)}>
-          Invite staff
-        </Button>
+        canManageStaff ? (
+          <Button variant="primary" icon="plus" onClick={() => setInviteOpen(true)}>
+            Invite staff
+          </Button>
+        ) : undefined
       }
     >
       {staff.loading ? (
@@ -662,6 +666,7 @@ function StaffDetail({
   const isSelf = member.id === currentAdmin.userId;
   const isLastOwner =
     member.role === "owner" && member.status === "active" && ownerCount <= 1;
+  const canManageStaff = currentAdmin.can("staff.manage");
 
   async function saveRole() {
     if (!member) return;
@@ -732,7 +737,7 @@ function StaffDetail({
             variant={member.status === "active" ? "danger" : "primary"}
             onClick={toggleStatus}
             loading={busy}
-            disabled={isSelf || isLastOwner}
+            disabled={!canManageStaff || isSelf || isLastOwner}
           >
             {member.status === "active" ? "Disable" : "Re-enable"}
           </Button>
@@ -761,7 +766,7 @@ function StaffDetail({
               label="Role"
               value={role}
               onChange={(e) => setRole(e.target.value as StaffRole)}
-              disabled={isSelf && member.role === "owner"}
+              disabled={!canManageStaff || (isSelf && member.role === "owner")}
             >
               {ROLES.map((r) => (
                 <option key={r} value={r}>
@@ -773,11 +778,16 @@ function StaffDetail({
               variant="secondary"
               onClick={saveRole}
               loading={busy}
-              disabled={role === member.role}
+              disabled={!canManageStaff || role === member.role}
             >
               Save role
             </Button>
           </div>
+          {!canManageStaff && (
+            <p className="gg-muted">
+              Only an owner can change staff roles or disable an account.
+            </p>
+          )}
           {isSelf && (
             <p className="gg-muted">
               You can't change your own owner role or disable yourself — a
