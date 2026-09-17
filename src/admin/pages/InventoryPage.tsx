@@ -15,6 +15,7 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddInventoryDrawer } from "./AddInventoryDrawer";
 import { EditInventoryDrawer } from "./EditInventoryDrawer";
 import { ImportInventoryModal } from "./ImportInventoryModal";
+import { InventoryBulkEditModal } from "../components/inventory/InventoryBulkEditModal";
 import { useAsync } from "../hooks/useAsync";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
@@ -83,6 +84,7 @@ export function InventoryPage({
   onNavigate: (path: string) => void;
 }) {
   const toast = useToast();
+  const currentAdmin = useCurrentAdmin();
 
   // Deep-link ?stock=low still lands on In Stock with the low-stock sub-filter.
   const initialTab: InventoryTab = "in_stock";
@@ -107,6 +109,7 @@ export function InventoryPage({
   const [reserveTarget, setReserveTarget] = useState<InventoryItem | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [priceFloorsOpen, setPriceFloorsOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   const setOptions = useAsync(() => inventoryRepository.setOptions(), []);
 
@@ -469,6 +472,16 @@ export function InventoryPage({
           <div className="gg-bulkbar" role="region" aria-label="Bulk actions">
             <span className="gg-bulkbar__count">{selectedIds.size} selected</span>
             <div className="gg-bulkbar__actions">
+              {currentAdmin.can("inventory.write") && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="edit"
+                  onClick={() => setBulkEditOpen(true)}
+                >
+                  Bulk edit
+                </Button>
+              )}
               <Button variant="ghost" size="sm" icon="download" onClick={exportCsv}>
                 Export selected
               </Button>
@@ -641,6 +654,15 @@ export function InventoryPage({
         onClose={() => setReserveTarget(null)}
         onReserved={() => {
           if (reserveTarget) refreshDetail(reserveTarget.id);
+          inv.reload();
+        }}
+      />
+      <InventoryBulkEditModal
+        open={bulkEditOpen}
+        onClose={() => setBulkEditOpen(false)}
+        itemIds={Array.from(selectedIds)}
+        onApplied={() => {
+          setSelectedIds(new Set());
           inv.reload();
         }}
       />

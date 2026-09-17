@@ -127,6 +127,23 @@ export interface InventoryRepository {
     floors: InventoryPriceFloor[];
     repriced: PriceFloorRepriceCounts;
   }>;
+  /**
+   * Apply the same field edit(s) across many lines at once. Each field is
+   * independent and optional — pass only what should change. A percentage
+   * price adjustment is computed against each row's OWN current price
+   * server-side (never a client-computed final price for money). Status
+   * changes go through the same movement-logging path a single-item
+   * archive/restore uses, so bulk history looks identical to manual history.
+   */
+  bulkUpdate(
+    itemIds: string[],
+    patch: {
+      status?: "active" | "archived";
+      priceCents?: number;
+      priceAdjustPercent?: number;
+      storageLocation?: string | null;
+    },
+  ): Promise<{ updatedCount: number }>;
 }
 
 /* ------------------------------------------------------------------ *

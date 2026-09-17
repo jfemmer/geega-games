@@ -472,6 +472,31 @@ export const mockInventoryRepository: InventoryRepository = {
       150,
     );
   },
+
+  async bulkUpdate(itemIds, patch) {
+    const ids = new Set(itemIds);
+    inventory = inventory.map((i) => {
+      if (!ids.has(i.id)) return i;
+      let priceCents = i.priceCents;
+      if (patch.priceCents !== undefined) priceCents = patch.priceCents;
+      else if (patch.priceAdjustPercent !== undefined) {
+        priceCents = Math.max(
+          0,
+          Math.round(i.priceCents * (1 + patch.priceAdjustPercent / 100)),
+        );
+      }
+      return {
+        ...i,
+        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        ...(patch.storageLocation !== undefined
+          ? { storageLocation: patch.storageLocation }
+          : {}),
+        priceCents,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    return delay({ updatedCount: ids.size }, 300);
+  },
 };
 
 /* ------------------------------------------------------------------ *

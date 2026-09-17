@@ -381,4 +381,20 @@ export const supabaseInventoryRepository: InventoryRepository = {
       repriced: res.repriced,
     };
   },
+
+  async bulkUpdate(
+    itemIds: string[],
+    patch: {
+      status?: "active" | "archived";
+      priceCents?: number;
+      priceAdjustPercent?: number;
+      storageLocation?: string | null;
+    },
+  ): Promise<{ updatedCount: number }> {
+    const res = await authFetch<{ updatedCount: number }>("/bulk", {
+      method: "PATCH",
+      body: { itemIds, ...patch },
+    });
+    return { updatedCount: res.updatedCount };
+  },
 };
