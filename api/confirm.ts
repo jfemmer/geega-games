@@ -21,7 +21,7 @@ export default async function handler(
         html = resultPage({
           title: "Email confirmed",
           heading: "You’re on the list 🎉",
-          body: "Your email is confirmed. We’ll let you know the moment the shop and checkout go live.",
+          body: "Your email is confirmed. We’ll let you know about new arrivals, restocks, and exclusive deals.",
           tone: "success",
         });
         break;
@@ -29,7 +29,7 @@ export default async function handler(
         html = resultPage({
           title: "Already confirmed",
           heading: "You’re already subscribed",
-          body: "This email is already confirmed — no further action needed. We’ll be in touch at launch.",
+          body: "This email is already confirmed — no further action needed. We’ll be in touch with updates.",
           tone: "neutral",
         });
         break;
@@ -47,7 +47,7 @@ export default async function handler(
         html = resultPage({
           title: "Invalid link",
           heading: "We couldn’t confirm this link",
-          body: "This confirmation link is invalid or has already been used. Please sign up again if you’d like launch updates.",
+          body: "This confirmation link is invalid or has already been used. Please sign up again if you’d like email updates.",
           tone: "error",
         });
     }

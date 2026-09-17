@@ -33,7 +33,7 @@ export function ConfirmSubscription({
   return h(
     BaseLayout,
     {
-      previewText: "Confirm your email to get the Geega Games launch notice.",
+      previewText: "Confirm your email to get Geega Games updates.",
       siteUrl,
       logoUrl,
       supportEmail,
@@ -44,7 +44,7 @@ export function ConfirmSubscription({
     h(
       Text,
       { style: p },
-      "Thanks for your interest in Geega Games. Confirm this address and we\u2019ll email you the moment the shop \u2014 and checkout \u2014 go live.",
+      "Thanks for your interest in Geega Games. Confirm this address and we\u2019ll email you about new arrivals, restocks, and exclusive deals.",
     ),
     h(Button, { href: confirmUrl, style: button }, "Confirm my email"),
     h(
@@ -67,7 +67,7 @@ export function confirmSubscriptionText(p: ConfirmSubscriptionProps): string {
     "Confirm your email \u2014 Geega Games",
     "",
     "Thanks for your interest in Geega Games. Confirm this address and we'll",
-    "email you the moment the shop and checkout go live.",
+    "email you about new arrivals, restocks, and exclusive deals.",
     "",
     "Confirm your email:",
     p.confirmUrl,

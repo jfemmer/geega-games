@@ -77,7 +77,7 @@ export default function SignupForm() {
             <h3>Check your inbox</h3>
             <p>
               We’ve sent a confirmation link to your email. Click it to finish
-              signing up and we’ll notify you the moment the shop opens.
+              signing up for new arrivals, restocks, and deals.
             </p>
           </div>
         </div>
@@ -89,12 +89,6 @@ export default function SignupForm() {
 
   return (
     <form className="signup" onSubmit={handleSubmit} noValidate>
-      <h2>Get the launch notice</h2>
-      <p className="signup-sub">
-        Browsing is open now. Join the list and we’ll email you the moment
-        checkout goes live — no spam, just the launch.
-      </p>
-
       <div className="field">
         <label htmlFor="signup-email" className="visually-hidden">
           Email address

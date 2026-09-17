@@ -32,7 +32,7 @@ export function SubscriptionConfirmed({
     BaseLayout,
     {
       previewText:
-        "You're on the list \u2014 we'll email you when Geega Games opens.",
+        "You're on the list \u2014 we'll email you about new arrivals and deals.",
       siteUrl,
       logoUrl,
       supportEmail,
@@ -41,7 +41,7 @@ export function SubscriptionConfirmed({
       footerExtra: h(
         Text,
         { style: unsub },
-        "Don\u2019t want launch updates? ",
+        "Don\u2019t want these emails? ",
         h("a", { href: unsubscribeUrl, style: unsubLink }, "Unsubscribe"),
         ".",
       ),
@@ -50,9 +50,9 @@ export function SubscriptionConfirmed({
     h(
       Text,
       { style: p },
-      "Your email is confirmed. You\u2019ll receive our store-launch announcement the moment browsing turns into buying \u2014 no spam in between, just the launch.",
+      "Your email is confirmed. You\u2019ll hear from us about new arrivals, restocks, and exclusive deals \u2014 no spam in between.",
     ),
-    h(Text, { style: p }, "Thanks for being early. \u2014 The Geega Games team"),
+    h(Text, { style: p }, "Thanks for signing up. \u2014 The Geega Games team"),
   );
 }
 
@@ -62,10 +62,10 @@ export function subscriptionConfirmedText(
   return [
     "You're on the list \u2014 Geega Games",
     "",
-    "Your email is confirmed. You'll receive our store-launch announcement the",
-    "moment browsing turns into buying \u2014 no spam in between, just the launch.",
+    "Your email is confirmed. You'll hear from us about new arrivals, restocks,",
+    "and exclusive deals \u2014 no spam in between.",
     "",
-    "Thanks for being early. \u2014 The Geega Games team",
+    "Thanks for signing up. \u2014 The Geega Games team",
     "",
     `Unsubscribe: ${p.unsubscribeUrl}`,
     `Questions? ${p.supportEmail}`,
