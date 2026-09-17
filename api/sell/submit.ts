@@ -126,11 +126,15 @@ interface CardInput {
   sellerNotes?: unknown;
   matchStatus?: unknown;
   rawInput?: unknown;
+  /** SellCardLine.localId — a client-only correlation key, never a DB id. */
+  clientCardId?: unknown;
 }
 
 interface PhotoInput {
   path?: unknown;
   originalFilename?: unknown;
+  /** Set when this photo was attached to a specific card (see CardInput.clientCardId), rather than the general collection uploader. */
+  cardLocalId?: unknown;
 }
 
 interface SubmitBody {
@@ -202,6 +206,7 @@ function normalizeCard(input: CardInput): SellSubmissionCardInsert | null {
     seller_notes: cleanString(input.sellerNotes, 500),
     match_status: matchStatus,
     raw_input: rawInput,
+    client_card_id: cleanString(input.clientCardId, 100),
   };
 }
 
@@ -298,6 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           original_filename: cleanString(p.originalFilename, 200) ?? objectName,
           mime_type: confirmedObj.metadata?.mimetype ?? "application/octet-stream",
           size_bytes: confirmedObj.metadata?.size ?? 0,
+          client_card_id: cleanString(p.cardLocalId, 100),
         });
       }
       photoRows = photoRows.slice(0, MAX_PHOTOS_PER_SUBMISSION);

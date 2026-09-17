@@ -38,7 +38,10 @@ export function SellReview({
   const uploadedPhotos = photos.filter((p) => p.status === "uploaded" || p.status === "uploading");
   const location = [contact.city, contact.state].filter(Boolean).join(", ");
   const cardsNeedingPhotos = cards.filter(
-    (c) => c.rawInput == null && conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)),
+    (c) =>
+      c.rawInput == null &&
+      conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)) &&
+      !photos.some((p) => p.cardLocalId === c.localId && (p.status === "uploaded" || p.status === "uploading")),
   );
 
   return (
@@ -111,8 +114,10 @@ export function SellReview({
             </strong>{" "}
             {cardsNeedingPhotos.map((c) => c.cardName).join(", ")}. You&rsquo;ve listed{" "}
             {cardsNeedingPhotos.length === 1 ? "it" : "them"} in better condition than we&rsquo;d expect for{" "}
-            {cardsNeedingPhotos.length === 1 ? "its" : "their"} age — please make sure a clear photo of{" "}
-            {cardsNeedingPhotos.length === 1 ? "it is" : "each is"} included above before submitting.
+            {cardsNeedingPhotos.length === 1 ? "its" : "their"} age.{" "}
+            <button type="button" className="gg-btn gg-btn-ghost gg-btn-sm" onClick={() => onEditStep(0)}>
+              Go back and add a photo
+            </button>
           </p>
         )}
       </section>

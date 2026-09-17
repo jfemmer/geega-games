@@ -71,6 +71,7 @@ function mapCard(row: CardRow): BuyingLeadCard {
     scryfallPriceCents: row.scryfall_price_cents,
     sellerNotes: row.seller_notes,
     matchStatus: row.match_status,
+    clientCardId: row.client_card_id,
   };
 }
 
@@ -175,6 +176,7 @@ export const buyingLeadsRepository = {
         mimeType: p.mime_type,
         sizeBytes: p.size_bytes,
         signedUrl: urlByPath.get(p.storage_path) ?? null,
+        clientCardId: p.client_card_id,
       })) as BuyingLeadPhoto[],
     };
   },

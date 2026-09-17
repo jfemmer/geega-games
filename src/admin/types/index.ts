@@ -972,6 +972,8 @@ export interface BuyingLeadCard {
   scryfallPriceCents: number | null;
   sellerNotes: string | null;
   matchStatus: "matched" | "ambiguous" | "unmatched";
+  /** Correlates to BuyingLeadPhoto.clientCardId when the seller attached a photo to this specific card. */
+  clientCardId: string | null;
 }
 
 export interface BuyingLeadPhoto {
@@ -980,6 +982,8 @@ export interface BuyingLeadPhoto {
   mimeType: string;
   sizeBytes: number;
   signedUrl: string | null;
+  /** Set when the seller attached this photo to a specific card (see BuyingLeadCard.clientCardId), rather than the general collection uploader. */
+  clientCardId: string | null;
 }
 
 export interface BuyingLeadDetail extends BuyingLeadSummary {

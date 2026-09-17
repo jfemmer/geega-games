@@ -309,6 +309,41 @@ describe("POST /api/sell/submit", () => {
     });
   });
 
+  it("threads a photo's cardLocalId through as client_card_id, correlating it to the matching card", async () => {
+    state.storageObjects = [
+      { name: "real.jpg", id: "obj-1", metadata: { size: 123456, mimetype: "image/jpeg" } },
+    ];
+    const draftId = "22222222-2222-2222-2222-222222222222";
+    const res = await invoke({
+      draftId,
+      contact: validContact,
+      collection: validCollection,
+      cards: [{ ...validCard, clientCardId: "local-card-1" }],
+      photos: [{ path: `${draftId}/real.jpg`, originalFilename: "IMG_0001.jpg", cardLocalId: "local-card-1" }],
+      agreedToTerms: true,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(state.insertedCards?.[0]).toMatchObject({ client_card_id: "local-card-1" });
+    expect(state.insertedPhotos?.[0]).toMatchObject({ client_card_id: "local-card-1" });
+  });
+
+  it("leaves client_card_id null for a general collection photo not tied to any card", async () => {
+    state.storageObjects = [
+      { name: "real.jpg", id: "obj-1", metadata: { size: 123456, mimetype: "image/jpeg" } },
+    ];
+    const draftId = "22222222-2222-2222-2222-222222222222";
+    const res = await invoke({
+      draftId,
+      contact: validContact,
+      collection: validCollection,
+      cards: [validCard],
+      photos: [{ path: `${draftId}/real.jpg`, originalFilename: "IMG_0001.jpg" }],
+      agreedToTerms: true,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(state.insertedPhotos?.[0]).toMatchObject({ client_card_id: null });
+  });
+
   it("rejects further submissions from the same email once the recent cap is hit", async () => {
     state.recentCountForEmail = 3;
     const res = await invoke({

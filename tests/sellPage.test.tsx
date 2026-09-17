@@ -26,6 +26,11 @@ vi.mock("../src/supabase", () => ({
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
+// jsdom doesn't implement blob URLs — CollectionPhotoUpload/CardPhotoUpload
+// call these as soon as a file is selected, well before any network request.
+URL.createObjectURL = vi.fn(() => "blob:mock-url");
+URL.revokeObjectURL = vi.fn();
+
 const { default: App } = await import("../src/App");
 
 function goTo(path: string) {
@@ -197,7 +202,7 @@ describe("age-based condition defaults for manually-added cards", () => {
     )[0] as HTMLSelectElement;
     fireEvent.change(conditionSelect, { target: { value: "NM" } });
     expect(
-      await screen.findByText(/include a clear photo of this card/i),
+      await screen.findByText(/add a clear photo of this card below/i),
     ).toBeInTheDocument();
   });
 
@@ -211,6 +216,48 @@ describe("age-based condition defaults for manually-added cards", () => {
     expect(conditionSelect.value).toBe("LP");
     expect(screen.queryByText(/2005 or earlier/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/2006–2015/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("per-card photo upload spot", () => {
+  it("shows a photo thumbnail under the card once a file is attached to it, separate from the general uploader", async () => {
+    mockFetch();
+    const { container } = render(<App />);
+    await addSampleCard(container);
+
+    const cardRow = container.querySelector(".gg-sellcard-row") as HTMLElement;
+    const cardFileInput = cardRow.querySelector("input[type='file']") as HTMLInputElement;
+    const file = new File(["fake image bytes"], "card.jpg", { type: "image/jpeg" });
+    fireEvent.change(cardFileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(cardRow.querySelector(".gg-cardphoto__thumb")).toBeTruthy();
+    });
+
+    // The general "full collection" uploader (outside this card's row) never
+    // shows a photo that was attached to a specific card.
+    const generalSection = container.querySelector(".gg-sellsection--featured") as HTMLElement;
+    expect(generalSection.querySelector(".gg-sellphotos__item")).toBeNull();
+  });
+
+  it("drops a card's attached photo when the card itself is removed", async () => {
+    mockFetch();
+    const { container } = render(<App />);
+    await addSampleCard(container);
+
+    const cardRow = container.querySelector(".gg-sellcard-row") as HTMLElement;
+    const cardFileInput = cardRow.querySelector("input[type='file']") as HTMLInputElement;
+    const file = new File(["fake image bytes"], "card.jpg", { type: "image/jpeg" });
+    fireEvent.change(cardFileInput, { target: { files: [file] } });
+    await waitFor(() => {
+      expect(cardRow.querySelector(".gg-cardphoto__thumb")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /remove lightning bolt/i }));
+    await waitFor(() => {
+      expect(container.querySelector(".gg-sellcards")).toBeNull();
+    });
+    expect(container.querySelector(".gg-cardphoto__thumb")).toBeNull();
   });
 });
 

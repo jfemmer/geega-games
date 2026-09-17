@@ -1299,6 +1299,85 @@
   cursor: pointer;
 }
 
+/* Per-card photo spot (compact — see CardPhotoUpload) */
+.gg-cardphoto {
+  margin-top: 0.6rem;
+}
+.gg-cardphoto__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gg-cardphoto__thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ece6f7;
+  flex-shrink: 0;
+}
+.gg-cardphoto__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gg-cardphoto__status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.65rem;
+  text-align: center;
+  padding: 0.2rem;
+}
+.gg-cardphoto__status--error {
+  background: rgba(185, 28, 28, 0.75);
+}
+.gg-cardphoto__status button {
+  background: none;
+  border: 1px solid #fff;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  cursor: pointer;
+}
+.gg-cardphoto__remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.gg-cardphoto__add {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border: 1px dashed var(--gg-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--gg-purple);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gg-cardphoto__add:hover {
+  border-color: var(--gg-purple);
+  background: #faf9fd;
+}
+
 /* Checkbox / radio groups */
 .gg-sellcheckgroup {
   border: none;

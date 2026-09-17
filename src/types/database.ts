@@ -1738,6 +1738,7 @@ export type Database = {
       sell_submission_cards: {
         Row: {
           card_name: string
+          client_card_id: string | null
           collector_number: string | null
           condition: Database["public"]["Enums"]["card_condition"] | null
           created_at: string
@@ -1756,6 +1757,7 @@ export type Database = {
         }
         Insert: {
           card_name: string
+          client_card_id?: string | null
           collector_number?: string | null
           condition?: Database["public"]["Enums"]["card_condition"] | null
           created_at?: string
@@ -1774,6 +1776,7 @@ export type Database = {
         }
         Update: {
           card_name?: string
+          client_card_id?: string | null
           collector_number?: string | null
           condition?: Database["public"]["Enums"]["card_condition"] | null
           created_at?: string
@@ -1802,6 +1805,7 @@ export type Database = {
       }
       sell_submission_photos: {
         Row: {
+          client_card_id: string | null
           created_at: string
           id: string
           mime_type: string
@@ -1811,6 +1815,7 @@ export type Database = {
           submission_id: string
         }
         Insert: {
+          client_card_id?: string | null
           created_at?: string
           id?: string
           mime_type: string
@@ -1820,6 +1825,7 @@ export type Database = {
           submission_id: string
         }
         Update: {
+          client_card_id?: string | null
           created_at?: string
           id?: string
           mime_type?: string

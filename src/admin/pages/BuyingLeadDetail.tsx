@@ -182,55 +182,80 @@ export function BuyingLeadDetailDrawer({
           <section className="gg-leaddetail__section">
             <h3>Submitted cards ({lead.totalCards} total)</h3>
             <ul className="gg-leaddetail__cards">
-              {lead.cards.map((c) => (
-                <li key={c.id} className={c.matchStatus !== "matched" ? "gg-leaddetail__card--review" : undefined}>
-                  {c.imageUrl ? (
-                    <a href={c.imageUrl} target="_blank" rel="noopener noreferrer">
-                      <img src={c.imageUrl} alt="" loading="lazy" />
-                    </a>
-                  ) : (
-                    <div className="gg-leaddetail__cardimg--none" aria-hidden="true" />
-                  )}
-                  <div>
-                    <div className="gg-card-name">{c.cardName}</div>
-                    <div className="gg-card-meta">
-                      {c.setName}
-                      {c.collectorNumber ? ` · #${c.collectorNumber}` : ""}
-                      {" · "}
-                      {c.condition ? CONDITION_LABELS[c.condition] : "Unsure"} · {FINISH_LABELS[c.finish]} × {c.quantity}
-                      {c.scryfallPriceCents != null ? ` · ~${formatCents(c.scryfallPriceCents)} each` : ""}
-                    </div>
-                    {c.matchStatus !== "matched" && (
-                      <Badge tone="warning">
-                        {c.matchStatus === "ambiguous" ? "Needs printing confirmation" : "Unmatched — as typed"}
-                      </Badge>
+              {lead.cards.map((c) => {
+                const cardPhotos = c.clientCardId
+                  ? lead.photos.filter((p) => p.clientCardId === c.clientCardId)
+                  : [];
+                return (
+                  <li key={c.id} className={c.matchStatus !== "matched" ? "gg-leaddetail__card--review" : undefined}>
+                    {c.imageUrl ? (
+                      <a href={c.imageUrl} target="_blank" rel="noopener noreferrer">
+                        <img src={c.imageUrl} alt="" loading="lazy" />
+                      </a>
+                    ) : (
+                      <div className="gg-leaddetail__cardimg--none" aria-hidden="true" />
                     )}
-                    {c.sellerNotes && <div className="gg-card-meta">&ldquo;{c.sellerNotes}&rdquo;</div>}
-                  </div>
-                </li>
-              ))}
+                    <div>
+                      <div className="gg-card-name">{c.cardName}</div>
+                      <div className="gg-card-meta">
+                        {c.setName}
+                        {c.collectorNumber ? ` · #${c.collectorNumber}` : ""}
+                        {" · "}
+                        {c.condition ? CONDITION_LABELS[c.condition] : "Unsure"} · {FINISH_LABELS[c.finish]} × {c.quantity}
+                        {c.scryfallPriceCents != null ? ` · ~${formatCents(c.scryfallPriceCents)} each` : ""}
+                      </div>
+                      {c.matchStatus !== "matched" && (
+                        <Badge tone="warning">
+                          {c.matchStatus === "ambiguous" ? "Needs printing confirmation" : "Unmatched — as typed"}
+                        </Badge>
+                      )}
+                      {c.sellerNotes && <div className="gg-card-meta">&ldquo;{c.sellerNotes}&rdquo;</div>}
+                      {cardPhotos.length > 0 && (
+                        <ul className="gg-leaddetail__cardphotos">
+                          {cardPhotos.map((p) => (
+                            <li key={p.id}>
+                              {p.signedUrl ? (
+                                <a href={p.signedUrl} target="_blank" rel="noopener noreferrer">
+                                  <img src={p.signedUrl} alt={p.originalFilename} loading="lazy" />
+                                </a>
+                              ) : (
+                                <div className="gg-leaddetail__cardimg--none" aria-hidden="true" />
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
 
-        {lead.photos.length > 0 && (
-          <section className="gg-leaddetail__section">
-            <h3>Photos ({lead.photos.length})</h3>
-            <ul className="gg-leaddetail__photos">
-              {lead.photos.map((p) => (
-                <li key={p.id}>
-                  {p.signedUrl ? (
-                    <a href={p.signedUrl} target="_blank" rel="noopener noreferrer">
-                      <img src={p.signedUrl} alt={p.originalFilename} loading="lazy" />
-                    </a>
-                  ) : (
-                    <div className="gg-leaddetail__cardimg--none" aria-hidden="true" />
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        {(() => {
+          const generalPhotos = lead.photos.filter((p) => !p.clientCardId);
+          return (
+            generalPhotos.length > 0 && (
+              <section className="gg-leaddetail__section">
+                <h3>Photos ({generalPhotos.length})</h3>
+                <ul className="gg-leaddetail__photos">
+                  {generalPhotos.map((p) => (
+                    <li key={p.id}>
+                      {p.signedUrl ? (
+                        <a href={p.signedUrl} target="_blank" rel="noopener noreferrer">
+                          <img src={p.signedUrl} alt={p.originalFilename} loading="lazy" />
+                        </a>
+                      ) : (
+                        <div className="gg-leaddetail__cardimg--none" aria-hidden="true" />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )
+          );
+        })()}
 
         <section className="gg-leaddetail__section gg-leaddetail__internal">
           <h3>Internal tools</h3>

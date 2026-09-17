@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { SellCardSearch } from "./SellCardSearch";
+import { CardPhotoUpload } from "./CardPhotoUpload";
 import { storefrontImageUrl } from "../../../cards";
 import { formatCents } from "../../lib/money";
 import {
@@ -9,6 +10,7 @@ import {
   SELL_CONDITION_OPTIONS,
   SELL_FINISH_OPTIONS,
   type SellCardLine,
+  type SellPhoto,
   type SellPrinting,
 } from "../../lib/sellTypes";
 
@@ -29,11 +31,19 @@ export function SellCardList({
   onUpdate,
   onRemove,
   onRematch,
+  photos,
+  onAddCardPhotos,
+  onRemoveCardPhoto,
+  onRetryCardPhoto,
 }: {
   cards: SellCardLine[];
   onUpdate: (localId: string, patch: Partial<SellCardLine>) => void;
   onRemove: (localId: string) => void;
   onRematch: (localId: string, printing: SellPrinting) => void;
+  photos: SellPhoto[];
+  onAddCardPhotos: (cardLocalId: string, files: File[]) => void;
+  onRemoveCardPhoto: (localId: string) => void;
+  onRetryCardPhoto: (localId: string) => void;
 }) {
   const [matchingId, setMatchingId] = useState<string | null>(null);
 
@@ -59,6 +69,8 @@ export function SellCardList({
           isManualEntry && recommendedCondition
             ? conditionNeedsPhotos(card.condition, recommendedCondition)
             : false;
+        const cardPhotos = photos.filter((p) => p.cardLocalId === card.localId);
+        const stillNeedsPhotos = needsPhotos && cardPhotos.length === 0;
         return (
           <li key={card.localId} className="gg-sellcard-row">
             <div className="gg-sellcard-row__main">
@@ -165,11 +177,17 @@ export function SellCardList({
             {conditionExplanation && (
               <p className="gg-card-meta gg-sellcard-row__conditionnote">{conditionExplanation}</p>
             )}
-            {needsPhotos && (
+            {stillNeedsPhotos && (
               <p className="gg-alert gg-alert-warn gg-sellcard-row__conditionnote" role="alert">
-                Please include a clear photo of this card so we can confirm the condition.
+                Please add a clear photo of this card below so we can confirm the condition.
               </p>
             )}
+            <CardPhotoUpload
+              photos={cardPhotos}
+              onFilesSelected={(files) => onAddCardPhotos(card.localId, files)}
+              onRemove={onRemoveCardPhoto}
+              onRetry={onRetryCardPhoto}
+            />
             <label className="gg-field gg-sellcard-row__notes">
               <span>Notes (optional)</span>
               <input

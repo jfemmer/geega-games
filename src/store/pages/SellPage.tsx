@@ -120,6 +120,17 @@ export default function SellPage() {
   }
   function removeCard(localId: string) {
     setDraft((d) => ({ ...d, cards: d.cards.filter((c) => c.localId !== localId) }));
+    // Any photo attached specifically to this card is meaningless once the
+    // card itself is gone — drop it too, rather than silently uploading and
+    // submitting an orphaned photo tagged with a card that no longer exists.
+    setPhotos((prev) => {
+      const [orphaned, kept] = [
+        prev.filter((p) => p.cardLocalId === localId),
+        prev.filter((p) => p.cardLocalId !== localId),
+      ];
+      orphaned.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return kept;
+    });
   }
 
   function startUpload(photo: SellPhoto) {
@@ -143,7 +154,7 @@ export default function SellPage() {
       });
   }
 
-  function handleFilesSelected(files: File[]) {
+  function handleFilesSelected(files: File[], cardLocalId: string | null = null) {
     const additions: SellPhoto[] = files.map((file) => {
       if (!ACCEPTED_PHOTO_TYPES.has(file.type)) {
         return {
@@ -153,6 +164,7 @@ export default function SellPage() {
           status: "error",
           errorMessage: "Unsupported file type",
           originalFilename: file.name,
+          cardLocalId,
         };
       }
       if (file.size > MAX_PHOTO_BYTES) {
@@ -163,6 +175,7 @@ export default function SellPage() {
           status: "error",
           errorMessage: "File is larger than 15 MB",
           originalFilename: file.name,
+          cardLocalId,
         };
       }
       return {
@@ -171,10 +184,15 @@ export default function SellPage() {
         previewUrl: URL.createObjectURL(file),
         status: "pending",
         originalFilename: file.name,
+        cardLocalId,
       };
     });
     setPhotos((prev) => [...prev, ...additions]);
     additions.filter((p) => p.status === "pending").forEach(startUpload);
+  }
+
+  function addCardPhotos(cardLocalId: string, files: File[]) {
+    handleFilesSelected(files, cardLocalId);
   }
 
   function removePhoto(localId: string) {
@@ -223,7 +241,11 @@ export default function SellPage() {
         contact: draft.contact,
         collection: draft.collection,
         cards: draft.cards,
-        photos: uploaded.map((p) => ({ path: p.uploadedPath!, originalFilename: p.originalFilename })),
+        photos: uploaded.map((p) => ({
+          path: p.uploadedPath!,
+          originalFilename: p.originalFilename,
+          cardLocalId: p.cardLocalId,
+        })),
         agreedToTerms: draft.agreedToTerms,
       });
       if (!res.ok) {
@@ -320,8 +342,8 @@ export default function SellPage() {
               overview of the whole collection, and add any notes you have in the next step.
             </p>
             <CollectionPhotoUpload
-              photos={photos}
-              onFilesSelected={handleFilesSelected}
+              photos={photos.filter((p) => p.cardLocalId == null)}
+              onFilesSelected={(files) => handleFilesSelected(files)}
               onRemove={removePhoto}
               onRetry={retryPhoto}
             />
@@ -341,7 +363,16 @@ export default function SellPage() {
             <BulkListInput onAddCards={addCards} onUpdateCard={updateCard} />
           </div>
 
-          <SellCardList cards={draft.cards} onUpdate={updateCard} onRemove={removeCard} onRematch={(id, p) => updateCard(id, printingToCardLine(p))} />
+          <SellCardList
+            cards={draft.cards}
+            onUpdate={updateCard}
+            onRemove={removeCard}
+            onRematch={(id, p) => updateCard(id, { ...printingToCardLine(p), localId: id })}
+            photos={photos}
+            onAddCardPhotos={addCardPhotos}
+            onRemoveCardPhoto={removePhoto}
+            onRetryCardPhoto={retryPhoto}
+          />
         </div>
       )}
 

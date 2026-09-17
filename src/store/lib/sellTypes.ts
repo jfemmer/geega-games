@@ -59,6 +59,8 @@ export interface SellPhoto {
   /** Storage path once the signed upload has completed. */
   uploadedPath?: string;
   originalFilename: string;
+  /** Set when attached to a specific card (SellCardLine.localId) rather than the general collection uploader. */
+  cardLocalId: string | null;
 }
 
 export interface SellContactInfo {
