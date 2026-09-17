@@ -11,6 +11,7 @@ import {
   type StaffContext,
 } from "../../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../../_lib/supabaseAdmin.js";
+import { logAdminAction } from "../../../_lib/auditLog.js";
 
 // POST /api/admin/inventory/:id/archive
 //
@@ -45,6 +46,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       p_actor: actorLabel(staff),
     });
     if (error) throw new HttpError(500, error.message);
+    await logAdminAction(admin, staff, {
+      action: nextStatus === "archived" ? "inventory.archive" : "inventory.restore",
+      resourceType: "inventory_item",
+      resourceId: id,
+    });
     return sendJson(res, 200, data as unknown as Record<string, unknown>);
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;

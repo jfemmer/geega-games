@@ -7,6 +7,7 @@ import {
 } from "../../_lib/http.js";
 import { requireStaff, requireCapability } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
+import { logAdminAction } from "../../_lib/auditLog.js";
 
 // GET/PUT /api/admin/inventory/price-floors
 //
@@ -139,6 +140,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (error) throw new HttpError(500, error.message);
 
     const repriced = await repriceExistingInventory(admin, requested, false);
+
+    await logAdminAction(admin, staff, {
+      action: "inventory.set_price_floors",
+      resourceType: "inventory_price_floors",
+      after: { ...requested, repriced },
+    });
 
     return sendJson(res, 200, { ok: true, dryRun: false, floors: data ?? [], repriced });
   } catch (err) {

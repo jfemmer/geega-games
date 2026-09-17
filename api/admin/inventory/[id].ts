@@ -19,6 +19,7 @@ import {
   printingColumnsFromCard,
   type InventoryRow,
 } from "../../_lib/inventory.js";
+import { logAdminAction } from "../../_lib/auditLog.js";
 import type { Database } from "../../../src/types/database.js";
 
 // PATCH  /api/admin/inventory/:id  — edit a line (fields and/or exact printing)
@@ -321,6 +322,15 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
   }
 
   const fresh = await getRowOr404(admin, id);
+  if (Object.keys(patch).length > 0 || body.status !== undefined) {
+    await logAdminAction(admin, staff, {
+      action: "inventory.edit",
+      resourceType: "inventory_item",
+      resourceId: id,
+      before: current,
+      after: patch,
+    });
+  }
   return sendJson(res, 200, fresh as unknown as Record<string, unknown>);
 }
 
@@ -335,7 +345,7 @@ async function handleDelete(req: VercelRequest, res: VercelResponse) {
   const admin = getSupabaseAdmin();
 
   // Confirm the row exists (clean 404 rather than a silent no-op).
-  await getRowOr404(admin, id);
+  const existing = await getRowOr404(admin, id);
 
   // Historical safety: refuse when referenced by orders/carts/scans.
   const blockers = await inventoryDeleteBlockers(admin, id).catch(() => {
@@ -362,6 +372,13 @@ async function handleDelete(req: VercelRequest, res: VercelResponse) {
     }
     throw new HttpError(500, "Could not delete the inventory item.");
   }
+
+  await logAdminAction(admin, staff, {
+    action: "inventory.delete",
+    resourceType: "inventory_item",
+    resourceId: id,
+    before: existing,
+  });
 
   res.status(204).end();
 }

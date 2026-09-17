@@ -5,6 +5,7 @@ import { SearchInput } from "../ui/Field";
 import { NAV_ITEMS } from "./nav";
 import { inventoryRepository, orderRepository, userRepository } from "../../repositories";
 import { ADMIN_BASE } from "../../hooks/useRouter";
+import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 
 interface SearchResult {
   id: string;
@@ -25,6 +26,7 @@ export function GlobalSearch({
 }) {
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const currentAdmin = useCurrentAdmin();
 
   useEffect(() => {
     if (!open) setTerm("");
@@ -33,7 +35,11 @@ export function GlobalSearch({
   const navMatches = useMemo<SearchResult[]>(() => {
     const q = term.trim().toLowerCase();
     if (!q) return [];
-    return NAV_ITEMS.filter((n) => n.label.toLowerCase().includes(q)).map(
+    return NAV_ITEMS.filter(
+      (n) =>
+        n.label.toLowerCase().includes(q) &&
+        (!n.requires || currentAdmin.can(n.requires)),
+    ).map(
       (n) => ({
         id: `nav_${n.key}`,
         label: n.label,
@@ -42,7 +48,7 @@ export function GlobalSearch({
         path: n.path,
       }),
     );
-  }, [term]);
+  }, [term, currentAdmin]);
 
   useEffect(() => {
     let active = true;

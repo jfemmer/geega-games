@@ -1,5 +1,6 @@
 import { Icon } from "../ui/Icon";
 import { NAV_ITEMS } from "./nav";
+import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 
 export function Sidebar({
   activeKey,
@@ -18,6 +19,10 @@ export function Sidebar({
   onToggleCollapse: () => void;
   onCloseMobile: () => void;
 }) {
+  const currentAdmin = useCurrentAdmin();
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => !item.requires || currentAdmin.can(item.requires),
+  );
   return (
     <>
       {mobileOpen && (
@@ -53,7 +58,7 @@ export function Sidebar({
         </div>
 
         <nav className="gg-sidebar__nav">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const badge =
               item.key === "orders" ? counts.needs_packing : undefined;
             const active = activeKey === item.key;

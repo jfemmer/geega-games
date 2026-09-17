@@ -1,11 +1,14 @@
 import type { IconName } from "../ui/Icon";
 import { ADMIN_BASE } from "../../hooks/useRouter";
+import type { StaffCapability } from "../../permissions";
 
 export interface NavItem {
   key: string;
   label: string;
   icon: IconName;
   path: string;
+  /** Hidden from the sidebar unless the signed-in staff role has this. */
+  requires?: StaffCapability;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -44,6 +47,13 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { key: "users", label: "Users", icon: "users", path: `${ADMIN_BASE}/users` },
   { key: "trends", label: "Trends", icon: "trends", path: `${ADMIN_BASE}/trends` },
+  {
+    key: "audit-log",
+    label: "Audit Log",
+    icon: "clock",
+    path: `${ADMIN_BASE}/audit-log`,
+    requires: "audit.view",
+  },
 ];
 
 export const SECTION_TITLES: Record<string, string> = {
@@ -57,4 +67,5 @@ export const SECTION_TITLES: Record<string, string> = {
   "buying-leads": "Buying Leads",
   users: "Users",
   trends: "Trends",
+  "audit-log": "Audit Log",
 };

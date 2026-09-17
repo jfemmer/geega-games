@@ -393,6 +393,32 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 .gg-qty { font-variant-numeric: tabular-nums; font-weight: 600; }
 .gg-qty--low { color: var(--gg-warning); }
+
+.gg-audit__action { font-size: 0.82rem; }
+.gg-audit__detailtoggle {
+  display: block;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.76rem;
+  color: var(--gg-brand);
+  cursor: pointer;
+}
+.gg-audit__detailtoggle:hover { text-decoration: underline; }
+.gg-audit__detail {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--gg-surface-2);
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  font-size: 0.74rem;
+  max-width: 420px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .gg-qty--out { color: var(--gg-danger); }
 
 /* ------------------------------- Filters ------------------------------- */

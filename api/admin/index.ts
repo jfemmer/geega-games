@@ -23,6 +23,7 @@ import type { Database } from "../../src/types/database.js";
 import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
 import { getStripe } from "../_lib/stripe.js";
 import { buyShippingLabel } from "../_lib/easypost.js";
+import { logAdminAction } from "../_lib/auditLog.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Consolidated admin API router.
@@ -631,6 +632,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } catch (mailErr) {
             console.error("[admin/orders/set-status] cancellation email failed", mailErr);
           }
+          await logAdminAction(admin, staff, {
+            action: "order.cancel",
+            resourceType: "order",
+            resourceId: orderId,
+          });
         }
         return sendJson(res, 200, { ok: true });
       }
@@ -691,6 +697,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (mailErr) {
           console.error("[admin/orders/ship] shipped email failed", mailErr);
         }
+        await logAdminAction(admin, staff, {
+          action: "order.ship",
+          resourceType: "order",
+          resourceId: orderId,
+          after: { carrier, trackingNumber },
+        });
         return sendJson(res, 200, { ok: true });
       }
 
@@ -763,6 +775,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (mailErr) {
           console.error("[admin/orders/buy-label] shipped email failed", mailErr);
         }
+        await logAdminAction(admin, staff, {
+          action: "order.buy_label",
+          resourceType: "order",
+          resourceId: orderId,
+          after: {
+            carrier: purchased.carrier,
+            trackingCode: purchased.trackingCode,
+            rateCents: purchased.rateCents,
+          },
+        });
 
         return sendJson(res, 200, {
           ok: true,
@@ -953,6 +975,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const staffMember = refreshed.data?.user
           ? mapAuthUserToStaff(refreshed.data.user)
           : mapAuthUserToStaff(user);
+        await logAdminAction(admin, staff, {
+          action: "staff.invite",
+          resourceType: "staff",
+          resourceId: user.id,
+          after: { email, staffRole },
+        });
         return sendJson(res, 201, { ok: true, staff: staffMember });
       }
 
@@ -1038,6 +1066,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const staffMember = refreshed.data?.user
           ? mapAuthUserToStaff(refreshed.data.user)
           : mapAuthUserToStaff(user);
+        await logAdminAction(admin, staff, {
+          action: "staff.update",
+          resourceType: "staff",
+          resourceId: id,
+          before: { role: currentRole },
+          after: { role: body.role, status: body.status },
+        });
         return sendJson(res, 200, { ok: true, staff: staffMember });
       }
     }

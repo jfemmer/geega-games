@@ -14,6 +14,7 @@ import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import { cachePrinting, type InventoryRow } from "../../_lib/inventory.js";
 import { primaryImageUrl } from "../../../src/admin/services/scryfall.js";
+import { logAdminAction } from "../../_lib/auditLog.js";
 import type { Database } from "../../../src/types/database.js";
 
 // POST /api/admin/inventory
@@ -138,6 +139,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data, error } = await admin.rpc("admin_upsert_inventory", upsertArgs);
 
     if (error) throw new HttpError(500, error.message);
+    const row = data as unknown as { id?: string } | null;
+    await logAdminAction(admin, staff, {
+      action: "inventory.add",
+      resourceType: "inventory_item",
+      resourceId: row?.id ?? null,
+      after: { cardName: upsertArgs.p_card_name, quantity, priceCents },
+    });
     return sendJson(res, 200, data as unknown as Record<string, unknown>);
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;

@@ -11,6 +11,7 @@ import {
   type StaffContext,
 } from "../../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../../_lib/supabaseAdmin.js";
+import { logAdminAction } from "../../../_lib/auditLog.js";
 import type { Database } from "../../../../src/types/database.js";
 
 // POST /api/admin/inventory/:id/adjust
@@ -71,6 +72,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       p_note: body.note ?? undefined,
     });
     if (error) throw new HttpError(500, error.message);
+    await logAdminAction(admin, staff, {
+      action: "inventory.adjust_quantity",
+      resourceType: "inventory_item",
+      resourceId: id,
+      after: { delta, reason },
+    });
     return sendJson(res, 200, data as unknown as Record<string, unknown>);
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
