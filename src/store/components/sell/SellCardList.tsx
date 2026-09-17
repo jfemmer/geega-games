@@ -3,6 +3,9 @@ import { SellCardSearch } from "./SellCardSearch";
 import { storefrontImageUrl } from "../../../cards";
 import { formatCents } from "../../lib/money";
 import {
+  conditionDefaultExplanation,
+  conditionNeedsPhotos,
+  defaultConditionForReleaseDate,
   SELL_CONDITION_OPTIONS,
   SELL_FINISH_OPTIONS,
   type SellCardLine,
@@ -41,6 +44,21 @@ export function SellCardList({
       {cards.map((card) => {
         const needsReview = card.matchStatus !== "matched";
         const isMatching = matchingId === card.localId;
+        // Age-based condition guidance only applies to a card added by
+        // searching for it directly — a pasted/CSV line (rawInput set) is
+        // out of scope, per the product decision that this is a manual-entry
+        // safeguard, not a blanket rule.
+        const isManualEntry = card.rawInput == null;
+        const recommendedCondition = isManualEntry
+          ? defaultConditionForReleaseDate(card.releasedAt)
+          : null;
+        const conditionExplanation = recommendedCondition
+          ? conditionDefaultExplanation(recommendedCondition)
+          : null;
+        const needsPhotos =
+          isManualEntry && recommendedCondition
+            ? conditionNeedsPhotos(card.condition, recommendedCondition)
+            : false;
         return (
           <li key={card.localId} className="gg-sellcard-row">
             <div className="gg-sellcard-row__main">
@@ -144,6 +162,14 @@ export function SellCardList({
                 </select>
               </label>
             </div>
+            {conditionExplanation && (
+              <p className="gg-card-meta gg-sellcard-row__conditionnote">{conditionExplanation}</p>
+            )}
+            {needsPhotos && (
+              <p className="gg-alert gg-alert-warn gg-sellcard-row__conditionnote" role="alert">
+                Please include a clear photo of this card so we can confirm the condition.
+              </p>
+            )}
             <label className="gg-field gg-sellcard-row__notes">
               <span>Notes (optional)</span>
               <input

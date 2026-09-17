@@ -36,7 +36,9 @@ export function loadDraft(): SellDraft | null {
       draftId: parsed.draftId,
       contact: { ...emptyContact(), ...parsed.contact },
       collection: { ...emptyCollection(), ...parsed.collection },
-      cards: Array.isArray(parsed.cards) ? parsed.cards : [],
+      cards: Array.isArray(parsed.cards)
+        ? parsed.cards.map((c) => ({ ...c, releasedAt: c.releasedAt ?? null }))
+        : [],
       agreedToTerms: false, // never resume a stale agreement across sessions
     };
   } catch {

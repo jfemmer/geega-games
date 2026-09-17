@@ -1195,6 +1195,10 @@
 .gg-sellcard-row__notes {
   margin-top: 0.6rem;
 }
+.gg-sellcard-row__conditionnote {
+  margin-top: 0.6rem;
+  margin-bottom: 0;
+}
 
 /* Bulk list paste */
 .gg-sellbulk textarea {

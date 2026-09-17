@@ -1,5 +1,7 @@
 import { storefrontImageUrl } from "../../../cards";
 import {
+  conditionNeedsPhotos,
+  defaultConditionForReleaseDate,
   SELL_COLLECTION_SIZE_OPTIONS,
   SELL_COLLECTION_TYPE_OPTIONS,
   SELL_TIMELINE_OPTIONS,
@@ -35,6 +37,9 @@ export function SellReview({
   const totalQty = cards.reduce((sum, c) => sum + c.quantity, 0);
   const uploadedPhotos = photos.filter((p) => p.status === "uploaded" || p.status === "uploading");
   const location = [contact.city, contact.state].filter(Boolean).join(", ");
+  const cardsNeedingPhotos = cards.filter(
+    (c) => c.rawInput == null && conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)),
+  );
 
   return (
     <div className="gg-sellreview">
@@ -98,6 +103,17 @@ export function SellReview({
             ))}
             {uploadedPhotos.length > 6 && <li className="gg-card-meta">+ {uploadedPhotos.length - 6} more</li>}
           </ul>
+        )}
+        {cardsNeedingPhotos.length > 0 && (
+          <p className="gg-alert gg-alert-warn" role="alert">
+            <strong>
+              Photos needed for {cardsNeedingPhotos.length} card{cardsNeedingPhotos.length === 1 ? "" : "s"}:
+            </strong>{" "}
+            {cardsNeedingPhotos.map((c) => c.cardName).join(", ")}. You&rsquo;ve listed{" "}
+            {cardsNeedingPhotos.length === 1 ? "it" : "them"} in better condition than we&rsquo;d expect for{" "}
+            {cardsNeedingPhotos.length === 1 ? "its" : "their"} age — please make sure a clear photo of{" "}
+            {cardsNeedingPhotos.length === 1 ? "it is" : "each is"} included above before submitting.
+          </p>
         )}
       </section>
 

@@ -16,6 +16,7 @@ interface RawCardPrinting {
   availableFinishes: string[];
   treatments: string[];
   scryfallPriceCents: number | null;
+  releasedAt: string | null;
 }
 
 function mapPrinting(raw: RawCardPrinting): SellPrinting {
@@ -30,6 +31,7 @@ function mapPrinting(raw: RawCardPrinting): SellPrinting {
     availableFinishes: raw.availableFinishes ?? [],
     treatments: raw.treatments ?? [],
     scryfallPriceCents: raw.scryfallPriceCents ?? null,
+    releasedAt: raw.releasedAt ?? null,
   };
 }
 

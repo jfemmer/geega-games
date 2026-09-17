@@ -43,6 +43,21 @@ const SAMPLE_PRINTING = {
   availableFinishes: ["nonfoil"],
   treatments: [],
   scryfallPriceCents: 50,
+  releasedAt: "2019-01-25",
+};
+
+const OLD_PRINTING = {
+  scryfallId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  cardName: "Black Lotus",
+  setName: "Limited Edition Alpha",
+  setCode: "LEA",
+  collectorNumber: "232",
+  rarity: "rare",
+  imageUrl: "https://img.example/lotus.jpg",
+  availableFinishes: ["nonfoil"],
+  treatments: [],
+  scryfallPriceCents: 5_000_000,
+  releasedAt: "1993-08-05",
 };
 
 function mockFetch({ submitOk = true }: { submitOk?: boolean } = {}) {
@@ -77,6 +92,32 @@ async function addSampleCard(container: HTMLElement) {
   fireEvent.click(resultButton);
   await waitFor(() => {
     expect(container.querySelector(".gg-sellcards")?.textContent).toContain("Lightning Bolt");
+  });
+}
+
+function mockOldCardFetch() {
+  fetchMock.mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/api/sell/scryfall-search")) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [OLD_PRINTING], totalCards: 1, hasMore: false, page: 1 }),
+      } as Response);
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+  });
+}
+
+async function addOldCard(container: HTMLElement) {
+  const searchBox = await screen.findByLabelText(/search for a card/i);
+  fireEvent.change(searchBox, { target: { value: "Black Lotus" } });
+  await waitFor(() => {
+    expect(container.querySelector(".gg-sellsearch__results")).toBeTruthy();
+  });
+  const resultButton = container.querySelector(".gg-sellsearch__result") as HTMLElement;
+  fireEvent.click(resultButton);
+  await waitFor(() => {
+    expect(container.querySelector(".gg-sellcards")?.textContent).toContain("Black Lotus");
   });
 }
 
@@ -132,6 +173,44 @@ describe("adding and editing cards", () => {
     await waitFor(() => {
       expect(container.querySelector(".gg-sellcards")).toBeNull();
     });
+  });
+});
+
+describe("age-based condition defaults for manually-added cards", () => {
+  it("defaults a card from 2005 or earlier to Heavily Played and explains why", async () => {
+    mockOldCardFetch();
+    const { container } = render(<App />);
+    await addOldCard(container);
+    const conditionSelect = container.querySelectorAll(
+      ".gg-sellcard-row__fields select",
+    )[0] as HTMLSelectElement;
+    expect(conditionSelect.value).toBe("HP");
+    expect(screen.getByText(/2005 or earlier/i)).toBeInTheDocument();
+  });
+
+  it("asks for photos when a manually-added card is marked Near Mint", async () => {
+    mockOldCardFetch();
+    const { container } = render(<App />);
+    await addOldCard(container);
+    const conditionSelect = container.querySelectorAll(
+      ".gg-sellcard-row__fields select",
+    )[0] as HTMLSelectElement;
+    fireEvent.change(conditionSelect, { target: { value: "NM" } });
+    expect(
+      await screen.findByText(/include a clear photo of this card/i),
+    ).toBeInTheDocument();
+  });
+
+  it("defaults a recent card to Lightly Played with no extra explanation needed", async () => {
+    mockFetch();
+    const { container } = render(<App />);
+    await addSampleCard(container);
+    const conditionSelect = container.querySelectorAll(
+      ".gg-sellcard-row__fields select",
+    )[0] as HTMLSelectElement;
+    expect(conditionSelect.value).toBe("LP");
+    expect(screen.queryByText(/2005 or earlier/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2006–2015/i)).not.toBeInTheDocument();
   });
 });
 

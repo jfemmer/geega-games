@@ -42,11 +42,11 @@ function splitLines(text: string): string[] {
 }
 
 /**
- * If the line looks like a CSV row with a recognizable header (Card, Set,
- * Collector #, Condition, Finish, Quantity — matching the admin CSV
- * export/import format), split on commas respecting simple quoting. Returns
- * null when the line doesn't look like CSV, so the caller falls back to the
- * free-text heuristics below.
+ * If the line looks like a CSV row with a recognizable header — either our
+ * own admin CSV export/import format, or a TCGplayer collection export —
+ * split on commas respecting simple quoting. Returns null when the line
+ * doesn't look like CSV, so the caller falls back to the free-text
+ * heuristics below.
  */
 function splitCsvFields(line: string): string[] | null {
   if (!line.includes(",")) return null;
@@ -79,18 +79,33 @@ function splitCsvFields(line: string): string[] | null {
   return fields.map((f) => f.trim());
 }
 
+// Recognizes two CSV shapes: our own admin export/import format (Card, Set,
+// Collector #, Condition, Finish, Quantity, Price) and TCGplayer's own
+// collection-export format (Quantity, Name, Simple Name, Set, Card Number,
+// Set Code, Printing, Condition, Language, Rarity, Product ID, SKU) — the
+// file most sellers already have if they've ever tracked their collection in
+// the TCGplayer app. Extra columns from either format (Price, Rarity,
+// Product ID, SKU, Language, Status) are simply ignored.
 const CSV_HEADER_WORDS = new Set([
   "card",
   "name",
+  "simple name",
   "set",
+  "set code",
   "collector",
   "collector #",
+  "card number",
   "condition",
   "finish",
+  "printing",
   "quantity",
   "qty",
   "price",
   "status",
+  "rarity",
+  "language",
+  "product id",
+  "sku",
 ]);
 
 function looksLikeCsvHeader(fields: string[]): boolean {
@@ -99,15 +114,28 @@ function looksLikeCsvHeader(fields: string[]): boolean {
   return matches.length >= 2;
 }
 
+/** Finds the first header column matching any candidate, checking candidates in priority order (not header position) — so a more specific column like "Set Code" wins over a looser one like "Set" whenever both are present. */
+function findCol(header: string[], candidates: string[]): number {
+  const normalized = header.map((h) => h.toLowerCase().trim());
+  for (const name of candidates) {
+    const found = normalized.indexOf(name);
+    if (found >= 0) return found;
+  }
+  return -1;
+}
+
 function parseCsvRow(fields: string[], header: string[]): ParsedCardLine {
-  const idx = (names: string[]) =>
-    header.findIndex((h) => names.includes(h.toLowerCase().trim()));
-  const cardIdx = idx(["card", "name"]);
-  const setIdx = idx(["set", "set code"]);
-  const collectorIdx = idx(["collector #", "collector", "collector number"]);
-  const conditionIdx = idx(["condition"]);
-  const finishIdx = idx(["finish"]);
-  const qtyIdx = idx(["quantity", "qty"]);
+  const cardIdx = findCol(header, ["card", "name", "simple name"]);
+  // TCGplayer exports include both "Set" (full set name, e.g. "Kaladesh")
+  // and "Set Code" (e.g. "KLD") — Scryfall's set: filter needs the code, so
+  // "Set Code" must win whenever both columns are present.
+  const setIdx = findCol(header, ["set code", "set"]);
+  const collectorIdx = findCol(header, ["card number", "collector #", "collector", "collector number"]);
+  const conditionIdx = findCol(header, ["condition"]);
+  // TCGplayer calls this column "Printing" (values like "Normal" or "Foil")
+  // rather than "Finish".
+  const finishIdx = findCol(header, ["finish", "printing"]);
+  const qtyIdx = findCol(header, ["quantity", "qty"]);
 
   const cardName = (cardIdx >= 0 ? fields[cardIdx] : "") || "";
   const setCode = setIdx >= 0 ? (fields[setIdx] || null) : null;
@@ -123,6 +151,8 @@ function parseCsvRow(fields: string[], header: string[]): ParsedCardLine {
     setCode: setCode ? setCode.trim().toUpperCase().slice(0, 10) : null,
     collectorNumber: collectorNumber ? collectorNumber.trim().slice(0, 20) : null,
     condition: CONDITION_WORDS[conditionRaw] ?? null,
+    // TCGplayer's "Normal" printing value isn't a finish we track — leave it
+    // null so the caller's own nonfoil default applies.
     finish: FINISH_WORDS.has(finishRaw) ? finishRaw : null,
   };
 }
@@ -214,10 +244,11 @@ function parseFreeTextLine(line: string): ParsedCardLine {
 
 /**
  * Parse a whole pasted/uploaded card list. Handles a CSV-with-header block
- * (matching the admin export/import format) OR free-text lines — detected
- * per-file by checking whether the FIRST non-empty line looks like a CSV
- * header. Never throws; a line that yields no usable name still comes back
- * with its rawInput intact so nothing the seller pasted is silently dropped.
+ * (our own admin export/import format, or a TCGplayer collection export) OR
+ * free-text lines — detected per-file by checking whether the FIRST
+ * non-empty line looks like a CSV header. Never throws; a line that yields
+ * no usable name still comes back with its rawInput intact so nothing the
+ * seller pasted is silently dropped.
  */
 export function parseCardListText(text: string): ParsedCardLine[] {
   const lines = splitLines(text);

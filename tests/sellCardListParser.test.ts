@@ -112,3 +112,29 @@ describe("parseCardListText — CSV with header", () => {
     expect(lines[0].cardName).toBe("Rhystic Study");
   });
 });
+
+describe("parseCardListText — TCGplayer collection export", () => {
+  it("parses a TCGplayer-format CSV, preferring Set Code over the full Set name", () => {
+    const csv = [
+      "Quantity,Name,Simple Name,Set,Card Number,Set Code,Printing,Condition,Language,Rarity,Product ID,SKU",
+      '"2","Lightning Bolt","Lightning Bolt","Modern Horizons 2","138","MH2","Foil","Near Mint","English","Common","123456","7891011"',
+    ].join("\n");
+    const [line] = parseCardListText(csv);
+    expect(line.cardName).toBe("Lightning Bolt");
+    expect(line.setCode).toBe("MH2");
+    expect(line.collectorNumber).toBe("138");
+    expect(line.condition).toBe("NM");
+    expect(line.finish).toBe("foil");
+    expect(line.quantity).toBe(2);
+  });
+
+  it("leaves finish null for a TCGplayer 'Normal' printing (so the nonfoil default applies)", () => {
+    const csv = [
+      "Quantity,Name,Simple Name,Set,Card Number,Set Code,Printing,Condition,Language,Rarity,Product ID,SKU",
+      '"1","Counterspell","Counterspell","Kaladesh","50","KLD","Normal","Lightly Played","English","Common","1","2"',
+    ].join("\n");
+    const [line] = parseCardListText(csv);
+    expect(line.finish).toBeNull();
+    expect(line.condition).toBe("LP");
+  });
+});

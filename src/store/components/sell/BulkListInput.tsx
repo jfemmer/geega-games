@@ -53,6 +53,7 @@ export function BulkListInput({
           scryfallPriceCents: p.scryfallPriceCents,
           finish: p.availableFinishes.includes(line.finish) ? line.finish : (p.availableFinishes[0] ?? "nonfoil"),
           matchStatus: "matched",
+          releasedAt: p.releasedAt,
         });
       } else if (result.printings.length > 1) {
         onUpdateCard(line.localId, { matchStatus: "ambiguous" });
@@ -82,6 +83,7 @@ export function BulkListInput({
       sellerNotes: "",
       matchStatus: "unmatched",
       rawInput: p.rawInput,
+      releasedAt: null,
     }));
     onAddCards(lines);
     setText("");
@@ -120,7 +122,8 @@ export function BulkListInput({
       </label>
       <p className="gg-card-meta">
         One card per line. Quantity, set, condition, and finish are picked up when included —
-        don&rsquo;t worry about a perfect format.
+        don&rsquo;t worry about a perfect format. A CSV exported from TCGplayer&rsquo;s collection
+        tracker works too.
       </p>
       <div className="gg-sellbulk__actions">
         <input

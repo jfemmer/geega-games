@@ -13,6 +13,7 @@ import { SellReview } from "../components/sell/SellReview";
 import { emptyDraft, loadDraft, saveDraft, clearDraft } from "../lib/sellDraft";
 import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
 import {
+  defaultConditionForReleaseDate,
   newLocalId,
   type SellCardLine,
   type SellDraft,
@@ -23,6 +24,10 @@ import {
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 const TOTAL_STEPS = 4;
 
+// Manually searching for and adding an exact printing (as opposed to a
+// pasted/CSV line — see SellCardLine.rawInput, which stays null here and
+// only here) is the one path where we can confidently apply an age-based
+// default condition rather than assuming Near Mint.
 function printingToCardLine(p: SellPrinting): SellCardLine {
   return {
     localId: newLocalId(),
@@ -32,13 +37,14 @@ function printingToCardLine(p: SellPrinting): SellCardLine {
     setName: p.setName,
     collectorNumber: p.collectorNumber,
     imageUrl: p.imageUrl,
-    condition: "NM",
+    condition: defaultConditionForReleaseDate(p.releasedAt),
     finish: p.availableFinishes[0] ?? "nonfoil",
     quantity: 1,
     scryfallPriceCents: p.scryfallPriceCents,
     sellerNotes: "",
     matchStatus: "matched",
     rawInput: null,
+    releasedAt: p.releasedAt,
   };
 }
 

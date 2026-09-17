@@ -17,6 +17,8 @@ export interface SellPrinting {
   availableFinishes: string[];
   treatments: string[];
   scryfallPriceCents: number | null;
+  /** ISO date ("YYYY-MM-DD") the printing was released, or null if Scryfall doesn't have one. */
+  releasedAt: string | null;
 }
 
 export type SellCondition = "NM" | "LP" | "MP" | "HP" | "DMG" | null;
@@ -41,6 +43,8 @@ export interface SellCardLine {
   matchStatus: SellCardMatchStatus;
   /** The original pasted/typed text, preserved whenever a line isn't a clean match. */
   rawInput: string | null;
+  /** ISO date ("YYYY-MM-DD") the printing was released, or null when unknown. */
+  releasedAt: string | null;
 }
 
 export type SellPhotoStatus = "pending" | "uploading" | "uploaded" | "error";
@@ -185,6 +189,54 @@ export const SELL_CONDITION_OPTIONS: { value: SellCondition; label: string }[] =
   { value: "DMG", label: "Damaged" },
   { value: null, label: "Unsure" },
 ];
+
+/** The age-based default is always a concrete condition, never "Unsure". */
+export type SellDefaultCondition = Exclude<SellCondition, null>;
+
+// Older cards are far more likely to show real wear even when a seller
+// remembers them as being in great shape, so a manually-added card (one
+// found via search, not pasted/CSV — see SellCardLine.rawInput) starts at a
+// condition appropriate for its age rather than defaulting everyone to Near
+// Mint. Boundaries are non-overlapping: 2005 or older, 2006–2015, 2016+.
+export function defaultConditionForReleaseDate(releasedAt: string | null): SellDefaultCondition {
+  const year = releasedAt ? Number.parseInt(releasedAt.slice(0, 4), 10) : NaN;
+  if (!Number.isFinite(year)) return "LP";
+  if (year <= 2005) return "HP";
+  if (year <= 2015) return "MP";
+  return "LP";
+}
+
+export function conditionDefaultExplanation(defaultCondition: SellDefaultCondition): string | null {
+  if (defaultCondition === "HP") {
+    return "Cards printed in 2005 or earlier almost always show real wear after 20+ years, even when well cared for, so we start these at Heavily Played. If yours is actually in better shape, just include a couple of photos so we can confirm it.";
+  }
+  if (defaultCondition === "MP") {
+    return "Cards from 2006–2015 typically show some age-related wear, so we start these at Moderately Played. If yours is in better shape, just include a couple of photos so we can confirm it.";
+  }
+  return null;
+}
+
+const CONDITION_RANK: Record<SellDefaultCondition, number> = {
+  NM: 0,
+  LP: 1,
+  MP: 2,
+  HP: 3,
+  DMG: 4,
+};
+
+/**
+ * Whether a manually-entered card's chosen condition needs photo proof:
+ * always true for Near Mint (regardless of age), and true whenever the
+ * seller claims a condition better than the age-based default.
+ */
+export function conditionNeedsPhotos(
+  condition: SellCondition,
+  defaultCondition: SellDefaultCondition,
+): boolean {
+  if (condition == null) return false;
+  if (condition === "NM") return true;
+  return CONDITION_RANK[condition] < CONDITION_RANK[defaultCondition];
+}
 
 export const SELL_FINISH_OPTIONS: { value: string; label: string }[] = [
   { value: "nonfoil", label: "Nonfoil" },
