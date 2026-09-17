@@ -302,6 +302,48 @@ describe("submission is blocked until required photos are attached", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /submit my collection/i })).toBeDisabled();
   });
+
+  it("applies the same requirement to a card entered via paste/CSV, not just search — closing the bypass", async () => {
+    mockOldCardFetch();
+    const { container } = render(<App />);
+
+    // Paste a line that claims Near Mint directly, bypassing the search box
+    // entirely (this is the exact path that used to skip the requirement).
+    const textarea = container.querySelector(".gg-sellbulk textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "1 Black Lotus NM" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add to my list$/i }));
+
+    await waitFor(() => {
+      expect(container.querySelector(".gg-sellcards")?.textContent).toContain("Black Lotus");
+    });
+
+    // No photos attached — the pasted card must still be blocked.
+    await waitFor(() => {
+      expect(container.querySelector(".gg-sellcard-row__conditionnote.gg-alert-warn")?.textContent).toMatch(
+        /photo of the front and a photo of the back/i,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /start your submission/i }));
+    await screen.findByText(/tell us about the collection/i);
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await screen.findByText(/your contact information/i);
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: "Jordan" } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: "Vega" } });
+    fireEvent.change(screen.getByLabelText(/^email$/i, { selector: "input[type='email']" }), {
+      target: { value: "jordan@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await screen.findByRole("heading", { name: /review & submit/i });
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    expect(
+      await screen.findByText(/front & back photos required/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /submit my collection/i })).toBeDisabled();
+  });
 });
 
 describe("contact step validation", () => {

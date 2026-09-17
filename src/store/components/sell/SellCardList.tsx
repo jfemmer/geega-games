@@ -55,21 +55,18 @@ export function SellCardList({
       {cards.map((card) => {
         const needsReview = card.matchStatus !== "matched";
         const isMatching = matchingId === card.localId;
-        // Age-based condition guidance only applies to a card added by
-        // searching for it directly — a pasted/CSV line (rawInput set) is
-        // out of scope, per the product decision that this is a manual-entry
-        // safeguard, not a blanket rule.
+        // The auto-suggested-default EXPLANATION only applies to a card added
+        // by searching for it directly — a pasted/CSV line's condition came
+        // from the seller's own text/spreadsheet, not an auto-set default, so
+        // there's nothing to "explain" there.
         const isManualEntry = card.rawInput == null;
-        const recommendedCondition = isManualEntry
-          ? defaultConditionForReleaseDate(card.releasedAt)
-          : null;
-        const conditionExplanation = recommendedCondition
-          ? conditionDefaultExplanation(recommendedCondition)
-          : null;
-        const needsPhotos =
-          isManualEntry && recommendedCondition
-            ? conditionNeedsPhotos(card.condition, recommendedCondition)
-            : false;
+        const ageBasedDefault = defaultConditionForReleaseDate(card.releasedAt);
+        const conditionExplanation = isManualEntry ? conditionDefaultExplanation(ageBasedDefault) : null;
+        // Whether a claimed condition needs photo proof applies to EVERY
+        // card regardless of entry method — a condition typed into a pasted
+        // list or CSV row is just as much a claim as one picked from the
+        // dropdown, and must be held to the same standard.
+        const needsPhotos = conditionNeedsPhotos(card.condition, ageBasedDefault);
         const frontPhoto = photos.find((p) => p.cardLocalId === card.localId && p.side === "front");
         const backPhoto = photos.find((p) => p.cardLocalId === card.localId && p.side === "back");
         const stillNeedsPhotos = needsPhotos && !cardPhotoRequirementMet(photos, card.localId);

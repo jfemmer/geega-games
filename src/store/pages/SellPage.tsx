@@ -242,13 +242,16 @@ export default function SellPage() {
 
   const photosStillUploading = photos.some((p) => p.status === "uploading");
 
-  // A card only needs photo proof when it was added manually (search, not
-  // pasted/CSV) and its claimed condition is better than what its age would
-  // suggest — see conditionNeedsPhotos. Blocks submission until BOTH a
-  // front and back photo for that card have finished uploading.
+  // A card needs photo proof whenever its claimed condition is better than
+  // what its age would suggest (or is claimed Near Mint outright) — see
+  // conditionNeedsPhotos. Applies regardless of how the card was entered
+  // (search, pasted list, or CSV): a typed-in condition claim is no less a
+  // claim than one picked from the dropdown, and skipping this check for
+  // pasted/CSV cards would just be a bypass for anyone who wants one. Blocks
+  // submission until BOTH a front and back photo for that card have
+  // finished uploading.
   const cardsMissingRequiredPhotos = draft.cards.filter(
     (c) =>
-      c.rawInput == null &&
       conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)) &&
       !cardPhotoRequirementMet(photos, c.localId),
   );

@@ -40,7 +40,6 @@ export function SellReview({
   const location = [contact.city, contact.state].filter(Boolean).join(", ");
   const cardsNeedingPhotos = cards.filter(
     (c) =>
-      c.rawInput == null &&
       conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)) &&
       !cardPhotoRequirementMet(photos, c.localId),
   );
