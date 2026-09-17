@@ -37,6 +37,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: null,
     trackingNumber: null,
     shippingMethod: "USPS Ground Advantage",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_1",
@@ -117,6 +120,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: null,
     trackingNumber: null,
     shippingMethod: "USPS Ground Advantage",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_3",
@@ -183,6 +189,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: null,
     trackingNumber: null,
     shippingMethod: "USPS Priority Mail",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_4",
@@ -270,6 +279,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: null,
     trackingNumber: null,
     shippingMethod: "USPS Ground Advantage",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_6",
@@ -343,6 +355,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: "USPS",
     trackingNumber: "9400111899223344556677",
     shippingMethod: "USPS Ground Advantage",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_7",
@@ -423,6 +438,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: "USPS",
     trackingNumber: "9400111899220011223344",
     shippingMethod: "USPS Ground Advantage",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_8",
@@ -510,6 +528,9 @@ export const ORDERS_SEED: Order[] = [
     carrier: null,
     trackingNumber: null,
     shippingMethod: "USPS Ground Advantage",
+    labelUrl: null,
+    postageCostCents: null,
+    shippingService: null,
     items: [
       {
         id: "oi_9",

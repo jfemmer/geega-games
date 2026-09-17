@@ -546,6 +546,10 @@ export interface Order {
   carrier: ShippingCarrier | null;
   trackingNumber: string | null;
   shippingMethod: string | null;
+  /** Hosted PDF of a postage label purchased via EasyPost. Null unless bought through the "Buy & print label" flow. */
+  labelUrl: string | null;
+  postageCostCents: number | null;
+  shippingService: string | null;
   items: OrderItem[];
   subtotalCents: number;
   discountCents: number;

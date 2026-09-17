@@ -606,6 +606,41 @@ export const mockOrderRepository: OrderRepository = {
     return delay(orders.find((o) => o.id === orderId)!, 250);
   },
 
+  async buyLabel(orderId) {
+    // No real EasyPost account in mock mode — simulate a purchase so the
+    // admin UI flow can be exercised end-to-end without live credentials.
+    const at = new Date().toISOString();
+    orders = orders.map((o) =>
+      o.id === orderId
+        ? {
+            ...o,
+            status: "shipped",
+            carrier: "USPS",
+            trackingNumber: `9400${Math.floor(Math.random() * 1e15)}`,
+            labelUrl: "https://example.com/mock-label.pdf",
+            postageCostCents: 487,
+            shippingService: "First",
+            shippedAt: at,
+            timeline: [
+              ...o.timeline,
+              statusEvent("Shipped", "USPS (mock label)", "EasyPost"),
+            ],
+            emails: [
+              ...o.emails,
+              {
+                id: mockId("em"),
+                emailType: "shipping_confirmation",
+                toEmail: o.customerEmail ?? "unknown",
+                status: "sent",
+                at,
+              },
+            ],
+          }
+        : o,
+    );
+    return delay(orders.find((o) => o.id === orderId)!, 250);
+  },
+
   async counts() {
     const by = (s: Order["status"]) =>
       orders.filter((o) => o.status === s).length;
@@ -871,6 +906,9 @@ export const mockPosRepository: PosRepository = {
       carrier: null,
       trackingNumber: null,
       shippingMethod: null,
+      labelUrl: null,
+      postageCostCents: null,
+      shippingService: null,
       items: orderItems,
       subtotalCents,
       discountCents: 0,
@@ -1064,6 +1102,9 @@ export const mockPickupRequestRepository: PickupRequestRepository = {
       carrier: null,
       trackingNumber: null,
       shippingMethod: null,
+      labelUrl: null,
+      postageCostCents: null,
+      shippingService: null,
       items: request.items.map((it) => ({
         id: mockId("oi"),
         cardName: it.cardName,

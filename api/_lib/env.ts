@@ -48,4 +48,9 @@ export const ServerEnv = {
   // uses the free, local tesseract provider (see api/_lib/ocr) — setting
   // this switches to the paid Google Cloud Vision API instead.
   googleCloudVisionApiKey: () => optionalEnv("GOOGLE_CLOUD_VISION_API_KEY"),
+  // Optional: enables buying real postage labels from the admin Orders page
+  // (see api/_lib/easypost.ts). Without this set, that feature fails closed
+  // with a clear "not connected yet" error — every other admin action keeps
+  // working.
+  easypostApiKey: () => optionalEnv("EASYPOST_API_KEY"),
 } as const;

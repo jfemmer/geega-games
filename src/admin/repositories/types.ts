@@ -301,6 +301,14 @@ export interface OrderRepository {
     trackingNumber: string | null,
     adminName: string,
   ): Promise<Order>;
+  /**
+   * Buys a real postage label via EasyPost for a `tracked` order (using the
+   * store's saved return address and a fixed default package weight), and
+   * marks the order shipped with the resulting carrier/tracking. Throws with
+   * a UI-safe message if EasyPost isn't connected, the order isn't
+   * ready-to-ship, or no rate is available for the address.
+   */
+  buyLabel(orderId: string): Promise<Order>;
   counts(): Promise<Record<string, number>>;
 }
 

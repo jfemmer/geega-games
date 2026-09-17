@@ -1530,3 +1530,70 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-pos { grid-template-columns: 1fr; }
   .gg-pos__ticket { position: static; }
 }
+
+/* ------------------------------------------------------------------ *
+ * Shipping — buy/print a label (Orders → Ship)
+ * ------------------------------------------------------------------ */
+
+.gg-ship__buylabel {
+  background: var(--gg-surface-2);
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.gg-ship__buylabel h4 { margin: 0 0 4px; }
+.gg-ship__buylabel .gg-btn { margin-top: 10px; }
+.gg-ship__manual { margin-bottom: 14px; }
+.gg-ship__manual summary { cursor: pointer; color: var(--gg-text-soft); font-weight: 600; margin-bottom: 8px; }
+.gg-ship__manual .gg-form-grid { margin-bottom: 10px; }
+
+/* Plain (no-postage) address label + purchased-label print isolation.
+   Only the .gg-labelprint-overlay is visible while body carries
+   .gg-printing-label — added/removed by AddressLabelPrint on mount/unmount,
+   so it can never leak into an unrelated print (e.g. the POS receipt). */
+.gg-labelprint-overlay { display: none; }
+body.gg-printing-label .gg-labelprint-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  z-index: 10000;
+  padding: 24px;
+  overflow: auto;
+}
+.gg-labelprint-toolbar { display: flex; gap: 10px; }
+.gg-shippinglabel {
+  width: 4in;
+  height: 6in;
+  border: 1px solid var(--gg-line);
+  padding: 0.35in;
+  box-sizing: border-box;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  page: gglabel;
+}
+.gg-shippinglabel__from { font-size: 12px; line-height: 1.4; }
+.gg-shippinglabel__to { font-size: 22px; font-weight: 700; line-height: 1.45; margin-top: auto; }
+
+@page gglabel { size: 4in 6in; margin: 0; }
+
+@media print {
+  body.gg-printing-label * { visibility: hidden; }
+  body.gg-printing-label .gg-labelprint-overlay,
+  body.gg-printing-label .gg-labelprint-overlay * { visibility: visible; }
+  body.gg-printing-label .gg-labelprint-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 0;
+    background: #fff;
+  }
+  body.gg-printing-label .no-print { display: none !important; }
+}

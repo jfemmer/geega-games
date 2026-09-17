@@ -962,10 +962,13 @@ export type Database = {
           customer_id: string | null
           delivered_at: string | null
           discount_cents: number
+          easypost_shipment_id: string | null
           email: string | null
           id: string
           internal_notes: string | null
+          label_url: string | null
           legacy_mongo_id: string | null
+          package_weight_oz: number | null
           packed_at: string | null
           paid_at: string | null
           payment_provider:
@@ -973,6 +976,7 @@ export type Database = {
             | null
           payment_reference: string | null
           payment_status: Database["public"]["Enums"]["payment_status"]
+          postage_cost_cents: number | null
           ready_at: string | null
           ship_city: string | null
           ship_country: string | null
@@ -984,6 +988,7 @@ export type Database = {
           shipped_at: string | null
           shipping_cents: number
           shipping_method: Database["public"]["Enums"]["shipping_method"] | null
+          shipping_service: string | null
           status: Database["public"]["Enums"]["order_status"]
           store_credit_used_cents: number
           subtotal_cents: number
@@ -1002,10 +1007,13 @@ export type Database = {
           customer_id?: string | null
           delivered_at?: string | null
           discount_cents?: number
+          easypost_shipment_id?: string | null
           email?: string | null
           id?: string
           internal_notes?: string | null
+          label_url?: string | null
           legacy_mongo_id?: string | null
+          package_weight_oz?: number | null
           packed_at?: string | null
           paid_at?: string | null
           payment_provider?:
@@ -1013,6 +1021,7 @@ export type Database = {
             | null
           payment_reference?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
+          postage_cost_cents?: number | null
           ready_at?: string | null
           ship_city?: string | null
           ship_country?: string | null
@@ -1026,6 +1035,7 @@ export type Database = {
           shipping_method?:
             | Database["public"]["Enums"]["shipping_method"]
             | null
+          shipping_service?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           store_credit_used_cents?: number
           subtotal_cents: number
@@ -1044,10 +1054,13 @@ export type Database = {
           customer_id?: string | null
           delivered_at?: string | null
           discount_cents?: number
+          easypost_shipment_id?: string | null
           email?: string | null
           id?: string
           internal_notes?: string | null
+          label_url?: string | null
           legacy_mongo_id?: string | null
+          package_weight_oz?: number | null
           packed_at?: string | null
           paid_at?: string | null
           payment_provider?:
@@ -1055,6 +1068,7 @@ export type Database = {
             | null
           payment_reference?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
+          postage_cost_cents?: number | null
           ready_at?: string | null
           ship_city?: string | null
           ship_country?: string | null
@@ -1068,6 +1082,7 @@ export type Database = {
           shipping_method?:
             | Database["public"]["Enums"]["shipping_method"]
             | null
+          shipping_service?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           store_credit_used_cents?: number
           subtotal_cents?: number

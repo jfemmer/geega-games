@@ -165,6 +165,9 @@ function mapOrder(
     carrier: normalizeCarrier(o.tracking_carrier),
     trackingNumber: o.tracking_number,
     shippingMethod: o.shipping_method,
+    labelUrl: o.label_url,
+    postageCostCents: o.postage_cost_cents,
+    shippingService: o.shipping_service,
     items: (o.order_items ?? []).map(mapItem),
     subtotalCents: o.subtotal_cents,
     discountCents: o.discount_cents,
@@ -329,6 +332,16 @@ export const supabaseOrderRepository: OrderRepository = {
     await adminFetch("/api/admin?resource=orders&action=ship", {
       method: "POST",
       body: { orderId, carrier, trackingNumber },
+    });
+    const fresh = await supabaseOrderRepository.get(orderId);
+    if (!fresh) throw new Error("Order not found after update.");
+    return fresh;
+  },
+
+  async buyLabel(orderId: string): Promise<Order> {
+    await adminFetch("/api/admin?resource=orders&action=buy-label", {
+      method: "POST",
+      body: { orderId },
     });
     const fresh = await supabaseOrderRepository.get(orderId);
     if (!fresh) throw new Error("Order not found after update.");

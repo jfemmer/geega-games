@@ -18,6 +18,7 @@ import {
 import type { Database } from "../../src/types/database.js";
 import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
 import { getStripe } from "../_lib/stripe.js";
+import { buyShippingLabel } from "../_lib/easypost.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Consolidated admin API router.
@@ -682,6 +683,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.error("[admin/orders/ship] shipped email failed", mailErr);
         }
         return sendJson(res, 200, { ok: true });
+      }
+
+      // Buys a real, tracked postage label via EasyPost and marks the order
+      // shipped with the resulting carrier/tracking — the "click print, no
+      // other apps" replacement for the ship action's hand-typed carrier +
+      // tracking number. PWE orders are never eligible (they're untracked by
+      // design) and print a plain address label client-side instead, which
+      // needs no server call at all.
+      if (action === "buy-label" && method === "POST") {
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+
+        const { data: order, error: readErr } = await admin
+          .from("orders")
+          .select(
+            "id, status, shipping_method, ship_recipient, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country",
+          )
+          .eq("id", orderId)
+          .maybeSingle();
+        if (readErr) throw new HttpError(500, readErr.message);
+        if (!order) throw new HttpError(404, "Order not found.");
+        if (order.status !== "ready_to_ship") {
+          throw new HttpError(409, "This order must be ready to ship before a label can be purchased.");
+        }
+        if (order.shipping_method !== "tracked") {
+          throw new HttpError(
+            400,
+            "Only tracked orders can have a postage label purchased — Plain White Envelope orders print a plain address label instead.",
+          );
+        }
+
+        let purchased;
+        try {
+          purchased = await buyShippingLabel({
+            name: order.ship_recipient ?? "",
+            street1: order.ship_line1 ?? "",
+            street2: order.ship_line2,
+            city: order.ship_city ?? "",
+            state: order.ship_state ?? "",
+            zip: order.ship_postal_code ?? "",
+            country: order.ship_country,
+          });
+        } catch (err) {
+          throw new HttpError(502, err instanceof Error ? err.message : "Could not purchase a shipping label.");
+        }
+
+        const { error: updErr } = await admin
+          .from("orders")
+          .update({
+            status: "shipped",
+            shipped_at: new Date().toISOString(),
+            tracking_carrier: purchased.carrier,
+            tracking_number: purchased.trackingCode,
+            label_url: purchased.labelUrl,
+            postage_cost_cents: purchased.rateCents,
+            easypost_shipment_id: purchased.shipmentId,
+            shipping_service: purchased.service,
+            package_weight_oz: purchased.weightOz,
+          })
+          .eq("id", orderId);
+        if (updErr) throw new HttpError(500, updErr.message);
+
+        // Email failure must not fail the label purchase — postage is already
+        // bought and the order is already marked shipped either way.
+        try {
+          await sendOrderStatusEmail(orderId, "shipped");
+        } catch (mailErr) {
+          console.error("[admin/orders/buy-label] shipped email failed", mailErr);
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          labelUrl: purchased.labelUrl,
+          trackingCarrier: purchased.carrier,
+          trackingNumber: purchased.trackingCode,
+          postageCostCents: purchased.rateCents,
+        });
       }
 
       if (action === "add-note" && method === "POST") {
