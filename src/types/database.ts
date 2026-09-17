@@ -1810,6 +1810,7 @@ export type Database = {
           id: string
           mime_type: string
           original_filename: string
+          side: string | null
           size_bytes: number
           storage_path: string
           submission_id: string
@@ -1820,6 +1821,7 @@ export type Database = {
           id?: string
           mime_type: string
           original_filename: string
+          side?: string | null
           size_bytes: number
           storage_path: string
           submission_id: string
@@ -1829,6 +1831,7 @@ export type Database = {
           created_at?: string
           id?: string
           mime_type?: string
+          side?: string | null
           original_filename?: string
           size_bytes?: number
           storage_path?: string

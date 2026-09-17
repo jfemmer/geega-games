@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  cardPhotoRequirementMet,
   conditionDefaultExplanation,
   conditionNeedsPhotos,
   defaultConditionForReleaseDate,
+  type SellPhoto,
 } from "../src/store/lib/sellTypes";
+
+function photo(overrides: Partial<SellPhoto>): SellPhoto {
+  return {
+    localId: overrides.localId ?? Math.random().toString(36),
+    file: new File(["x"], "x.jpg", { type: "image/jpeg" }),
+    previewUrl: "blob:test",
+    status: "uploaded",
+    originalFilename: "x.jpg",
+    cardLocalId: null,
+    side: null,
+    ...overrides,
+  };
+}
 
 describe("defaultConditionForReleaseDate", () => {
   it("defaults cards from 2005 or earlier to Heavily Played", () => {
@@ -56,5 +71,50 @@ describe("conditionNeedsPhotos", () => {
 
   it("never requires photos for an unset/'Unsure' condition", () => {
     expect(conditionNeedsPhotos(null, "HP")).toBe(false);
+  });
+});
+
+describe("cardPhotoRequirementMet", () => {
+  it("is not met with no photos at all", () => {
+    expect(cardPhotoRequirementMet([], "card-1")).toBe(false);
+  });
+
+  it("is not met with only a front photo", () => {
+    const photos = [photo({ cardLocalId: "card-1", side: "front" })];
+    expect(cardPhotoRequirementMet(photos, "card-1")).toBe(false);
+  });
+
+  it("is not met with only a back photo", () => {
+    const photos = [photo({ cardLocalId: "card-1", side: "back" })];
+    expect(cardPhotoRequirementMet(photos, "card-1")).toBe(false);
+  });
+
+  it("is met once both a front and back photo have finished uploading", () => {
+    const photos = [
+      photo({ cardLocalId: "card-1", side: "front" }),
+      photo({ cardLocalId: "card-1", side: "back" }),
+    ];
+    expect(cardPhotoRequirementMet(photos, "card-1")).toBe(true);
+  });
+
+  it("does not count a photo that is still uploading or failed", () => {
+    const photos = [
+      photo({ cardLocalId: "card-1", side: "front", status: "uploading" }),
+      photo({ cardLocalId: "card-1", side: "back", status: "error" }),
+    ];
+    expect(cardPhotoRequirementMet(photos, "card-1")).toBe(false);
+  });
+
+  it("ignores photos belonging to a different card", () => {
+    const photos = [
+      photo({ cardLocalId: "card-2", side: "front" }),
+      photo({ cardLocalId: "card-2", side: "back" }),
+    ];
+    expect(cardPhotoRequirementMet(photos, "card-1")).toBe(false);
+  });
+
+  it("ignores general collection photos not tied to any card", () => {
+    const photos = [photo({ cardLocalId: null, side: null })];
+    expect(cardPhotoRequirementMet(photos, "card-1")).toBe(false);
   });
 });

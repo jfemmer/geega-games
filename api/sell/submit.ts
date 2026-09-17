@@ -70,6 +70,7 @@ const FINISHES = new Set([
   "halo",
 ]);
 const MATCH_STATUSES = new Set(["matched", "ambiguous", "unmatched"]);
+const PHOTO_SIDES = new Set(["front", "back"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function cleanString(v: unknown, maxLen: number): string | null {
@@ -135,6 +136,8 @@ interface PhotoInput {
   originalFilename?: unknown;
   /** Set when this photo was attached to a specific card (see CardInput.clientCardId), rather than the general collection uploader. */
   cardLocalId?: unknown;
+  /** "front" or "back" — only meaningful alongside cardLocalId. */
+  side?: unknown;
 }
 
 interface SubmitBody {
@@ -297,6 +300,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const objectName = path.slice(draftIdRaw.length + 1);
         const confirmedObj = confirmedByName.get(objectName);
         if (!confirmedObj) continue; // never fabricate a row for an unverified path
+        const sideRaw = typeof p.side === "string" ? p.side : "";
         photoRows.push({
           submission_id: "",
           storage_path: path,
@@ -304,6 +308,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           mime_type: confirmedObj.metadata?.mimetype ?? "application/octet-stream",
           size_bytes: confirmedObj.metadata?.size ?? 0,
           client_card_id: cleanString(p.cardLocalId, 100),
+          side: PHOTO_SIDES.has(sideRaw) ? sideRaw : null,
         });
       }
       photoRows = photoRows.slice(0, MAX_PHOTOS_PER_SUBMISSION);

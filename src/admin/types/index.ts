@@ -984,6 +984,8 @@ export interface BuyingLeadPhoto {
   signedUrl: string | null;
   /** Set when the seller attached this photo to a specific card (see BuyingLeadCard.clientCardId), rather than the general collection uploader. */
   clientCardId: string | null;
+  /** "front" or "back" when clientCardId is set; null otherwise. */
+  side: "front" | "back" | null;
 }
 
 export interface BuyingLeadDetail extends BuyingLeadSummary {

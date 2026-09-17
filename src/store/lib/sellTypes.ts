@@ -61,6 +61,8 @@ export interface SellPhoto {
   originalFilename: string;
   /** Set when attached to a specific card (SellCardLine.localId) rather than the general collection uploader. */
   cardLocalId: string | null;
+  /** Which side of the card this is — only meaningful when cardLocalId is set. */
+  side: "front" | "back" | null;
 }
 
 export interface SellContactInfo {
@@ -210,10 +212,10 @@ export function defaultConditionForReleaseDate(releasedAt: string | null): SellD
 
 export function conditionDefaultExplanation(defaultCondition: SellDefaultCondition): string | null {
   if (defaultCondition === "HP") {
-    return "Cards printed in 2005 or earlier almost always show real wear after 20+ years, even when well cared for, so we start these at Heavily Played. If yours is actually in better shape, just include a couple of photos so we can confirm it.";
+    return "Cards printed in 2005 or earlier almost always show real wear after 20+ years, even when well cared for, so we start these at Heavily Played. If yours is actually in better shape, just add a front and back photo below so we can confirm it.";
   }
   if (defaultCondition === "MP") {
-    return "Cards from 2006–2015 typically show some age-related wear, so we start these at Moderately Played. If yours is in better shape, just include a couple of photos so we can confirm it.";
+    return "Cards from 2006–2015 typically show some age-related wear, so we start these at Moderately Played. If yours is in better shape, just add a front and back photo below so we can confirm it.";
   }
   return null;
 }
@@ -238,6 +240,16 @@ export function conditionNeedsPhotos(
   if (condition == null) return false;
   if (condition === "NM") return true;
   return CONDITION_RANK[condition] < CONDITION_RANK[defaultCondition];
+}
+
+/**
+ * A single photo of "the card" doesn't prove a condition claim — both sides
+ * need to be visible. Satisfied only once a front AND a back photo for this
+ * card have both actually finished uploading (not just selected/in-flight).
+ */
+export function cardPhotoRequirementMet(photos: SellPhoto[], cardLocalId: string): boolean {
+  const forCard = photos.filter((p) => p.cardLocalId === cardLocalId && p.status === "uploaded");
+  return forCard.some((p) => p.side === "front") && forCard.some((p) => p.side === "back");
 }
 
 export const SELL_FINISH_OPTIONS: { value: string; label: string }[] = [

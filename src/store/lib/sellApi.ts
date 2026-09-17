@@ -139,7 +139,12 @@ export async function submitSellForm(payload: {
   contact: unknown;
   collection: unknown;
   cards: SellCardLine[];
-  photos: { path: string; originalFilename: string; cardLocalId?: string | null }[];
+  photos: {
+    path: string;
+    originalFilename: string;
+    cardLocalId?: string | null;
+    side?: "front" | "back" | null;
+  }[];
   agreedToTerms: boolean;
 }): Promise<SubmitSellFormResult> {
   const { data } = await supabase.auth.getSession();

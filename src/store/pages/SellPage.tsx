@@ -13,6 +13,8 @@ import { SellReview } from "../components/sell/SellReview";
 import { emptyDraft, loadDraft, saveDraft, clearDraft } from "../lib/sellDraft";
 import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
 import {
+  cardPhotoRequirementMet,
+  conditionNeedsPhotos,
   defaultConditionForReleaseDate,
   newLocalId,
   type SellCardLine,
@@ -154,7 +156,11 @@ export default function SellPage() {
       });
   }
 
-  function handleFilesSelected(files: File[], cardLocalId: string | null = null) {
+  function handleFilesSelected(
+    files: File[],
+    cardLocalId: string | null = null,
+    side: "front" | "back" | null = null,
+  ) {
     const additions: SellPhoto[] = files.map((file) => {
       if (!ACCEPTED_PHOTO_TYPES.has(file.type)) {
         return {
@@ -165,6 +171,7 @@ export default function SellPage() {
           errorMessage: "Unsupported file type",
           originalFilename: file.name,
           cardLocalId,
+          side,
         };
       }
       if (file.size > MAX_PHOTO_BYTES) {
@@ -176,6 +183,7 @@ export default function SellPage() {
           errorMessage: "File is larger than 15 MB",
           originalFilename: file.name,
           cardLocalId,
+          side,
         };
       }
       return {
@@ -185,14 +193,22 @@ export default function SellPage() {
         status: "pending",
         originalFilename: file.name,
         cardLocalId,
+        side,
       };
     });
     setPhotos((prev) => [...prev, ...additions]);
     additions.filter((p) => p.status === "pending").forEach(startUpload);
   }
 
-  function addCardPhotos(cardLocalId: string, files: File[]) {
-    handleFilesSelected(files, cardLocalId);
+  // Each of the two slots (front/back) holds exactly one photo — selecting a
+  // replacement drops whatever was already in that slot first.
+  function setCardPhotoSlot(cardLocalId: string, side: "front" | "back", file: File) {
+    setPhotos((prev) => {
+      const existing = prev.find((p) => p.cardLocalId === cardLocalId && p.side === side);
+      if (existing) URL.revokeObjectURL(existing.previewUrl);
+      return prev.filter((p) => !(p.cardLocalId === cardLocalId && p.side === side));
+    });
+    handleFilesSelected([file], cardLocalId, side);
   }
 
   function removePhoto(localId: string) {
@@ -226,9 +242,26 @@ export default function SellPage() {
 
   const photosStillUploading = photos.some((p) => p.status === "uploading");
 
+  // A card only needs photo proof when it was added manually (search, not
+  // pasted/CSV) and its claimed condition is better than what its age would
+  // suggest — see conditionNeedsPhotos. Blocks submission until BOTH a
+  // front and back photo for that card have finished uploading.
+  const cardsMissingRequiredPhotos = draft.cards.filter(
+    (c) =>
+      c.rawInput == null &&
+      conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)) &&
+      !cardPhotoRequirementMet(photos, c.localId),
+  );
+
   async function handleSubmit() {
     if (!draft.agreedToTerms) {
       setSubmitError("Please confirm you own or are authorized to sell these items before submitting.");
+      return;
+    }
+    if (cardsMissingRequiredPhotos.length > 0) {
+      setSubmitError(
+        "Please add front and back photos for the cards where you changed the condition before submitting — see above.",
+      );
       return;
     }
     setSubmitting(true);
@@ -245,6 +278,7 @@ export default function SellPage() {
           path: p.uploadedPath!,
           originalFilename: p.originalFilename,
           cardLocalId: p.cardLocalId,
+          side: p.side,
         })),
         agreedToTerms: draft.agreedToTerms,
       });
@@ -369,7 +403,7 @@ export default function SellPage() {
             onRemove={removeCard}
             onRematch={(id, p) => updateCard(id, { ...printingToCardLine(p), localId: id })}
             photos={photos}
-            onAddCardPhotos={addCardPhotos}
+            onSelectCardPhoto={setCardPhotoSlot}
             onRemoveCardPhoto={removePhoto}
             onRetryCardPhoto={retryPhoto}
           />
@@ -449,7 +483,12 @@ export default function SellPage() {
               type="button"
               className="gg-btn"
               onClick={handleSubmit}
-              disabled={submitting || photosStillUploading || !draft.agreedToTerms}
+              disabled={
+                submitting ||
+                photosStillUploading ||
+                !draft.agreedToTerms ||
+                cardsMissingRequiredPhotos.length > 0
+              }
             >
               {submitting ? "Submitting…" : "Submit my collection"}
             </button>

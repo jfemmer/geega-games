@@ -216,10 +216,19 @@ export function BuyingLeadDetailDrawer({
                             <li key={p.id}>
                               {p.signedUrl ? (
                                 <a href={p.signedUrl} target="_blank" rel="noopener noreferrer">
-                                  <img src={p.signedUrl} alt={p.originalFilename} loading="lazy" />
+                                  <img
+                                    src={p.signedUrl}
+                                    alt={p.side ? `${p.side} of card` : p.originalFilename}
+                                    loading="lazy"
+                                  />
                                 </a>
                               ) : (
                                 <div className="gg-leaddetail__cardimg--none" aria-hidden="true" />
+                              )}
+                              {p.side && (
+                                <span className="gg-leaddetail__cardphoto-label">
+                                  {p.side === "front" ? "Front" : "Back"}
+                                </span>
                               )}
                             </li>
                           ))}

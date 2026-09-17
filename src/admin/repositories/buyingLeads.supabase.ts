@@ -177,6 +177,7 @@ export const buyingLeadsRepository = {
         sizeBytes: p.size_bytes,
         signedUrl: urlByPath.get(p.storage_path) ?? null,
         clientCardId: p.client_card_id,
+        side: p.side === "front" || p.side === "back" ? p.side : null,
       })) as BuyingLeadPhoto[],
     };
   },

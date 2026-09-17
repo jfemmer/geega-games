@@ -201,9 +201,11 @@ describe("age-based condition defaults for manually-added cards", () => {
       ".gg-sellcard-row__fields select",
     )[0] as HTMLSelectElement;
     fireEvent.change(conditionSelect, { target: { value: "NM" } });
-    expect(
-      await screen.findByText(/add a clear photo of this card below/i),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(container.querySelector(".gg-sellcard-row__conditionnote.gg-alert-warn")?.textContent).toMatch(
+        /photo of the front and a photo of the back/i,
+      );
+    });
   });
 
   it("defaults a recent card to Lightly Played with no extra explanation needed", async () => {
@@ -220,15 +222,19 @@ describe("age-based condition defaults for manually-added cards", () => {
 });
 
 describe("per-card photo upload spot", () => {
-  it("shows a photo thumbnail under the card once a file is attached to it, separate from the general uploader", async () => {
-    mockFetch();
+  it("shows a photo thumbnail under the card once a front/back photo is attached, separate from the general uploader", async () => {
+    mockOldCardFetch();
     const { container } = render(<App />);
-    await addSampleCard(container);
+    await addOldCard(container);
+    const conditionSelect = container.querySelectorAll(
+      ".gg-sellcard-row__fields select",
+    )[0] as HTMLSelectElement;
+    fireEvent.change(conditionSelect, { target: { value: "NM" } });
 
     const cardRow = container.querySelector(".gg-sellcard-row") as HTMLElement;
-    const cardFileInput = cardRow.querySelector("input[type='file']") as HTMLInputElement;
+    const [frontInput] = cardRow.querySelectorAll("input[type='file']") as NodeListOf<HTMLInputElement>;
     const file = new File(["fake image bytes"], "card.jpg", { type: "image/jpeg" });
-    fireEvent.change(cardFileInput, { target: { files: [file] } });
+    fireEvent.change(frontInput, { target: { files: [file] } });
 
     await waitFor(() => {
       expect(cardRow.querySelector(".gg-cardphoto__thumb")).toBeTruthy();
@@ -240,24 +246,61 @@ describe("per-card photo upload spot", () => {
     expect(generalSection.querySelector(".gg-sellphotos__item")).toBeNull();
   });
 
-  it("drops a card's attached photo when the card itself is removed", async () => {
-    mockFetch();
+  it("drops a card's attached photos when the card itself is removed", async () => {
+    mockOldCardFetch();
     const { container } = render(<App />);
-    await addSampleCard(container);
+    await addOldCard(container);
+    const conditionSelect = container.querySelectorAll(
+      ".gg-sellcard-row__fields select",
+    )[0] as HTMLSelectElement;
+    fireEvent.change(conditionSelect, { target: { value: "NM" } });
 
     const cardRow = container.querySelector(".gg-sellcard-row") as HTMLElement;
-    const cardFileInput = cardRow.querySelector("input[type='file']") as HTMLInputElement;
+    const [frontInput] = cardRow.querySelectorAll("input[type='file']") as NodeListOf<HTMLInputElement>;
     const file = new File(["fake image bytes"], "card.jpg", { type: "image/jpeg" });
-    fireEvent.change(cardFileInput, { target: { files: [file] } });
+    fireEvent.change(frontInput, { target: { files: [file] } });
     await waitFor(() => {
       expect(cardRow.querySelector(".gg-cardphoto__thumb")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /remove lightning bolt/i }));
+    fireEvent.click(screen.getByRole("button", { name: /remove black lotus/i }));
     await waitFor(() => {
       expect(container.querySelector(".gg-sellcards")).toBeNull();
     });
     expect(container.querySelector(".gg-cardphoto__thumb")).toBeNull();
+  });
+});
+
+describe("submission is blocked until required photos are attached", () => {
+  it("keeps the Submit button disabled and shows the front/back warning when a condition claim is unproven", async () => {
+    mockOldCardFetch();
+    const { container } = render(<App />);
+
+    await addOldCard(container);
+    const conditionSelect = container.querySelectorAll(
+      ".gg-sellcard-row__fields select",
+    )[0] as HTMLSelectElement;
+    fireEvent.change(conditionSelect, { target: { value: "NM" } }); // claims Near Mint, no photos attached
+
+    fireEvent.click(screen.getByRole("button", { name: /start your submission/i }));
+    await screen.findByText(/tell us about the collection/i);
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await screen.findByText(/your contact information/i);
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: "Jordan" } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: "Vega" } });
+    fireEvent.change(screen.getByLabelText(/^email$/i, { selector: "input[type='email']" }), {
+      target: { value: "jordan@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await screen.findByRole("heading", { name: /review & submit/i });
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    expect(
+      await screen.findByText(/front & back photos required/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /submit my collection/i })).toBeDisabled();
   });
 });
 

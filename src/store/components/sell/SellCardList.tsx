@@ -4,6 +4,7 @@ import { CardPhotoUpload } from "./CardPhotoUpload";
 import { storefrontImageUrl } from "../../../cards";
 import { formatCents } from "../../lib/money";
 import {
+  cardPhotoRequirementMet,
   conditionDefaultExplanation,
   conditionNeedsPhotos,
   defaultConditionForReleaseDate,
@@ -32,7 +33,7 @@ export function SellCardList({
   onRemove,
   onRematch,
   photos,
-  onAddCardPhotos,
+  onSelectCardPhoto,
   onRemoveCardPhoto,
   onRetryCardPhoto,
 }: {
@@ -41,7 +42,7 @@ export function SellCardList({
   onRemove: (localId: string) => void;
   onRematch: (localId: string, printing: SellPrinting) => void;
   photos: SellPhoto[];
-  onAddCardPhotos: (cardLocalId: string, files: File[]) => void;
+  onSelectCardPhoto: (cardLocalId: string, side: "front" | "back", file: File) => void;
   onRemoveCardPhoto: (localId: string) => void;
   onRetryCardPhoto: (localId: string) => void;
 }) {
@@ -69,8 +70,10 @@ export function SellCardList({
           isManualEntry && recommendedCondition
             ? conditionNeedsPhotos(card.condition, recommendedCondition)
             : false;
-        const cardPhotos = photos.filter((p) => p.cardLocalId === card.localId);
-        const stillNeedsPhotos = needsPhotos && cardPhotos.length === 0;
+        const frontPhoto = photos.find((p) => p.cardLocalId === card.localId && p.side === "front");
+        const backPhoto = photos.find((p) => p.cardLocalId === card.localId && p.side === "back");
+        const stillNeedsPhotos = needsPhotos && !cardPhotoRequirementMet(photos, card.localId);
+        const showPhotoUpload = needsPhotos || frontPhoto != null || backPhoto != null;
         return (
           <li key={card.localId} className="gg-sellcard-row">
             <div className="gg-sellcard-row__main">
@@ -179,15 +182,20 @@ export function SellCardList({
             )}
             {stillNeedsPhotos && (
               <p className="gg-alert gg-alert-warn gg-sellcard-row__conditionnote" role="alert">
-                Please add a clear photo of this card below so we can confirm the condition.
+                Please add a photo of the <strong>front</strong> and a photo of the <strong>back</strong> of
+                this card below so we can confirm the condition — both are required before you can submit.
               </p>
             )}
-            <CardPhotoUpload
-              photos={cardPhotos}
-              onFilesSelected={(files) => onAddCardPhotos(card.localId, files)}
-              onRemove={onRemoveCardPhoto}
-              onRetry={onRetryCardPhoto}
-            />
+            {showPhotoUpload && (
+              <CardPhotoUpload
+                frontPhoto={frontPhoto}
+                backPhoto={backPhoto}
+                onSelectFront={(file) => onSelectCardPhoto(card.localId, "front", file)}
+                onSelectBack={(file) => onSelectCardPhoto(card.localId, "back", file)}
+                onRemove={onRemoveCardPhoto}
+                onRetry={onRetryCardPhoto}
+              />
+            )}
             <label className="gg-field gg-sellcard-row__notes">
               <span>Notes (optional)</span>
               <input

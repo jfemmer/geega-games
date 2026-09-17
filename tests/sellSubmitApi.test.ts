@@ -327,6 +327,32 @@ describe("POST /api/sell/submit", () => {
     expect(state.insertedPhotos?.[0]).toMatchObject({ client_card_id: "local-card-1" });
   });
 
+  it("stores a valid front/back side and rejects an unrecognized one", async () => {
+    state.storageObjects = [
+      { name: "front.jpg", id: "obj-1", metadata: { size: 1000, mimetype: "image/jpeg" } },
+      { name: "back.jpg", id: "obj-2", metadata: { size: 1000, mimetype: "image/jpeg" } },
+      { name: "weird.jpg", id: "obj-3", metadata: { size: 1000, mimetype: "image/jpeg" } },
+    ];
+    const draftId = "22222222-2222-2222-2222-222222222222";
+    const res = await invoke({
+      draftId,
+      contact: validContact,
+      collection: validCollection,
+      cards: [{ ...validCard, clientCardId: "local-card-1" }],
+      photos: [
+        { path: `${draftId}/front.jpg`, originalFilename: "front.jpg", cardLocalId: "local-card-1", side: "front" },
+        { path: `${draftId}/back.jpg`, originalFilename: "back.jpg", cardLocalId: "local-card-1", side: "back" },
+        { path: `${draftId}/weird.jpg`, originalFilename: "weird.jpg", cardLocalId: "local-card-1", side: "sideways" },
+      ],
+      agreedToTerms: true,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(state.insertedPhotos).toHaveLength(3);
+    expect(state.insertedPhotos?.[0]).toMatchObject({ side: "front" });
+    expect(state.insertedPhotos?.[1]).toMatchObject({ side: "back" });
+    expect(state.insertedPhotos?.[2]).toMatchObject({ side: null });
+  });
+
   it("leaves client_card_id null for a general collection photo not tied to any card", async () => {
     state.storageObjects = [
       { name: "real.jpg", id: "obj-1", metadata: { size: 123456, mimetype: "image/jpeg" } },
@@ -341,7 +367,7 @@ describe("POST /api/sell/submit", () => {
       agreedToTerms: true,
     });
     expect(res.statusCode).toBe(200);
-    expect(state.insertedPhotos?.[0]).toMatchObject({ client_card_id: null });
+    expect(state.insertedPhotos?.[0]).toMatchObject({ client_card_id: null, side: null });
   });
 
   it("rejects further submissions from the same email once the recent cap is hit", async () => {

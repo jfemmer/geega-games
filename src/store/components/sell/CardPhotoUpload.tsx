@@ -1,82 +1,97 @@
 import { useRef } from "react";
 import type { SellPhoto } from "../../lib/sellTypes";
 
-// A compact, per-card photo spot inside SellCardList — smaller footprint
-// than CollectionPhotoUpload (the general "whole collection" uploader in
-// step 0), meant to sit directly under a single card row. Shares the same
-// accepted types/upload plumbing (see SellPage.startUpload); this component
-// only manages the small thumbnail strip + "+ Photo" affordance.
+// A compact, per-card photo spot inside SellCardList — shown when a card's
+// claimed condition needs photo proof (see conditionNeedsPhotos). Two fixed
+// slots rather than a free-for-all grid: proving a condition claim requires
+// seeing BOTH sides of the card, so "one photo of whichever side" isn't
+// enough — each slot holds exactly one photo and a new selection replaces
+// whatever was there.
 
-const MAX_PHOTOS_PER_CARD = 6;
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
-export function CardPhotoUpload({
-  photos,
-  onFilesSelected,
+function Slot({
+  label,
+  photo,
+  onSelect,
   onRemove,
   onRetry,
 }: {
-  photos: SellPhoto[];
-  onFilesSelected: (files: File[]) => void;
+  label: string;
+  photo: SellPhoto | undefined;
+  onSelect: (file: File) => void;
   onRemove: (localId: string) => void;
   onRetry: (localId: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const atLimit = photos.length >= MAX_PHOTOS_PER_CARD;
-
-  function pickFiles(files: File[]) {
-    if (files.length === 0) return;
-    onFilesSelected(files.slice(0, Math.max(0, MAX_PHOTOS_PER_CARD - photos.length)));
-  }
 
   return (
-    <div className="gg-cardphoto">
+    <div className="gg-cardphoto__slot">
       <input
         ref={inputRef}
         type="file"
         accept={ACCEPTED_TYPES.join(",")}
-        multiple
         style={{ display: "none" }}
         onChange={(e) => {
-          pickFiles(Array.from(e.target.files ?? []));
+          const file = e.target.files?.[0];
+          if (file) onSelect(file);
           e.target.value = "";
         }}
       />
-      <div className="gg-cardphoto__row">
-        {photos.map((p) => (
-          <div className="gg-cardphoto__thumb" key={p.localId}>
-            <img src={p.previewUrl} alt="" />
-            {p.status === "uploading" && (
-              <div className="gg-cardphoto__status" role="status">
-                Uploading…
-              </div>
-            )}
-            {p.status === "error" && (
-              <div className="gg-cardphoto__status gg-cardphoto__status--error" role="alert">
-                <button type="button" onClick={() => onRetry(p.localId)}>
-                  Retry
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              className="gg-cardphoto__remove"
-              aria-label="Remove photo"
-              onClick={() => onRemove(p.localId)}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        {!atLimit && (
+      {photo ? (
+        <div className="gg-cardphoto__thumb">
+          <img src={photo.previewUrl} alt={`${label} of card`} />
+          {photo.status === "uploading" && (
+            <div className="gg-cardphoto__status" role="status">
+              Uploading…
+            </div>
+          )}
+          {photo.status === "error" && (
+            <div className="gg-cardphoto__status gg-cardphoto__status--error" role="alert">
+              <button type="button" onClick={() => onRetry(photo.localId)}>
+                Retry
+              </button>
+            </div>
+          )}
           <button
             type="button"
-            className="gg-cardphoto__add"
-            onClick={() => inputRef.current?.click()}
+            className="gg-cardphoto__remove"
+            aria-label={`Remove ${label.toLowerCase()} photo`}
+            onClick={() => onRemove(photo.localId)}
           >
-            + Photo
+            ×
           </button>
-        )}
+        </div>
+      ) : (
+        <button type="button" className="gg-cardphoto__add" onClick={() => inputRef.current?.click()}>
+          + {label}
+        </button>
+      )}
+      <span className="gg-cardphoto__label">{label}</span>
+    </div>
+  );
+}
+
+export function CardPhotoUpload({
+  frontPhoto,
+  backPhoto,
+  onSelectFront,
+  onSelectBack,
+  onRemove,
+  onRetry,
+}: {
+  frontPhoto: SellPhoto | undefined;
+  backPhoto: SellPhoto | undefined;
+  onSelectFront: (file: File) => void;
+  onSelectBack: (file: File) => void;
+  onRemove: (localId: string) => void;
+  onRetry: (localId: string) => void;
+}) {
+  return (
+    <div className="gg-cardphoto">
+      <div className="gg-cardphoto__row">
+        <Slot label="Front" photo={frontPhoto} onSelect={onSelectFront} onRemove={onRemove} onRetry={onRetry} />
+        <Slot label="Back" photo={backPhoto} onSelect={onSelectBack} onRemove={onRemove} onRetry={onRetry} />
       </div>
     </div>
   );

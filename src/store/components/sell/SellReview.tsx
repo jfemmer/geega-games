@@ -1,5 +1,6 @@
 import { storefrontImageUrl } from "../../../cards";
 import {
+  cardPhotoRequirementMet,
   conditionNeedsPhotos,
   defaultConditionForReleaseDate,
   SELL_COLLECTION_SIZE_OPTIONS,
@@ -41,7 +42,7 @@ export function SellReview({
     (c) =>
       c.rawInput == null &&
       conditionNeedsPhotos(c.condition, defaultConditionForReleaseDate(c.releasedAt)) &&
-      !photos.some((p) => p.cardLocalId === c.localId && (p.status === "uploaded" || p.status === "uploading")),
+      !cardPhotoRequirementMet(photos, c.localId),
   );
 
   return (
@@ -110,13 +111,15 @@ export function SellReview({
         {cardsNeedingPhotos.length > 0 && (
           <p className="gg-alert gg-alert-warn" role="alert">
             <strong>
-              Photos needed for {cardsNeedingPhotos.length} card{cardsNeedingPhotos.length === 1 ? "" : "s"}:
+              Front &amp; back photos required for {cardsNeedingPhotos.length} card
+              {cardsNeedingPhotos.length === 1 ? "" : "s"}:
             </strong>{" "}
             {cardsNeedingPhotos.map((c) => c.cardName).join(", ")}. You&rsquo;ve listed{" "}
             {cardsNeedingPhotos.length === 1 ? "it" : "them"} in better condition than we&rsquo;d expect for{" "}
-            {cardsNeedingPhotos.length === 1 ? "its" : "their"} age.{" "}
+            {cardsNeedingPhotos.length === 1 ? "its" : "their"} age, so we need to see both sides before you can
+            submit.{" "}
             <button type="button" className="gg-btn gg-btn-ghost gg-btn-sm" onClick={() => onEditStep(0)}>
-              Go back and add a photo
+              Go back and add photos
             </button>
           </p>
         )}
