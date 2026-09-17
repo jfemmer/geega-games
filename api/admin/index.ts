@@ -795,6 +795,164 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
+      // Refunds a paid order through Stripe and records the result in the
+      // order_refunds ledger. Amount defaults to whatever's left un-refunded
+      // of amount_due_cents (the amount Stripe actually charged — not
+      // total_cents, which can include a store-credit portion Stripe never
+      // touched). A partial refund is fully supported: the order's status
+      // only flips to "refunded" once the ledger's running total reaches
+      // amount_due_cents, so a partial refund correctly leaves the order in
+      // whatever status it was already in.
+      if (action === "refund" && method === "POST") {
+        requireCapability(staff, "orders.refund");
+        const body = await readJsonBody(req);
+        const orderId = String(body.orderId ?? "");
+        if (!orderId) throw new HttpError(400, "orderId is required.");
+
+        const { data: order, error: readErr } = await admin
+          .from("orders")
+          .select(
+            "id, status, payment_provider, payment_reference, payment_status, amount_due_cents",
+          )
+          .eq("id", orderId)
+          .maybeSingle();
+        if (readErr) throw new HttpError(500, readErr.message);
+        if (!order) throw new HttpError(404, "Order not found.");
+        if (order.payment_provider !== "stripe" || !order.payment_reference) {
+          throw new HttpError(
+            400,
+            "This order wasn't paid through Stripe, so it can't be refunded here. Handle it manually.",
+          );
+        }
+        if (order.payment_status !== "paid" && order.payment_status !== "refunded") {
+          throw new HttpError(409, "This order hasn't been paid, so there's nothing to refund.");
+        }
+
+        const { data: priorRefunds, error: priorErr } = await admin
+          .from("order_refunds")
+          .select("amount_cents")
+          .eq("order_id", orderId);
+        if (priorErr) throw new HttpError(500, priorErr.message);
+        const alreadyRefundedCents = (priorRefunds ?? []).reduce(
+          (sum, r) => sum + r.amount_cents,
+          0,
+        );
+        const remainingCents = order.amount_due_cents - alreadyRefundedCents;
+        if (remainingCents <= 0) {
+          throw new HttpError(409, "This order has already been fully refunded.");
+        }
+
+        const requestedCents = body.amountCents;
+        const amountCents =
+          requestedCents == null ? remainingCents : Math.round(Number(requestedCents));
+        if (!Number.isFinite(amountCents) || amountCents <= 0) {
+          throw new HttpError(400, "amountCents must be a positive number of cents.");
+        }
+        if (amountCents > remainingCents) {
+          throw new HttpError(
+            400,
+            `Only $${(remainingCents / 100).toFixed(2)} is left to refund on this order.`,
+          );
+        }
+        const reason = typeof body.reason === "string" ? body.reason.trim() || null : null;
+        const restock = body.restock === true;
+
+        let refund;
+        try {
+          const stripe = getStripe();
+          refund = await stripe.refunds.create(
+            { payment_intent: order.payment_reference, amount: amountCents },
+            { idempotencyKey: `refund_${orderId}_${alreadyRefundedCents}_${amountCents}` },
+          );
+        } catch (err) {
+          throw new HttpError(
+            502,
+            err instanceof Error ? err.message : "Could not process the refund with Stripe.",
+          );
+        }
+
+        const { error: insertErr } = await admin.from("order_refunds").insert({
+          order_id: orderId,
+          stripe_refund_id: refund.id,
+          amount_cents: amountCents,
+          reason,
+          restocked: restock,
+          created_by: staff.userId,
+        });
+        if (insertErr) {
+          // The refund already succeeded in Stripe — surface a clear error
+          // rather than silently losing the record, but don't retry the
+          // Stripe call (that would double-refund).
+          throw new HttpError(
+            500,
+            `Refund succeeded in Stripe (${refund.id}) but could not be recorded: ${insertErr.message}. Note this down and contact support.`,
+          );
+        }
+
+        const fullyRefunded = alreadyRefundedCents + amountCents >= order.amount_due_cents;
+        if (fullyRefunded) {
+          const { error: statusErr } = await admin
+            .from("orders")
+            .update({ status: "refunded", payment_status: "refunded" })
+            .eq("id", orderId);
+          if (statusErr) throw new HttpError(500, statusErr.message);
+        }
+
+        if (restock) {
+          const { data: items } = await admin
+            .from("order_items")
+            .select("inventory_item_id, quantity")
+            .eq("order_id", orderId);
+          for (const item of items ?? []) {
+            if (!item.inventory_item_id) continue; // no linked line to restock
+            const { error: restockErr } = await admin.rpc(
+              "admin_adjust_inventory_quantity",
+              {
+                p_id: item.inventory_item_id,
+                p_delta: item.quantity,
+                p_reason: "return_restock",
+                p_actor: actorLabel(staff, null),
+                p_note: `Refund on order ${orderId}`,
+              },
+            );
+            // Money has already moved — a restock failure on one line must
+            // not fail the refund response. Logged for staff to fix by hand.
+            if (restockErr) {
+              console.error(
+                `[admin/orders/refund] restock failed for item ${item.inventory_item_id}`,
+                restockErr,
+              );
+            }
+          }
+        }
+
+        // Only the "your order has been refunded" email implies the whole
+        // order — a partial refund gets no email here (the design doc's
+        // scope), so it never overstates what happened.
+        if (fullyRefunded) {
+          try {
+            await sendOrderStatusEmail(orderId, "refunded");
+          } catch (mailErr) {
+            console.error("[admin/orders/refund] refunded email failed", mailErr);
+          }
+        }
+
+        await logAdminAction(admin, staff, {
+          action: "order.refund",
+          resourceType: "order",
+          resourceId: orderId,
+          after: { amountCents, reason, restock, fullyRefunded, stripeRefundId: refund.id },
+        });
+
+        return sendJson(res, 200, {
+          ok: true,
+          amountCents,
+          fullyRefunded,
+          remainingCents: order.amount_due_cents - alreadyRefundedCents - amountCents,
+          stripeRefundId: refund.id,
+        });
+      }
+
       if (action === "add-note" && method === "POST") {
         const body = await readJsonBody(req);
         const orderId = String(body.orderId ?? "");

@@ -485,6 +485,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-search .gg-input { padding-left: 34px; border-radius: 999px; }
 
 .gg-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.gg-form-stack { display: flex; flex-direction: column; gap: 12px; }
+.gg-radiorow { display: flex; flex-direction: column; gap: 6px; }
 .gg-check-inline { display: inline-flex; align-items: center; gap: 7px; font-size: 0.84rem; color: var(--gg-text-soft); cursor: pointer; }
 .gg-check-inline input { width: 15px; height: 15px; accent-color: var(--gg-brand); }
 

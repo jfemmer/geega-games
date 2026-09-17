@@ -309,6 +309,16 @@ export interface OrderRepository {
    * ready-to-ship, or no rate is available for the address.
    */
   buyLabel(orderId: string): Promise<Order>;
+  /**
+   * Refunds a Stripe-paid order. Omitting `amountCents` refunds whatever is
+   * left un-refunded of the amount Stripe actually charged. Throws with a
+   * UI-safe message if the order wasn't paid through Stripe, is already
+   * fully refunded, or the amount exceeds what's left to refund.
+   */
+  refund(
+    orderId: string,
+    input: { amountCents?: number; reason?: string; restock?: boolean },
+  ): Promise<Order>;
   counts(): Promise<Record<string, number>>;
 }
 

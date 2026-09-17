@@ -106,6 +106,71 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
+
+    // A refund issued anywhere — our own admin "Refund" action, or by hand
+    // in the Stripe Dashboard, which will keep happening even after the
+    // admin UI exists — lands here too. This is what keeps order_refunds
+    // accurate regardless of where the refund came from: the admin action
+    // already records its own row synchronously, so by the time this event
+    // arrives the ledger's running total usually already matches
+    // charge.amount_refunded and there is nothing to do. Only a GAP between
+    // the ledger and what Stripe reports gets a new (synced) row — this is
+    // what makes a Dashboard-issued refund show up without ever recording
+    // the same refund twice.
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId =
+        typeof charge.payment_intent === "string"
+          ? charge.payment_intent
+          : (charge.payment_intent?.id ?? null);
+      if (paymentIntentId) {
+        const { data: order, error: orderErr } = await db
+          .from("orders")
+          .select("id, amount_due_cents")
+          .eq("payment_reference", paymentIntentId)
+          .maybeSingle();
+        if (orderErr) {
+          console.error("[stripe] charge.refunded order lookup failed", orderErr);
+        } else if (order) {
+          const { data: existing, error: existingErr } = await db
+            .from("order_refunds")
+            .select("amount_cents")
+            .eq("order_id", order.id);
+          if (existingErr) {
+            console.error("[stripe] charge.refunded ledger read failed", existingErr);
+          } else {
+            const recordedCents = (existing ?? []).reduce(
+              (sum, r) => sum + r.amount_cents,
+              0,
+            );
+            const gapCents = charge.amount_refunded - recordedCents;
+            if (gapCents > 0) {
+              const latestRefund = charge.refunds?.data?.[0] ?? null;
+              const { error: insertErr } = await db.from("order_refunds").insert({
+                order_id: order.id,
+                stripe_refund_id: latestRefund?.id ?? null,
+                amount_cents: gapCents,
+                reason: "Refunded via Stripe Dashboard (synced automatically)",
+                restocked: false,
+                created_by: null,
+              });
+              if (insertErr) {
+                console.error("[stripe] charge.refunded ledger insert failed", insertErr);
+              } else if (recordedCents + gapCents >= order.amount_due_cents) {
+                const { error: statusErr } = await db
+                  .from("orders")
+                  .update({ status: "refunded", payment_status: "refunded" })
+                  .eq("id", order.id);
+                if (statusErr) {
+                  console.error("[stripe] charge.refunded status update failed", statusErr);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Other event types are recorded (for audit) and acked without action.
     return res.status(200).json({ ok: true });
   } catch (err) {

@@ -11,6 +11,7 @@ import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { ShipModal } from "./ShipModal";
+import { RefundModal } from "../components/orders/RefundModal";
 import { OrderCardImage } from "../components/cards/OrderCardImage";
 import { CardPrintingBadges } from "../components/cards/CardPrintingBadges";
 import { useAsync } from "../hooks/useAsync";
@@ -66,6 +67,7 @@ export function OrdersPage({
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<Order | null>(null);
   const [shipOpen, setShipOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
 
@@ -238,6 +240,7 @@ export function OrdersPage({
         order={detail}
         onClose={closeDetail}
         onShip={() => setShipOpen(true)}
+        onRefund={() => setRefundOpen(true)}
         onCancel={(o) => setCancelTarget(o)}
         onChanged={() => detail && refreshDetail(detail.id)}
       />
@@ -253,12 +256,23 @@ export function OrdersPage({
         }}
       />
 
+      <RefundModal
+        order={detail}
+        open={refundOpen}
+        onClose={() => setRefundOpen(false)}
+        onRefunded={(updated) => {
+          setDetail(updated);
+          orders.reload();
+          refreshCounts();
+        }}
+      />
+
       <ConfirmDialog
         open={!!cancelTarget}
         title="Cancel this order?"
         message={
           cancelTarget
-            ? `${cancelTarget.orderNumber} will be marked cancelled and the customer will be emailed. This does not trigger a Stripe refund — handle that separately.`
+            ? `${cancelTarget.orderNumber} will be marked cancelled and the customer will be emailed. This does not trigger a Stripe refund — use the Refund action separately if money needs to come back.`
             : ""
         }
         confirmLabel="Cancel order"
@@ -287,12 +301,14 @@ function OrderDetail({
   order,
   onClose,
   onShip,
+  onRefund,
   onCancel,
   onChanged,
 }: {
   order: Order | null;
   onClose: () => void;
   onShip: () => void;
+  onRefund: () => void;
   onCancel: (o: Order) => void;
   onChanged: () => void;
 }) {
@@ -355,6 +371,11 @@ function OrderDetail({
       }
       footer={
         <div className="gg-drawer-actions__buttons">
+          {order.paymentStatus !== "unpaid" && currentAdmin.can("orders.refund") && (
+            <Button variant="danger" onClick={onRefund}>
+              Refund
+            </Button>
+          )}
           {!isClosed && currentAdmin.can("orders.cancel") && (
             <Button
               variant="ghost"

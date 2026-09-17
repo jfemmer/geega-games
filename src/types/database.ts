@@ -992,6 +992,47 @@ export type Database = {
           },
         ]
       }
+      order_refunds: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          id: string
+          order_id: string
+          reason: string | null
+          restocked: boolean
+          stripe_refund_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id: string
+          reason?: string | null
+          restocked?: boolean
+          stripe_refund_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id?: string
+          reason?: string | null
+          restocked?: boolean
+          stripe_refund_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_refunds_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           amount_due_cents: number
@@ -2676,6 +2717,7 @@ export type Database = {
         | "import"
         | "archive"
         | "restore"
+        | "return_restock"
       inventory_status: "active" | "reserved" | "archived"
       order_channel: "online" | "pos"
       order_status:
@@ -2958,6 +3000,7 @@ export const Constants = {
         "import",
         "archive",
         "restore",
+        "return_restock",
       ],
       inventory_status: ["active", "reserved", "archived"],
       order_channel: ["online", "pos"],

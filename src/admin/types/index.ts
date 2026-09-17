@@ -526,6 +526,14 @@ export interface OrderEmailEvent {
   at: string;
 }
 
+export interface OrderRefundEvent {
+  id: string;
+  amountCents: number;
+  reason: string | null;
+  restocked: boolean;
+  createdAt: string;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -556,9 +564,13 @@ export interface Order {
   shippingCents: number;
   taxCents: number;
   totalCents: number;
+  /** What Stripe actually charged (total minus any store credit applied). Undefined on repositories/fixtures that predate refunds — treat as totalCents. */
+  amountDueCents?: number;
   internalNotes: string | null;
   timeline: OrderTimelineEvent[];
   emails: OrderEmailEvent[];
+  /** Populated by get(), left empty by list() to avoid an N+1 query per row. */
+  refunds?: OrderRefundEvent[];
   createdAt: string;
   paidAt: string | null;
   shippedAt: string | null;

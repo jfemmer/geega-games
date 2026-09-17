@@ -641,6 +641,42 @@ export const mockOrderRepository: OrderRepository = {
     return delay(orders.find((o) => o.id === orderId)!, 250);
   },
 
+  async refund(orderId, input) {
+    const at = new Date().toISOString();
+    orders = orders.map((o) => {
+      if (o.id !== orderId) return o;
+      const amountDue = o.amountDueCents ?? o.totalCents;
+      const alreadyRefunded = (o.refunds ?? []).reduce((s, r) => s + r.amountCents, 0);
+      const remaining = amountDue - alreadyRefunded;
+      const amountCents = input.amountCents ?? remaining;
+      const fullyRefunded = alreadyRefunded + amountCents >= amountDue;
+      return {
+        ...o,
+        status: fullyRefunded ? "refunded" : o.status,
+        paymentStatus: fullyRefunded ? "refunded" : o.paymentStatus,
+        refunds: [
+          ...(o.refunds ?? []),
+          {
+            id: mockId("rf"),
+            amountCents,
+            reason: input.reason ?? null,
+            restocked: input.restock === true,
+            createdAt: at,
+          },
+        ],
+        timeline: [
+          ...o.timeline,
+          statusEvent(
+            fullyRefunded ? "Refunded" : "Partially refunded",
+            `$${(amountCents / 100).toFixed(2)}`,
+            "Staff",
+          ),
+        ],
+      };
+    });
+    return delay(orders.find((o) => o.id === orderId)!, 250);
+  },
+
   async counts() {
     const by = (s: Order["status"]) =>
       orders.filter((o) => o.status === s).length;

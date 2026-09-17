@@ -32,6 +32,7 @@ import type {
   OrderEmailEvent,
   OrderItem,
   OrderQuery,
+  OrderRefundEvent,
   OrderStatus,
   OrderTimelineEvent,
   ShippingCarrier,
@@ -144,6 +145,7 @@ function mapOrder(
   o: OrderRowWithItems,
   customerName: string,
   emails: OrderEmailEvent[] = [],
+  refunds: OrderRefundEvent[] = [],
 ): Order {
   return {
     id: o.id,
@@ -174,9 +176,11 @@ function mapOrder(
     shippingCents: o.shipping_cents,
     taxCents: o.tax_cents,
     totalCents: o.total_cents,
+    amountDueCents: o.amount_due_cents,
     internalNotes: o.internal_notes,
     timeline: buildTimeline(o),
     emails,
+    refunds,
     createdAt: o.created_at,
     paidAt: o.paid_at,
     shippedAt: o.shipped_at,
@@ -274,11 +278,19 @@ export const supabaseOrderRepository: OrderRepository = {
     if (!data) return null;
     const row = data as unknown as OrderRowWithItems;
 
-    const [names, emailRows] = await Promise.all([
+    const [names, emailRows, refundRows] = await Promise.all([
       resolveCustomerNames([row]),
       supabase
         .from("email_deliveries")
         .select("id, email_type, to_email, status, sent_at, created_at")
+        .eq("order_id", id)
+        .order("created_at", { ascending: true }),
+      // RLS restricts this to owner/administrator staff — a fulfillment or
+      // inventory staffer simply gets zero rows back, not an error, so the
+      // order detail still loads fine for them minus the refund history.
+      supabase
+        .from("order_refunds")
+        .select("id, amount_cents, reason, restocked, created_at")
         .eq("order_id", id)
         .order("created_at", { ascending: true }),
     ]);
@@ -291,7 +303,15 @@ export const supabaseOrderRepository: OrderRepository = {
       at: e.sent_at ?? e.created_at,
     }));
 
-    return mapOrder(row, nameFor(names, row), emails);
+    const refunds: OrderRefundEvent[] = (refundRows.data ?? []).map((r) => ({
+      id: r.id,
+      amountCents: r.amount_cents,
+      reason: r.reason,
+      restocked: r.restocked,
+      createdAt: r.created_at,
+    }));
+
+    return mapOrder(row, nameFor(names, row), emails, refunds);
   },
 
   async setStatus(id: string, status: Order["status"]): Promise<Order> {
@@ -342,6 +362,19 @@ export const supabaseOrderRepository: OrderRepository = {
     await adminFetch("/api/admin?resource=orders&action=buy-label", {
       method: "POST",
       body: { orderId },
+    });
+    const fresh = await supabaseOrderRepository.get(orderId);
+    if (!fresh) throw new Error("Order not found after update.");
+    return fresh;
+  },
+
+  async refund(
+    orderId: string,
+    input: { amountCents?: number; reason?: string; restock?: boolean },
+  ): Promise<Order> {
+    await adminFetch("/api/admin?resource=orders&action=refund", {
+      method: "POST",
+      body: { orderId, ...input },
     });
     const fresh = await supabaseOrderRepository.get(orderId);
     if (!fresh) throw new Error("Order not found after update.");
