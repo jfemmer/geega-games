@@ -72,6 +72,7 @@ export function AdminLayout({
           breadcrumb={fullBreadcrumb}
           onOpenSearch={() => setSearchOpen(true)}
           onToggleSidebar={() => setMobileOpen((v) => !v)}
+          onNavigate={onNavigate}
           onSignOut={async () => {
             const { error } = await supabase.auth.signOut();
             if (error) toast.error(error.message);
