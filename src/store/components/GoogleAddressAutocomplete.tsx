@@ -154,7 +154,7 @@ export default function GoogleAddressAutocomplete({
         autocompleteElement.style.width = "100%";
         autocompleteElement.setAttribute("aria-label", "Search for your shipping address");
         autocompleteElement.setAttribute("autocomplete", "shipping street-address");
-        autocompleteElement.placeholder = "Start typing your street address";
+        autocompleteElement.setAttribute("placeholder", "Start typing your street address");
 
         selectHandler = (event: Event) => {
           void (async () => {
