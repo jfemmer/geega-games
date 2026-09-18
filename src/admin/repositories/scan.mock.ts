@@ -182,10 +182,14 @@ export const mockScanRepository: ScanRepository = {
     const sessionIndex = sessions.findIndex((session) => session.id === id);
     if (sessionIndex < 0) throw new Error("Scan session not found.");
 
+    const session = sessions[sessionIndex];
     const sessionScans = scans.filter((scan) => scan.scanSessionId === id);
-    if (sessionScans.some((scan) => scan.reviewStatus === "added" || scan.inventoryItemId)) {
+    const hasInventoryLinks = sessionScans.some(
+      (scan) => scan.reviewStatus === "added" || scan.inventoryItemId,
+    );
+    if (hasInventoryLinks && session.status !== "completed") {
       throw new Error(
-        "This session contains cards already added to inventory and cannot be deleted.",
+        "This session contains cards already added to inventory. Complete the session before deleting it.",
       );
     }
 
