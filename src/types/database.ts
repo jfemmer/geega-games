@@ -2280,6 +2280,10 @@ export type Database = {
           notes: string
           oracle_id: string
           price_cents: number
+          original_price_cents: number
+          deal_discount_percent: number
+          deal_source: string
+          deal_started_at: string
           quantity: number
           rarity: string
           scryfall_id: string
