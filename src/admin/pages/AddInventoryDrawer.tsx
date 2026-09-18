@@ -153,6 +153,7 @@ export function AddInventoryDrawer({
   }, [selected]);
 
   const refPrice = selected ? priceForFinish(selected, finish) : null;
+  const previewPriceCents = centsFromInput(price);
 
   async function handleSave() {
     if (!selected) {
@@ -371,12 +372,12 @@ export function AddInventoryDrawer({
                   value={dealDiscount}
                   onChange={(e) => setDealDiscount(e.target.value)}
                   hint={
-                    priceCents > 0
-                      ? `Regular ${formatCents(priceCents)} → Deal ${formatCents(
+                    previewPriceCents > 0
+                      ? `Regular ${formatCents(previewPriceCents)} → Deal ${formatCents(
                           Math.max(
                             1,
                             Math.round(
-                              priceCents *
+                              previewPriceCents *
                                 (100 -
                                   Math.max(
                                     1,
