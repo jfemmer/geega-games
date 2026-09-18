@@ -26,22 +26,21 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
     <div className="gg-card">
       <div className={`gg-card-imgwrap ${card.finish !== "nonfoil" ? "gg-card-imgwrap--foil" : ""}`}>
         {card.imageUrl ? (
-          <img
-            className="gg-card-img"
-            src={card.imageUrl}
-            srcSet={srcSet ?? undefined}
-            sizes="(max-width: 420px) 45vw, (max-width: 800px) 30vw, 200px"
-            alt={`${card.name}${card.setName ? `, ${card.setName}` : ""}`}
-            loading="lazy"
-            width={488}
-            height={680}
-          />
-          {card.finish !== "nonfoil" && (
-            <span
-              className="gg-card-foil-shimmer"
-              aria-hidden="true"
+          <>
+            <img
+              className="gg-card-img"
+              src={card.imageUrl}
+              srcSet={srcSet ?? undefined}
+              sizes="(max-width: 420px) 45vw, (max-width: 800px) 30vw, 200px"
+              alt={`${card.name}${card.setName ? `, ${card.setName}` : ""}`}
+              loading="lazy"
+              width={488}
+              height={680}
             />
-          )}
+            {card.finish !== "nonfoil" && (
+              <span className="gg-card-foil-shimmer" aria-hidden="true" />
+            )}
+          </>
         ) : (
           <div
             className="gg-card-img"
