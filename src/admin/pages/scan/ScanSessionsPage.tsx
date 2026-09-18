@@ -94,29 +94,38 @@ export function ScanSessionsPage({
 
   return (
     <>
-      <PageHeader
-        title="Card Scanning"
-        description="Ingest large batches from your Ricoh fi-8170, review them fast, and add matched cards to inventory."
-        actions={
-          <Button variant="primary" icon="plus" onClick={() => setNewOpen(true)}>
-            New scan session
-          </Button>
-        }
-      />
+      <div className="gg-scan-sessions-head">
+        <PageHeader
+          title="Card Scanning"
+          description="Ingest large batches from your Ricoh fi-8170, review them fast, and add matched cards to inventory."
+          actions={
+            <Button variant="primary" icon="plus" onClick={() => setNewOpen(true)}>
+              New scan session
+            </Button>
+          }
+        />
+      </div>
 
       <SectionCard
         title="Scan sessions"
-        action={
-          rows.length > 0 ? (
-            <div className="gg-session-summary" aria-label="Session summary">
-              <span><strong>{rows.length}</strong> total</span>
-              <span><strong>{activeCount}</strong> active</span>
-              <span><strong>{completedCount}</strong> completed</span>
-            </div>
-          ) : undefined
-        }
         className="gg-sessions-section"
       >
+        {rows.length > 0 && (
+          <div className="gg-session-summary" aria-label="Session summary">
+            <span className="gg-session-summary__item">
+              <strong>{rows.length}</strong>
+              <span>Total sessions</span>
+            </span>
+            <span className="gg-session-summary__item">
+              <strong>{activeCount}</strong>
+              <span>Active</span>
+            </span>
+            <span className="gg-session-summary__item">
+              <strong>{completedCount}</strong>
+              <span>Completed</span>
+            </span>
+          </div>
+        )}
         {sessions.loading && (
           <div style={{ padding: 30 }}>
             <Spinner label="Loading sessions" />
@@ -185,12 +194,12 @@ export function ScanSessionsPage({
         }
       >
         <p style={{ marginTop: 0 }}>
-          This permanently deletes <strong>{deleteTarget?.label}</strong> and all
-          uncommitted scans and scan images in it.
+          This permanently deletes <strong>{deleteTarget?.label}</strong>, its scan
+          records, and stored scan images.
         </p>
         <p className="gg-muted" style={{ marginBottom: 0 }}>
-          Sessions containing cards already added to inventory are protected and
-          cannot be deleted.
+          Cards already added to inventory will remain in inventory. Completed
+          sessions can be deleted even when they contain inventory-linked scans.
         </p>
       </Modal>
     </>
@@ -213,7 +222,8 @@ function SessionRow({
     );
   }, [session]);
 
-  const protectedFromDelete = session.addedCards > 0;
+  const hasInventoryLinks = session.addedCards > 0;
+  const protectedFromDelete = hasInventoryLinks && session.status !== "completed";
 
   return (
     <article className="gg-sessioncard">
@@ -278,8 +288,11 @@ function SessionRow({
       </button>
 
       <div className="gg-sessioncard__actions">
-        {protectedFromDelete && (
-          <span className="gg-sessioncard__protected" title="Cards from this session are already in inventory">
+        {hasInventoryLinks && (
+          <span
+            className="gg-sessioncard__protected"
+            title="Cards from this session are already in inventory"
+          >
             <Icon name="checkCircle" size={15} />
             Inventory linked
           </span>
@@ -299,7 +312,7 @@ function SessionRow({
           aria-label={`Delete ${session.label}`}
           title={
             protectedFromDelete
-              ? "This session has cards already added to inventory and cannot be deleted."
+              ? "Finish the session before deleting it because it contains inventory-linked scans."
               : "Delete scan session"
           }
           disabled={protectedFromDelete}
