@@ -262,6 +262,12 @@ export type Database = {
             | Database["public"]["Enums"]["card_condition"]
             | null
           cost_cents: number | null
+          deal_discount_percent: number | null
+          deal_source: string | null
+          deal_started_at: string | null
+          is_deal: boolean
+          original_price_cents: number | null
+          storefront_listed_at: string
           created_at: string
           front_image_path: string | null
           id: string
@@ -293,6 +299,12 @@ export type Database = {
             | Database["public"]["Enums"]["card_condition"]
             | null
           cost_cents?: number | null
+          deal_discount_percent?: number | null
+          deal_source?: string | null
+          deal_started_at?: string | null
+          is_deal?: boolean
+          original_price_cents?: number | null
+          storefront_listed_at?: string
           created_at?: string
           front_image_path?: string | null
           id?: string
@@ -636,6 +648,12 @@ export type Database = {
           colors?: string[]
           condition: Database["public"]["Enums"]["card_condition"]
           cost_cents?: number | null
+          deal_discount_percent?: number | null
+          deal_source?: string | null
+          deal_started_at?: string | null
+          is_deal?: boolean
+          original_price_cents?: number | null
+          storefront_listed_at?: string
           created_at?: string
           creature_types?: string[]
           finish?: Database["public"]["Enums"]["card_finish"]
@@ -2550,6 +2568,39 @@ export type Database = {
           ready: number
           rejected: number
           unreviewed: number
+        }[]
+      }
+      search_deals: {
+        Args: {
+          p_conditions?: Database["public"]["Enums"]["card_condition"][]
+          p_limit?: number
+          p_max_price_cents?: number
+          p_min_price_cents?: number
+          p_offset?: number
+          p_query?: string
+          p_rarities?: string[]
+          p_sets?: string[]
+          p_sort?: string
+        }
+        Returns: {
+          card_name: string
+          collector_number: string
+          condition: Database["public"]["Enums"]["card_condition"]
+          deal_discount_percent: number
+          deal_source: string
+          deal_started_at: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string
+          original_price_cents: number
+          price_cents: number
+          quantity: number
+          rarity: string
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          total_count: number
+          type_line: string
         }[]
       }
       search_inventory: {
