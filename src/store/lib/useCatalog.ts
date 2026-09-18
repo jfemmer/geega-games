@@ -134,7 +134,7 @@ export function useCatalog(filters: CatalogFilters, page: number) {
         p_sets: filters.sets.length ? filters.sets : undefined,
         p_rarities: filters.rarities.length ? filters.rarities : undefined,
         p_conditions: filters.conditions.length
-          ? (filters.conditions as SearchRow["condition"][])
+          ? (filters.conditions as ("NM" | "LP" | "MP" | "HP" | "DMG")[])
           : undefined,
         p_min_price_cents: filters.minPriceCents ?? undefined,
         p_max_price_cents: filters.maxPriceCents ?? undefined,
@@ -150,7 +150,7 @@ export function useCatalog(filters: CatalogFilters, page: number) {
             p_in_stock_only: true,
           });
       if (response.error) throw new Error(response.error.message);
-      const rows = (response.data ?? []) as SearchRow[];
+      const rows = (response.data ?? []) as unknown as SearchRow[];
       setCards(rows.map(mapRow));
       setTotal(rows.length ? (rows[0].total_count ?? 0) : 0);
     } catch (err) {
