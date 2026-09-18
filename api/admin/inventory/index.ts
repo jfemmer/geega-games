@@ -136,13 +136,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error) throw new HttpError(500, error.message);
 
-    const row = data as InventoryRow;
+    const row = data as unknown as InventoryRow;
     const placement = body.storefrontPlacement ?? "main";
     if (placement !== "main" && placement !== "deals") {
       throw new HttpError(400, "Invalid storefront placement.");
     }
 
-    let price = row.price_cents ?? priceCents;
+    const price = row.price_cents ?? priceCents;
     const update: Database["public"]["Tables"]["inventory_items"]["Update"] = {};
 
     if (placement === "deals") {
