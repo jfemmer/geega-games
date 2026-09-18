@@ -56,6 +56,8 @@ export function AddInventoryDrawer({
   const [cost, setCost] = useState("");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  const [storefrontPlacement, setStorefrontPlacement] = useState<"main" | "deals">("main");
+  const [dealDiscount, setDealDiscount] = useState("20");
   const [addAnother, setAddAnother] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dupe, setDupe] = useState<InventoryItem | null>(null);
@@ -89,6 +91,8 @@ export function AddInventoryDrawer({
     setCost("");
     setLocation("");
     setNotes("");
+    setStorefrontPlacement("main");
+    setDealDiscount("20");
     setDupe(null);
   }
 
@@ -165,43 +169,50 @@ export function AddInventoryDrawer({
       toast.error("Enter a selling price.");
       return;
     }
+    const discountPercent = Math.max(
+      1,
+      Math.min(90, Math.round(Number(dealDiscount) || 20)),
+    );
+
     setSaving(true);
     try {
+      await inventoryRepository.create(
+        {
+          scryfallId: selected.scryfallId,
+          cardName: selected.cardName,
+          setName: selected.setName,
+          setCode: selected.setCode,
+          collectorNumber: selected.collectorNumber,
+          rarity: selected.rarity,
+          cardType: selected.cardType,
+          imageUrl: selected.imageUrl,
+          condition,
+          finish,
+          quantity: qty,
+          priceCents,
+          costCents: cost ? centsFromInput(cost) : null,
+          storageLocation: location || null,
+          sku: null,
+          notes: notes || null,
+          status: "active",
+          scryfallPriceCents: refPrice,
+          isDeal: storefrontPlacement === "deals",
+          dealDiscountPercent:
+            storefrontPlacement === "deals" ? discountPercent : null,
+        },
+        currentAdmin.name,
+      );
+
       if (dupe) {
-        await inventoryRepository.adjustQuantity(
-          dupe.id,
-          qty,
-          "manual_add",
-          currentAdmin.name,
-        );
         toast.success(
-          `Added ${qty} to existing stock of ${dupe.cardName} (${condition}, ${FINISH_LABELS[finish]}).`,
+          `Added ${qty} to existing stock of ${dupe.cardName} and updated its storefront placement.`,
         );
       } else {
-        await inventoryRepository.create(
-          {
-            scryfallId: selected.scryfallId,
-            cardName: selected.cardName,
-            setName: selected.setName,
-            setCode: selected.setCode,
-            collectorNumber: selected.collectorNumber,
-            rarity: selected.rarity,
-            cardType: selected.cardType,
-            imageUrl: selected.imageUrl,
-            condition,
-            finish,
-            quantity: qty,
-            priceCents,
-            costCents: cost ? centsFromInput(cost) : null,
-            storageLocation: location || null,
-            sku: null,
-            notes: notes || null,
-            status: "active",
-            scryfallPriceCents: refPrice,
-          },
-          currentAdmin.name,
+        toast.success(
+          storefrontPlacement === "deals"
+            ? `Added ${selected.cardName} to Deals & Specials.`
+            : `Added ${selected.cardName} to inventory.`,
         );
-        toast.success(`Added ${selected.cardName} to inventory.`);
       }
       onSaved();
       if (addAnother) {
@@ -339,6 +350,46 @@ export function AddInventoryDrawer({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
               />
+              <SelectField
+                label="Storefront placement"
+                value={storefrontPlacement}
+                onChange={(e) =>
+                  setStorefrontPlacement(e.target.value as "main" | "deals")
+                }
+                hint="Deals & Specials listings are also visible in normal shop searches."
+              >
+                <option value="main">Main Store</option>
+                <option value="deals">Deals & Specials</option>
+              </SelectField>
+              {storefrontPlacement === "deals" && (
+                <TextField
+                  label="Deal discount (%)"
+                  type="number"
+                  min={1}
+                  max={90}
+                  step={1}
+                  value={dealDiscount}
+                  onChange={(e) => setDealDiscount(e.target.value)}
+                  hint={
+                    priceCents > 0
+                      ? `Regular ${formatCents(priceCents)} → Deal ${formatCents(
+                          Math.max(
+                            1,
+                            Math.round(
+                              priceCents *
+                                (100 -
+                                  Math.max(
+                                    1,
+                                    Math.min(90, Number(dealDiscount) || 20),
+                                  )) /
+                                100,
+                            ),
+                          ),
+                        )}`
+                      : "Enter the regular price above; the discount is applied when saved."
+                  }
+                />
+              )}
             </div>
             <TextArea
               label="Notes"
