@@ -2180,3 +2180,58 @@ body.gg-printing-label .gg-labelprint-overlay {
     justify-content: flex-start;
   }
 }
+
+
+/* Extra breathing room for the scan sessions index header/summary. */
+.gg-scan-sessions-head {
+  margin-bottom: 24px;
+}
+.gg-sessions-section .gg-section__head {
+  padding-bottom: 16px;
+}
+.gg-sessions-section .gg-section__body {
+  padding-top: 20px;
+}
+.gg-session-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+  max-width: 520px;
+}
+.gg-session-summary__item {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface-2);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.gg-session-summary__item strong {
+  color: var(--gg-text);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+.gg-session-summary__item span {
+  color: var(--gg-text-soft);
+  font-size: .72rem;
+  white-space: normal;
+}
+
+@media (max-width: 900px) {
+  .gg-scan-sessions-head { margin-bottom: 16px; }
+  .gg-session-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: none;
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .gg-session-summary {
+    grid-template-columns: 1fr;
+  }
+}
