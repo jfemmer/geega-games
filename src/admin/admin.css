@@ -1618,3 +1618,110 @@ body.gg-printing-label .gg-labelprint-overlay {
 .gg-authwrap {
   background: radial-gradient(1000px 520px at 50% -5%, #4b0d72 0%, #16051f 55%, #050307 100%);
 }
+
+
+/* ==================================================================
+ * Mobile polish — admin
+ * Keeps all existing behavior; improves responsive layout/touch targets.
+ * ================================================================== */
+.gg-pickup-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.gg-pickup-card { padding: 0; overflow: hidden; }
+.gg-pickup-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 18px; background: var(--gg-surface-2);
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-pickup-card__head > div { min-width: 0; overflow-wrap: anywhere; }
+.gg-pickup-card__items { padding: 4px 18px; }
+.gg-pickup-item {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center; gap: 12px; padding: 13px 0;
+  border-bottom: 1px solid var(--gg-line); cursor: pointer;
+}
+.gg-pickup-item:last-child { border-bottom: 0; }
+.gg-pickup-item input { width: 18px; height: 18px; accent-color: var(--gg-brand); }
+.gg-pickup-item__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.gg-pickup-item > span:last-child { font-weight: 700; white-space: nowrap; color: var(--gg-text); }
+.gg-pickup-card__actions {
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 14px 18px; background: var(--gg-surface-2); border-top: 1px solid var(--gg-line);
+}
+
+/* General responsive hardening for admin content. */
+.gg-content, .gg-page, .gg-card { min-width: 0; }
+.gg-content img { max-width: 100%; }
+.gg-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.gg-drawer, .gg-modal { max-width: 100vw; }
+.gg-form-grid > *, .gg-toolbar > *, .gg-pagehead > * { min-width: 0; }
+
+@media (max-width: 760px) {
+  .gg-content { padding: 16px 14px 28px; }
+  .gg-page { width: 100%; max-width: 100%; padding: 0; }
+  .gg-page > h1 { font-size: 1.55rem; line-height: 1.15; margin-top: 0; margin-bottom: 8px; }
+  .gg-page > .gg-muted { line-height: 1.45; margin-top: 0; }
+
+  .gg-pickup-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+  .gg-pickup-card { width: 100%; border-radius: 12px; }
+  .gg-pickup-card__head { align-items: flex-start; padding: 14px; }
+  .gg-pickup-card__head .gg-badge { flex: 0 0 auto; }
+  .gg-pickup-card__items { padding: 2px 14px; }
+  .gg-pickup-item { grid-template-columns: 22px minmax(0, 1fr) auto; gap: 9px; padding: 12px 0; }
+  .gg-pickup-item__body { font-size: .9rem; }
+  .gg-pickup-item__body .gg-muted { font-size: .76rem; line-height: 1.35; }
+  .gg-pickup-item > span:last-child { font-size: .88rem; }
+  .gg-pickup-card__actions { padding: 12px 14px; gap: 8px; }
+  .gg-pickup-card__actions .gg-btn { min-height: 42px; }
+
+  .gg-pos__payment-methods,
+  .gg-pos__payment-actions,
+  .gg-pos__receipt-actions { flex-wrap: wrap; }
+  .gg-pos__payment-methods .gg-btn { min-width: min(150px, 100%); }
+
+  .gg-reserved__grouphead { align-items: flex-start; }
+  .gg-reserved__groupmeta { width: 100%; justify-content: space-between; }
+  .gg-reserved__actions { flex-wrap: wrap; }
+
+  .gg-table { min-width: 640px; }
+  .gg-col-secondary { display: none; }
+  .gg-table th, .gg-table td { padding-left: 10px; padding-right: 10px; }
+
+  .gg-topbar { padding-left: 12px; padding-right: 12px; }
+  .gg-topbar__searchbtn { min-width: 0; width: 40px; height: 40px; padding: 0; justify-content: center; }
+  .gg-topbar__searchhint, .gg-topbar__searchbtn .gg-kbd { display: none; }
+}
+
+@media (max-width: 480px) {
+  .gg-content { padding: 14px 10px 24px; }
+  .gg-pickup-card__head { flex-direction: column; gap: 8px; }
+  .gg-pickup-card__actions { display: grid; grid-template-columns: 1fr; }
+  .gg-pickup-card__actions .gg-btn { width: 100%; justify-content: center; }
+
+  .gg-pickup-item {
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: start;
+  }
+  .gg-pickup-item > span:last-child {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 2px;
+    color: var(--gg-brand);
+  }
+
+  .gg-pos__payment-methods,
+  .gg-pos__payment-actions,
+  .gg-pos__receipt-actions,
+  .gg-pos__customer-actions { flex-direction: column; }
+  .gg-pos__payment-methods .gg-btn,
+  .gg-pos__payment-actions .gg-btn,
+  .gg-pos__receipt-actions .gg-btn { width: 100%; }
+
+  .gg-reserved__actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .gg-reserved__actions .gg-btn { width: 100%; justify-content: center; }
+
+  .gg-authcard { padding: 26px 18px; }
+}
