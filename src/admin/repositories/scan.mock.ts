@@ -178,6 +178,22 @@ export const mockScanRepository: ScanRepository = {
     return delay(s, 120);
   },
 
+  async deleteSession(id): Promise<void> {
+    const sessionIndex = sessions.findIndex((session) => session.id === id);
+    if (sessionIndex < 0) throw new Error("Scan session not found.");
+
+    const sessionScans = scans.filter((scan) => scan.scanSessionId === id);
+    if (sessionScans.some((scan) => scan.reviewStatus === "added" || scan.inventoryItemId)) {
+      throw new Error(
+        "This session contains cards already added to inventory and cannot be deleted.",
+      );
+    }
+
+    scans = scans.filter((scan) => scan.scanSessionId !== id);
+    sessions.splice(sessionIndex, 1);
+    await delay(undefined, 150);
+  },
+
   async ingestBatch(
     sessionId: string,
     files: UploadedScanFile[],
