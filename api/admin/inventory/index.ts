@@ -49,8 +49,6 @@ interface Body {
   notes?: string | null;
   variantType?: string | null;
   language?: string | null;
-  storefrontPlacement?: "main" | "deals";
-  dealDiscountPercent?: number | null;
   actor?: string | null;
 }
 
@@ -135,52 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data, error } = await admin.rpc("admin_upsert_inventory", upsertArgs);
 
     if (error) throw new HttpError(500, error.message);
-
-    const row = data as unknown as InventoryRow;
-    const placement = body.storefrontPlacement ?? "main";
-    if (placement !== "main" && placement !== "deals") {
-      throw new HttpError(400, "Invalid storefront placement.");
-    }
-
-    const price = row.price_cents ?? priceCents;
-    const update: Database["public"]["Tables"]["inventory_items"]["Update"] = {};
-
-    if (placement === "deals") {
-      const discount = Math.max(
-        1,
-        Math.min(90, Math.round(Number(body.dealDiscountPercent ?? 20))),
-      );
-      const regularPrice =
-        row.is_deal && row.original_price_cents != null
-          ? row.original_price_cents
-          : price;
-      update.original_price_cents = regularPrice;
-      update.price_cents = Math.max(1, Math.round(regularPrice * (100 - discount) / 100));
-      update.is_deal = true;
-      update.deal_source = "manual";
-      update.deal_discount_percent = discount;
-      update.deal_started_at = new Date().toISOString();
-    } else if (row.is_deal) {
-      update.price_cents = row.original_price_cents ?? price;
-      update.is_deal = false;
-      update.deal_source = null;
-      update.original_price_cents = null;
-      update.deal_discount_percent = null;
-      update.deal_started_at = null;
-    }
-
-    if (Object.keys(update).length > 0) {
-      const { data: updated, error: updateErr } = await admin
-        .from("inventory_items")
-        .update(update)
-        .eq("id", row.id)
-        .select("*")
-        .single();
-      if (updateErr) throw new HttpError(500, "Could not apply storefront placement.");
-      return sendJson(res, 200, updated as unknown as Record<string, unknown>);
-    }
-
-    return sendJson(res, 200, row as unknown as Record<string, unknown>);
+    return sendJson(res, 200, data as unknown as Record<string, unknown>);
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     const message =
