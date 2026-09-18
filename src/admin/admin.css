@@ -1962,3 +1962,221 @@ body.gg-printing-label .gg-labelprint-overlay {
   .gg-candidate { align-items:stretch; flex-direction:column; }
   .gg-candidate .gg-btn { width:100%; justify-content:center; }
 }
+
+
+/* ==================================================================
+ * Scan sessions index — spacious desktop hierarchy
+ * ================================================================== */
+.gg-sessions-section .gg-section__body { padding-top: 14px; }
+.gg-session-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--gg-text-soft);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+}
+.gg-session-summary span { white-space: nowrap; }
+.gg-session-summary strong { color: var(--gg-text); font-size: .88rem; }
+
+.gg-sessions { gap: 12px; }
+.gg-sessioncard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  background: var(--gg-surface);
+  border: 1px solid var(--gg-line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--gg-shadow-sm);
+  transition: border-color .14s ease, box-shadow .14s ease, transform .08s ease;
+}
+.gg-sessioncard:hover {
+  border-color: rgba(124, 0, 230, .38);
+  box-shadow: 0 9px 24px rgba(32, 12, 47, .09);
+}
+.gg-sessioncard__body {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: minmax(230px, 1.3fr) minmax(180px, .9fr);
+  grid-template-areas:
+    "identity stats"
+    "meta stats"
+    "progress stats";
+  column-gap: 30px;
+  row-gap: 9px;
+}
+.gg-sessioncard__body:focus-visible {
+  outline: 3px solid rgba(124, 0, 230, .32);
+  outline-offset: -3px;
+}
+.gg-sessioncard__identity {
+  grid-area: identity;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.gg-sessioncard__heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.gg-sessioncard__title {
+  color: var(--gg-text);
+  font-size: 1.04rem;
+  font-weight: 720;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gg-sessioncard__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.gg-sessioncard__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--gg-text-soft);
+  font-size: .78rem;
+  flex-wrap: wrap;
+}
+.gg-sessioncard__progressgroup {
+  grid-area: progress;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gg-sessioncard__progresslabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--gg-text-faint);
+  font-size: .72rem;
+}
+.gg-sessioncard__progresslabel strong {
+  color: var(--gg-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.gg-sessioncard .gg-sessionrow__progress {
+  width: 100%;
+  max-width: none;
+  height: 6px;
+}
+.gg-sessioncard .gg-sessionrow__stats {
+  grid-area: stats;
+  align-self: center;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(62px, 1fr));
+  gap: 8px;
+  min-width: 280px;
+}
+.gg-sessioncard .gg-sessionstat {
+  min-width: 0;
+  padding: 10px 8px;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface-2);
+  border-radius: 10px;
+}
+.gg-sessioncard .gg-sessionstat__value { font-size: 1.08rem; }
+.gg-sessioncard .gg-sessionstat__label {
+  margin-top: 2px;
+  font-size: .62rem;
+  letter-spacing: .045em;
+}
+.gg-sessioncard__actions {
+  width: 132px;
+  padding: 14px 12px;
+  border-left: 1px solid var(--gg-line);
+  background: var(--gg-surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+}
+.gg-sessioncard__actions .gg-btn { justify-content: center; }
+.gg-sessioncard__protected {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 6px;
+  color: var(--gg-success, #2e7d4f);
+  font-size: .68rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+@media (max-width: 1100px) and (min-width: 901px) {
+  .gg-sessioncard__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "identity"
+      "meta"
+      "progress"
+      "stats";
+  }
+  .gg-sessioncard .gg-sessionrow__stats {
+    min-width: 0;
+    max-width: 440px;
+  }
+}
+
+@media (max-width: 900px) {
+  .gg-session-summary { display: none; }
+  .gg-sessioncard {
+    grid-template-columns: 1fr;
+  }
+  .gg-sessioncard__body {
+    padding: 14px;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "identity"
+      "meta"
+      "progress";
+    row-gap: 9px;
+  }
+  .gg-sessioncard .gg-sessionrow__stats { display: none; }
+  .gg-sessioncard__actions {
+    width: auto;
+    padding: 10px 14px;
+    border-left: 0;
+    border-top: 1px solid var(--gg-line);
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  .gg-sessioncard__protected { margin-right: auto; }
+}
+
+@media (max-width: 520px) {
+  .gg-sessioncard__identity { align-items: flex-start; }
+  .gg-sessioncard__title { white-space: normal; }
+  .gg-sessioncard__meta { align-items: flex-start; }
+  .gg-sessioncard__actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+  .gg-sessioncard__protected {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
