@@ -13,8 +13,9 @@ import type { Database } from "../../../src/types/database.js";
 // PATCH /api/admin/scan-sessions/:id — update status and/or note.
 // DELETE /api/admin/scan-sessions/:id — permanently remove an uncommitted
 // session, its card_scans rows (via FK cascade), and uploaded scan images.
-// Sessions containing scans already linked to inventory are protected so the
-// scan-to-inventory audit trail cannot be erased.
+// Active sessions containing scans already linked to inventory are protected.
+// Completed sessions may be deleted; inventory rows remain untouched while the
+// session/scans/images are removed.
 
 type SessionStatus = Database["public"]["Enums"]["scan_session_status"];
 const STATUSES = new Set<SessionStatus>([
@@ -43,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = (await readJsonBody(req)) as Body;
     const admin = getSupabaseAdmin();
-    await getSessionOr404(admin, id);
+    const session = await getSessionOr404(admin, id);
 
     if (req.method === "DELETE") {
       const { data: scans, error: scansErr } = await admin
@@ -52,14 +53,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq("scan_session_id", id);
       if (scansErr) throw new HttpError(500, "Could not inspect the scan session.");
 
-      if (
-        (scans ?? []).some(
-          (scan) => scan.review_status === "added" || scan.inventory_item_id,
-        )
-      ) {
+      const hasInventoryLinks = (scans ?? []).some(
+        (scan) => scan.review_status === "added" || scan.inventory_item_id,
+      );
+      if (hasInventoryLinks && session.status !== "completed") {
         throw new HttpError(
           409,
-          "This session contains cards already added to inventory and cannot be deleted. Delete only unused or uncommitted sessions.",
+          "This session contains cards already added to inventory. Complete the session before deleting it.",
         );
       }
 
