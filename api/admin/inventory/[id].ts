@@ -53,6 +53,8 @@ interface Body {
   notes?: string | null;
   status?: InventoryRow["status"];
   imageUrl?: string | null;
+  storefrontPlacement?: "main" | "deals";
+  dealDiscountPercent?: number | null;
   // Printing / identity edits
   scryfallId?: string | null;
   setCode?: string | null;
@@ -296,6 +298,52 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
   // (a printing edit already sets the correct image from the exact printing).
   if (body.imageUrl !== undefined && patch.image_url === undefined)
     patch.image_url = body.imageUrl;
+
+  if (body.storefrontPlacement !== undefined) {
+    if (
+      body.storefrontPlacement !== "main" &&
+      body.storefrontPlacement !== "deals"
+    ) {
+      throw new HttpError(400, "Invalid storefront placement.");
+    }
+
+    if (body.storefrontPlacement === "deals") {
+      const discount = Math.max(
+        1,
+        Math.min(90, Math.round(Number(body.dealDiscountPercent ?? 20))),
+      );
+      const regularPrice =
+        current.is_deal && current.original_price_cents != null
+          ? current.original_price_cents
+          : (patch.price_cents ?? current.price_cents);
+
+      if (regularPrice == null || regularPrice <= 0) {
+        throw new HttpError(
+          400,
+          "A positive regular price is required before adding a card to Deals & Specials.",
+        );
+      }
+
+      patch.original_price_cents = regularPrice;
+      patch.price_cents = Math.max(
+        1,
+        Math.round((regularPrice * (100 - discount)) / 100),
+      );
+      patch.is_deal = true;
+      patch.deal_source = "manual";
+      patch.deal_discount_percent = discount;
+      patch.deal_started_at = new Date().toISOString();
+    } else if (current.is_deal) {
+      patch.price_cents =
+        current.original_price_cents ??
+        (patch.price_cents !== undefined ? patch.price_cents : current.price_cents);
+      patch.is_deal = false;
+      patch.deal_source = null;
+      patch.original_price_cents = null;
+      patch.deal_discount_percent = null;
+      patch.deal_started_at = null;
+    }
+  }
 
   if (Object.keys(patch).length > 0) {
     const { error } = await admin
