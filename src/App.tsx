@@ -66,14 +66,16 @@ export default function App() {
     <AuthProvider>
       <CartProvider>
         <RouterProvider>
-          <a className="skip-link" href="#main">
-            Skip to content
-          </a>
-          <Header />
-          <main id="main">
-            <Routes />
-          </main>
-          <Footer />
+          <div className="app">
+            <a className="skip-link" href="#main">
+              Skip to content
+            </a>
+            <Header />
+            <main id="main">
+              <Routes />
+            </main>
+            <Footer />
+          </div>
         </RouterProvider>
       </CartProvider>
     </AuthProvider>

@@ -229,3 +229,89 @@ body {
 
 /* Keep destructive/success/warning semantic colors intact; only neutral brand
    accents are recolored. This preserves usability and status recognition. */
+
+
+/* ===== Desktop storefront header =====
+   Desktop-only refinement. The phone header intentionally remains governed by
+   the existing max-width: 640px rules above. */
+.gg-iconbtn-label {
+  display: none;
+}
+
+@media (min-width: 641px) {
+  .gg-header-row {
+    width: 100%;
+    max-width: 1680px;
+    display: grid;
+    grid-template-columns: auto minmax(360px, 1fr) auto;
+    align-items: center;
+    gap: clamp(1.5rem, 2.6vw, 3.25rem);
+    padding: .8rem clamp(1.5rem, 3vw, 3.5rem);
+  }
+
+  .gg-header-row > a:first-child {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .gg-logo {
+    height: clamp(78px, 5vw, 92px);
+    max-width: 300px;
+  }
+
+  .gg-header-search {
+    width: 100%;
+    max-width: none;
+  }
+
+  .gg-header-search input {
+    height: 52px;
+    padding: 0 1.15rem;
+    border-radius: 14px;
+    font-size: 1rem;
+  }
+
+  .gg-header-actions {
+    gap: .65rem;
+  }
+
+  .gg-iconbtn--icon {
+    width: auto;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0 .9rem;
+    gap: .5rem;
+    border-radius: 12px;
+  }
+
+  .gg-iconbtn--icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .gg-iconbtn-label {
+    display: inline;
+    font-size: .9rem;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .gg-nav {
+    width: 100%;
+    max-width: 1680px;
+    align-items: center;
+    gap: 1.6rem;
+    padding: 0 clamp(1.5rem, 3vw, 3.5rem) .75rem;
+  }
+
+  .gg-nav a {
+    padding: .35rem 0;
+    font-size: .96rem;
+    font-weight: 600;
+  }
+
+  .gg-nav a.gg-nav-sell {
+    margin-left: auto;
+    padding: .42rem .95rem;
+  }
+}
