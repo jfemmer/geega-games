@@ -1776,3 +1776,86 @@
   margin: 0 auto 1.25rem;
   line-height: 1.6;
 }
+
+
+/* Foil card treatment on the customer storefront.
+   The overlay is decorative only and never blocks interaction. */
+.gg-card-imgwrap--foil {
+  isolation: isolate;
+  overflow: hidden;
+}
+.gg-card-imgwrap--foil .gg-card-img {
+  z-index: 0;
+}
+.gg-card-foil-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  mix-blend-mode: screen;
+  opacity: .34;
+  background:
+    linear-gradient(
+      112deg,
+      transparent 0%,
+      rgba(255, 80, 190, .13) 18%,
+      rgba(108, 214, 255, .20) 32%,
+      rgba(255, 245, 150, .24) 46%,
+      rgba(173, 100, 255, .22) 60%,
+      rgba(92, 230, 196, .16) 73%,
+      transparent 88%
+    ),
+    linear-gradient(
+      20deg,
+      rgba(255,255,255,.08),
+      rgba(255,255,255,0) 35%,
+      rgba(255,255,255,.12) 54%,
+      rgba(255,255,255,0) 70%
+    );
+  background-size: 220% 220%, 180% 180%;
+  background-position: 140% 0%, 0% 100%;
+  filter: saturate(1.12) contrast(1.03);
+  animation: gg-foil-shimmer 5.5s ease-in-out infinite;
+}
+.gg-card-imgwrap--foil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.22), transparent 22%),
+    radial-gradient(circle at 78% 68%, rgba(188,120,255,.14), transparent 28%);
+  mix-blend-mode: screen;
+  opacity: .28;
+  transition: opacity .18s ease;
+}
+.gg-card:hover .gg-card-foil-shimmer {
+  opacity: .52;
+  animation-duration: 3.4s;
+}
+.gg-card:hover .gg-card-imgwrap--foil::after {
+  opacity: .42;
+}
+
+@keyframes gg-foil-shimmer {
+  0% {
+    background-position: 145% 10%, 5% 95%;
+  }
+  50% {
+    background-position: -45% 88%, 95% 5%;
+  }
+  100% {
+    background-position: 145% 10%, 5% 95%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gg-card-foil-shimmer {
+    animation: none;
+    background-position: 50% 50%, 50% 50%;
+    opacity: .24;
+  }
+}
