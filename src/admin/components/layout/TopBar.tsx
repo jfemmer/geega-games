@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../ui/Icon";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { timeAgo } from "../../utils/format";
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
+import { adminFetch } from "../../repositories/apiClient";
 
 /** Up-to-two-letter initials from a display name or email. */
 function adminInitials(name: string, email: string | null): string {
@@ -13,50 +14,49 @@ function adminInitials(name: string, email: string | null): string {
 }
 
 interface Notification {
-  id: string;
+  key: string;
+  kind: "order" | "pickup" | "buying_lead" | "scan" | "inventory";
+  tone: "info" | "warning" | "danger" | "success";
   title: string;
   detail: string;
   at: string;
+  href: string;
   unread: boolean;
 }
 
-const NOTIFICATIONS: Notification[] = [
-  {
-    id: "n1",
-    title: "2 orders need packing",
-    detail: "GG-1042 and GG-1041 are paid and waiting.",
-    at: new Date(Date.now() - 6 * 3600000).toISOString(),
-    unread: true,
-  },
-  {
-    id: "n2",
-    title: "Low stock: 4 cards",
-    detail: "Fable of the Mirror-Breaker is out of stock.",
-    at: new Date(Date.now() - 20 * 3600000).toISOString(),
-    unread: true,
-  },
-  {
-    id: "n3",
-    title: "Campaign sending",
-    detail: "Weekend Commander sale is in progress.",
-    at: new Date(Date.now() - 26 * 3600000).toISOString(),
-    unread: false,
-  },
-];
+interface NotificationResponse {
+  notifications: Notification[];
+  unreadCount: number;
+  refreshedAt: string;
+}
+
+const NOTIFICATION_ICON: Record<Notification["kind"], Parameters<typeof Icon>[0]["name"]> = {
+  order: "orders",
+  pickup: "package",
+  buying_lead: "dollar",
+  scan: "scan",
+  inventory: "inventory",
+};
 
 export function TopBar({
   breadcrumb,
   onOpenSearch,
   onToggleSidebar,
+  onNavigate,
   onSignOut,
 }: {
   breadcrumb: string[];
   onOpenSearch: () => void;
   onToggleSidebar: () => void;
+  onNavigate: (path: string) => void;
   onSignOut: () => void;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifLoading, setNotifLoading] = useState(true);
+  const [notifError, setNotifError] = useState<string | null>(null);
+  const [notifActionKey, setNotifActionKey] = useState<string | null>(null);
   const admin = useCurrentAdmin();
   const adminName = admin.name;
   const adminEmail = admin.email;
@@ -66,7 +66,65 @@ export function TopBar({
   useClickOutside(notifRef, notifOpen, () => setNotifOpen(false));
   useClickOutside(profileRef, profileOpen, () => setProfileOpen(false));
 
-  const unread = NOTIFICATIONS.filter((n) => n.unread).length;
+  const unread = notifications.filter((n) => n.unread).length;
+
+  const loadNotifications = useCallback(async (quiet = false) => {
+    if (!quiet) setNotifLoading(true);
+    try {
+      const result = await adminFetch<NotificationResponse>("/api/admin/notifications", {
+        method: "GET",
+      });
+      setNotifications(result.notifications);
+      setNotifError(null);
+    } catch (err) {
+      setNotifError(
+        err instanceof Error ? err.message : "Could not load notifications.",
+      );
+    } finally {
+      if (!quiet) setNotifLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    const timer = window.setInterval(() => {
+      void loadNotifications(true);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    if (notifOpen) void loadNotifications(true);
+  }, [notifOpen, loadNotifications]);
+
+  async function applyNotificationAction(
+    action: "mark_read" | "dismiss" | "mark_all_read",
+    key?: string,
+  ) {
+    setNotifActionKey(key ?? action);
+    try {
+      const result = await adminFetch<NotificationResponse>("/api/admin/notifications", {
+        method: "PATCH",
+        body: { action, key },
+      });
+      setNotifications(result.notifications);
+      setNotifError(null);
+    } catch (err) {
+      setNotifError(
+        err instanceof Error ? err.message : "Could not update notifications.",
+      );
+    } finally {
+      setNotifActionKey(null);
+    }
+  }
+
+  async function openNotification(notification: Notification) {
+    if (notification.unread) {
+      await applyNotificationAction("mark_read", notification.key);
+    }
+    setNotifOpen(false);
+    onNavigate(notification.href);
+  }
 
   return (
     <header className="gg-topbar">
@@ -126,19 +184,78 @@ export function TopBar({
           </button>
           {notifOpen && (
             <div className="gg-popover gg-popover--notif" role="menu">
-              <header className="gg-popover__head">Notifications</header>
-              <ul className="gg-notif-list">
-                {NOTIFICATIONS.map((n) => (
-                  <li
-                    key={n.id}
-                    className={`gg-notif ${n.unread ? "gg-notif--unread" : ""}`}
+              <header className="gg-popover__head gg-notif-head">
+                <span>
+                  Notifications
+                  {unread > 0 && <span className="gg-notif-head__count">{unread}</span>}
+                </span>
+                {unread > 0 && (
+                  <button
+                    className="gg-notif-head__action"
+                    type="button"
+                    disabled={notifActionKey === "mark_all_read"}
+                    onClick={() => void applyNotificationAction("mark_all_read")}
                   >
-                    <div className="gg-notif__title">{n.title}</div>
-                    <div className="gg-notif__detail">{n.detail}</div>
-                    <div className="gg-notif__time">{timeAgo(n.at)}</div>
-                  </li>
-                ))}
-              </ul>
+                    Mark all read
+                  </button>
+                )}
+              </header>
+
+              {notifLoading ? (
+                <div className="gg-notif-state">Loading notifications…</div>
+              ) : notifError && notifications.length === 0 ? (
+                <div className="gg-notif-state gg-notif-state--error">
+                  <span>{notifError}</span>
+                  <button type="button" onClick={() => void loadNotifications()}>
+                    Retry
+                  </button>
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="gg-notif-state">
+                  <Icon name="checkCircle" size={22} />
+                  <strong>You’re caught up</strong>
+                  <span>Nothing needs your attention right now.</span>
+                </div>
+              ) : (
+                <>
+                  {notifError && (
+                    <div className="gg-notif-inline-error">{notifError}</div>
+                  )}
+                  <ul className="gg-notif-list">
+                    {notifications.map((n) => (
+                      <li
+                        key={n.key}
+                        className={`gg-notif gg-notif--${n.tone} ${n.unread ? "gg-notif--unread" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="gg-notif__open"
+                          onClick={() => void openNotification(n)}
+                        >
+                          <span className="gg-notif__icon">
+                            <Icon name={NOTIFICATION_ICON[n.kind]} size={16} />
+                          </span>
+                          <span className="gg-notif__body">
+                            <span className="gg-notif__title">{n.title}</span>
+                            <span className="gg-notif__detail">{n.detail}</span>
+                            <span className="gg-notif__time">{timeAgo(n.at)}</span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="gg-notif__dismiss"
+                          aria-label={`Dismiss ${n.title}`}
+                          title="Dismiss"
+                          disabled={notifActionKey === n.key}
+                          onClick={() => void applyNotificationAction("dismiss", n.key)}
+                        >
+                          <Icon name="close" size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
           )}
         </div>
