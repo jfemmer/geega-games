@@ -27,6 +27,14 @@ type AuthContextValue = {
     firstName: string;
     lastName: string;
     notificationsOptIn: boolean;
+    shippingAddress: {
+      line1: string;
+      line2: string;
+      city: string;
+      state: string;
+      postalCode: string;
+      country: string;
+    };
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -94,6 +102,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       firstName: string;
       lastName: string;
       notificationsOptIn: boolean;
+      shippingAddress: {
+        line1: string;
+        line2: string;
+        city: string;
+        state: string;
+        postalCode: string;
+        country: string;
+      };
     }) => {
       const { data, error } = await supabase.auth.signUp({
         email: input.email,
@@ -107,6 +123,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             first_name: input.firstName.trim(),
             last_name: input.lastName.trim(),
             notifications_opt_in: input.notificationsOptIn,
+            shipping_address: {
+              line1: input.shippingAddress.line1.trim(),
+              line2: input.shippingAddress.line2.trim() || null,
+              city: input.shippingAddress.city.trim(),
+              state: input.shippingAddress.state.trim(),
+              postal_code: input.shippingAddress.postalCode.trim(),
+              country: input.shippingAddress.country.trim() || "US",
+            },
           },
           emailRedirectTo: `${window.location.origin}/login`,
         },
