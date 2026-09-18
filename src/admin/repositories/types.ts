@@ -243,6 +243,8 @@ export interface ScanRepository {
   filterCounts(sessionId: string): Promise<Record<string, number>>;
 
   updateScan(scanId: string, patch: ScanReviewPatch): Promise<CardScan>;
+  /** Permanently remove an uncommitted scan and its stored scan images. */
+  deleteScan(scanId: string): Promise<void>;
   /** Safe bulk field application. Never bulk-assigns a Scryfall match. */
   bulkUpdate(
     scanIds: string[],
