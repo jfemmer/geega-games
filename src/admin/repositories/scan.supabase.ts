@@ -200,6 +200,10 @@ export const supabaseScanRepository: ScanRepository = {
     return mapScanSessionRow(row);
   },
 
+  async deleteSession(id): Promise<void> {
+    await adminFetch(`/api/admin/scan-sessions/${id}`, { method: "DELETE" });
+  },
+
   async ingestBatch(
     sessionId: string,
     files: UploadedScanFile[],
