@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_notification_state: {
+        Row: {
+          dismissed_at: string | null
+          notification_key: string
+          read_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string | null
+          notification_key: string
+          read_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string | null
+          notification_key?: string
+          read_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       addresses: {
         Row: {
           city: string
