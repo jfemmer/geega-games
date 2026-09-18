@@ -58,13 +58,12 @@ function actorLabel(staff: StaffContext, bodyActor?: string | null): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "PATCH") return methodNotAllowed(res, ["PATCH"]);
+  if (req.method !== "PATCH" && req.method !== "DELETE") return methodNotAllowed(res, ["PATCH", "DELETE"]);
   try {
     const staff = await requireStaff(req);
     const scanId = String(req.query.scanId ?? "");
     if (!scanId) throw new HttpError(400, "Scan id is required.");
 
-    const body = (await readJsonBody(req)) as Body;
     const admin = getSupabaseAdmin();
 
     const { data: current, error: currentErr } = await admin
@@ -75,6 +74,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (currentErr) throw new HttpError(500, "Could not load the scan.");
     if (!current) throw new HttpError(404, "Scan not found.");
 
+    if (req.method === "DELETE") {
+      if (current.review_status === "added" || current.inventory_item_id) {
+        throw new HttpError(409, "This scan has already been added to inventory and cannot be deleted. Adjust or archive the inventory item instead.");
+      }
+      const paths = [current.front_image_path, current.back_image_path].filter((p): p is string => !!p);
+      const { error: deleteErr } = await admin.from("card_scans").delete().eq("id", scanId);
+      if (deleteErr) throw new HttpError(500, "Could not delete the scan.");
+      if (paths.length > 0) {
+        const { error: storageErr } = await admin.storage.from("card-scans").remove(paths);
+        if (storageErr) console.warn("Deleted scan row but could not remove scan image(s):", storageErr.message);
+      }
+      await recomputeSession(admin, current.scan_session_id);
+      return sendJson(res, 200, { ok: true, deletedId: scanId });
+    }
+
+    const body = (await readJsonBody(req)) as Body;
     const patch: Database["public"]["Tables"]["card_scans"]["Update"] = {};
 
     if (body.selectedScryfallId !== undefined) {
