@@ -224,6 +224,12 @@ export interface ScanRepository {
     status: ScanSession["status"],
   ): Promise<ScanSession>;
   setSessionNote(id: string, note: string | null): Promise<ScanSession>;
+  /**
+   * Permanently delete a scan session, all of its uncommitted scans, and their
+   * stored images. Refuses sessions containing scans already added to inventory
+   * so the scan-to-inventory audit trail cannot be erased.
+   */
+  deleteSession(id: string): Promise<void>;
 
   /**
    * Ingest a batch of uploaded files into an existing session. Uploads are
