@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Badge";
 import { Icon } from "../../components/ui/Icon";
 import { Spinner, EmptyState, ErrorState } from "../../components/ui/States";
+import { Modal } from "../../components/ui/Modal";
 import { useAsync } from "../../hooks/useAsync";
 import { useToast } from "../../hooks/useToast";
 import { isScanRepositoryLive, scanRepository } from "../../repositories";
@@ -43,6 +44,8 @@ export function ScanSessionsPage({
 }) {
   const toast = useToast();
   const [newOpen, setNewOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ScanSession | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   // Nothing to seed against the real database — starts already "seeded" so
   // the live path never touches the mock's fixture data.
   const [seeded, setSeeded] = useState(isScanRepositoryLive);
@@ -68,7 +71,26 @@ export function ScanSessionsPage({
     [onNavigate, toast],
   );
 
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    try {
+      await scanRepository.deleteSession(deleteTarget.id);
+      toast.success(`${deleteTarget.label} deleted.`);
+      setDeleteTarget(null);
+      await sessions.reload();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not delete the scan session.",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }, [deleteTarget, sessions, toast]);
+
   const rows = sessions.data ?? [];
+  const activeCount = rows.filter((session) => session.status !== "completed").length;
+  const completedCount = rows.filter((session) => session.status === "completed").length;
 
   return (
     <>
@@ -82,7 +104,19 @@ export function ScanSessionsPage({
         }
       />
 
-      <SectionCard title="Scan sessions">
+      <SectionCard
+        title="Scan sessions"
+        action={
+          rows.length > 0 ? (
+            <div className="gg-session-summary" aria-label="Session summary">
+              <span><strong>{rows.length}</strong> total</span>
+              <span><strong>{activeCount}</strong> active</span>
+              <span><strong>{completedCount}</strong> completed</span>
+            </div>
+          ) : undefined
+        }
+        className="gg-sessions-section"
+      >
         {sessions.loading && (
           <div style={{ padding: 30 }}>
             <Spinner label="Loading sessions" />
@@ -106,7 +140,12 @@ export function ScanSessionsPage({
         {rows.length > 0 && (
           <div className="gg-sessions">
             {rows.map((s) => (
-              <SessionRow key={s.id} session={s} onOpen={onNavigate} />
+              <SessionRow
+                key={s.id}
+                session={s}
+                onOpen={onNavigate}
+                onDelete={setDeleteTarget}
+              />
             ))}
           </div>
         )}
@@ -117,6 +156,43 @@ export function ScanSessionsPage({
         onClose={() => setNewOpen(false)}
         onCreated={handleCreated}
       />
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => {
+          if (!deletingId) setDeleteTarget(null);
+        }}
+        title="Delete scan session?"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setDeleteTarget(null)}
+              disabled={Boolean(deletingId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              icon="trash"
+              loading={deletingId === deleteTarget?.id}
+              onClick={handleDelete}
+            >
+              Delete session
+            </Button>
+          </>
+        }
+      >
+        <p style={{ marginTop: 0 }}>
+          This permanently deletes <strong>{deleteTarget?.label}</strong> and all
+          uncommitted scans and scan images in it.
+        </p>
+        <p className="gg-muted" style={{ marginBottom: 0 }}>
+          Sessions containing cards already added to inventory are protected and
+          cannot be deleted.
+        </p>
+      </Modal>
     </>
   );
 }
@@ -124,9 +200,11 @@ export function ScanSessionsPage({
 function SessionRow({
   session,
   onOpen,
+  onDelete,
 }: {
   session: ScanSession;
   onOpen: (path: string) => void;
+  onDelete: (session: ScanSession) => void;
 }) {
   const pct = useMemo(() => {
     if (session.totalCards === 0) return 0;
@@ -135,46 +213,100 @@ function SessionRow({
     );
   }, [session]);
 
+  const protectedFromDelete = session.addedCards > 0;
+
   return (
-    <button
-      className="gg-sessionrow"
-      onClick={() => onOpen(`${ADMIN_BASE}/scanning/${session.id}`)}
-    >
-      <span className="gg-sessionrow__icon">
-        <Icon name="layers" size={22} />
-      </span>
-      <span className="gg-sessionrow__main">
-        <span className="gg-sessionrow__title">
-          {session.label}
-          <Badge tone={STATUS_TONE[session.status]}>
-            {STATUS_LABELS[session.status]}
-          </Badge>
-          {session.scanMode !== "both" && (
-            <Badge tone="purple">{SCAN_MODE_SHORT[session.scanMode]}</Badge>
-          )}
-        </span>
-        <span className="gg-sessionrow__sub">
-          {session.scannerName ?? "Manual import"} ·{" "}
-          {session.totalCards} cards · created{" "}
-          <span title={formatDateTime(session.createdAt)}>
-            {timeAgo(session.createdAt)}
+    <article className="gg-sessioncard">
+      <button
+        type="button"
+        className="gg-sessioncard__body"
+        onClick={() => onOpen(`${ADMIN_BASE}/scanning/${session.id}`)}
+        aria-label={`Open ${session.label}`}
+      >
+        <span className="gg-sessioncard__identity">
+          <span className="gg-sessionrow__icon">
+            <Icon name="layers" size={22} />
+          </span>
+          <span className="gg-sessioncard__heading">
+            <span className="gg-sessioncard__title">{session.label}</span>
+            <span className="gg-sessioncard__badges">
+              <Badge tone={STATUS_TONE[session.status]}>
+                {STATUS_LABELS[session.status]}
+              </Badge>
+              {session.scanMode !== "both" && (
+                <Badge tone="purple">{SCAN_MODE_SHORT[session.scanMode]}</Badge>
+              )}
+            </span>
           </span>
         </span>
-        <span className="gg-sessionrow__progress" aria-hidden="true">
-          <span
-            className="gg-sessionrow__progressbar"
-            style={{ width: `${pct}%` }}
+
+        <span className="gg-sessioncard__meta">
+          <span>{session.scannerName ?? "Manual import"}</span>
+          <span aria-hidden="true">•</span>
+          <span>{session.totalCards} cards</span>
+          <span aria-hidden="true">•</span>
+          <span title={formatDateTime(session.createdAt)}>
+            Created {timeAgo(session.createdAt)}
+          </span>
+        </span>
+
+        <span className="gg-sessioncard__progressgroup">
+          <span className="gg-sessioncard__progresslabel">
+            <span>Review progress</span>
+            <strong>{pct}%</strong>
+          </span>
+          <span className="gg-sessionrow__progress" aria-hidden="true">
+            <span
+              className="gg-sessionrow__progressbar"
+              style={{ width: `${pct}%` }}
+            />
+          </span>
+        </span>
+
+        <span className="gg-sessionrow__stats">
+          <SessionStat label="Matched" value={session.matchedCards} />
+          <SessionStat label="Ready" value={session.readyCards} tone="gold" />
+          <SessionStat label="Added" value={session.addedCards} tone="success" />
+          <SessionStat
+            label="Remaining"
+            value={Math.max(
+              0,
+              session.totalCards - session.addedCards - session.rejectedCards,
+            )}
           />
         </span>
-      </span>
-      <span className="gg-sessionrow__stats">
-        <SessionStat label="Matched" value={session.matchedCards} />
-        <SessionStat label="Ready" value={session.readyCards} tone="gold" />
-        <SessionStat label="Added" value={session.addedCards} tone="success" />
-        <SessionStat label="Left" value={session.totalCards - session.addedCards - session.rejectedCards} />
-      </span>
-      <Icon name="chevronRight" size={18} className="gg-sessionrow__chev" />
-    </button>
+      </button>
+
+      <div className="gg-sessioncard__actions">
+        {protectedFromDelete && (
+          <span className="gg-sessioncard__protected" title="Cards from this session are already in inventory">
+            <Icon name="checkCircle" size={15} />
+            Inventory linked
+          </span>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          iconRight="chevronRight"
+          onClick={() => onOpen(`${ADMIN_BASE}/scanning/${session.id}`)}
+        >
+          Open
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="trash"
+          aria-label={`Delete ${session.label}`}
+          title={
+            protectedFromDelete
+              ? "This session has cards already added to inventory and cannot be deleted."
+              : "Delete scan session"
+          }
+          disabled={protectedFromDelete}
+          onClick={() => onDelete(session)}
+        />
+      </div>
+    </article>
   );
 }
 
