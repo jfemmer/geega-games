@@ -336,6 +336,17 @@ export const mockScanRepository: ScanRepository = {
     return delay(scan, 120);
   },
 
+  async deleteScan(scanId): Promise<void> {
+    const index = scans.findIndex((scan) => scan.id === scanId);
+    if (index < 0) throw new Error("Scan not found.");
+    if (scans[index].reviewStatus === "added" || scans[index].inventoryItemId) {
+      throw new Error("This scan has already been added to inventory and cannot be deleted.");
+    }
+    const sessionId = scans[index].scanSessionId;
+    scans.splice(index, 1);
+    recomputeSession(sessionId);
+  },
+
   async bulkUpdate(scanIds, patch, reviewer): Promise<CardScan[]> {
     const affected: CardScan[] = [];
     const ids = new Set(scanIds);
