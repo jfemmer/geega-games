@@ -186,12 +186,18 @@ export const supabaseInventoryRepository: InventoryRepository = {
         storageLocation: input.storageLocation,
         sku: input.sku,
         notes: input.notes,
-        storefrontPlacement: input.isDeal ? "deals" : "main",
-        dealDiscountPercent: input.isDeal ? (input.dealDiscountPercent ?? 20) : null,
         actor: adminName,
       },
     });
-    return mapInventoryRow(row);
+
+    const placed = await authFetch<InventoryRowLike>(`/${row.id}`, {
+      method: "PATCH",
+      body: {
+        storefrontPlacement: input.isDeal ? "deals" : "main",
+        dealDiscountPercent: input.isDeal ? (input.dealDiscountPercent ?? 20) : null,
+      },
+    });
+    return mapInventoryRow(placed);
   },
 
   async update(
