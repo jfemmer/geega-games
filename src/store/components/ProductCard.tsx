@@ -24,7 +24,7 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
 
   return (
     <div className="gg-card">
-      <div className="gg-card-imgwrap">
+      <div className={`gg-card-imgwrap ${card.finish !== "nonfoil" ? "gg-card-imgwrap--foil" : ""}`}>
         {card.imageUrl ? (
           <img
             className="gg-card-img"
@@ -36,6 +36,12 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
             width={488}
             height={680}
           />
+          {card.finish !== "nonfoil" && (
+            <span
+              className="gg-card-foil-shimmer"
+              aria-hidden="true"
+            />
+          )}
         ) : (
           <div
             className="gg-card-img"
