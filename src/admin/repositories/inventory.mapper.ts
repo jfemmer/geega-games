@@ -33,12 +33,12 @@ export interface InventoryRowLike {
   price_cents: number | null;
   cost_cents: number | null;
   scryfall_price_cents: number | null;
-  storefront_listed_at: string;
-  is_deal: boolean;
-  deal_source: "manual" | "aged_inventory" | null;
-  original_price_cents: number | null;
-  deal_discount_percent: number | null;
-  deal_started_at: string | null;
+  storefront_listed_at?: string;
+  is_deal?: boolean;
+  deal_source?: "manual" | "aged_inventory" | null;
+  original_price_cents?: number | null;
+  deal_discount_percent?: number | null;
+  deal_started_at?: string | null;
   storage_location: string | null;
   sku: string | null;
   notes: string | null;
@@ -86,12 +86,12 @@ export function mapInventoryRow(row: InventoryRowLike): InventoryItem {
     notes: row.notes ?? null,
     status: row.status,
     scryfallPriceCents: row.scryfall_price_cents ?? null,
-    storefrontListedAt: row.storefront_listed_at,
-    isDeal: row.is_deal,
-    dealSource: row.deal_source,
-    originalPriceCents: row.original_price_cents,
-    dealDiscountPercent: row.deal_discount_percent,
-    dealStartedAt: row.deal_started_at,
+    storefrontListedAt: row.storefront_listed_at ?? row.created_at,
+    isDeal: row.is_deal ?? false,
+    dealSource: row.deal_source ?? null,
+    originalPriceCents: row.original_price_cents ?? null,
+    dealDiscountPercent: row.deal_discount_percent ?? null,
+    dealStartedAt: row.deal_started_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
