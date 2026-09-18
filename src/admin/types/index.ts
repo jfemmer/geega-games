@@ -142,6 +142,17 @@ export interface InventoryItem {
   status: ListingStatus;
   /** Scryfall reference price in cents, for pricing guidance. */
   scryfallPriceCents: number | null;
+  /** When this inventory line most recently entered the active storefront. */
+  storefrontListedAt: string;
+  /** True when the line should appear in Deals & Specials. */
+  isDeal: boolean;
+  /** Whether the deal was selected by staff or created by the 30-day rule. */
+  dealSource: "manual" | "aged_inventory" | null;
+  /** Regular pre-discount price, retained so the storefront can show savings. */
+  originalPriceCents: number | null;
+  /** Percent markdown currently applied to this line. */
+  dealDiscountPercent: number | null;
+  dealStartedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
