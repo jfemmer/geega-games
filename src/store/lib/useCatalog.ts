@@ -20,6 +20,7 @@ export type CatalogFilters = {
   conditions: string[];
   minPriceCents: number | null;
   maxPriceCents: number | null;
+  dealsOnly: boolean;
   sort: CatalogSort;
 };
 
@@ -39,6 +40,10 @@ export type CatalogCard = {
   finish: string;
   foil: boolean;
   scryfallId: string | null;
+  isDeal: boolean;
+  originalPriceCents: number | null;
+  dealDiscountPercent: number | null;
+  dealSource: "manual" | "aged_inventory" | null;
 };
 
 export const PAGE_SIZE = 24;
@@ -50,6 +55,7 @@ export const DEFAULT_FILTERS: CatalogFilters = {
   conditions: [],
   minPriceCents: null,
   maxPriceCents: null,
+  dealsOnly: false,
   sort: "name_asc",
 };
 
@@ -67,6 +73,9 @@ type SearchRow = {
   quantity: number | null;
   price_cents: number | null;
   total_count: number | null;
+  original_price_cents?: number | null;
+  deal_discount_percent?: number | null;
+  deal_source?: string | null;
 };
 
 function mapRow(row: SearchRow): CatalogCard {
@@ -87,6 +96,13 @@ function mapRow(row: SearchRow): CatalogCard {
     finish: row.finish ?? "nonfoil",
     foil: !!row.finish && row.finish !== "nonfoil",
     scryfallId: row.scryfall_id ?? null,
+    isDeal: row.original_price_cents != null,
+    originalPriceCents: row.original_price_cents ?? null,
+    dealDiscountPercent: row.deal_discount_percent ?? null,
+    dealSource:
+      row.deal_source === "manual" || row.deal_source === "aged_inventory"
+        ? row.deal_source
+        : null,
   };
 }
 
@@ -113,7 +129,7 @@ export function useCatalog(filters: CatalogFilters, page: number) {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc("search_inventory", {
+      const commonArgs = {
         p_query: filters.query.trim() || undefined,
         p_sets: filters.sets.length ? filters.sets : undefined,
         p_rarities: filters.rarities.length ? filters.rarities : undefined,
@@ -122,13 +138,19 @@ export function useCatalog(filters: CatalogFilters, page: number) {
           : undefined,
         p_min_price_cents: filters.minPriceCents ?? undefined,
         p_max_price_cents: filters.maxPriceCents ?? undefined,
-        p_in_stock_only: true,
         p_sort: filters.sort,
         p_limit: PAGE_SIZE,
         p_offset: page * PAGE_SIZE,
-      });
-      if (rpcError) throw new Error(rpcError.message);
-      const rows = (data ?? []) as SearchRow[];
+      };
+
+      const response = filters.dealsOnly
+        ? await supabase.rpc("search_deals", commonArgs)
+        : await supabase.rpc("search_inventory", {
+            ...commonArgs,
+            p_in_stock_only: true,
+          });
+      if (response.error) throw new Error(response.error.message);
+      const rows = (response.data ?? []) as SearchRow[];
       setCards(rows.map(mapRow));
       setTotal(rows.length ? (rows[0].total_count ?? 0) : 0);
     } catch (err) {
