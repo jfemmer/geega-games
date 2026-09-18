@@ -16,22 +16,22 @@
  */
 .gg-admin,
 .gg-admin-portal {
-  --gg-brand: #663399;
-  --gg-brand-deep: #4c2a85;
-  --gg-gold: #e0b341;
-  --gg-gold-soft: #f0d68a;
-  --gg-ink: #1a1526;
-  --gg-parchment: #f7f4ef;
+  --gg-brand: #7c00e6;
+  --gg-brand-deep: #3b0b5e;
+  --gg-gold: #a800ff;
+  --gg-gold-soft: #d7b5ff;
+  --gg-ink: #0b0910;
+  --gg-parchment: #f8f7fa;
   --gg-violet-grey: #6b6076;
   --gg-info: #3a7ca5;
 
-  --gg-canvas: #f4f1ec;
+  --gg-canvas: #f6f3f8;
   --gg-surface: #ffffff;
-  --gg-surface-2: #faf8f4;
-  --gg-rail: #2a1b45;
-  --gg-rail-deep: #221539;
-  --gg-line: rgba(76, 42, 133, 0.14);
-  --gg-line-strong: rgba(76, 42, 133, 0.28);
+  --gg-surface-2: #faf7fc;
+  --gg-rail: #120719;
+  --gg-rail-deep: #050307;
+  --gg-line: rgba(102, 51, 153, 0.16);
+  --gg-line-strong: rgba(124, 0, 230, 0.34);
   --gg-text: #241d31;
   --gg-text-soft: #5c5468;
   --gg-text-faint: #857c92;
@@ -41,7 +41,7 @@
   --gg-danger: #c0392b;
 
   /* Added for Scryfall + Card Scanning UI. */
-  --gg-brand-tint: rgba(102, 51, 153, 0.08);
+  --gg-brand-tint: rgba(124, 0, 230, 0.08);
   --gg-surface-3: #ece7f3;
   --gg-gold-deep: #b8860b;
   --gg-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -1596,4 +1596,25 @@ body.gg-printing-label .gg-labelprint-overlay {
     background: #fff;
   }
   body.gg-printing-label .no-print { display: none !important; }
+}
+
+
+/* 2026 logo-aligned admin finish */
+.gg-sidebar {
+  border-right: 1px solid rgba(157,0,255,.28);
+  box-shadow: 8px 0 28px rgba(20,0,30,.14);
+}
+.gg-sidebar__logo { box-shadow: 0 0 14px rgba(157,0,255,.24); }
+.gg-sidebar__wordmark-admin { color: #c889ff; }
+.gg-navlink--active { background: rgba(157,0,255,.17); }
+.gg-navlink--active::before { background: #a800ff; box-shadow: 0 0 10px rgba(168,0,255,.6); }
+.gg-navlink__badge { background: #a800ff; color: #fff; }
+.gg-topbar { border-bottom-color: rgba(124,0,230,.20); }
+.gg-btn--primary, .gg-authform__submit {
+  background: linear-gradient(135deg,#663399,#8c00e8 65%,#a800ff);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(102,51,153,.18);
+}
+.gg-authwrap {
+  background: radial-gradient(1000px 520px at 50% -5%, #4b0d72 0%, #16051f 55%, #050307 100%);
 }
