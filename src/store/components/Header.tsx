@@ -100,6 +100,7 @@ export default function Header() {
             title={user ? "Account" : "Sign in"}
           >
             <Icon name="user" />
+            <span className="gg-iconbtn-label">{user ? "Account" : "Sign in"}</span>
           </Link>
           <button
             className="gg-iconbtn gg-iconbtn--icon gg-cartbtn"
@@ -108,6 +109,7 @@ export default function Header() {
             title="Cart"
           >
             <Icon name="cart" />
+            <span className="gg-iconbtn-label">Cart</span>
             {itemCount > 0 && (
               <span className="gg-cart-count">{itemCount}</span>
             )}
@@ -123,6 +125,7 @@ export default function Header() {
               }}
             >
               <Icon name="logout" />
+              <span className="gg-iconbtn-label">Sign out</span>
             </button>
           )}
         </div>
