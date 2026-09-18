@@ -25,6 +25,11 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
   return (
     <div className="gg-card">
       <div className={`gg-card-imgwrap ${card.finish !== "nonfoil" ? "gg-card-imgwrap--foil" : ""}`}>
+        {card.isDeal && (
+          <span className="gg-deal-ribbon">
+            {card.dealDiscountPercent ? `${card.dealDiscountPercent}% OFF` : "SPECIAL"}
+          </span>
+        )}
         {card.imageUrl ? (
           <>
             <img
@@ -84,8 +89,17 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
         {soldOut && <div className="gg-card-stock gg-card-stock--out">Sold out</div>}
 
         <div className="gg-card-foot">
-          <span className="gg-price">
-            {unpriced ? "—" : formatCents(card.priceCents)}
+          <span className="gg-priceblock">
+            <span className={card.isDeal ? "gg-price gg-price--deal" : "gg-price"}>
+              {unpriced ? "—" : formatCents(card.priceCents)}
+            </span>
+            {card.isDeal &&
+              card.originalPriceCents != null &&
+              card.originalPriceCents > (card.priceCents ?? 0) && (
+                <span className="gg-price-original">
+                  {formatCents(card.originalPriceCents)}
+                </span>
+              )}
           </span>
           {!soldOut && unpriced && (
             <span className="gg-card-meta">Not for sale</span>
