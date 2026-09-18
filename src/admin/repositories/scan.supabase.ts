@@ -443,6 +443,10 @@ export const supabaseScanRepository: ScanRepository = {
     return mapped;
   },
 
+  async deleteScan(scanId): Promise<void> {
+    await adminFetch(`/api/admin/scans/${scanId}`, { method: "DELETE" });
+  },
+
   async bulkUpdate(scanIds, patch, reviewer): Promise<CardScan[]> {
     const res = await adminFetch<{ scans: CardScanRowLike[] }>(
       "/api/admin/scans/bulk",
