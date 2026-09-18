@@ -1725,3 +1725,117 @@ body.gg-printing-label .gg-labelprint-overlay {
 
   .gg-authcard { padding: 26px 18px; }
 }
+
+
+/* ==================================================================
+ * Mobile QA pass — admin-wide
+ * Responsive-only polish. No component behavior or data flow changes.
+ * ================================================================== */
+@media (max-width: 760px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+  .gg-admin { width: 100%; max-width: 100vw; overflow-x: hidden; }
+  .gg-main, .gg-main--collapsed { width: 100%; max-width: 100%; min-width: 0; }
+
+  /* Page headings/actions should read as a deliberate mobile hierarchy. */
+  .gg-pagehead { align-items: stretch; gap: 12px; }
+  .gg-pagehead__title { font-size: 1.4rem; line-height: 1.18; }
+  .gg-pagehead__desc { line-height: 1.45; }
+  .gg-pagehead__actions { width: 100%; gap: 8px; }
+  .gg-pagehead__actions .gg-btn { min-height: 42px; }
+
+  /* Toolbars/filter rows are a frequent source of cramped admin screens. */
+  .gg-toolbar, .gg-filters { width: 100%; }
+  .gg-filters { align-items: stretch; gap: 9px; }
+  .gg-filters .gg-search { min-width: 0; width: 100%; flex-basis: 100%; }
+  .gg-filters__selects { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .gg-filters__selects .gg-field { min-width: 0; width: 100%; }
+  .gg-field input, .gg-field select, .gg-field textarea { max-width: 100%; }
+
+  /* Horizontal tabs stay one line and scroll rather than wrapping messily. */
+  .gg-tabs, .gg-filtertabs {
+    width: 100%; max-width: 100%; flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .gg-tabs::-webkit-scrollbar, .gg-filtertabs::-webkit-scrollbar { display: none; }
+  .gg-tab, .gg-filtertab { flex: 0 0 auto; white-space: nowrap; min-height: 38px; }
+
+  /* Dashboard metric cards become a clean two-column grid. */
+  .gg-statgrid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  .gg-stat { padding: 13px; min-width: 0; }
+  .gg-stat__value { font-size: 1.35rem; overflow-wrap: anywhere; }
+
+  /* Bulk actions and pagination shouldn't squeeze controls offscreen. */
+  .gg-bulkbar { align-items: stretch; flex-direction: column; padding: 10px 12px; }
+  .gg-bulkbar__actions { width: 100%; }
+  .gg-bulkbar__actions .gg-btn { flex: 1 1 auto; min-height: 40px; }
+  .gg-pagination { flex-wrap: wrap; align-items: center; }
+  .gg-pagination__controls { margin-left: auto; }
+  .gg-pagination .gg-btn { min-height: 40px; }
+
+  /* Drawers/dialog content gets usable viewport space and natural scrolling. */
+  .gg-admin-portal [role="dialog"] { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .gg-admin-portal input,
+  .gg-admin-portal select,
+  .gg-admin-portal textarea { max-width: 100%; }
+  .gg-drawer-actions { align-items: stretch; }
+  .gg-drawer-actions__left, .gg-drawer-actions__buttons { width: 100%; margin-left: 0; }
+  .gg-drawer-actions__buttons .gg-btn { min-height: 42px; }
+
+  /* Long IDs/emails/card names should wrap, never widen the page. */
+  .gg-card, .gg-muted, .gg-table td, .gg-table th,
+  .gg-leaddetail, .gg-reserved__email, .gg-reserved__cardname {
+    overflow-wrap: anywhere;
+  }
+
+  /* Lead detail cards/photos stay compact and readable. */
+  .gg-leaddetail { gap: 16px; }
+  .gg-leaddetail__cards li { min-width: 0; }
+  .gg-leaddetail__cards li > * { min-width: 0; }
+  .gg-leaddetail__contactlinks .gg-btn { min-height: 40px; }
+  .gg-leaddetail__photos { grid-template-columns: repeat(3,minmax(0,1fr)); }
+
+  /* POS result/ticket controls retain comfortable touch targets. */
+  .gg-pos { gap: 14px; }
+  .gg-pos__ticket { padding: 14px; }
+  .gg-pos__result { padding: 11px 10px; min-width: 0; }
+  .gg-pos__line { min-width: 0; }
+  .gg-pos__line-body { overflow-wrap: anywhere; }
+  .gg-pos__line-total { min-width: auto; }
+  .gg-icon-btn { min-width: 40px; min-height: 40px; }
+
+  /* Tables remain fully usable without forcing the entire page sideways. */
+  .gg-table-wrap { border-radius: var(--gg-radius-sm); overscroll-behavior-x: contain; }
+  .gg-table-wrap::after { content: ""; display: block; width: 1px; height: 1px; }
+}
+
+@media (max-width: 480px) {
+  .gg-pagehead__actions { display: grid; grid-template-columns: 1fr; }
+  .gg-pagehead__actions .gg-btn { width: 100%; justify-content: center; }
+
+  .gg-filters__selects { grid-template-columns: 1fr; }
+  .gg-statgrid { grid-template-columns: 1fr 1fr; }
+  .gg-stat { padding: 12px 10px; }
+  .gg-stat__label { font-size: .76rem; }
+  .gg-stat__value { font-size: 1.22rem; }
+
+  .gg-pagination { flex-direction: column; align-items: stretch; gap: 9px; }
+  .gg-pagination__info, .gg-pagination__page { text-align: center; }
+  .gg-pagination__controls { width: 100%; margin-left: 0; justify-content: space-between; }
+  .gg-pagination__controls .gg-btn { flex: 1; }
+
+  .gg-bulkbar__actions { display: grid; grid-template-columns: 1fr; }
+  .gg-bulkbar__actions .gg-btn { width: 100%; justify-content: center; }
+
+  .gg-leaddetail__photos { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .gg-leaddetail__contactlinks { display: grid; grid-template-columns: 1fr; }
+  .gg-leaddetail__contactlinks .gg-btn { width: 100%; justify-content: center; }
+
+  .gg-pos__ticket { padding: 12px; }
+  .gg-pos__line { align-items: flex-start; flex-wrap: wrap; }
+  .gg-pos__line-body { flex: 1 1 calc(100% - 50px); }
+  .gg-pos__line-total { margin-left: auto; }
+
+  .gg-drawer-actions__left, .gg-drawer-actions__buttons { display: grid; grid-template-columns: 1fr; }
+  .gg-drawer-actions .gg-btn { width: 100%; justify-content: center; }
+}
