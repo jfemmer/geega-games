@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
+import GoogleAddressAutocomplete, {
+  type ShippingAddressFields,
+} from "../components/GoogleAddressAutocomplete";
 
 function AuthShell({
   title,
@@ -25,6 +28,14 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const handleAddressSelect = useCallback((address: ShippingAddressFields) => {
+    setShippingAddress((current) => ({
+      ...address,
+      line2: address.line2 || current.line2,
+      country: address.country || "US",
+    }));
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -91,6 +102,14 @@ export function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [notificationsOptIn, setNotificationsOptIn] = useState(false);
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddressFields>({
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "US",
+  });
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -103,6 +122,16 @@ export function SignupPage() {
       setErr("Please choose a password with at least 6 characters.");
       return;
     }
+    if (
+      !shippingAddress.line1.trim() ||
+      !shippingAddress.city.trim() ||
+      !shippingAddress.state.trim() ||
+      !shippingAddress.postalCode.trim() ||
+      !shippingAddress.country.trim()
+    ) {
+      setErr("Please add a complete shipping address before creating your account.");
+      return;
+    }
     setBusy(true);
     try {
       const { needsEmailConfirmation } = await signUp({
@@ -111,6 +140,7 @@ export function SignupPage() {
         firstName,
         lastName,
         notificationsOptIn,
+        shippingAddress,
       });
       if (needsEmailConfirmation) {
         setMsg(
@@ -181,6 +211,83 @@ export function SignupPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+        </div>
+        <div className="gg-field">
+          <label>Shipping address</label>
+          <GoogleAddressAutocomplete onSelect={handleAddressSelect} />
+        </div>
+        <div className="gg-form-grid gg-signup-address-grid">
+          <div className="gg-field gg-field-span2">
+            <label htmlFor="su-address1">Street address</label>
+            <input
+              id="su-address1"
+              autoComplete="shipping address-line1"
+              required
+              value={shippingAddress.line1}
+              onChange={(e) =>
+                setShippingAddress((address) => ({ ...address, line1: e.target.value }))
+              }
+            />
+          </div>
+          <div className="gg-field gg-field-span2">
+            <label htmlFor="su-address2">Apartment, suite, etc. (optional)</label>
+            <input
+              id="su-address2"
+              autoComplete="shipping address-line2"
+              value={shippingAddress.line2}
+              onChange={(e) =>
+                setShippingAddress((address) => ({ ...address, line2: e.target.value }))
+              }
+            />
+          </div>
+          <div className="gg-field">
+            <label htmlFor="su-city">City</label>
+            <input
+              id="su-city"
+              autoComplete="shipping address-level2"
+              required
+              value={shippingAddress.city}
+              onChange={(e) =>
+                setShippingAddress((address) => ({ ...address, city: e.target.value }))
+              }
+            />
+          </div>
+          <div className="gg-field">
+            <label htmlFor="su-state">State</label>
+            <input
+              id="su-state"
+              autoComplete="shipping address-level1"
+              required
+              value={shippingAddress.state}
+              onChange={(e) =>
+                setShippingAddress((address) => ({ ...address, state: e.target.value }))
+              }
+            />
+          </div>
+          <div className="gg-field">
+            <label htmlFor="su-postal">ZIP / postal code</label>
+            <input
+              id="su-postal"
+              autoComplete="shipping postal-code"
+              required
+              value={shippingAddress.postalCode}
+              onChange={(e) =>
+                setShippingAddress((address) => ({ ...address, postalCode: e.target.value }))
+              }
+            />
+          </div>
+          <div className="gg-field">
+            <label htmlFor="su-country">Country</label>
+            <input
+              id="su-country"
+              autoComplete="shipping country"
+              required
+              value={shippingAddress.country}
+              onChange={(e) =>
+                setShippingAddress((address) => ({ ...address, country: e.target.value }))
+              }
+            />
+          </div>
         </div>
         <label className="gg-check" style={{ margin: "0.25rem 0 0" }}>
           <input
