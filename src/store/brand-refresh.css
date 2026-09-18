@@ -154,3 +154,78 @@ body {
 @media (max-width: 640px) {
   .gg-logo { height: 54px; max-width: 170px; }
 }
+
+
+/* ===== Complete storefront brand coverage =====
+   Catch all customer-facing controls/surfaces so secondary pages inherit the
+   same black + Rebecca-purple + electric-violet identity as the new logo. */
+#main h1, #main h2, #main h3 { color: #13091b; }
+#main a:not(.gg-btn):not(.gg-orderrow) { text-decoration-color: rgba(124,0,230,.35); }
+#main a:not(.gg-btn):not(.gg-orderrow):hover { color: #663399; }
+
+.gg-page input:not([type="checkbox"]):not([type="radio"]),
+.gg-page select,
+.gg-page textarea,
+.gg-drawer input:not([type="checkbox"]):not([type="radio"]),
+.gg-drawer select,
+.gg-drawer textarea {
+  border-color: rgba(102,51,153,.24);
+  background: #fff;
+  color: #0b0910;
+}
+.gg-page input:focus,
+.gg-page select:focus,
+.gg-page textarea:focus,
+.gg-drawer input:focus,
+.gg-drawer select:focus,
+.gg-drawer textarea:focus {
+  outline: none;
+  border-color: #8b00e8;
+  box-shadow: 0 0 0 3px rgba(157,0,255,.14);
+}
+.gg-page input[type="checkbox"],
+.gg-page input[type="radio"] { accent-color: #7c00e6; }
+
+.gg-drawer {
+  border-left: 1px solid rgba(157,0,255,.24);
+  box-shadow: -14px 0 40px rgba(21,0,33,.25);
+}
+.gg-drawer-head {
+  background: linear-gradient(180deg,#100817,#07040b);
+  color: #fff;
+  border-bottom-color: #7900c9;
+}
+.gg-drawer-foot { background: #faf7fc; }
+
+.gg-account-nav a.gg-active {
+  background: linear-gradient(135deg,#663399,#9200ed);
+  box-shadow: 0 4px 12px rgba(102,51,153,.20);
+}
+.gg-address-card--default {
+  border-color: #7c00e6;
+  box-shadow: 0 0 0 1px #7c00e6, 0 7px 20px rgba(102,51,153,.08);
+}
+.gg-progress-step.gg-done::before,
+.gg-progress-step.gg-done .gg-progress-dot { background: #7c00e6; border-color: #7c00e6; }
+.gg-progress-step.gg-current .gg-progress-dot { background: #a800ff; border-color: #a800ff; }
+
+.gg-track, .gg-qty button, .gg-candidates, .gg-sell-card, .gg-review-card {
+  background-color: #faf7fc;
+}
+.gg-sellhero,
+.gg-checkout-summary,
+.gg-auth-card {
+  border-color: rgba(102,51,153,.18);
+}
+.gg-sellhero {
+  background: radial-gradient(700px 240px at 50% 0%, rgba(157,0,255,.10), transparent 70%), #fff;
+}
+.gg-sell-progress__step--active,
+.gg-sell-progress__step--done { color: #663399; }
+
+/* Footer is deliberately dark like the logo's black field. */
+.footer a:focus-visible { outline: 2px solid #b84cff; outline-offset: 3px; }
+.footer-bottom { border-top-color: rgba(184,76,255,.22); }
+
+/* Keep destructive/success/warning semantic colors intact; only neutral brand
+   accents are recolored. This preserves usability and status recognition. */
