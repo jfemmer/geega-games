@@ -1,0 +1,156 @@
+/* Geega Games 2026 brand refresh
+   Palette sampled/derived from the new logo: near-black, electric violet,
+   Rebecca purple, crisp white and cool silver. Loaded last so it can safely
+   modernize the storefront without changing layout or behavior. */
+:root {
+  --gg-purple: #7c00e6;
+  --gg-purple-2: #9d00ff;
+  --gg-gold: #b56cff;
+  --gg-ink: #09070d;
+  --gg-line: rgba(112, 55, 150, 0.20);
+
+  --brand: #663399;
+  --brand-deep: #25003f;
+  --gold: #9d00ff;
+  --gold-soft: #d7b5ff;
+  --ink: #0b0910;
+  --parchment: #f8f7fa;
+  --violet-grey: #6d6575;
+  --line: rgba(102, 51, 153, 0.18);
+}
+
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(900px 440px at 50% -120px, rgba(157, 0, 255, .13), transparent 66%),
+    linear-gradient(180deg, #fbfaff 0%, #f7f5fa 100%);
+}
+
+/* Black + neon-violet header mirrors the logo rather than the old purple/gold theme. */
+.gg-header {
+  background: linear-gradient(180deg, #09070d 0%, #030204 100%);
+  border-bottom: 2px solid #8d00f5;
+  box-shadow: 0 8px 28px rgba(25, 0, 42, .24), 0 1px 14px rgba(157, 0, 255, .28);
+}
+.gg-header-row { padding-top: .5rem; padding-bottom: .5rem; }
+.gg-logo {
+  height: 64px;
+  max-width: 210px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(157, 0, 255, .32));
+}
+.gg-header-search input {
+  border: 1px solid rgba(190, 126, 255, .38);
+  background: rgba(255,255,255,.075);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
+}
+.gg-header-search input:focus {
+  outline: none;
+  border-color: #a800ff;
+  box-shadow: 0 0 0 3px rgba(157,0,255,.22), 0 0 18px rgba(157,0,255,.18);
+}
+.gg-iconbtn {
+  border-color: rgba(190,126,255,.42);
+}
+.gg-iconbtn:hover { background: rgba(157,0,255,.16); }
+.gg-iconbtn:focus-visible,
+.gg-btn:focus-visible,
+.gg-card:focus-within,
+.gg-field input:focus-visible,
+.gg-toolbar select:focus-visible,
+.gg-account-nav a:focus-visible,
+.gg-orderrow:focus-visible {
+  outline-color: #a800ff;
+}
+.gg-cart-count {
+  background: #9d00ff;
+  color: #fff;
+}
+.gg-nav a:hover,
+.gg-nav a:focus-visible { color: #c889ff; }
+
+/* Premium white/silver surfaces with purple edge-lighting. */
+.gg-card,
+.gg-filters,
+.gg-dash-card,
+.gg-account-nav,
+.gg-orderrow,
+.gg-address-card,
+.signup,
+.app-error-card {
+  border-color: rgba(102,51,153,.18);
+  box-shadow: 0 6px 20px rgba(22, 8, 35, .055);
+}
+.gg-card:hover,
+.gg-orderrow:hover {
+  border-color: rgba(157,0,255,.55);
+  box-shadow: 0 12px 28px rgba(78, 0, 125, .14), 0 0 0 1px rgba(157,0,255,.08);
+}
+.gg-card-imgwrap,
+.card-art,
+.card-noimg {
+  background-color: #f0ebf5;
+}
+
+.gg-btn,
+.card-add,
+.signup button[type="submit"],
+.app-error-btn {
+  background: linear-gradient(135deg, #663399 0%, #8500dc 58%, #9d00ff 100%);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(102,51,153,.20);
+}
+.gg-btn:hover:not(:disabled),
+.signup button[type="submit"]:hover:not(:disabled) {
+  background: linear-gradient(135deg, #743bab 0%, #9700f5 100%);
+}
+.gg-btn-ghost {
+  background: transparent;
+  color: #663399;
+  border-color: #7c00e6;
+  box-shadow: none;
+}
+.gg-btn-ghost:hover:not(:disabled) { background: #f4eaff; }
+
+.gg-badge {
+  background: #f1e5ff;
+  color: #5e208d;
+}
+.gg-filter-group h3,
+.gg-prose h2,
+.gg-dash-card h2,
+.gg-progress-step.gg-current { color: #663399; }
+
+/* Legacy storefront shell now uses the same black/purple language. */
+.masthead {
+  background: linear-gradient(180deg, #09070d, #030204);
+  border-bottom: 2px solid #8d00f5;
+}
+.subnav,
+.footer {
+  background: linear-gradient(180deg, #160022 0%, #07040b 100%);
+}
+.ribbon {
+  background: linear-gradient(90deg, #160022, #4a1470, #160022);
+  color: #f7efff;
+}
+.ribbon-dot { background: #b84cff; }
+.launch {
+  background: linear-gradient(180deg, #fff, #f4edfa);
+}
+.footer {
+  border-top: 2px solid #7900c9;
+  box-shadow: 0 -8px 28px rgba(64,0,96,.12);
+}
+.footer-col h3,
+.footer-support a { color: #d7b5ff; }
+.footer-logo {
+  filter: none;
+  opacity: 1;
+  filter: drop-shadow(0 0 7px rgba(157,0,255,.28));
+}
+
+/* Keep the logo readable and balanced on phones. */
+@media (max-width: 640px) {
+  .gg-logo { height: 54px; max-width: 170px; }
+}
