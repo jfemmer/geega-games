@@ -1852,10 +1852,40 @@
   }
 }
 
+@media (hover: none), (pointer: coarse) {
+  .gg-card-foil-shimmer {
+    opacity: .62;
+    animation-duration: 3.2s;
+    background:
+      linear-gradient(
+        112deg,
+        transparent 0%,
+        rgba(255, 74, 190, .24) 16%,
+        rgba(88, 220, 255, .34) 31%,
+        rgba(255, 247, 145, .38) 46%,
+        rgba(180, 92, 255, .35) 61%,
+        rgba(72, 235, 188, .26) 76%,
+        transparent 91%
+      ),
+      linear-gradient(
+        24deg,
+        rgba(255,255,255,.10),
+        rgba(255,255,255,0) 30%,
+        rgba(255,255,255,.28) 50%,
+        rgba(255,255,255,0) 70%
+      );
+    background-size: 230% 230%, 190% 190%;
+  }
+
+  .gg-card-imgwrap--foil::after {
+    opacity: .48;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gg-card-foil-shimmer {
     animation: none;
     background-position: 50% 50%, 50% 50%;
-    opacity: .24;
+    opacity: .38;
   }
 }
