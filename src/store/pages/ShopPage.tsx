@@ -24,6 +24,7 @@ export default function ShopPage() {
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     ...DEFAULT_FILTERS,
     query: urlQuery.get("q") ?? "",
+    dealsOnly: urlQuery.get("deals") === "1",
     sort: (urlQuery.get("sort") as CatalogSort) || "name_asc",
   }));
   const [page, setPage] = useState(0);
@@ -39,9 +40,12 @@ export default function ShopPage() {
   // RouterProvider), so this does not run on every render.
   useEffect(() => {
     const q = urlQuery.get("q") ?? "";
+    const dealsOnly = urlQuery.get("deals") === "1";
     const sort = (urlQuery.get("sort") as CatalogSort) || "name_asc";
     setFilters((f) =>
-      f.query === q && f.sort === sort ? f : { ...f, query: q, sort },
+      f.query === q && f.sort === sort && f.dealsOnly === dealsOnly
+        ? f
+        : { ...f, query: q, sort, dealsOnly },
     );
   }, [urlQuery]);
 
@@ -54,6 +58,7 @@ export default function ShopPage() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (filters.query) params.set("q", filters.query);
+    if (filters.dealsOnly) params.set("deals", "1");
     if (filters.sort !== "name_asc") params.set("sort", filters.sort);
     const qs = params.toString();
     const target = qs ? `/shop?${qs}` : "/shop";
@@ -61,7 +66,7 @@ export default function ShopPage() {
     if (target !== current) {
       navigate(target, { replace: true });
     }
-  }, [filters.query, filters.sort, navigate]);
+  }, [filters.query, filters.dealsOnly, filters.sort, navigate]);
 
   // Reset to first page whenever the filter set changes.
   useEffect(() => {
@@ -74,6 +79,7 @@ export default function ShopPage() {
     filters.conditions,
     filters.minPriceCents,
     filters.maxPriceCents,
+    filters.dealsOnly,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -159,6 +165,24 @@ export default function ShopPage() {
 
   return (
     <div className="gg-page">
+      {filters.dealsOnly && (
+        <section className="gg-deals-hero" aria-labelledby="gg-deals-title">
+          <div>
+            <span className="gg-deals-kicker">Deals & Specials</span>
+            <h1 id="gg-deals-title">Save on singles</h1>
+            <p>
+              Hand-picked specials plus cards automatically marked down after
+              they’ve been in stock for 30 days.
+            </p>
+          </div>
+          <button
+            className="gg-btn gg-btn-ghost"
+            onClick={() => setFilters((f) => ({ ...f, dealsOnly: false }))}
+          >
+            Browse all cards
+          </button>
+        </section>
+      )}
       <div className="gg-shop">
         <aside className="gg-filters gg-filters-desktop" aria-label="Filters">
           {FiltersPanel}
