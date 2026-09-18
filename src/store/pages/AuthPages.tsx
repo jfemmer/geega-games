@@ -29,14 +29,6 @@ export function LoginPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const handleAddressSelect = useCallback((address: ShippingAddressFields) => {
-    setShippingAddress((current) => ({
-      ...address,
-      line2: address.line2 || current.line2,
-      country: address.country || "US",
-    }));
-  }, []);
-
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
@@ -113,6 +105,14 @@ export function SignupPage() {
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const handleAddressSelect = useCallback((address: ShippingAddressFields) => {
+    setShippingAddress((current) => ({
+      ...address,
+      line2: address.line2 || current.line2,
+      country: address.country || "US",
+    }));
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
