@@ -134,6 +134,9 @@ export default function Header() {
       <nav className="gg-nav" aria-label="Primary">
         <Link to="/shop">Shop singles</Link>
         <Link to="/shop?sort=newest">New arrivals</Link>
+        <Link to="/shop?deals=1" className="gg-nav-deals">
+          Deals & Specials
+        </Link>
         <Link to="/sell-my-collection" className="gg-nav-sell">
           Sell Your Cards
         </Link>
