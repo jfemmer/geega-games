@@ -139,7 +139,7 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
     const ref = lead.reference_number || "Buying lead";
     let title = `New buying lead · ${ref}`;
     let detail = `${name} submitted a collection${lead.total_cards ? ` with ${lead.total_cards} cards` : ""}.`;
-    let tone: NotificationTone = lead.priority === "high" ? "danger" : "info";
+    let tone: NotificationTone = lead.priority === "high_interest" ? "danger" : "info";
 
     if (lead.status === "needs_more_photos") {
       title = `Buying lead needs photos · ${ref}`;
