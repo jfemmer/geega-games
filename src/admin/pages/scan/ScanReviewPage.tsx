@@ -96,6 +96,8 @@ export function ScanReviewPage({
   const [committing, setCommitting] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CardScan | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [priceFloors, setPriceFloors] = useState<InventoryPriceFloor[]>([]);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -289,6 +291,27 @@ export function ScanReviewPage({
     [applyPrinting, toast],
   );
 
+  async function deleteScan() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await scanRepository.deleteScan(deleteTarget.id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.id);
+        return next;
+      });
+      if (activeId === deleteTarget.id) setActiveId(null);
+      toast.success(`Deleted scan #${String(deleteTarget.sequenceNumber).padStart(3, "0")}.`);
+      setDeleteTarget(null);
+      reloadAll();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete this scan.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function openCommit() {
     const preview = await scanRepository.previewCommit(sessionId);
     setCommitPreview(preview);
@@ -424,6 +447,7 @@ export function ScanReviewPage({
               onRerunRecognition={() => rerunRecognition(active)}
               recognizing={recognizingId === active.id}
               onSelectCandidate={(c) => selectCandidate(active, c)}
+              onDelete={() => setDeleteTarget(active)}
             />
           ) : (
             <div className="gg-scandetail__empty">
@@ -525,6 +549,15 @@ export function ScanReviewPage({
         )}
       </Modal>
 
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete this card scan?"
+        message={deleteTarget ? `Scan #${String(deleteTarget.sequenceNumber).padStart(3, "0")} and its uploaded scan images will be permanently deleted. This cannot be undone.` : ""}
+        confirmLabel={deleting ? "Deleting…" : "Delete scan"}
+        tone="danger"
+        onCancel={() => !deleting && setDeleteTarget(null)}
+        onConfirm={deleteScan}
+      />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>
   );
@@ -675,6 +708,7 @@ function ScanDetail({
   onRerunRecognition,
   recognizing,
   onSelectCandidate,
+  onDelete,
 }: {
   scan: CardScan;
   scanMode: ScanRecognitionMode;
@@ -685,6 +719,7 @@ function ScanDetail({
   onRerunRecognition: () => void;
   recognizing: boolean;
   onSelectCandidate: (candidate: RecognitionCandidate) => Promise<void>;
+  onDelete: () => void;
 }) {
   const [price, setPrice] = useState(
     scan.priceCents != null ? (scan.priceCents / 100).toFixed(2) : "",
@@ -831,6 +866,9 @@ function ScanDetail({
         </div>
 
         <div className="gg-scanform__actions">
+          <Button variant="danger" onClick={onDelete} disabled={scan.reviewStatus === "added"}>
+            Delete scan
+          </Button>
           <Button variant="ghost" icon="close" onClick={onReject}>
             Reject (X)
           </Button>
