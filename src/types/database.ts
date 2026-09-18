@@ -2415,6 +2415,12 @@ export type Database = {
           cost_cents: number | null
           created_at: string
           creature_types: string[]
+          deal_discount_percent: number | null
+          deal_source: string | null
+          deal_started_at: string | null
+          is_deal: boolean
+          original_price_cents: number | null
+          storefront_listed_at: string
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean | null
           id: string
