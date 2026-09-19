@@ -38,6 +38,42 @@ export type Database = {
         }
         Relationships: []
       }
+      storewide_sales: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          discount_percent: number
+          enabled: boolean
+          ends_at: string
+          id: string
+          name: string
+          starts_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          discount_percent: number
+          enabled?: boolean
+          ends_at: string
+          id?: string
+          name?: string
+          starts_at: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          discount_percent?: number
+          enabled?: boolean
+          ends_at?: string
+          id?: string
+          name?: string
+          starts_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       addresses: {
         Row: {
           city: string
@@ -2072,6 +2108,8 @@ export type Database = {
           image_url: string | null
           language: string | null
           oracle_id: string | null
+          original_price_cents: number | null
+          discount_percent: number | null
           price_cents: number | null
           quantity: number | null
           rarity: string | null
@@ -2462,6 +2500,40 @@ export type Database = {
           subtotal_cents: number
           total_cents: number
         }[]
+      }
+      current_storewide_sale: {
+        Args: never
+        Returns: {
+          discount_percent: number
+          ends_at: string
+          id: string
+          name: string
+          starts_at: string
+        }[]
+      }
+      storefront_effective_discount_percent: {
+        Args: {
+          p_is_deal: boolean
+          p_original_price_cents: number
+          p_price_cents: number
+        }
+        Returns: number
+      }
+      storefront_effective_original_price: {
+        Args: {
+          p_is_deal: boolean
+          p_original_price_cents: number
+          p_price_cents: number
+        }
+        Returns: number
+      }
+      storefront_effective_price: {
+        Args: {
+          p_is_deal: boolean
+          p_original_price_cents: number
+          p_price_cents: number
+        }
+        Returns: number
       }
       current_app_role: {
         Args: never
