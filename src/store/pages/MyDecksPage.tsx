@@ -150,7 +150,7 @@ function parseDecklist(text: string): ParsedCard[] {
 }
 
 function categoryOrder(category: string): number {
-  return ["Ramp", "Card Draw", "Interaction", "Board Wipe", "Protection", "Synergy"].indexOf(category);
+  return ["Ramp", "Mana Base", "Card Draw", "Interaction", "Board Wipe", "Protection", "Synergy"].indexOf(category);
 }
 
 export function MyDecksSection({ deckId }: { deckId?: string }) {
