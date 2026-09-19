@@ -6,6 +6,7 @@ import { formatCents } from "../lib/money";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
+import { MyDecksSection } from "./MyDecksPage";
 import {
   ORDER_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -40,6 +41,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account", label: "Dashboard" },
   { to: "/account/profile", label: "Profile" },
   { to: "/account/orders", label: "Orders" },
+  { to: "/account/decks", label: "My Decks" },
   { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
@@ -1473,6 +1475,7 @@ function NotificationsSection() {
 export function AccountPage() {
   const { path } = useRouter();
   const orderMatch = matchRoute("/account/orders/:id", path);
+  const deckMatch = matchRoute("/account/decks/:id", path);
 
   let title = "Dashboard";
   let subtitle: string | undefined;
@@ -1488,6 +1491,13 @@ export function AccountPage() {
     title = "Orders";
     subtitle = "Your order history and shipment status.";
     body = <OrdersSection />;
+  } else if (path === "/account/decks") {
+    title = "My Decks";
+    subtitle = "Build decks, watch missing cards, and get suggestions.";
+    body = <MyDecksSection />;
+  } else if (deckMatch) {
+    title = "Deck details";
+    body = <MyDecksSection deckId={deckMatch.id} />;
   } else if (path === "/account/sell-submissions") {
     title = "Sell submissions";
     subtitle = "Collections and cards you've submitted to sell.";
@@ -1509,7 +1519,11 @@ export function AccountPage() {
     subtitle = "A quick look at your orders, address, and store credit.";
   }
 
-  const navPath = orderMatch ? "/account/orders" : path;
+  const navPath = orderMatch
+    ? "/account/orders"
+    : deckMatch
+      ? "/account/decks"
+      : path;
 
   return (
     <RequireAuth>
