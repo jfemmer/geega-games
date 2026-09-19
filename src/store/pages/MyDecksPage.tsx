@@ -4,6 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
 import { Link } from "../lib/router";
 import { formatCents } from "../lib/money";
+import { parseCardListText } from "../lib/sellCardListParser";
 
 const db = supabase as any;
 
@@ -65,7 +66,7 @@ type Recommendation = {
   score: number;
 };
 
-type ParsedCard = {
+export type ParsedCard = {
   name: string;
   quantity: number;
   section: string;
@@ -99,10 +100,35 @@ function formatMaxCopies(format: string): number {
   return MTG_FORMATS.find((item) => item.value === format)?.maxCopies ?? 4;
 }
 
-function parseDecklist(text: string, maxCopies = 99): ParsedCard[] {
+// parseCardListText (shared with the "sell my collection" flow) already
+// knows how to tell a pasted/uploaded CSV-with-header block from free-text
+// lines, and — for free text — to strip a bracketed/parenthesized set code
+// plus a trailing collector number ("Lightning Bolt [SLD] 84", the exact
+// shape TCGplayer's Mass Entry produces, and Moxfield's "(C21) 263" style).
+// That covers Scryfall-style plain lists (already just "qty name"),
+// TCGplayer's Mass Entry text AND its "Quantity,Name,Simple Name,Set,..."
+// collection-export CSV, and ManaBox's "Name,Set code,...,Quantity,..."
+// collection-export CSV — its header-column lookup is by column NAME, not
+// fixed position, so it doesn't care that ManaBox and TCGplayer order their
+// columns differently. Deck-specific concerns (section headings, merging
+// repeated names within a section) stay local to this function; card-name
+// extraction itself is delegated so decks and sell-collection uploads stay
+// governed by one tested implementation instead of two that can drift.
+//
+// One legacy shape parseCardListText doesn't cover: a trailing
+// "Name, 3" / "Name;3" / "Name<tab>3" quantity (no leading digit, no "x").
+// Applied as a fallback below so it keeps working for anyone with an
+// existing list in that shape.
+function applyTrailingQuantityFallback(name: string, quantity: number): { name: string; quantity: number } {
+  const m = name.match(/^(.+?)[,;\t]\s*([0-9]{1,2})$/);
+  if (!m) return { name, quantity };
+  return { name: m[1].trim(), quantity: Number(m[2]) || quantity };
+}
+
+export function parseDecklist(text: string, maxCopies = 99): ParsedCard[] {
   const lines = text.replace(/\r/g, "").split("\n");
-  const out: ParsedCard[] = [];
   let section = "mainboard";
+  const bySection = new Map<string, string[]>();
 
   for (const raw of lines) {
     const line = raw.trim();
@@ -126,35 +152,26 @@ function parseDecklist(text: string, maxCopies = 99): ParsedCard[] {
       continue;
     }
 
-    const cleaned = line
-      .replace(/^[-*•]\s*/, "")
-      .replace(/\s+\[[^\]]+\]\s*$/, "")
-      .replace(/\s+\([^)]*\)\s*$/, "");
+    const list = bySection.get(section) ?? [];
+    list.push(line.replace(/^[-*•]\s*/, ""));
+    bySection.set(section, list);
+  }
 
-    const m =
-      cleaned.match(/^([0-9]{1,2})\s*[xX]?\s+(.+)$/) ||
-      cleaned.match(/^(.+?)[,;\t]\s*([0-9]{1,2})$/);
-
-    let quantity = 1;
-    let name = cleaned;
-    if (m) {
-      if (/^[0-9]/.test(m[1])) {
-        quantity = Number(m[1]);
-        name = m[2];
-      } else {
-        name = m[1];
-        quantity = Number(m[2]);
-      }
+  const out: ParsedCard[] = [];
+  for (const [sectionName, sectionLines] of bySection) {
+    // Grouped per section (rather than parsed line-by-line) so a pasted CSV
+    // block — header row plus data rows — reaches parseCardListText intact;
+    // it needs to see the header to know which column is which.
+    for (const parsed of parseCardListText(sectionLines.join("\n"))) {
+      const fallback = applyTrailingQuantityFallback(parsed.cardName, parsed.quantity);
+      const name = fallback.name.replace(/\s+\*F\*$/i, "").trim();
+      if (!name) continue;
+      out.push({
+        name,
+        quantity: Math.max(1, Math.min(fallback.quantity || 1, maxCopies)),
+        section: sectionName,
+      });
     }
-
-    name = name
-      .replace(/\s+\*F\*$/i, "")
-      .replace(/\s+foil$/i, "")
-      .replace(/\s+\(foil\)$/i, "")
-      .trim();
-
-    if (!name) continue;
-    out.push({ name, quantity: Math.max(1, Math.min(quantity || 1, maxCopies)), section });
   }
 
   const merged = new Map<string, ParsedCard>();
@@ -559,7 +576,10 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           </div>
         )}
         </div>
-        <span className="gg-card-meta">Supports common Moxfield/Archidekt-style plain-text exports, section headings, and simple CSV lines.</span>
+        <span className="gg-card-meta">
+          Paste a plain-text list (Scryfall, Moxfield, Archidekt, TCGplayer Mass Entry) or upload a CSV export from
+          TCGplayer or ManaBox — section headings like Commander/Sideboard are supported too.
+        </span>
       </div>
 
       <label className="gg-check">
