@@ -37,8 +37,13 @@
 .gg-header-search {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .gg-header-search input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
   padding: 0.55rem 0.85rem;
   border-radius: 999px;
@@ -137,6 +142,110 @@
     order: 3;
     flex: 1 1 100%;
   }
+}
+
+/* "Shop by saved deck" — header search-bar entry point for bulk-adding a
+   saved deck's in-stock cards to the cart. Popover is a light panel like
+   the cart drawer, not the dark header theme, since it holds readable
+   deck/price content rather than chrome. */
+.gg-deck-shop {
+  position: relative;
+  flex: none;
+}
+.gg-deck-shop-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+.gg-deck-shop-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.gg-deck-shop-toggle[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: var(--gg-gold);
+}
+.gg-deck-shop-toggle:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+}
+.gg-deck-shop-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #fff;
+  color: #2e2633;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  padding: 0.6rem;
+  z-index: 45;
+}
+.gg-deck-shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.gg-deck-shop-list button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.gg-deck-shop-list button:hover,
+.gg-deck-shop-list button:focus-visible {
+  background: #f8f4fb;
+  outline: none;
+}
+.gg-deck-shop-empty {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  text-align: center;
+}
+.gg-deck-shop-detail {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+}
+.gg-deck-shop-back {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--gg-purple);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.gg-deck-shop-viewlink {
+  font-size: 0.82rem;
+  color: var(--gg-purple);
+  text-decoration: none;
+}
+.gg-deck-shop-viewlink:hover {
+  text-decoration: underline;
 }
 
 /* ---- Layout ---- */

@@ -4,6 +4,7 @@ import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import CartDrawer from "./CartDrawer";
 import { Icon } from "./Icon";
+import ShopByDeck from "./ShopByDeck";
 import StorewideSaleBanner from "./StorewideSaleBanner";
 
 // Debounce before we write a keystroke into the URL. This is independent of
@@ -91,6 +92,7 @@ export default function Header() {
             value={searchInput}
             onChange={(e) => handleChange(e.target.value)}
           />
+          <ShopByDeck />
         </div>
 
         <div className="gg-header-actions">
