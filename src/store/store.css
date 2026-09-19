@@ -3464,3 +3464,31 @@
     font-size: .67rem;
   }
 }
+
+
+/* Deck card quantity picker */
+.gg-deck-quantity-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px 8px 9px;
+}
+.gg-deck-quantity-picker .gg-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 7px 4px;
+  justify-content: center;
+}
+@media (max-width: 520px) {
+  .gg-deck-quantity-picker {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    padding: 3px 6px 8px;
+  }
+  .gg-deck-quantity-picker .gg-btn {
+    min-height: 44px;
+    padding-inline: 2px;
+    font-size: .82rem;
+  }
+}
