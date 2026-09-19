@@ -81,7 +81,25 @@ type ResolvedCard = {
   commander_legal: boolean | null;
 };
 
-function parseDecklist(text: string): ParsedCard[] {
+const MTG_FORMATS = [
+  { value: "commander", label: "Commander", maxCopies: 1, deckSize: "100 cards" },
+  { value: "standard", label: "Standard", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "pioneer", label: "Pioneer", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "modern", label: "Modern", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "legacy", label: "Legacy", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "vintage", label: "Vintage", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "pauper", label: "Pauper", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "brawl", label: "Brawl", maxCopies: 1, deckSize: "100 cards" },
+  { value: "historic", label: "Historic", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "timeless", label: "Timeless", maxCopies: 4, deckSize: "60+ cards" },
+  { value: "freeform", label: "Freeform", maxCopies: 99, deckSize: "40+ cards" },
+] as const;
+
+function formatMaxCopies(format: string): number {
+  return MTG_FORMATS.find((item) => item.value === format)?.maxCopies ?? 4;
+}
+
+function parseDecklist(text: string, maxCopies = 99): ParsedCard[] {
   const lines = text.replace(/\r/g, "").split("\n");
   const out: ParsedCard[] = [];
   let section = "mainboard";
@@ -136,14 +154,14 @@ function parseDecklist(text: string): ParsedCard[] {
       .trim();
 
     if (!name) continue;
-    out.push({ name, quantity: Math.max(1, Math.min(quantity || 1, 99)), section });
+    out.push({ name, quantity: Math.max(1, Math.min(quantity || 1, maxCopies)), section });
   }
 
   const merged = new Map<string, ParsedCard>();
   for (const card of out) {
     const key = `${card.section}::${card.name.toLowerCase()}`;
     const existing = merged.get(key);
-    if (existing) existing.quantity = Math.min(99, existing.quantity + card.quantity);
+    if (existing) existing.quantity = Math.min(maxCopies, existing.quantity + card.quantity);
     else merged.set(key, { ...card });
   }
   return Array.from(merged.values());
@@ -251,6 +269,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const { user } = useAuth();
   const [name, setName] = useState("");
   const [text, setText] = useState("");
+  const [format, setFormat] = useState("commander");
   const [budget, setBudget] = useState<Deck["budget_mode"]>("balanced");
   const [maxPrice, setMaxPrice] = useState("");
   const [notifyEmail, setNotifyEmail] = useState(true);
@@ -309,7 +328,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   function chooseSuggestion(cardName: string) {
     if (!activeLine) return;
     const textarea = deckTextareaRef.current;
-    const replacement = `${activeLine.prefix}${cardName}\n`;
+    const quantity = Math.max(1, Math.min(Number(activeLine.quantity) || 1, formatMaxCopies(format)));\n    const replacement = `${quantity} ${cardName}\\n`;
     const nextText = text.slice(0, activeLine.start) + replacement + text.slice(activeLine.end);
     const nextCaret = activeLine.start + replacement.length;
 
@@ -337,7 +356,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
 
   async function create() {
     if (!user) return;
-    const parsed = parseDecklist(text);
+    const parsed = parseDecklist(text, formatMaxCopies(format));
     if (!name.trim()) {
       setStatus("Give the deck a name.");
       return;
@@ -374,7 +393,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
         .insert({
           user_id: user.id,
           name: name.trim(),
-          format: "commander",
+          format,
           commander_oracle_id: commanderResolved?.oracle_id ?? null,
           commander_name: commanderResolved?.card_name ?? commanderParsed?.name ?? null,
           budget_mode: budget,
@@ -419,13 +438,28 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
 
   return (
     <div className="gg-dash-card gg-deck-importer">
-      <h3>Import a Commander deck</h3>
+      <h3>Add a Magic deck</h3>
       {status && <div className="gg-alert gg-alert-warn">{status}</div>}
 
       <div className="gg-form-grid">
         <div className="gg-field">
           <label>Deck name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Muldrotha Reanimator" />
+        </div>
+        <div className="gg-field">
+          <label>MTG format</label>
+          <select value={format} onChange={(e) => setFormat(e.target.value)}>
+            {MTG_FORMATS.map((item) => (
+              <option key={item.value} value={item.value}>{item.label} · {item.deckSize}</option>
+            ))}
+          </select>
+          <span className="gg-card-meta">
+            {formatMaxCopies(format) === 1
+              ? "Singleton format: normally 1 copy of each card."
+              : format === "freeform"
+                ? "Freeform supports up to 99 copies per card entry."
+                : `Up to ${formatMaxCopies(format)} copies of each card.`}
+          </span>
         </div>
         <div className="gg-field">
           <label>Recommendation budget</label>
