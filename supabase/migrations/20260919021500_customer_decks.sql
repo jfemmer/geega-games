@@ -344,3 +344,24 @@ as $$
   order by created_at desc limit 50;
 $$;
 grant execute on function public.deck_notification_summary() to authenticated;
+
+
+-- Drain legitimate queued deck-stock emails every five minutes through the
+-- Vercel worker. The worker is idempotent and cannot create arbitrary alerts.
+do $$
+declare existing bigint;
+begin
+  select jobid into existing from cron.job where jobname='geega-deck-stock-email-worker';
+  if existing is not null then
+    perform cron.unschedule(existing);
+  end if;
+end $$;
+
+select cron.schedule(
+  'geega-deck-stock-email-worker',
+  '*/5 * * * *',
+  $$select extensions.http_post(
+      'https://geega-games.vercel.app/api/deck-alerts/process',
+      '{}'::jsonb
+    );$$
+);
