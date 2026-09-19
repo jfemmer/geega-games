@@ -406,7 +406,9 @@ function DeckDetail({ deckId }: { deckId: string }) {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<DeckCard[]>([]);
   const [matches, setMatches] = useState<InventoryMatch[]>([]);
+  const [cardImages, setCardImages] = useState<Record<string, string>>({});
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [enlargedCard, setEnlargedCard] = useState<{ name: string; imageUrl: string } | null>(null);
   const [tab, setTab] = useState<"deck" | "missing" | "suggestions" | "combos">("deck");
   const [loading, setLoading] = useState(true);
   const [addingAll, setAddingAll] = useState(false);
@@ -423,7 +425,24 @@ function DeckDetail({ deckId }: { deckId: string }) {
     ]);
     setDeck((deckRow as Deck | null) ?? null);
     setCards((cardRows ?? []) as DeckCard[]);
-    setMatches((matchRows ?? []) as InventoryMatch[]);
+    const nextMatches = (matchRows ?? []) as InventoryMatch[];
+    setMatches(nextMatches);
+
+    const nextImages: Record<string, string> = {};
+    for (const match of nextMatches) {
+      if (match.image_url) nextImages[match.deck_card_id] = match.image_url;
+    }
+
+    const missingImageCards = ((cardRows ?? []) as DeckCard[]).filter(
+      (card) => !nextImages[card.id] && card.oracle_id,
+    );
+    if (missingImageCards.length) {
+      const { data: imageRows } = await db.rpc("deck_card_images", { p_deck_id: deckId });
+      for (const row of imageRows ?? []) {
+        if (row.image_url) nextImages[row.deck_card_id] = row.image_url;
+      }
+    }
+    setCardImages(nextImages);
     setRecommendations((recRows ?? []) as Recommendation[]);
     setLoading(false);
   }
@@ -507,30 +526,43 @@ function DeckDetail({ deckId }: { deckId: string }) {
       </div>
 
       {tab === "deck" && (
-        <div className="gg-deck-cardlist">
+        <div className="gg-deck-visual-list">
           {cards.map((card) => {
             const match = matchByCard.get(card.id);
+            const imageUrl = cardImages[card.id] ?? match?.image_url ?? null;
             return (
-              <div className="gg-deck-row" key={card.id}>
-                <div className="gg-deck-row__main">
-                  <strong>{card.quantity}× {card.card_name}</strong>
-                  <span className="gg-card-meta">{card.section}</span>
-                </div>
-                <div className="gg-deck-row__state">
-                  {card.owned ? (
-                    <span className="gg-badge">Owned</span>
-                  ) : match?.inventory_item_id ? (
-                    <>
-                      <span className="gg-badge">In stock · {formatCents(match.price_cents ?? 0)}</span>
-                      <button className="gg-btn gg-btn-sm" onClick={() => void addItem(match.inventory_item_id!, 1)}>Add</button>
-                    </>
-                  ) : (
-                    <span className="gg-badge gg-badge-foil">Watching</span>
-                  )}
-                  <label className="gg-check gg-deck-owned">
-                    <input type="checkbox" checked={card.owned} onChange={() => void toggleOwned(card)} />
-                    I own this
-                  </label>
+              <div className="gg-deck-visual-row" key={card.id}>
+                <button
+                  type="button"
+                  className={`gg-deck-card-thumb${imageUrl ? "" : " gg-deck-card-thumb--empty"}`}
+                  onClick={() => imageUrl && setEnlargedCard({ name: card.card_name, imageUrl })}
+                  disabled={!imageUrl}
+                  aria-label={imageUrl ? `Enlarge ${card.card_name}` : `No image available for ${card.card_name}`}
+                >
+                  {imageUrl ? <img src={imageUrl} alt="" loading="lazy" /> : <span>?</span>}
+                </button>
+
+                <div className="gg-deck-visual-row__content">
+                  <div className="gg-deck-row__main">
+                    <strong>{card.quantity}× {card.card_name}</strong>
+                    <span className="gg-card-meta">{card.section}</span>
+                  </div>
+                  <div className="gg-deck-row__state">
+                    {card.owned ? (
+                      <span className="gg-badge">Owned</span>
+                    ) : match?.inventory_item_id ? (
+                      <>
+                        <span className="gg-badge">In stock · {formatCents(match.price_cents ?? 0)}</span>
+                        <button className="gg-btn gg-btn-sm" onClick={() => void addItem(match.inventory_item_id!, 1)}>Add</button>
+                      </>
+                    ) : (
+                      <span className="gg-badge gg-badge-foil">Watching</span>
+                    )}
+                    <label className="gg-check gg-deck-owned">
+                      <input type="checkbox" checked={card.owned} onChange={() => void toggleOwned(card)} />
+                      I own this
+                    </label>
+                  </div>
                 </div>
               </div>
             );
@@ -556,6 +588,16 @@ function DeckDetail({ deckId }: { deckId: string }) {
 
       {tab === "suggestions" && (
         <Suggestions recommendations={recommendations} addItem={addItem} />
+      )}
+
+      {enlargedCard && (
+        <div className="gg-card-lightbox" role="presentation" onMouseDown={() => setEnlargedCard(null)}>
+          <div className="gg-card-lightbox__dialog" role="dialog" aria-modal="true" aria-label={enlargedCard.name} onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="gg-card-lightbox__close" onClick={() => setEnlargedCard(null)} aria-label="Close enlarged card">×</button>
+            <img src={enlargedCard.imageUrl} alt={enlargedCard.name} />
+            <strong>{enlargedCard.name}</strong>
+          </div>
+        </div>
       )}
 
       {tab === "combos" && (
