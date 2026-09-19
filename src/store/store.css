@@ -2786,3 +2786,53 @@
     justify-content: center;
   }
 }
+
+
+/* Mobile account section selector */
+.gg-account-mobile-nav {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .gg-account {
+    display: block;
+  }
+  .gg-account-nav {
+    display: none;
+  }
+  .gg-account-mobile-nav {
+    display: grid;
+    gap: .35rem;
+    margin-bottom: 1rem;
+  }
+  .gg-account-mobile-nav label {
+    font-size: .7rem;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: .065em;
+    text-transform: uppercase;
+    color: #76508f;
+  }
+  .gg-account-mobile-nav select {
+    width: 100%;
+    min-height: 46px;
+    padding: 0 2.5rem 0 .85rem;
+    border: 1px solid rgba(102, 51, 153, .2);
+    border-radius: 11px;
+    background: #fff;
+    color: #261d2c;
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(34,15,48,.04);
+  }
+  .gg-account-main {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .gg-account-mobile-nav {
+    margin-bottom: .8rem;
+  }
+}
