@@ -300,6 +300,19 @@ export function InventoryPage({
       render: (r) => formatCents(r.priceCents),
     },
     {
+      key: "placement",
+      header: "Placement",
+      secondary: true,
+      render: (r) =>
+        r.isDeal ? (
+          <Badge tone="purple">
+            {r.dealSource === "aged_inventory" ? "Auto deal" : "Deals"}
+          </Badge>
+        ) : (
+          <span className="gg-muted">Main store</span>
+        ),
+    },
+    {
       key: "status",
       header: "Status",
       secondary: true,
@@ -484,7 +497,7 @@ export function InventoryPage({
         )}
 
         {inv.loading ? (
-          <TableSkeleton rows={8} cols={7} />
+          <TableSkeleton rows={8} cols={8} />
         ) : inv.error ? (
           <ErrorState message="Could not load inventory." onRetry={inv.reload} />
         ) : rows.length === 0 ? (
