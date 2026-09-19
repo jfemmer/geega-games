@@ -15,6 +15,7 @@ import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { BuyingLeadsPage } from "./pages/BuyingLeadsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
+import { StorewideSalePage } from "./pages/StorewideSalePage";
 import "./admin.css";
 
 // The dashboard itself is only rendered once AdminAuthGate confirms a signed-in
@@ -80,6 +81,8 @@ function AdminDashboard() {
         return <UsersPage query={query} />;
       case "trends":
         return <TrendsPage />;
+      case "sale":
+        return <StorewideSalePage />;
       case "overview":
       default:
         return <OverviewPage onNavigate={navigate} />;
