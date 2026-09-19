@@ -1380,30 +1380,42 @@ function NotificationToggle({
 
 function NotificationsSection() {
   const { user } = useAuth();
+  const accountDb = supabase as any;
   const [shipping, setShipping] = useState<NotificationPrefs>({ enabled: false, byEmail: true, byText: false });
   const [sellSubmission, setSellSubmission] = useState<NotificationPrefs>({
     enabled: false,
     byEmail: true,
     byText: false,
   });
+  const [deckAlerts, setDeckAlerts] = useState<Array<{
+    id: string;
+    card_name: string;
+    inventory_item_id: string | null;
+    deck_names: string[];
+    created_at: string;
+    read_at: string | null;
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<"shipping" | "sell" | null>(null);
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("profiles")
-      .select("shipping_notifications, sell_submission_notifications")
-      .eq("id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setShipping(toPrefs(data.shipping_notifications));
-          setSellSubmission(toPrefs(data.sell_submission_notifications));
-        }
-        setLoading(false);
-      });
+    Promise.all([
+      supabase
+        .from("profiles")
+        .select("shipping_notifications, sell_submission_notifications")
+        .eq("id", user.id)
+        .maybeSingle(),
+      accountDb.rpc("deck_notification_summary"),
+    ]).then(([profileRes, alertsRes]) => {
+      if (profileRes.data) {
+        setShipping(toPrefs(profileRes.data.shipping_notifications));
+        setSellSubmission(toPrefs(profileRes.data.sell_submission_notifications));
+      }
+      setDeckAlerts((alertsRes.data ?? []) as typeof deckAlerts);
+      setLoading(false);
+    });
   }, [user]);
 
   async function updateShipping(enabled: boolean) {
@@ -1432,6 +1444,15 @@ function NotificationsSection() {
     setSaving(null);
     if (error) setStatus({ text: error.message, error: true });
     else setSellSubmission(next);
+  }
+
+  async function markDeckAlertRead(id: string) {
+    await accountDb
+      .from("deck_stock_notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("user_id", user?.id);
+    setDeckAlerts((rows) => rows.filter((r) => r.id !== id));
   }
 
   if (loading) return <p>Loading your notification preferences…</p>;
@@ -1464,6 +1485,45 @@ function NotificationsSection() {
         These are off by default for new accounts. Turning them off does not affect your
         order confirmation or sell submission confirmation receipts — those always send.
       </p>
+
+      <div className="gg-deck-alerts">
+        <div className="gg-deck-alerts__head">
+          <h3>Deck restock alerts</h3>
+          <Link to="/account/decks" className="gg-btn gg-btn-ghost gg-btn-sm">
+            Manage decks
+          </Link>
+        </div>
+        {deckAlerts.length === 0 ? (
+          <p className="gg-card-meta">No unread deck restock alerts.</p>
+        ) : (
+          deckAlerts.map((alert) => (
+            <div className="gg-deck-alert" key={alert.id}>
+              <div>
+                <strong>{alert.card_name} is available</strong>
+                <p className="gg-card-meta">
+                  {alert.deck_names.length
+                    ? `Watching for ${alert.deck_names.join(", ")}`
+                    : "A card from one of your saved decks is back in stock."}
+                </p>
+              </div>
+              <div className="gg-deck-alert__actions">
+                <Link
+                  to={`/shop?q=${encodeURIComponent(alert.card_name)}`}
+                  className="gg-btn gg-btn-sm"
+                >
+                  View card
+                </Link>
+                <button
+                  className="gg-btn gg-btn-ghost gg-btn-sm"
+                  onClick={() => void markDeckAlertRead(alert.id)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
