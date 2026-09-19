@@ -1984,90 +1984,205 @@
 
 /* ---- Storewide Sale Banner ---- */
 .gg-store-sale {
-  border-top: 1px solid rgba(255,255,255,.08);
-  border-bottom: 1px solid rgba(255,255,255,.12);
-  background:
-    linear-gradient(90deg, rgba(124,0,230,.92), rgba(168,0,255,.96));
+  position: relative;
+  overflow: hidden;
   color: #fff;
+  border-top: 1px solid rgba(255,255,255,.06);
+  border-bottom: 1px solid rgba(173,100,255,.28);
+  background:
+    linear-gradient(180deg, rgba(18,10,27,.98), rgba(9,5,14,.99));
+}
+.gg-store-sale::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(420px 110px at 15% 50%, rgba(157,0,255,.18), transparent 70%),
+    radial-gradient(360px 120px at 85% 50%, rgba(102,51,153,.15), transparent 72%);
 }
 .gg-store-sale__inner {
-  max-width: 1200px;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: .55rem 1rem;
-  display: grid;
-  grid-template-columns: auto minmax(0,1fr) auto auto;
+  min-height: 58px;
+  padding: .62rem clamp(1rem, 3vw, 3.5rem);
+  display: flex;
   align-items: center;
-  gap: .8rem 1rem;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+.gg-store-sale__lead {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+}
+.gg-store-sale__eyebrow {
+  color: #c9a7ea;
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.gg-store-sale__message {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: .7rem;
+  flex-wrap: wrap;
+}
+.gg-store-sale__message strong {
+  color: #fff;
+  font-size: .95rem;
+  font-weight: 750;
+  letter-spacing: .01em;
+}
+.gg-store-sale__message > span {
+  color: rgba(255,255,255,.68);
+  font-size: .8rem;
+}
+.gg-store-sale__meta {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex: none;
 }
 .gg-store-sale__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  padding: .25rem .55rem;
-  border-radius: 999px;
-  background: #fff;
-  color: #6f00c9;
-  font-size: .72rem;
-  font-weight: 900;
-  letter-spacing: .04em;
-}
-.gg-store-sale__message {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: .55rem;
-  flex-wrap: wrap;
-  font-size: .83rem;
-}
-.gg-store-sale__message strong {
-  font-size: .9rem;
-}
-.gg-store-sale__message > span {
-  color: rgba(255,255,255,.84);
+  padding: .24rem .58rem;
+  border: 1px solid rgba(197,139,255,.38);
+  border-radius: 7px;
+  background: rgba(124,0,230,.16);
+  color: #e4c8ff;
+  font-size: .69rem;
+  font-weight: 850;
+  letter-spacing: .045em;
 }
 .gg-store-sale__timer {
   display: flex;
   align-items: baseline;
   gap: .35rem;
+  padding-left: .8rem;
+  border-left: 1px solid rgba(255,255,255,.11);
+  color: rgba(255,255,255,.55);
+  font-size: .68rem;
   white-space: nowrap;
-  font-size: .72rem;
-  color: rgba(255,255,255,.8);
 }
 .gg-store-sale__timer strong {
   color: #fff;
-  font-size: .86rem;
+  font-size: .8rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
 }
 .gg-store-sale__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: .3rem .72rem;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 8px;
+  background: rgba(255,255,255,.055);
   color: #fff;
-  font-size: .78rem;
-  font-weight: 800;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  font-size: .72rem;
+  font-weight: 700;
+  text-decoration: none;
   white-space: nowrap;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
 }
 .gg-store-sale__link:hover {
-  color: #fff6c9;
+  color: #fff;
+  background: rgba(157,0,255,.14);
+  border-color: rgba(197,139,255,.34);
+  transform: translateY(-1px);
+}
+.gg-store-sale__link:focus-visible {
+  outline: 2px solid #b96cff;
+  outline-offset: 2px;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 760px) {
   .gg-store-sale__inner {
-    grid-template-columns: auto 1fr;
-    gap: .35rem .65rem;
-    padding: .5rem .75rem;
+    min-height: 0;
+    padding: .58rem .75rem;
+    gap: .65rem;
+    align-items: flex-start;
+  }
+  .gg-store-sale__lead {
+    flex: 1 1 auto;
+    display: block;
+  }
+  .gg-store-sale__eyebrow {
+    display: block;
+    margin-bottom: .15rem;
+    font-size: .58rem;
   }
   .gg-store-sale__message {
     display: block;
+    line-height: 1.2;
+  }
+  .gg-store-sale__message strong {
+    display: block;
+    font-size: .84rem;
   }
   .gg-store-sale__message > span {
-    display: none;
+    display: block;
+    margin-top: .14rem;
+    font-size: .7rem;
+  }
+  .gg-store-sale__meta {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: .34rem .45rem;
+    justify-items: end;
+  }
+  .gg-store-sale__badge {
+    grid-column: 1;
+    min-height: 25px;
+    padding: .18rem .45rem;
+    font-size: .62rem;
   }
   .gg-store-sale__timer {
-    grid-column: 1 / 2;
+    grid-column: 2;
+    padding-left: .45rem;
+    font-size: .61rem;
+  }
+  .gg-store-sale__timer strong {
+    font-size: .7rem;
   }
   .gg-store-sale__link {
-    grid-column: 2 / 3;
-    justify-self: end;
+    grid-column: 1 / -1;
+    min-height: 27px;
+    padding: .2rem .5rem;
+    font-size: .64rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .gg-store-sale__inner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .gg-store-sale__lead {
+    text-align: center;
+  }
+  .gg-store-sale__meta {
+    width: 100%;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .gg-store-sale__badge {
+    justify-self: start;
+  }
+  .gg-store-sale__link {
+    width: 100%;
   }
 }
