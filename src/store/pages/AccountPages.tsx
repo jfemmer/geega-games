@@ -435,11 +435,11 @@ function DashboardSection() {
   const greetName = firstName || user?.email?.split("@")[0] || "there";
 
   return (
-    <div>
-      <p style={{ marginTop: 0, color: "#555" }}>
-        Welcome back, {greetName}.{" "}
-        {user?.email && <span className="gg-card-meta">({user.email})</span>}
-      </p>
+    <div className="gg-account-dashboard">
+      <div className="gg-dashboard-welcome">
+        <strong>Welcome back, {greetName}.</strong>
+        {user?.email && <span className="gg-card-meta">{user.email}</span>}
+      </div>
 
       {loading ? (
         <p>Loading your account…</p>
@@ -449,16 +449,8 @@ function DashboardSection() {
             <h2>Current order</h2>
             {order ? (
               <>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "0.6rem",
-                  }}
-                >
-                  <div>
+                <div className="gg-dashboard-order">
+                  <div className="gg-dashboard-order__info">
                     <strong>{orderNumber(order.id)}</strong>{" "}
                     <span className="gg-card-meta">
                       placed {new Date(order.created_at).toLocaleDateString()}
@@ -467,7 +459,7 @@ function DashboardSection() {
                       <StatusBadge status={order.status} kind="order" />
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
+                  <div className="gg-dashboard-order__action">
                     <div className="gg-price">{formatCents(order.total_cents)}</div>
                     <Link to={`/account/orders/${order.id}`} className="gg-btn gg-btn-ghost gg-btn-sm">
                       View order
