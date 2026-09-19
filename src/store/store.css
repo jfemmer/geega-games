@@ -3396,3 +3396,71 @@
   flex-direction: column;
   width: 100%;
 }
+
+
+/* Polished deck autocomplete popup */
+.gg-deck-autocomplete--floating {
+  background: rgba(17, 14, 22, .98);
+  border: 1px solid rgba(145, 86, 210, .38);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.32), 0 0 0 1px rgba(102,51,153,.08);
+  backdrop-filter: blur(14px);
+}
+.gg-deck-autocomplete__option {
+  border-radius: 7px;
+  padding: 7px 10px;
+  min-height: 44px;
+}
+.gg-deck-autocomplete__option + .gg-deck-autocomplete__option {
+  border-top: 0;
+}
+.gg-deck-autocomplete__option strong {
+  display: block;
+  color: #f7f3fb;
+  font-size: .88rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gg-deck-autocomplete__option small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(224,214,235,.68);
+  font-size: .68rem;
+  font-weight: 450;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gg-deck-autocomplete__option:hover,
+.gg-deck-autocomplete__option:active {
+  background: linear-gradient(90deg, rgba(102,51,153,.30), rgba(102,51,153,.12));
+}
+.gg-deck-autocomplete__loading {
+  padding: 10px 12px;
+  color: rgba(235,226,244,.72);
+  font-size: .76rem;
+  font-weight: 550;
+  letter-spacing: .01em;
+}
+@media (max-width: 520px) {
+  .gg-deck-autocomplete--floating {
+    padding: 3px;
+    border-radius: 9px;
+  }
+  .gg-deck-autocomplete__option {
+    min-height: 46px;
+    padding: 7px 9px;
+  }
+  .gg-deck-autocomplete__option strong {
+    font-size: .9rem;
+  }
+  .gg-deck-autocomplete__option small {
+    font-size: .67rem;
+  }
+}
