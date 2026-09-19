@@ -51,25 +51,97 @@ const NAV_ITEMS: { to: string; label: string }[] = [
 
 function AccountNav({ path }: { path: string }) {
   const { navigate } = useRouter();
-  const activeItem = NAV_ITEMS.find((item) => item.to === path) ?? NAV_ITEMS[0];
+  const { signOut } = useAuth();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const primary = [
+    { to: "/account", label: "Home", icon: "⌂" },
+    { to: "/account/orders", label: "Orders", icon: "▤" },
+    { to: "/account/decks", label: "Decks", icon: "◇" },
+  ];
+  const primaryPaths = new Set(primary.map((item) => item.to));
+  const secondary = NAV_ITEMS.filter((item) => !primaryPaths.has(item.to));
+  const moreActive = secondary.some((item) => item.to === path);
+
+  function go(to: string) {
+    setMoreOpen(false);
+    navigate(to);
+  }
 
   return (
     <>
-      <div className="gg-account-mobile-nav">
-        <label htmlFor="gg-account-section">Account section</label>
-        <select
-          id="gg-account-section"
-          value={activeItem.to}
-          onChange={(event) => navigate(event.target.value)}
-          aria-label="Choose account section"
+      <div className="gg-account-mobile-tabs" aria-label="Account navigation">
+        {primary.map((item) => (
+          <button
+            key={item.to}
+            type="button"
+            className={path === item.to ? "gg-active" : undefined}
+            aria-current={path === item.to ? "page" : undefined}
+            onClick={() => go(item.to)}
+          >
+            <span className="gg-account-mobile-tabs__icon" aria-hidden="true">{item.icon}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className={moreOpen || moreActive ? "gg-active" : undefined}
+          aria-expanded={moreOpen}
+          aria-controls="gg-account-more-sheet"
+          onClick={() => setMoreOpen(true)}
         >
-          {NAV_ITEMS.map((item) => (
-            <option key={item.to} value={item.to}>
-              {item.label}
-            </option>
-          ))}
-        </select>
+          <span className="gg-account-mobile-tabs__icon" aria-hidden="true">•••</span>
+          <span>More</span>
+        </button>
       </div>
+
+      {moreOpen && (
+        <div className="gg-account-sheet-layer" role="presentation" onMouseDown={() => setMoreOpen(false)}>
+          <section
+            id="gg-account-more-sheet"
+            className="gg-account-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="More account options"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="gg-account-sheet__handle" aria-hidden="true" />
+            <div className="gg-account-sheet__head">
+              <div>
+                <strong>Account</strong>
+                <span>More options</span>
+              </div>
+              <button type="button" className="gg-account-sheet__close" onClick={() => setMoreOpen(false)} aria-label="Close account menu">×</button>
+            </div>
+
+            <div className="gg-account-sheet__links">
+              {secondary.map((item) => (
+                <button
+                  key={item.to}
+                  type="button"
+                  className={path === item.to ? "gg-active" : undefined}
+                  onClick={() => go(item.to)}
+                >
+                  <span>{item.label}</span>
+                  <span aria-hidden="true">›</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="gg-account-sheet__signout"
+              onClick={async () => {
+                await signOut();
+                setMoreOpen(false);
+                navigate("/");
+              }}
+            >
+              Sign out
+            </button>
+          </section>
+        </div>
+      )}
 
       <nav className="gg-account-nav" aria-label="Account">
         {NAV_ITEMS.map((item) => (
