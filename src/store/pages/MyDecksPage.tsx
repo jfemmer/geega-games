@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
@@ -259,8 +259,10 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const [suggestions, setSuggestions] = useState<Array<{ card_name: string; image_url: string | null; type_line: string | null }>>([]);
   const [activeLine, setActiveLine] = useState<{ start: number; end: number; prefix: string; quantity: string } | null>(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
+  const suggestTimer = useRef<number | null>(null);
+  const suggestRequest = useRef(0);
 
-  async function updateCardSuggestions(value: string, caret: number) {
+  function updateCardSuggestions(value: string, caret: number) {
     setText(value);
     const start = value.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
     const nextBreak = value.indexOf("\n", caret);
@@ -268,6 +270,10 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     const line = value.slice(start, end);
     const match = line.match(/^\s*(?:(\d{1,2})\s*[xX]?\s+)?(.{2,})$/);
     const query = match?.[2]?.trim() ?? "";
+
+    if (suggestTimer.current) window.clearTimeout(suggestTimer.current);
+    const requestId = ++suggestRequest.current;
+
     if (!query || ["commander", "mainboard", "main deck", "deck", "maindeck", "sideboard", "maybeboard", "considering"].includes(query.toLowerCase())) {
       setSuggestions([]);
       setActiveLine(null);
@@ -276,21 +282,14 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     }
 
     setActiveLine({ start, end, prefix: line.slice(0, line.indexOf(query)), quantity: match?.[1] ?? "" });
-    setSuggestBusy(true);
-    const { data, error } = await db.rpc("search_deck_card_names", { p_query: query, p_limit: 8 });
+    setSuggestBusy(query.length >= 2);
 
-    // Ignore an older response if the user has already typed more characters.
-    const textarea = document.querySelector<HTMLTextAreaElement>(".gg-deck-importer textarea");
-    const liveCaret = textarea?.selectionStart ?? 0;
-    const liveValue = textarea?.value ?? "";
-    const liveStart = liveValue.lastIndexOf("\n", Math.max(0, liveCaret - 1)) + 1;
-    const liveEndBreak = liveValue.indexOf("\n", liveCaret);
-    const liveEnd = liveEndBreak === -1 ? liveValue.length : liveEndBreak;
-    const liveMatch = liveValue.slice(liveStart, liveEnd).match(/^\s*(?:(\d{1,2})\s*[xX]?\s+)?(.{2,})$/);
-    if ((liveMatch?.[2]?.trim() ?? "") !== query) return;
-
-    setSuggestions(error ? [] : ((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>));
-    setSuggestBusy(false);
+    suggestTimer.current = window.setTimeout(async () => {
+      const { data, error } = await db.rpc("search_deck_card_names", { p_query: query, p_limit: 8 });
+      if (requestId !== suggestRequest.current) return;
+      setSuggestions(error ? [] : ((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>));
+      setSuggestBusy(false);
+    }, 140);
   }
 
   function chooseSuggestion(cardName: string) {
