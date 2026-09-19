@@ -3347,3 +3347,28 @@
     padding: .4rem .55rem;
   }
 }
+
+
+/* Position deck autocomplete beside the active textarea line */
+.gg-deck-textarea-wrap {
+  position: relative;
+}
+.gg-deck-textarea-wrap textarea {
+  display: block;
+  width: 100%;
+}
+.gg-deck-autocomplete--floating {
+  position: absolute;
+  width: min(calc(100% - 16px), 440px);
+  max-height: 205px;
+  margin: 0;
+  z-index: 30;
+  overflow-y: auto;
+  box-shadow: 0 10px 26px rgba(25,12,35,.18);
+}
+@media (max-width: 520px) {
+  .gg-deck-autocomplete--floating {
+    width: calc(100% - 16px);
+    max-height: 180px;
+  }
+}
