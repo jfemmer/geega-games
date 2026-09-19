@@ -291,8 +291,15 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     const nextBreak = value.indexOf("\n", caret);
     const end = nextBreak === -1 ? value.length : nextBreak;
     const line = value.slice(start, end);
-    const match = line.match(/^\s*(?:(\d{1,2})\s*[xX]?\s+)?(.{2,})$/);
-    const query = match?.[2]?.trim() ?? "";
+    // (.+) rather than (.{2,}): the minimum-length check happens below, on
+    // just the name portion. Requiring 2+ chars inside this same capture
+    // group let the optional quantity-prefix group lose the backtracking
+    // race whenever only 1 char of the name had been typed so far (e.g.
+    // "1 X"), so the whole line — digit and all — fell through to the name
+    // capture instead of splitting into quantity="1", name="X".
+    const match = line.match(/^\s*(?:(\d{1,2})\s*[xX]?\s+)?(.+)$/);
+    const rawQuery = match?.[2]?.trim() ?? "";
+    const query = rawQuery.length >= 2 ? rawQuery : "";
 
     if (suggestTimer.current) window.clearTimeout(suggestTimer.current);
     const requestId = ++suggestRequest.current;
@@ -322,9 +329,10 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     suggestTimer.current = window.setTimeout(async () => {
       const { data, error } = await db.rpc("search_deck_card_names", { p_query: query, p_limit: 8 });
       if (requestId !== suggestRequest.current) return;
+      if (error) console.error("search_deck_card_names failed:", error);
       setSuggestions(error ? [] : ((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>));
       setSuggestBusy(false);
-    }, 140);
+    }, 100);
   }
 
   function insertChosenCard(cardName: string, quantity: number) {
@@ -515,10 +523,12 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           }}
           placeholder={"Commander\n1 Muldrotha, the Gravetide\n\nMainboard\n1 Sol Ring\n1 Counterspell\n1 Sakura-Tribe Elder"}
         />
-        {(suggestions.length > 0 || suggestBusy) && (
+        {activeLine && !quantityPick && (
           <div className="gg-deck-autocomplete gg-deck-autocomplete--floating" style={{ top: suggestPosition.top, left: suggestPosition.left }} role="listbox" aria-label="Matching Magic cards">
             {suggestBusy && suggestions.length === 0 ? (
               <div className="gg-deck-autocomplete__loading">Finding cards…</div>
+            ) : suggestions.length === 0 ? (
+              <div className="gg-deck-autocomplete__loading">No matching cards found.</div>
             ) : suggestions.map((card) => (
               <div
                 key={card.card_name}
