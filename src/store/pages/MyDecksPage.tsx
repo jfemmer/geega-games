@@ -427,7 +427,6 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
               <div className="gg-deck-autocomplete__loading">Finding cards…</div>
             ) : suggestions.map((card) => (
               <button key={card.card_name} type="button" role="option" onClick={() => chooseSuggestion(card.card_name)}>
-                {card.image_url ? <img src={card.image_url} alt="" loading="lazy" /> : <span className="gg-deck-autocomplete__placeholder" />}
                 <span>
                   <strong>{card.card_name}</strong>
                   {card.type_line && <small>{card.type_line}</small>}
