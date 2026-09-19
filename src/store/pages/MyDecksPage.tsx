@@ -594,6 +594,23 @@ function DeckDetail({ deckId }: { deckId: string }) {
     setCards((rows) => rows.map((r) => (r.id === card.id ? { ...r, owned: !r.owned } : r)));
   }
 
+  async function updateCardQuantity(card: DeckCard, nextQuantity: number) {
+    if (!deck) return;
+    const maxCopies = formatMaxCopies(deck.format);
+    const quantity = Math.max(1, Math.min(Number(nextQuantity) || 1, maxCopies));
+    if (quantity === card.quantity) return;
+    const { error } = await db
+      .from("customer_deck_cards")
+      .update({ quantity, updated_at: new Date().toISOString() })
+      .eq("id", card.id)
+      .eq("deck_id", deckId);
+    if (error) {
+      setStatus("Could not update that card quantity.");
+      return;
+    }
+    setCards((rows) => rows.map((row) => (row.id === card.id ? { ...row, quantity } : row)));
+  }
+
   async function addAvailableToCart() {
     setAddingAll(true);
     setStatus(null);
@@ -677,7 +694,23 @@ function DeckDetail({ deckId }: { deckId: string }) {
 
                 <div className="gg-deck-visual-row__content">
                   <div className="gg-deck-row__main">
-                    <strong>{card.quantity}× {card.card_name}</strong>
+                    <div className="gg-deck-card-title">
+                      {formatMaxCopies(deck.format) > 1 ? (
+                        <select
+                          className="gg-deck-quantity"
+                          value={card.quantity}
+                          aria-label={`Quantity of ${card.card_name}`}
+                          onChange={(event) => void updateCardQuantity(card, Number(event.target.value))}
+                        >
+                          {Array.from({ length: formatMaxCopies(deck.format) }, (_, index) => index + 1).map((quantity) => (
+                            <option key={quantity} value={quantity}>{quantity}×</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="gg-deck-quantity-static">1×</span>
+                      )}
+                      <strong>{card.card_name}</strong>
+                    </div>
                     <span className="gg-card-meta">{card.section}</span>
                   </div>
                   <div className="gg-deck-row__state">
