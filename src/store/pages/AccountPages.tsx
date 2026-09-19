@@ -51,20 +51,40 @@ const NAV_ITEMS: { to: string; label: string }[] = [
 
 function AccountNav({ path }: { path: string }) {
   const { navigate } = useRouter();
+  const activeItem = NAV_ITEMS.find((item) => item.to === path) ?? NAV_ITEMS[0];
+
   return (
-    <nav className="gg-account-nav" aria-label="Account">
-      {NAV_ITEMS.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          className={path === item.to ? "gg-active" : undefined}
-          aria-current={path === item.to ? "page" : undefined}
+    <>
+      <div className="gg-account-mobile-nav">
+        <label htmlFor="gg-account-section">Account section</label>
+        <select
+          id="gg-account-section"
+          value={activeItem.to}
+          onChange={(event) => navigate(event.target.value)}
+          aria-label="Choose account section"
         >
-          {item.label}
-        </Link>
-      ))}
-      <SignOutRow navigate={navigate} />
-    </nav>
+          {NAV_ITEMS.map((item) => (
+            <option key={item.to} value={item.to}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <nav className="gg-account-nav" aria-label="Account">
+        {NAV_ITEMS.map((item) => (
+          <Link
+            key={item.to}
+            to={item.to}
+            className={path === item.to ? "gg-active" : undefined}
+            aria-current={path === item.to ? "page" : undefined}
+          >
+            {item.label}
+          </Link>
+        ))}
+        <SignOutRow navigate={navigate} />
+      </nav>
+    </>
   );
 }
 
