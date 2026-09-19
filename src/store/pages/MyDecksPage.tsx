@@ -271,12 +271,25 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     if (!query || ["commander", "mainboard", "main deck", "deck", "maindeck", "sideboard", "maybeboard", "considering"].includes(query.toLowerCase())) {
       setSuggestions([]);
       setActiveLine(null);
+      setSuggestBusy(false);
       return;
     }
+
     setActiveLine({ start, end, prefix: line.slice(0, line.indexOf(query)), quantity: match?.[1] ?? "" });
     setSuggestBusy(true);
-    const { data } = await db.rpc("search_deck_card_names", { p_query: query, p_limit: 8 });
-    setSuggestions((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>);
+    const { data, error } = await db.rpc("search_deck_card_names", { p_query: query, p_limit: 8 });
+
+    // Ignore an older response if the user has already typed more characters.
+    const textarea = document.querySelector<HTMLTextAreaElement>(".gg-deck-importer textarea");
+    const liveCaret = textarea?.selectionStart ?? 0;
+    const liveValue = textarea?.value ?? "";
+    const liveStart = liveValue.lastIndexOf("\n", Math.max(0, liveCaret - 1)) + 1;
+    const liveEndBreak = liveValue.indexOf("\n", liveCaret);
+    const liveEnd = liveEndBreak === -1 ? liveValue.length : liveEndBreak;
+    const liveMatch = liveValue.slice(liveStart, liveEnd).match(/^\s*(?:(\d{1,2})\s*[xX]?\s+)?(.{2,})$/);
+    if ((liveMatch?.[2]?.trim() ?? "") !== query) return;
+
+    setSuggestions(error ? [] : ((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>));
     setSuggestBusy(false);
   }
 
