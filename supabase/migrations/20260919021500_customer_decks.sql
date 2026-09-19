@@ -360,8 +360,8 @@ end $$;
 select cron.schedule(
   'geega-deck-stock-email-worker',
   '*/5 * * * *',
-  $$select extensions.http_post(
-      'https://geega-games.vercel.app/api/deck-alerts/process',
-      '{}'::jsonb
-    );$$
+  $select status
+    from extensions.http_get(
+      'https://geega-games.vercel.app/api/deck-alerts/process'
+    );$
 );
