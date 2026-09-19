@@ -2439,3 +2439,103 @@ body.gg-printing-label .gg-labelprint-overlay {
   }
   .gg-notif-list { max-height: calc(100dvh - var(--gg-topbar-h) - 90px); }
 }
+
+
+/* Storewide sale admin */
+.gg-sale-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr);
+  gap: 18px;
+  align-items: start;
+}
+.gg-sale-form {
+  display: grid;
+  gap: 16px;
+}
+.gg-sale-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.gg-sale-status {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gg-sale-status h3 {
+  margin: 0;
+  color: var(--gg-text);
+  font-size: 1.05rem;
+}
+.gg-sale-status p {
+  margin: 0;
+  color: var(--gg-text-soft);
+}
+.gg-sale-status__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.gg-sale-status__top > strong {
+  color: var(--gg-brand);
+  font-size: 1.05rem;
+}
+.gg-sale-status__timer {
+  padding: 16px;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  background: var(--gg-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gg-sale-status__timer span {
+  color: var(--gg-text-soft);
+  font-size: .74rem;
+}
+.gg-sale-status__timer strong {
+  color: var(--gg-text);
+  font-size: clamp(1.35rem, 2.3vw, 2rem);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.gg-sale-status__details {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.gg-sale-status__details div {
+  display: grid;
+  gap: 2px;
+}
+.gg-sale-status__details dt {
+  color: var(--gg-text-faint);
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.gg-sale-status__details dd {
+  margin: 0;
+  color: var(--gg-text);
+  font-size: .84rem;
+}
+.gg-sale-status--active .gg-sale-status__timer {
+  border-color: rgba(47,143,91,.25);
+  background: rgba(47,143,91,.06);
+}
+.gg-sale-status--scheduled .gg-sale-status__timer {
+  border-color: rgba(124,0,230,.24);
+  background: var(--gg-brand-tint);
+}
+
+@media (max-width: 900px) {
+  .gg-sale-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .gg-sale-time-grid {
+    grid-template-columns: 1fr;
+  }
+}
