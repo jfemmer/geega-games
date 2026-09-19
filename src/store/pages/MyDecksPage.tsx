@@ -279,7 +279,6 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const [activeLine, setActiveLine] = useState<{ start: number; end: number; prefix: string; quantity: string } | null>(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [quantityPick, setQuantityPick] = useState<{ cardName: string; start: number; end: number } | null>(null);
-  const [freeformQty, setFreeformQty] = useState(5);
   const suggestTimer = useRef<number | null>(null);
   const suggestRequest = useRef(0);
   const deckTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -362,7 +361,6 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     if (maxCopies > 1 && !activeLine.quantity) {
       setSuggestions([]);
       setSuggestBusy(false);
-      setFreeformQty(5);
       setQuantityPick({ cardName, start: activeLine.start, end: activeLine.end });
       return;
     }
@@ -557,58 +555,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
             aria-label={`Choose quantity for ${quantityPick.cardName}`}
           >
             <div className="gg-deck-autocomplete__loading">{quantityPick.cardName} · choose quantity</div>
-            <div className="gg-deck-quantity-picker">
-              {Array.from({ length: Math.min(formatMaxCopies(format), 4) }, (_, index) => index + 1).map((quantity) => (
-                <button
-                  key={quantity}
-                  type="button"
-                  className="gg-btn gg-btn-sm"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    chooseQuantity(quantity);
-                  }}
-                >
-                  {quantity}×
-                </button>
-              ))}
-            </div>
-            {formatMaxCopies(format) > 4 && (
-              <div className="gg-deck-quantity-custom">
-                <button
-                  type="button"
-                  className="gg-btn gg-btn-sm gg-deck-quantity-custom__step"
-                  aria-label="Decrease quantity"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    setFreeformQty((q) => Math.max(5, q - 1));
-                  }}
-                >
-                  −
-                </button>
-                <span className="gg-deck-quantity-custom__value">{freeformQty}×</span>
-                <button
-                  type="button"
-                  className="gg-btn gg-btn-sm gg-deck-quantity-custom__step"
-                  aria-label="Increase quantity"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    setFreeformQty((q) => Math.min(formatMaxCopies(format), q + 1));
-                  }}
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  className="gg-btn gg-btn-sm gg-deck-quantity-custom__add"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    chooseQuantity(freeformQty);
-                  }}
-                >
-                  Add {freeformQty}×
-                </button>
-              </div>
-            )}
+            <QuantityPicker format={format} onPick={chooseQuantity} />
           </div>
         )}
         </div>
@@ -627,6 +574,174 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+// Shared by DeckImporter's paste-decklist flow and DeckDetail's add-card
+// flow. Buttons only (never a native input/select) — onPointerDown +
+// preventDefault keeps the calling surface's focus untouched, which is
+// what avoids the iOS keyboard flashing shut/reopening between choosing a
+// card and choosing its quantity.
+function QuantityPicker({ format, onPick }: { format: string; onPick: (quantity: number) => void }) {
+  const [freeformQty, setFreeformQty] = useState(5);
+  const maxCopies = formatMaxCopies(format);
+  return (
+    <>
+      <div className="gg-deck-quantity-picker">
+        {Array.from({ length: Math.min(maxCopies, 4) }, (_, index) => index + 1).map((quantity) => (
+          <button
+            key={quantity}
+            type="button"
+            className="gg-btn gg-btn-sm"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onPick(quantity);
+            }}
+          >
+            {quantity}×
+          </button>
+        ))}
+      </div>
+      {maxCopies > 4 && (
+        <div className="gg-deck-quantity-custom">
+          <button
+            type="button"
+            className="gg-btn gg-btn-sm gg-deck-quantity-custom__step"
+            aria-label="Decrease quantity"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setFreeformQty((q) => Math.max(5, q - 1));
+            }}
+          >
+            −
+          </button>
+          <span className="gg-deck-quantity-custom__value">{freeformQty}×</span>
+          <button
+            type="button"
+            className="gg-btn gg-btn-sm gg-deck-quantity-custom__step"
+            aria-label="Increase quantity"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setFreeformQty((q) => Math.min(maxCopies, q + 1));
+            }}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className="gg-btn gg-btn-sm gg-deck-quantity-custom__add"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onPick(freeformQty);
+            }}
+          >
+            Add {freeformQty}×
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Standalone search-and-resolve card picker for DeckDetail (adding a card
+// to a saved deck, or fixing one that failed to resolve on import). Unlike
+// DeckImporter's textarea-cursor-tracked popup, this renders as a normal
+// input with its results dropdown in document flow below it — there's no
+// cursor position to preserve here, so a plain input (and the iOS keyboard
+// it brings up while typing) is fine.
+function CardPicker({
+  onPick,
+  placeholder,
+}: {
+  onPick: (card: { card_name: string; oracle_id: string; scryfall_id: string | null; image_url: string | null; type_line: string | null }) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<Array<{ card_name: string; image_url: string | null; type_line: string | null }>>([]);
+  const [busy, setBusy] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const timer = useRef<number | null>(null);
+  const requestId = useRef(0);
+
+  function onChange(value: string) {
+    setQuery(value);
+    if (timer.current) window.clearTimeout(timer.current);
+    const q = value.trim();
+    const id = ++requestId.current;
+    if (q.length < 2) {
+      setSuggestions([]);
+      setBusy(false);
+      return;
+    }
+    setBusy(true);
+    timer.current = window.setTimeout(async () => {
+      const { data, error } = await db.rpc("search_deck_card_names", { p_query: q, p_limit: 8 });
+      if (id !== requestId.current) return;
+      if (error) console.error("search_deck_card_names failed:", error);
+      setSuggestions(error ? [] : ((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>));
+      setBusy(false);
+    }, 150);
+  }
+
+  async function pick(cardName: string) {
+    setSuggestions([]);
+    setQuery("");
+    setResolving(true);
+    const { data, error } = await db.rpc("resolve_deck_card_names", { p_names: [cardName] });
+    setResolving(false);
+    if (error) {
+      console.error("resolve_deck_card_names failed:", error);
+      return;
+    }
+    const resolved = ((data ?? []) as ResolvedCard[])[0];
+    if (resolved?.oracle_id) {
+      onPick({
+        card_name: resolved.card_name ?? cardName,
+        oracle_id: resolved.oracle_id,
+        scryfall_id: resolved.scryfall_id,
+        image_url: resolved.image_url,
+        type_line: resolved.type_line,
+      });
+    }
+  }
+
+  return (
+    <div className="gg-deck-add-card">
+      <input
+        value={query}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder ?? "Search for a card…"}
+        disabled={resolving}
+        autoFocus
+      />
+      {(busy || suggestions.length > 0) && (
+        <div className="gg-deck-autocomplete gg-deck-autocomplete--floating" role="listbox" aria-label="Matching Magic cards">
+          {busy && suggestions.length === 0 ? (
+            <div className="gg-deck-autocomplete__loading">Finding cards…</div>
+          ) : suggestions.length === 0 ? (
+            <div className="gg-deck-autocomplete__loading">No matching cards found.</div>
+          ) : suggestions.map((card) => (
+            <div
+              key={card.card_name}
+              className="gg-deck-autocomplete__option"
+              role="option"
+              tabIndex={-1}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                void pick(card.card_name);
+              }}
+              onTouchStart={(event) => event.preventDefault()}
+            >
+              <span>
+                <strong>{card.card_name}</strong>
+                {card.type_line && <small>{card.type_line}</small>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {resolving && <span className="gg-card-meta">Adding…</span>}
+    </div>
+  );
+}
+
 function DeckDetail({ deckId }: { deckId: string }) {
   const { user } = useAuth();
   const { addItem } = useCart();
@@ -640,6 +755,16 @@ function DeckDetail({ deckId }: { deckId: string }) {
   const [loading, setLoading] = useState(true);
   const [addingAll, setAddingAll] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<"ok" | "warn">("ok");
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [addCardPick, setAddCardPick] = useState<{
+    card_name: string;
+    oracle_id: string;
+    scryfall_id: string | null;
+    image_url: string | null;
+  } | null>(null);
+  const [savingCard, setSavingCard] = useState(false);
+  const [fixingCardId, setFixingCardId] = useState<string | null>(null);
 
   async function load() {
     if (!user) return;
@@ -699,6 +824,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
       .eq("id", card.id)
       .eq("deck_id", deckId);
     if (error) {
+      setStatusTone("warn");
       setStatus("Could not update that card quantity.");
       return;
     }
@@ -716,6 +842,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
         await addItem(match.inventory_item_id, Math.min(card.quantity, match.available_quantity ?? 1));
         added += 1;
       }
+      setStatusTone("ok");
       setStatus(`Added ${added} available deck card${added === 1 ? "" : "s"} to your cart.`);
     } finally {
       setAddingAll(false);
@@ -726,6 +853,86 @@ function DeckDetail({ deckId }: { deckId: string }) {
     if (!window.confirm("Delete this saved deck and its card watches?")) return;
     await db.from("customer_decks").delete().eq("id", deckId);
     window.location.href = "/account/decks";
+  }
+
+  async function addCardToDeck(
+    card: { card_name: string; oracle_id: string; scryfall_id: string | null },
+    quantity: number,
+  ) {
+    if (!user || !deck) return;
+    setSavingCard(true);
+    setStatus(null);
+    const maxCopies = formatMaxCopies(deck.format);
+    // Adding a card already in the deck tops up its quantity rather than
+    // creating a duplicate row, matching how pasting a repeated line in
+    // the initial decklist import merges instead of duplicating.
+    const existing = cards.find((c) => c.oracle_id === card.oracle_id && c.section === "mainboard");
+    const error = existing
+      ? (
+          await db
+            .from("customer_deck_cards")
+            .update({
+              quantity: Math.min(maxCopies, existing.quantity + quantity),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id)
+        ).error
+      : (
+          await db.from("customer_deck_cards").insert({
+            deck_id: deckId,
+            user_id: user.id,
+            oracle_id: card.oracle_id,
+            scryfall_id: card.scryfall_id,
+            card_name: card.card_name,
+            quantity: Math.max(1, Math.min(quantity, maxCopies)),
+            section: "mainboard",
+            owned: false,
+            exact_printing_only: false,
+          })
+        ).error;
+    setSavingCard(false);
+    if (error) {
+      setStatusTone("warn");
+      setStatus(`Could not add ${card.card_name} to this deck.`);
+      return;
+    }
+    setShowAddCard(false);
+    setAddCardPick(null);
+    await load();
+  }
+
+  async function fixCardName(
+    card: DeckCard,
+    resolved: { card_name: string; oracle_id: string; scryfall_id: string | null },
+  ) {
+    setStatus(null);
+    const { error } = await db
+      .from("customer_deck_cards")
+      .update({
+        card_name: resolved.card_name,
+        oracle_id: resolved.oracle_id,
+        scryfall_id: resolved.scryfall_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", card.id);
+    if (error) {
+      setStatusTone("warn");
+      setStatus(`Could not update ${card.card_name}.`);
+      return;
+    }
+    setFixingCardId(null);
+    await load();
+  }
+
+  async function removeCard(card: DeckCard) {
+    if (!window.confirm(`Remove ${card.card_name} from this deck?`)) return;
+    const { error } = await db.from("customer_deck_cards").delete().eq("id", card.id);
+    if (error) {
+      setStatusTone("warn");
+      setStatus(`Could not remove ${card.card_name}.`);
+      return;
+    }
+    setCards((rows) => rows.filter((r) => r.id !== card.id));
   }
 
   if (loading) return <p>Loading deck…</p>;
@@ -747,7 +954,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
         </div>
       </div>
 
-      {status && <div className="gg-alert gg-alert-ok">{status}</div>}
+      {status && <div className={`gg-alert gg-alert-${statusTone}`}>{status}</div>}
 
       <div className="gg-deck-stats">
         <div><strong>{cardCount(cards)}</strong><span>Cards in list</span></div>
@@ -771,6 +978,43 @@ function DeckDetail({ deckId }: { deckId: string }) {
 
       {tab === "deck" && (
         <div className="gg-deck-visual-list">
+          <div className="gg-deck-add-card-toggle">
+            <button
+              type="button"
+              className="gg-btn gg-btn-sm gg-btn-ghost"
+              onClick={() => {
+                setShowAddCard((v) => !v);
+                setAddCardPick(null);
+              }}
+            >
+              {showAddCard ? "Cancel" : "+ Add card"}
+            </button>
+          </div>
+          {showAddCard && (
+            <div className="gg-dash-card gg-deck-add-card-panel">
+              {addCardPick ? (
+                <>
+                  <div className="gg-deck-autocomplete__loading">{addCardPick.card_name} · choose quantity</div>
+                  <QuantityPicker
+                    format={deck.format}
+                    onPick={(quantity) => void addCardToDeck(addCardPick, quantity)}
+                  />
+                </>
+              ) : (
+                <CardPicker
+                  placeholder="Search for a card to add…"
+                  onPick={(card) => {
+                    if (formatMaxCopies(deck.format) > 1) {
+                      setAddCardPick(card);
+                    } else {
+                      void addCardToDeck(card, 1);
+                    }
+                  }}
+                />
+              )}
+              {savingCard && <span className="gg-card-meta">Adding…</span>}
+            </div>
+          )}
           {cards.map((card) => {
             const match = matchByCard.get(card.id);
             const imageUrl = cardImages[card.id] ?? match?.image_url ?? null;
@@ -806,6 +1050,24 @@ function DeckDetail({ deckId }: { deckId: string }) {
                       <strong>{card.card_name}</strong>
                     </div>
                     <span className="gg-card-meta">{card.section}</span>
+                    {!card.oracle_id && (
+                      <div className="gg-deck-unresolved">
+                        <span className="gg-badge gg-badge-foil">Not matched to a card</span>
+                        <button
+                          type="button"
+                          className="gg-btn gg-btn-sm gg-btn-ghost"
+                          onClick={() => setFixingCardId((id) => (id === card.id ? null : card.id))}
+                        >
+                          {fixingCardId === card.id ? "Cancel" : "Fix name"}
+                        </button>
+                        {fixingCardId === card.id && (
+                          <CardPicker
+                            placeholder={`Search for the real name of "${card.card_name}"…`}
+                            onPick={(resolved) => void fixCardName(card, resolved)}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="gg-deck-row__state">
                     {card.owned ? (
@@ -822,6 +1084,14 @@ function DeckDetail({ deckId }: { deckId: string }) {
                       <input type="checkbox" checked={card.owned} onChange={() => void toggleOwned(card)} />
                       I own this
                     </label>
+                    <button
+                      type="button"
+                      className="gg-btn gg-btn-sm gg-btn-ghost"
+                      onClick={() => void removeCard(card)}
+                      aria-label={`Remove ${card.card_name} from this deck`}
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
               </div>
