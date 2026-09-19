@@ -2487,3 +2487,201 @@
     flex-direction: column;
   }
 }
+
+
+/* ---- Account layout polish ----
+   Calmer hierarchy, more breathing room, and less visual clustering. */
+.gg-account-header {
+  max-width: 760px;
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.15rem;
+  border-bottom: 1px solid rgba(102, 51, 153, .10);
+}
+.gg-account-header h1 {
+  margin: 0;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  line-height: 1.15;
+  letter-spacing: -.025em;
+}
+.gg-account-header p {
+  max-width: 62ch;
+  margin-top: .45rem;
+  color: #746b7b;
+  line-height: 1.5;
+}
+
+.gg-account {
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: clamp(1.5rem, 3vw, 2.75rem);
+}
+.gg-account-nav {
+  padding: .45rem;
+  border-color: rgba(102, 51, 153, .12);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(34, 15, 48, .045);
+  gap: .08rem;
+}
+.gg-account-nav a,
+.gg-account-nav__signout button {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: .65rem .8rem;
+  border-radius: 9px;
+  font-size: .84rem;
+}
+.gg-account-nav a.gg-active {
+  background: linear-gradient(135deg, #663399, #7d39b8);
+  box-shadow: 0 4px 12px rgba(102, 51, 153, .16);
+}
+.gg-account-nav__signout {
+  margin-top: .45rem;
+  padding-top: .45rem;
+}
+.gg-account-main {
+  max-width: 1120px;
+}
+
+.gg-dash-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.15rem;
+}
+.gg-dash-card {
+  padding: 1.35rem;
+  border-color: rgba(102, 51, 153, .11);
+  border-radius: 15px;
+  box-shadow: 0 7px 24px rgba(34, 15, 48, .04);
+}
+.gg-dash-card h2 {
+  margin-bottom: 1rem;
+  font-size: .72rem;
+  letter-spacing: .085em;
+  color: #76508f;
+}
+.gg-dash-card--wide {
+  padding: 1.5rem;
+}
+.gg-dash-actions {
+  margin-top: 1.1rem;
+  padding-top: .9rem;
+  border-top: 1px solid rgba(102, 51, 153, .08);
+}
+.gg-dash-stat {
+  margin: .2rem 0;
+  font-size: 1.85rem;
+  letter-spacing: -.025em;
+}
+
+/* Forms inside account cards should read as one clean panel, not stacked boxes. */
+.gg-account-main .gg-form {
+  gap: 1rem;
+}
+.gg-account-main .gg-field {
+  gap: .38rem;
+}
+.gg-account-main .gg-field label {
+  color: #463b4d;
+  font-size: .78rem;
+  font-weight: 700;
+}
+.gg-account-main .gg-field input,
+.gg-account-main .gg-field select,
+.gg-account-main .gg-field textarea {
+  min-height: 44px;
+  border-color: #ddd5e4;
+  border-radius: 9px;
+  background: #fdfcfe;
+}
+.gg-account-main .gg-field input:focus,
+.gg-account-main .gg-field select:focus,
+.gg-account-main .gg-field textarea:focus {
+  border-color: rgba(124, 0, 230, .55);
+  box-shadow: 0 0 0 3px rgba(124, 0, 230, .08);
+  outline: none;
+}
+
+/* Deck/account additions inherit the quieter account visual system. */
+.gg-account-main .gg-decks,
+.gg-account-main .gg-deck-detail {
+  gap: 1.2rem;
+}
+.gg-account-main .gg-decks-toolbar {
+  padding-bottom: .25rem;
+}
+.gg-account-main .gg-decks-toolbar h2 {
+  font-size: 1.15rem;
+}
+.gg-account-main .gg-deck-tile,
+.gg-account-main .gg-deck-row,
+.gg-account-main .gg-rec-card,
+.gg-account-main .gg-deck-stats > div {
+  border-color: rgba(102, 51, 153, .11);
+  box-shadow: 0 5px 18px rgba(34, 15, 48, .035);
+}
+.gg-account-main .gg-deck-detail__hero {
+  padding: 1.4rem 1.5rem;
+  border-color: rgba(102, 51, 153, .13);
+}
+.gg-account-main .gg-deck-tabs {
+  padding: .2rem 0 .35rem;
+  gap: .45rem;
+}
+.gg-account-main .gg-deck-tabs button {
+  padding: .55rem .9rem;
+}
+.gg-account-main .gg-deck-row {
+  padding: .9rem 1rem;
+}
+.gg-account-main .gg-deck-alerts {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+}
+
+@media (max-width: 800px) {
+  .gg-account-header {
+    margin-bottom: 1rem;
+    padding-bottom: .9rem;
+  }
+  .gg-account {
+    gap: 1.15rem;
+  }
+  .gg-account-nav {
+    flex-wrap: nowrap;
+    padding: .35rem;
+    border-radius: 12px;
+    scrollbar-width: thin;
+  }
+  .gg-account-nav a {
+    min-height: 38px;
+    flex: 0 0 auto;
+    padding: .55rem .72rem;
+    font-size: .8rem;
+  }
+  .gg-account-nav__signout {
+    margin: 0 0 0 .25rem;
+    padding: 0 0 0 .35rem;
+    border-top: 0;
+    border-left: 1px solid var(--gg-line);
+    flex: 0 0 auto;
+  }
+  .gg-account-nav__signout button {
+    min-height: 38px;
+    padding: .55rem .72rem;
+  }
+  .gg-dash-grid {
+    grid-template-columns: 1fr;
+  }
+  .gg-dash-card,
+  .gg-dash-card--wide {
+    padding: 1.1rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .gg-account-header h1 {
+    font-size: 1.45rem;
+  }
+  .gg-account-main .gg-deck-detail__hero {
+    padding: 1rem;
+  }
+}
