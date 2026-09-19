@@ -336,3 +336,50 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* Give the primary nav its own visual layer beneath the sale banner. */
+.gg-header > .gg-nav {
+  position: relative;
+  background: rgba(4, 2, 7, .96);
+  border-top: 1px solid rgba(255,255,255,.045);
+  box-shadow: inset 0 1px 0 rgba(157,0,255,.045);
+}
+
+@media (min-width: 641px) {
+  .gg-header > .gg-nav {
+    max-width: none;
+    width: 100%;
+    padding: .7rem clamp(1.5rem, 3vw, 3.5rem) .82rem;
+  }
+
+  .gg-header > .gg-nav::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: clamp(1.5rem, 3vw, 3.5rem);
+    right: clamp(1.5rem, 3vw, 3.5rem);
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(157,0,255,.18) 18%,
+      rgba(157,0,255,.18) 82%,
+      transparent
+    );
+  }
+
+  .gg-header > .gg-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+  }
+}
+
+@media (max-width: 640px) {
+  .gg-header > .gg-nav {
+    padding-top: .72rem;
+    padding-bottom: .78rem;
+    row-gap: .45rem;
+  }
+}
