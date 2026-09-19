@@ -308,10 +308,21 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
 
   function chooseSuggestion(cardName: string) {
     if (!activeLine) return;
-    const replacement = `${activeLine.prefix}${cardName}`;
-    setText((current) => current.slice(0, activeLine.start) + replacement + current.slice(activeLine.end));
+    const textarea = deckTextareaRef.current;
+    const replacement = `${activeLine.prefix}${cardName}\n`;
+    const nextText = text.slice(0, activeLine.start) + replacement + text.slice(activeLine.end);
+    const nextCaret = activeLine.start + replacement.length;
+
+    setText(nextText);
     setSuggestions([]);
     setActiveLine(null);
+    setSuggestBusy(false);
+    suggestRequest.current += 1;
+
+    // Selection is updated after React renders, but focus never leaves the textarea.
+    window.requestAnimationFrame(() => {
+      textarea?.setSelectionRange(nextCaret, nextCaret);
+    });
   }
 
   async function importFile(file: File | null) {
@@ -453,12 +464,22 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
             {suggestBusy && suggestions.length === 0 ? (
               <div className="gg-deck-autocomplete__loading">Finding cards…</div>
             ) : suggestions.map((card) => (
-              <button key={card.card_name} type="button" role="option" onClick={() => chooseSuggestion(card.card_name)}>
+              <div
+                key={card.card_name}
+                className="gg-deck-autocomplete__option"
+                role="option"
+                tabIndex={-1}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  chooseSuggestion(card.card_name);
+                }}
+                onTouchStart={(event) => event.preventDefault()}
+              >
                 <span>
                   <strong>{card.card_name}</strong>
                   {card.type_line && <small>{card.type_line}</small>}
                 </span>
-              </button>
+              </div>
             ))}
           </div>
         )}
