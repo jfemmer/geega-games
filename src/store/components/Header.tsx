@@ -4,6 +4,7 @@ import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import CartDrawer from "./CartDrawer";
 import { Icon } from "./Icon";
+import StorewideSaleBanner from "./StorewideSaleBanner";
 
 // Debounce before we write a keystroke into the URL. This is independent of
 // useCatalog's own 300ms fetch debounce (which fires off filters.query) — the
@@ -130,6 +131,8 @@ export default function Header() {
           )}
         </div>
       </div>
+
+      <StorewideSaleBanner />
 
       <nav className="gg-nav" aria-label="Primary">
         <Link to="/shop">Shop singles</Link>
