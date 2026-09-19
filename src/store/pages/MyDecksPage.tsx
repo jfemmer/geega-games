@@ -328,7 +328,8 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   function chooseSuggestion(cardName: string) {
     if (!activeLine) return;
     const textarea = deckTextareaRef.current;
-    const quantity = Math.max(1, Math.min(Number(activeLine.quantity) || 1, formatMaxCopies(format)));\n    const replacement = `${quantity} ${cardName}\\n`;
+    const quantity = Math.max(1, Math.min(Number(activeLine.quantity) || 1, formatMaxCopies(format)));
+    const replacement = `${quantity} ${cardName}\n`;
     const nextText = text.slice(0, activeLine.start) + replacement + text.slice(activeLine.end);
     const nextCaret = activeLine.start + replacement.length;
 
@@ -343,7 +344,6 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
       textarea?.setSelectionRange(nextCaret, nextCaret);
     });
   }
-
   async function importFile(file: File | null) {
     if (!file) return;
     if (file.size > 512 * 1024) {
