@@ -3233,3 +3233,84 @@
     max-height: 74vh;
   }
 }
+
+
+/* Decklist card-name autocomplete */
+.gg-deck-importer .gg-field:has(textarea) {
+  position: relative;
+}
+.gg-deck-autocomplete {
+  position: relative;
+  z-index: 5;
+  max-height: 330px;
+  margin-top: .35rem;
+  overflow-y: auto;
+  border: 1px solid rgba(102,51,153,.18);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(28,14,38,.12);
+}
+.gg-deck-autocomplete button {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .45rem .6rem;
+  border: 0;
+  border-bottom: 1px solid #eee9f1;
+  background: #fff;
+  color: #2e2633;
+  text-align: left;
+  cursor: pointer;
+}
+.gg-deck-autocomplete button:last-child {
+  border-bottom: 0;
+}
+.gg-deck-autocomplete button:hover,
+.gg-deck-autocomplete button:focus-visible {
+  background: #f8f4fb;
+  outline: none;
+}
+.gg-deck-autocomplete img,
+.gg-deck-autocomplete__placeholder {
+  width: 34px;
+  height: 47px;
+  flex: 0 0 34px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: #eee9f1;
+}
+.gg-deck-autocomplete button > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: .18rem;
+}
+.gg-deck-autocomplete strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .84rem;
+}
+.gg-deck-autocomplete small {
+  overflow: hidden;
+  color: #817788;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .7rem;
+}
+.gg-deck-autocomplete__loading {
+  padding: .8rem;
+  color: #817788;
+  font-size: .8rem;
+}
+
+@media (max-width: 520px) {
+  .gg-deck-autocomplete {
+    max-height: 270px;
+  }
+  .gg-deck-autocomplete button {
+    min-height: 54px;
+    padding: .4rem .5rem;
+  }
+}
