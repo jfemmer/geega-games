@@ -19,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ ok: false });
   }
 
-  const db = getSupabaseAdmin();
+  const db = getSupabaseAdmin() as any;
   const { data: rows, error } = await db
     .from("deck_stock_notifications")
     .select("id, user_id, card_name, inventory_item_id, deck_names, created_at")
