@@ -262,12 +262,6 @@ export type Database = {
             | Database["public"]["Enums"]["card_condition"]
             | null
           cost_cents: number | null
-          deal_discount_percent: number | null
-          deal_source: string | null
-          deal_started_at: string | null
-          is_deal: boolean
-          original_price_cents: number | null
-          storefront_listed_at: string
           created_at: string
           front_image_path: string | null
           id: string
@@ -299,12 +293,6 @@ export type Database = {
             | Database["public"]["Enums"]["card_condition"]
             | null
           cost_cents?: number | null
-          deal_discount_percent?: number | null
-          deal_source?: string | null
-          deal_started_at?: string | null
-          is_deal?: boolean
-          original_price_cents?: number | null
-          storefront_listed_at?: string
           created_at?: string
           front_image_path?: string | null
           id?: string
@@ -2292,10 +2280,6 @@ export type Database = {
           notes: string
           oracle_id: string
           price_cents: number
-          original_price_cents: number
-          deal_discount_percent: number
-          deal_source: string
-          deal_started_at: string
           quantity: number
           rarity: string
           scryfall_id: string
@@ -2652,6 +2636,7 @@ export type Database = {
           foil: boolean
           id: string
           image_url: string
+          is_deal: boolean
           oracle_id: string
           price_cents: number
           original_price_cents: number
