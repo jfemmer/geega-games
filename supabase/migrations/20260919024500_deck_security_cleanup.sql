@@ -7,6 +7,7 @@ create index if not exists deck_stock_notifications_inventory_item_idx
   on public.deck_stock_notifications(inventory_item_id);
 
 alter table public.card_recommendation_catalog enable row level security;
+grant select on public.card_recommendation_catalog to authenticated;
 
 drop policy if exists "authenticated read recommendation catalog"
 on public.card_recommendation_catalog;
