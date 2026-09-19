@@ -256,6 +256,37 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Array<{ card_name: string; image_url: string | null; type_line: string | null }>>([]);
+  const [activeLine, setActiveLine] = useState<{ start: number; end: number; prefix: string; quantity: string } | null>(null);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+
+  async function updateCardSuggestions(value: string, caret: number) {
+    setText(value);
+    const start = value.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
+    const nextBreak = value.indexOf("\n", caret);
+    const end = nextBreak === -1 ? value.length : nextBreak;
+    const line = value.slice(start, end);
+    const match = line.match(/^\s*(?:(\d{1,2})\s*[xX]?\s+)?(.{2,})$/);
+    const query = match?.[2]?.trim() ?? "";
+    if (!query || ["commander", "mainboard", "main deck", "deck", "maindeck", "sideboard", "maybeboard", "considering"].includes(query.toLowerCase())) {
+      setSuggestions([]);
+      setActiveLine(null);
+      return;
+    }
+    setActiveLine({ start, end, prefix: line.slice(0, line.indexOf(query)), quantity: match?.[1] ?? "" });
+    setSuggestBusy(true);
+    const { data } = await db.rpc("search_deck_card_names", { p_query: query, p_limit: 8 });
+    setSuggestions((data ?? []) as Array<{ card_name: string; image_url: string | null; type_line: string | null }>);
+    setSuggestBusy(false);
+  }
+
+  function chooseSuggestion(cardName: string) {
+    if (!activeLine) return;
+    const replacement = `${activeLine.prefix}${cardName}`;
+    setText((current) => current.slice(0, activeLine.start) + replacement + current.slice(activeLine.end));
+    setSuggestions([]);
+    setActiveLine(null);
+  }
 
   async function importFile(file: File | null) {
     if (!file) return;
@@ -382,10 +413,29 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
         <textarea
           rows={13}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => void updateCardSuggestions(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+          onClick={(e) => {
+            const target = e.currentTarget;
+            void updateCardSuggestions(target.value, target.selectionStart ?? target.value.length);
+          }}
           placeholder={"Commander\n1 Muldrotha, the Gravetide\n\nMainboard\n1 Sol Ring\n1 Counterspell\n1 Sakura-Tribe Elder"}
         />
         <span className="gg-card-meta">Supports common Moxfield/Archidekt-style plain-text exports, section headings, and simple CSV lines.</span>
+        {(suggestions.length > 0 || suggestBusy) && (
+          <div className="gg-deck-autocomplete" role="listbox" aria-label="Matching Magic cards">
+            {suggestBusy && suggestions.length === 0 ? (
+              <div className="gg-deck-autocomplete__loading">Finding cards…</div>
+            ) : suggestions.map((card) => (
+              <button key={card.card_name} type="button" role="option" onClick={() => chooseSuggestion(card.card_name)}>
+                {card.image_url ? <img src={card.image_url} alt="" loading="lazy" /> : <span className="gg-deck-autocomplete__placeholder" />}
+                <span>
+                  <strong>{card.card_name}</strong>
+                  {card.type_line && <small>{card.type_line}</small>}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <label className="gg-check">
