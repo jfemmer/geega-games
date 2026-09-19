@@ -72,7 +72,7 @@ export type ParsedCard = {
   section: string;
 };
 
-type ResolvedCard = {
+export type ResolvedCard = {
   input_name: string;
   card_name: string | null;
   oracle_id: string | null;
@@ -81,6 +81,41 @@ type ResolvedCard = {
   image_url: string | null;
   commander_legal: boolean | null;
 };
+
+export type ChosenCommander = { card_name: string; oracle_id: string; scryfall_id: string | null };
+
+// A card "can be your commander" (for the purposes of the deck-creation
+// picker's default suggestion) if it resolved to a real card and its type
+// line is a legendary creature or planeswalker. commander_legal isn't used
+// here — it means "legal in the Commander format," not "can be a
+// commander" (Sol Ring is commander_legal but obviously not a valid pick).
+export function isCommanderCandidate(card: ResolvedCard): card is ResolvedCard & { oracle_id: string; card_name: string } {
+  return Boolean(
+    card.oracle_id &&
+      card.card_name &&
+      /legendary/i.test(card.type_line ?? "") &&
+      /(creature|planeswalker)/i.test(card.type_line ?? ""),
+  );
+}
+
+// Best-guess default for the commander picker: an explicit "Commander:"
+// section in the pasted list wins (matching what a section heading
+// unambiguously declares); otherwise fall back to the first legendary
+// creature/planeswalker found anywhere in the list. Never overrides a
+// choice the user already made themselves — callers gate that.
+export function pickDefaultCommander(
+  parsed: ParsedCard[],
+  candidates: ResolvedCard[],
+): ChosenCommander | null {
+  const commanderSectionCard = parsed.find((c) => c.section === "commander");
+  const sectionMatch = commanderSectionCard
+    ? candidates.find((c) => c.card_name?.toLowerCase() === commanderSectionCard.name.toLowerCase())
+    : undefined;
+  const fallback = sectionMatch ?? candidates[0];
+  return fallback?.oracle_id && fallback.card_name
+    ? { card_name: fallback.card_name, oracle_id: fallback.oracle_id, scryfall_id: fallback.scryfall_id }
+    : null;
+}
 
 const MTG_FORMATS = [
   { value: "commander", label: "Commander", maxCopies: 1, deckSize: "100 cards" },
@@ -98,6 +133,15 @@ const MTG_FORMATS = [
 
 function formatMaxCopies(format: string): number {
   return MTG_FORMATS.find((item) => item.value === format)?.maxCopies ?? 4;
+}
+
+// The only two singleton formats in MTG_FORMATS that are actually built
+// around a designated commander card. Gates both the commander-picker UI
+// and whether commander_oracle_id/commander_name get written at all, so a
+// Standard/Modern/etc. deck never ends up with a random legendary creature
+// mislabeled as its "commander."
+function hasCommander(format: string): boolean {
+  return format === "commander" || format === "brawl";
 }
 
 // parseCardListText (shared with the "sell my collection" flow) already
@@ -269,7 +313,7 @@ function DeckList() {
                 <span className="gg-card-meta">{counts[deck.id] ?? 0} cards</span>
               </div>
               <h3>{deck.name}</h3>
-              <p>{deck.commander_name || "Commander not identified yet"}</p>
+              {hasCommander(deck.format) && <p>{deck.commander_name || "Commander not identified yet"}</p>}
               <div className="gg-deck-tile__foot">
                 <span>{deck.notify_email ? "Email alerts on" : "In-app alerts"}</span>
                 <span>View deck →</span>
@@ -300,6 +344,58 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const suggestRequest = useRef(0);
   const deckTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [suggestPosition, setSuggestPosition] = useState({ top: 0, left: 0 });
+
+  const [commanderCandidates, setCommanderCandidates] = useState<ResolvedCard[]>([]);
+  const [resolvingCommander, setResolvingCommander] = useState(false);
+  const [chosenCommander, setChosenCommander] = useState<ChosenCommander | null>(null);
+  const [showCommanderSearch, setShowCommanderSearch] = useState(false);
+  const commanderUserEditedRef = useRef(false);
+  const commanderRequestRef = useRef(0);
+
+  // Debounced re-detection of "which pasted card could be the commander"
+  // whenever the decklist text or format changes. Only ever supplies a
+  // DEFAULT selection (falling back to the same explicit-"Commander:"-
+  // section-first, then first-legendary-found heuristic this used to apply
+  // silently) — once the user has touched the picker themselves,
+  // commanderUserEditedRef stops this effect from overwriting their choice.
+  useEffect(() => {
+    if (!hasCommander(format)) {
+      setCommanderCandidates([]);
+      setResolvingCommander(false);
+      commanderUserEditedRef.current = false;
+      setChosenCommander(null);
+      return;
+    }
+
+    const parsed = parseDecklist(text, formatMaxCopies(format));
+    const uniqueNames = Array.from(new Set(parsed.map((c) => c.name)));
+    if (!uniqueNames.length) {
+      setCommanderCandidates([]);
+      setResolvingCommander(false);
+      return;
+    }
+
+    const requestId = ++commanderRequestRef.current;
+    setResolvingCommander(true);
+    const timer = window.setTimeout(async () => {
+      const { data, error } = await db.rpc("resolve_deck_card_names", { p_names: uniqueNames });
+      if (requestId !== commanderRequestRef.current) return;
+      setResolvingCommander(false);
+      if (error) {
+        console.error("resolve_deck_card_names failed:", error);
+        return;
+      }
+      const resolved = (data ?? []) as ResolvedCard[];
+      const candidates = resolved.filter(isCommanderCandidate);
+      setCommanderCandidates(candidates);
+
+      if (!commanderUserEditedRef.current) {
+        setChosenCommander(pickDefaultCommander(parsed, candidates));
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [text, format]);
 
   function updateCardSuggestions(value: string, caret: number) {
     setText(value);
@@ -423,15 +519,11 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
       const resolved = (resolvedData ?? []) as ResolvedCard[];
       const byInput = new Map(resolved.map((r) => [r.input_name.toLowerCase(), r]));
 
-      const commanderParsed =
-        parsed.find((c) => c.section === "commander") ??
-        parsed.find((c) => {
-          const r = byInput.get(c.name.toLowerCase());
-          return /legendary creature/i.test(r?.type_line ?? "");
-        });
-      const commanderResolved = commanderParsed
-        ? byInput.get(commanderParsed.name.toLowerCase())
-        : undefined;
+      // The commander is now whatever the user confirmed in the picker
+      // (defaulted there from the same heuristic this used to apply
+      // silently), not re-derived here — and only for formats that
+      // actually have a commander concept.
+      const commander = hasCommander(format) ? chosenCommander : null;
 
       const { data: deck, error: deckError } = await db
         .from("customer_decks")
@@ -439,8 +531,8 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           user_id: user.id,
           name: name.trim(),
           format,
-          commander_oracle_id: commanderResolved?.oracle_id ?? null,
-          commander_name: commanderResolved?.card_name ?? commanderParsed?.name ?? null,
+          commander_oracle_id: commander?.oracle_id ?? null,
+          commander_name: commander?.card_name ?? null,
           budget_mode: budget,
           max_card_price_cents: maxPrice ? Math.round(Number(maxPrice) * 100) : null,
           notify_in_app: true,
@@ -464,6 +556,24 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           exact_printing_only: false,
         };
       });
+
+      // The chosen commander might have been picked via the manual search
+      // fallback rather than found in the pasted list at all — make sure it
+      // still ends up as a real card in the deck instead of only existing
+      // as the deck's commander_* metadata columns.
+      if (commander && !cards.some((c) => c.oracle_id === commander.oracle_id)) {
+        cards.push({
+          deck_id: deck.id,
+          user_id: user.id,
+          oracle_id: commander.oracle_id,
+          scryfall_id: commander.scryfall_id,
+          card_name: commander.card_name,
+          quantity: 1,
+          section: "commander",
+          owned: false,
+          exact_printing_only: false,
+        });
+      }
 
       const { error: cardsError } = await db.from("customer_deck_cards").insert(cards);
       if (cardsError) {
@@ -581,6 +691,63 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           TCGplayer or ManaBox — section headings like Commander/Sideboard are supported too.
         </span>
       </div>
+
+      {hasCommander(format) && (
+        <div className="gg-field">
+          <label>Commander</label>
+          {resolvingCommander && commanderCandidates.length === 0 && (
+            <span className="gg-card-meta">Looking for legendary creatures in your list…</span>
+          )}
+          {commanderCandidates.length > 0 && !showCommanderSearch && (
+            <select
+              value={chosenCommander?.oracle_id ?? ""}
+              onChange={(e) => {
+                commanderUserEditedRef.current = true;
+                const picked = commanderCandidates.find((c) => c.oracle_id === e.target.value);
+                setChosenCommander(
+                  picked?.oracle_id && picked.card_name
+                    ? { card_name: picked.card_name, oracle_id: picked.oracle_id, scryfall_id: picked.scryfall_id }
+                    : null,
+                );
+              }}
+            >
+              <option value="">— Choose your commander —</option>
+              {commanderCandidates.map((card) => (
+                <option key={card.oracle_id} value={card.oracle_id ?? ""}>
+                  {card.card_name}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="gg-deck-unresolved">
+            {chosenCommander && (commanderCandidates.length === 0 || showCommanderSearch) && (
+              <span className="gg-badge">Commander: {chosenCommander.card_name}</span>
+            )}
+            <button
+              type="button"
+              className="gg-btn gg-btn-sm gg-btn-ghost"
+              onClick={() => setShowCommanderSearch((v) => !v)}
+            >
+              {showCommanderSearch
+                ? "Cancel search"
+                : commanderCandidates.length > 0
+                  ? "Not your commander? Search"
+                  : "Search for your commander"}
+            </button>
+            {showCommanderSearch && (
+              <CardPicker
+                placeholder="Search for your commander…"
+                onPick={(card) => {
+                  commanderUserEditedRef.current = true;
+                  setChosenCommander({ card_name: card.card_name, oracle_id: card.oracle_id, scryfall_id: card.scryfall_id });
+                  setShowCommanderSearch(false);
+                }}
+              />
+            )}
+          </div>
+          <span className="gg-card-meta">Used to personalize card suggestions once this deck is saved.</span>
+        </div>
+      )}
 
       <label className="gg-check">
         <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} />
@@ -785,6 +952,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
   } | null>(null);
   const [savingCard, setSavingCard] = useState(false);
   const [fixingCardId, setFixingCardId] = useState<string | null>(null);
+  const [showCommanderPicker, setShowCommanderPicker] = useState(false);
 
   async function load() {
     if (!user) return;
@@ -955,6 +1123,43 @@ function DeckDetail({ deckId }: { deckId: string }) {
     setCards((rows) => rows.filter((r) => r.id !== card.id));
   }
 
+  async function updateCommander(resolved: { card_name: string; oracle_id: string; scryfall_id: string | null }) {
+    if (!user) return;
+    setStatus(null);
+    const { error } = await db
+      .from("customer_decks")
+      .update({
+        commander_oracle_id: resolved.oracle_id,
+        commander_name: resolved.card_name,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", deckId);
+    if (error) {
+      setStatusTone("warn");
+      setStatus("Could not update this deck's commander.");
+      return;
+    }
+    setShowCommanderPicker(false);
+    // The newly-chosen commander might not already be one of this deck's
+    // cards (picked via search rather than already in the list) — keep the
+    // card list and "Cards in list" count consistent with the hero, the
+    // same way addCardToDeck keeps a manually-added card in sync.
+    if (!cards.some((c) => c.oracle_id === resolved.oracle_id)) {
+      await db.from("customer_deck_cards").insert({
+        deck_id: deckId,
+        user_id: user.id,
+        oracle_id: resolved.oracle_id,
+        scryfall_id: resolved.scryfall_id,
+        card_name: resolved.card_name,
+        quantity: 1,
+        section: "commander",
+        owned: false,
+        exact_printing_only: false,
+      });
+    }
+    await load();
+  }
+
   if (loading) return <p>Loading deck…</p>;
   if (!deck) return <div className="gg-alert gg-alert-error">Deck not found.</div>;
 
@@ -964,7 +1169,26 @@ function DeckDetail({ deckId }: { deckId: string }) {
         <div>
           <Link to="/account/decks" className="gg-card-meta">← My Decks</Link>
           <h2>{deck.name}</h2>
-          <p>{deck.commander_name ? `Commander: ${deck.commander_name}` : "Commander not identified"}</p>
+          {hasCommander(deck.format) && (
+            <>
+              <p>{deck.commander_name ? `Commander: ${deck.commander_name}` : "Commander not identified"}</p>
+              <div className="gg-deck-unresolved">
+                <button
+                  type="button"
+                  className="gg-btn gg-btn-sm gg-btn-ghost"
+                  onClick={() => setShowCommanderPicker((v) => !v)}
+                >
+                  {showCommanderPicker ? "Cancel" : deck.commander_name ? "Change commander" : "Set commander"}
+                </button>
+                {showCommanderPicker && (
+                  <CardPicker
+                    placeholder="Search for your commander…"
+                    onPick={(card) => void updateCommander(card)}
+                  />
+                )}
+              </div>
+            </>
+          )}
         </div>
         <div className="gg-deck-detail__actions">
           <button className="gg-btn" disabled={!available.length || addingAll} onClick={addAvailableToCart}>
@@ -1137,7 +1361,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
       )}
 
       {tab === "suggestions" && (
-        <Suggestions recommendations={recommendations} addItem={addItem} />
+        <Suggestions recommendations={recommendations} addItem={addItem} commanderFormat={hasCommander(deck.format)} />
       )}
 
       {enlargedCard && (
@@ -1177,9 +1401,11 @@ function DeckDetail({ deckId }: { deckId: string }) {
 function Suggestions({
   recommendations,
   addItem,
+  commanderFormat,
 }: {
   recommendations: Recommendation[];
   addItem: (id: string, qty?: number) => Promise<void>;
+  commanderFormat: boolean;
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, Recommendation[]>();
@@ -1191,7 +1417,13 @@ function Suggestions({
   }, [recommendations]);
 
   if (!recommendations.length) {
-    return <div className="gg-empty">Add a recognized Commander to unlock deck suggestions.</div>;
+    return (
+      <div className="gg-empty">
+        {commanderFormat
+          ? "Set a commander for this deck to unlock personalized card suggestions."
+          : "Suggestions are tailored to Commander and Brawl decks and aren't available for this format yet."}
+      </div>
+    );
   }
 
   return (
