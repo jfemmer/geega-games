@@ -239,3 +239,43 @@ $$;
 
 grant execute on function public.deck_recommendations(uuid,integer)
 to authenticated;
+
+
+-- Customer-facing card-name resolution uses the sanitized recommendation
+-- catalog instead of exposing raw Scryfall bulk JSON through customer RLS.
+create or replace function public.resolve_deck_card_names(p_names text[])
+returns table(
+  input_name text,
+  card_name text,
+  oracle_id uuid,
+  scryfall_id uuid,
+  type_line text,
+  image_url text,
+  commander_legal boolean
+)
+language sql
+stable
+security invoker
+set search_path=public
+as $$
+  select
+    n.input_name,
+    c.card_name,
+    c.oracle_id,
+    null::uuid as scryfall_id,
+    c.type_line,
+    c.image_url,
+    (c.oracle_id is not null) as commander_legal
+  from unnest(p_names) with ordinality as n(input_name, ord)
+  left join lateral (
+    select rc.*
+    from public.card_recommendation_catalog rc
+    where lower(rc.card_name)=lower(trim(n.input_name))
+    order by rc.edhrec_rank asc nulls last
+    limit 1
+  ) c on true
+  order by n.ord;
+$$;
+
+grant execute on function public.resolve_deck_card_names(text[])
+to authenticated;
