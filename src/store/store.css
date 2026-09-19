@@ -3492,3 +3492,44 @@
     font-size: .82rem;
   }
 }
+
+/* Freeform custom quantity stepper (formats supporting more than 4 copies) */
+.gg-deck-quantity-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 9px;
+}
+.gg-deck-quantity-custom .gg-deck-quantity-custom__step {
+  flex: 0 0 auto;
+  width: 38px;
+  min-width: 38px;
+  min-height: 42px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+.gg-deck-quantity-custom__value {
+  flex: 0 0 auto;
+  min-width: 2.4em;
+  text-align: center;
+  color: #f7f3fb;
+  font-weight: 650;
+  font-size: .88rem;
+}
+.gg-deck-quantity-custom .gg-deck-quantity-custom__add {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .gg-deck-quantity-custom {
+    padding: 0 6px 8px;
+    gap: 5px;
+  }
+  .gg-deck-quantity-custom .gg-deck-quantity-custom__step {
+    width: 40px;
+    min-width: 40px;
+    min-height: 44px;
+  }
+}

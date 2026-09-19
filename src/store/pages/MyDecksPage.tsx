@@ -279,6 +279,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const [activeLine, setActiveLine] = useState<{ start: number; end: number; prefix: string; quantity: string } | null>(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [quantityPick, setQuantityPick] = useState<{ cardName: string; start: number; end: number } | null>(null);
+  const [freeformQty, setFreeformQty] = useState(5);
   const suggestTimer = useRef<number | null>(null);
   const suggestRequest = useRef(0);
   const deckTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -353,6 +354,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     if (maxCopies > 1 && !activeLine.quantity) {
       setSuggestions([]);
       setSuggestBusy(false);
+      setFreeformQty(5);
       setQuantityPick({ cardName, start: activeLine.start, end: activeLine.end });
       return;
     }
@@ -546,7 +548,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           >
             <div className="gg-deck-autocomplete__loading">{quantityPick.cardName} · choose quantity</div>
             <div className="gg-deck-quantity-picker">
-              {Array.from({ length: formatMaxCopies(format) }, (_, index) => index + 1).map((quantity) => (
+              {Array.from({ length: Math.min(formatMaxCopies(format), 4) }, (_, index) => index + 1).map((quantity) => (
                 <button
                   key={quantity}
                   type="button"
@@ -560,6 +562,43 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
                 </button>
               ))}
             </div>
+            {formatMaxCopies(format) > 4 && (
+              <div className="gg-deck-quantity-custom">
+                <button
+                  type="button"
+                  className="gg-btn gg-btn-sm gg-deck-quantity-custom__step"
+                  aria-label="Decrease quantity"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    setFreeformQty((q) => Math.max(5, q - 1));
+                  }}
+                >
+                  −
+                </button>
+                <span className="gg-deck-quantity-custom__value">{freeformQty}×</span>
+                <button
+                  type="button"
+                  className="gg-btn gg-btn-sm gg-deck-quantity-custom__step"
+                  aria-label="Increase quantity"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    setFreeformQty((q) => Math.min(formatMaxCopies(format), q + 1));
+                  }}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  className="gg-btn gg-btn-sm gg-deck-quantity-custom__add"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    chooseQuantity(freeformQty);
+                  }}
+                >
+                  Add {freeformQty}×
+                </button>
+              </div>
+            )}
           </div>
         )}
         </div>
