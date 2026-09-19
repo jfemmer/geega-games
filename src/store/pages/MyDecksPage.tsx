@@ -7,6 +7,10 @@ import { formatCents } from "../lib/money";
 
 const db = supabase as any;
 
+function cardCount(cards: DeckCard[]): number {
+  return cards.reduce((sum, card) => sum + card.quantity, 0);
+}
+
 type Deck = {
   id: string;
   name: string;
@@ -483,7 +487,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
       {status && <div className="gg-alert gg-alert-ok">{status}</div>}
 
       <div className="gg-deck-stats">
-        <div><strong>{cards.length}</strong><span>Deck entries</span></div>
+        <div><strong>{cardCount(cards)}</strong><span>Cards in list</span></div>
         <div><strong>{ownedCount}</strong><span>Already owned</span></div>
         <div><strong>{available.length}</strong><span>Available at Geega</span></div>
         <div><strong>{missing.length}</strong><span>Watched / missing</span></div>
