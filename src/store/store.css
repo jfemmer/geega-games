@@ -3314,3 +3314,36 @@
     padding: .4rem .5rem;
   }
 }
+
+
+/* Compact text-only decklist autocomplete */
+.gg-deck-autocomplete {
+  width: min(100%, 520px);
+  max-height: 240px;
+  margin-top: .2rem;
+  border-radius: 8px;
+}
+.gg-deck-autocomplete button {
+  min-height: 38px;
+  gap: 0;
+  padding: .4rem .65rem;
+}
+.gg-deck-autocomplete button > span:last-child {
+  width: 100%;
+  gap: .05rem;
+}
+.gg-deck-autocomplete strong {
+  font-size: .8rem;
+}
+.gg-deck-autocomplete small {
+  font-size: .64rem;
+}
+@media (max-width: 520px) {
+  .gg-deck-autocomplete {
+    max-height: 205px;
+  }
+  .gg-deck-autocomplete button {
+    min-height: 40px;
+    padding: .4rem .55rem;
+  }
+}
