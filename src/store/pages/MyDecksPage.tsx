@@ -261,6 +261,8 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const [suggestBusy, setSuggestBusy] = useState(false);
   const suggestTimer = useRef<number | null>(null);
   const suggestRequest = useRef(0);
+  const deckTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [suggestPosition, setSuggestPosition] = useState({ top: 0, left: 0 });
 
   function updateCardSuggestions(value: string, caret: number) {
     setText(value);
@@ -282,6 +284,18 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     }
 
     setActiveLine({ start, end, prefix: line.slice(0, line.indexOf(query)), quantity: match?.[1] ?? "" });
+
+    const textarea = deckTextareaRef.current;
+    if (textarea) {
+      const beforeCaret = value.slice(0, caret);
+      const lineNumber = beforeCaret.split("\n").length - 1;
+      const computed = window.getComputedStyle(textarea);
+      const lineHeight = Number.parseFloat(computed.lineHeight) || 20;
+      const paddingTop = Number.parseFloat(computed.paddingTop) || 10;
+      const visibleLine = lineNumber - Math.floor(textarea.scrollTop / lineHeight);
+      const top = Math.max(8, Math.min(textarea.clientHeight - 48, paddingTop + (visibleLine + 1) * lineHeight));
+      setSuggestPosition({ top, left: 8 });
+    }
     setSuggestBusy(query.length >= 2);
 
     suggestTimer.current = window.setTimeout(async () => {
@@ -422,7 +436,9 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
 
       <div className="gg-field">
         <label>Paste decklist</label>
+        <div className="gg-deck-textarea-wrap">
         <textarea
+          ref={deckTextareaRef}
           rows={13}
           value={text}
           onChange={(e) => void updateCardSuggestions(e.target.value, e.target.selectionStart ?? e.target.value.length)}
@@ -432,9 +448,8 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           }}
           placeholder={"Commander\n1 Muldrotha, the Gravetide\n\nMainboard\n1 Sol Ring\n1 Counterspell\n1 Sakura-Tribe Elder"}
         />
-        <span className="gg-card-meta">Supports common Moxfield/Archidekt-style plain-text exports, section headings, and simple CSV lines.</span>
         {(suggestions.length > 0 || suggestBusy) && (
-          <div className="gg-deck-autocomplete" role="listbox" aria-label="Matching Magic cards">
+          <div className="gg-deck-autocomplete gg-deck-autocomplete--floating" style={{ top: suggestPosition.top, left: suggestPosition.left }} role="listbox" aria-label="Matching Magic cards">
             {suggestBusy && suggestions.length === 0 ? (
               <div className="gg-deck-autocomplete__loading">Finding cards…</div>
             ) : suggestions.map((card) => (
@@ -447,6 +462,8 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
             ))}
           </div>
         )}
+        </div>
+        <span className="gg-card-meta">Supports common Moxfield/Archidekt-style plain-text exports, section headings, and simple CSV lines.</span>
       </div>
 
       <label className="gg-check">
