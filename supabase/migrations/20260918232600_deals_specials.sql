@@ -128,7 +128,7 @@ returns table(
   collector_number text, card_name text, set_name text, rarity text,
   type_line text, colors text[], creature_types text[], image_url text,
   condition public.card_condition, finish public.card_finish, foil boolean,
-  variant_type text, quantity integer, price_cents integer,
+  variant_type text, quantity integer, price_cents integer, is_deal boolean,
   original_price_cents integer, deal_discount_percent integer,
   deal_source text, deal_started_at timestamptz, total_count bigint
 )
@@ -168,7 +168,7 @@ as $$
     f.id, f.scryfall_id, f.oracle_id, f.set_code, f.collector_number,
     f.card_name, f.set_name, f.rarity, f.type_line, f.colors, f.creature_types,
     f.image_url, f.condition, f.finish, f.foil, f.variant_type,
-    f.sellable_qty, f.price_cents, f.original_price_cents,
+    f.sellable_qty, f.price_cents, f.is_deal, f.original_price_cents,
     f.deal_discount_percent, f.deal_source, f.deal_started_at, c.n
   from filtered f cross join counted c
   order by
@@ -185,7 +185,7 @@ $$;
 grant execute on function public.search_inventory(
   text, text[], text[], text[], public.card_condition[], public.card_finish[],
   text[], integer, integer, boolean, text, integer, integer, boolean
-) to public, anon, authenticated, service_role;
+) to anon, authenticated, service_role;
 
 create or replace function public.search_deals(
   p_query text default null,
