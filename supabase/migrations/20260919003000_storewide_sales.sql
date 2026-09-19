@@ -22,6 +22,21 @@ create unique index if not exists storewide_sales_single_enabled_idx
 
 alter table public.storewide_sales enable row level security;
 revoke all on table public.storewide_sales from anon, authenticated;
+grant select on public.storewide_sales to anon, authenticated;
+
+drop policy if exists "Public can read active storewide sale" on public.storewide_sales;
+create policy "Public can read active storewide sale"
+on public.storewide_sales
+for select
+to anon, authenticated
+using (
+  enabled = true
+  and now() >= starts_at
+  and now() < ends_at
+);
+
+create index if not exists storewide_sales_created_by_idx
+  on public.storewide_sales (created_by);
 
 create or replace function public.current_storewide_sale()
 returns table(
@@ -33,7 +48,7 @@ returns table(
 )
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
 as $$
   select s.id, s.name, s.discount_percent, s.starts_at, s.ends_at
@@ -56,7 +71,7 @@ create or replace function public.storefront_effective_price(
 returns integer
 language plpgsql
 stable
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -104,7 +119,7 @@ create or replace function public.storefront_effective_original_price(
 returns integer
 language plpgsql
 stable
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -140,7 +155,7 @@ create or replace function public.storefront_effective_discount_percent(
 returns integer
 language plpgsql
 stable
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
