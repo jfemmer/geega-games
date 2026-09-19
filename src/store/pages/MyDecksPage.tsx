@@ -278,6 +278,7 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   const [suggestions, setSuggestions] = useState<Array<{ card_name: string; image_url: string | null; type_line: string | null }>>([]);
   const [activeLine, setActiveLine] = useState<{ start: number; end: number; prefix: string; quantity: string } | null>(null);
   const [suggestBusy, setSuggestBusy] = useState(false);
+  const [quantityPick, setQuantityPick] = useState<{ cardName: string; start: number; end: number } | null>(null);
   const suggestTimer = useRef<number | null>(null);
   const suggestRequest = useRef(0);
   const deckTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -325,25 +326,44 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
     }, 140);
   }
 
-  function chooseSuggestion(cardName: string) {
+  function insertChosenCard(cardName: string, quantity: number) {
     if (!activeLine) return;
     const textarea = deckTextareaRef.current;
-    const quantity = Math.max(1, Math.min(Number(activeLine.quantity) || 1, formatMaxCopies(format)));
-    const replacement = `${quantity} ${cardName}\n`;
+    const safeQuantity = Math.max(1, Math.min(quantity, formatMaxCopies(format)));
+    const replacement = `${safeQuantity} ${cardName}\n`;
     const nextText = text.slice(0, activeLine.start) + replacement + text.slice(activeLine.end);
     const nextCaret = activeLine.start + replacement.length;
 
     setText(nextText);
     setSuggestions([]);
     setActiveLine(null);
+    setQuantityPick(null);
     setSuggestBusy(false);
     suggestRequest.current += 1;
 
-    // Selection is updated after React renders, but focus never leaves the textarea.
     window.requestAnimationFrame(() => {
+      textarea?.focus();
       textarea?.setSelectionRange(nextCaret, nextCaret);
     });
   }
+
+  function chooseSuggestion(cardName: string) {
+    if (!activeLine) return;
+    const maxCopies = formatMaxCopies(format);
+    if (maxCopies > 1 && !activeLine.quantity) {
+      setSuggestions([]);
+      setSuggestBusy(false);
+      setQuantityPick({ cardName, start: activeLine.start, end: activeLine.end });
+      return;
+    }
+    insertChosenCard(cardName, Number(activeLine.quantity) || 1);
+  }
+
+  function chooseQuantity(quantity: number) {
+    if (!quantityPick || !activeLine) return;
+    insertChosenCard(quantityPick.cardName, quantity);
+  }
+
   async function importFile(file: File | null) {
     if (!file) return;
     if (file.size > 512 * 1024) {
@@ -515,6 +535,31 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+        {quantityPick && (
+          <div
+            className="gg-deck-autocomplete gg-deck-autocomplete--floating"
+            style={{ top: suggestPosition.top, left: suggestPosition.left }}
+            role="group"
+            aria-label={`Choose quantity for ${quantityPick.cardName}`}
+          >
+            <div className="gg-deck-autocomplete__loading">{quantityPick.cardName} · choose quantity</div>
+            <div className="gg-deck-quantity-picker">
+              {Array.from({ length: formatMaxCopies(format) }, (_, index) => index + 1).map((quantity) => (
+                <button
+                  key={quantity}
+                  type="button"
+                  className="gg-btn gg-btn-sm"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    chooseQuantity(quantity);
+                  }}
+                >
+                  {quantity}×
+                </button>
+              ))}
+            </div>
           </div>
         )}
         </div>
