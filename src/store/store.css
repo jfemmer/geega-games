@@ -2685,3 +2685,104 @@
     padding: 1rem;
   }
 }
+
+
+/* Mobile account navigation: compact menu card instead of a long horizontal strip. */
+@media (max-width: 800px) {
+  .gg-account-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+    gap: .35rem;
+    padding: .5rem;
+    background: #fff;
+  }
+  .gg-account-nav a {
+    min-width: 0;
+    min-height: 40px;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.15;
+    padding: .55rem .35rem;
+    border: 1px solid transparent;
+    background: #faf8fc;
+  }
+  .gg-account-nav a.gg-active {
+    border-color: rgba(102,51,153,.25);
+  }
+  .gg-account-nav__signout {
+    grid-column: 1 / -1;
+    margin: .1rem 0 0;
+    padding: .4rem 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--gg-line);
+  }
+  .gg-account-nav__signout button {
+    min-height: 38px;
+    justify-content: center;
+    padding: .45rem;
+  }
+  .gg-account-main {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .gg-page:has(.gg-account) {
+    padding-left: .75rem;
+    padding-right: .75rem;
+  }
+  .gg-account-header {
+    margin-bottom: .8rem;
+  }
+  .gg-account-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .3rem;
+  }
+  .gg-account-nav a {
+    min-height: 38px;
+    font-size: .76rem;
+  }
+  .gg-dash-grid {
+    gap: .75rem;
+  }
+  .gg-dash-card,
+  .gg-dash-card--wide {
+    padding: .95rem;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+  .gg-dash-card h2 {
+    margin-bottom: .7rem;
+  }
+  .gg-dash-actions {
+    gap: .4rem;
+    margin-top: .8rem;
+    padding-top: .7rem;
+  }
+  .gg-dash-actions .gg-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .gg-account-main .gg-deck-stats {
+    gap: .5rem;
+  }
+  .gg-account-main .gg-deck-stats > div {
+    padding: .7rem .75rem;
+    box-shadow: none;
+  }
+  .gg-account-main .gg-deck-tile,
+  .gg-account-main .gg-deck-row,
+  .gg-account-main .gg-rec-card {
+    box-shadow: none;
+  }
+  .gg-account-main .gg-decks-toolbar {
+    gap: .7rem;
+  }
+  .gg-account-main .gg-decks-toolbar .gg-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
