@@ -358,8 +358,11 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
   // section-first, then first-legendary-found heuristic this used to apply
   // silently) — once the user has touched the picker themselves,
   // commanderUserEditedRef stops this effect from overwriting their choice.
+  // Deliberately Commander-only (not hasCommander()'s commander-or-brawl):
+  // the picker only shows for the Commander format, though a Brawl deck can
+  // still get a commander set afterward via DeckDetail's "Set commander."
   useEffect(() => {
-    if (!hasCommander(format)) {
+    if (format !== "commander") {
       setCommanderCandidates([]);
       setResolvingCommander(false);
       commanderUserEditedRef.current = false;
@@ -521,9 +524,9 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
 
       // The commander is now whatever the user confirmed in the picker
       // (defaulted there from the same heuristic this used to apply
-      // silently), not re-derived here — and only for formats that
-      // actually have a commander concept.
-      const commander = hasCommander(format) ? chosenCommander : null;
+      // silently), not re-derived here — and only for Commander, matching
+      // the picker's own format gate above.
+      const commander = format === "commander" ? chosenCommander : null;
 
       const { data: deck, error: deckError } = await db
         .from("customer_decks")
@@ -616,6 +619,68 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
                 : `Up to ${formatMaxCopies(format)} copies of each card.`}
           </span>
         </div>
+
+        {format === "commander" && (
+          <div className="gg-field gg-field-span2">
+            <label>Commander</label>
+            {resolvingCommander && commanderCandidates.length === 0 && (
+              <span className="gg-card-meta">Looking for legendary creatures in your list…</span>
+            )}
+            {commanderCandidates.length > 0 && !showCommanderSearch && (
+              <select
+                value={chosenCommander?.oracle_id ?? ""}
+                onChange={(e) => {
+                  commanderUserEditedRef.current = true;
+                  const picked = commanderCandidates.find((c) => c.oracle_id === e.target.value);
+                  setChosenCommander(
+                    picked?.oracle_id && picked.card_name
+                      ? { card_name: picked.card_name, oracle_id: picked.oracle_id, scryfall_id: picked.scryfall_id }
+                      : null,
+                  );
+                }}
+              >
+                <option value="">— Choose your commander —</option>
+                {commanderCandidates.map((card) => (
+                  <option key={card.oracle_id} value={card.oracle_id ?? ""}>
+                    {card.card_name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="gg-deck-unresolved">
+              {chosenCommander && (commanderCandidates.length === 0 || showCommanderSearch) && (
+                <span className="gg-badge">Commander: {chosenCommander.card_name}</span>
+              )}
+              <button
+                type="button"
+                className="gg-btn gg-btn-sm gg-btn-ghost"
+                onClick={() => setShowCommanderSearch((v) => !v)}
+              >
+                {showCommanderSearch
+                  ? "Cancel search"
+                  : commanderCandidates.length > 0
+                    ? "Not your commander? Search"
+                    : "Search for your commander"}
+              </button>
+              {showCommanderSearch && (
+                <CardPicker
+                  placeholder="Search for your commander…"
+                  onPick={(card) => {
+                    commanderUserEditedRef.current = true;
+                    setChosenCommander({ card_name: card.card_name, oracle_id: card.oracle_id, scryfall_id: card.scryfall_id });
+                    setShowCommanderSearch(false);
+                  }}
+                />
+              )}
+            </div>
+            <span className="gg-card-meta">
+              {commanderCandidates.length > 0 && !showCommanderSearch
+                ? "Used to personalize card suggestions once this deck is saved."
+                : "Pick your commander now, or paste your decklist below first and we'll suggest one."}
+            </span>
+          </div>
+        )}
+
         <div className="gg-field">
           <label>Recommendation budget</label>
           <select value={budget} onChange={(e) => setBudget(e.target.value as Deck["budget_mode"])}>
@@ -633,67 +698,6 @@ function DeckImporter({ onCreated }: { onCreated: () => void }) {
           <input type="file" accept=".txt,.csv,text/plain,text/csv" onChange={(e) => void importFile(e.target.files?.[0] ?? null)} />
         </div>
       </div>
-
-      {hasCommander(format) && (
-        <div className="gg-field">
-          <label>Commander</label>
-          {resolvingCommander && commanderCandidates.length === 0 && (
-            <span className="gg-card-meta">Looking for legendary creatures in your list…</span>
-          )}
-          {commanderCandidates.length > 0 && !showCommanderSearch && (
-            <select
-              value={chosenCommander?.oracle_id ?? ""}
-              onChange={(e) => {
-                commanderUserEditedRef.current = true;
-                const picked = commanderCandidates.find((c) => c.oracle_id === e.target.value);
-                setChosenCommander(
-                  picked?.oracle_id && picked.card_name
-                    ? { card_name: picked.card_name, oracle_id: picked.oracle_id, scryfall_id: picked.scryfall_id }
-                    : null,
-                );
-              }}
-            >
-              <option value="">— Choose your commander —</option>
-              {commanderCandidates.map((card) => (
-                <option key={card.oracle_id} value={card.oracle_id ?? ""}>
-                  {card.card_name}
-                </option>
-              ))}
-            </select>
-          )}
-          <div className="gg-deck-unresolved">
-            {chosenCommander && (commanderCandidates.length === 0 || showCommanderSearch) && (
-              <span className="gg-badge">Commander: {chosenCommander.card_name}</span>
-            )}
-            <button
-              type="button"
-              className="gg-btn gg-btn-sm gg-btn-ghost"
-              onClick={() => setShowCommanderSearch((v) => !v)}
-            >
-              {showCommanderSearch
-                ? "Cancel search"
-                : commanderCandidates.length > 0
-                  ? "Not your commander? Search"
-                  : "Search for your commander"}
-            </button>
-            {showCommanderSearch && (
-              <CardPicker
-                placeholder="Search for your commander…"
-                onPick={(card) => {
-                  commanderUserEditedRef.current = true;
-                  setChosenCommander({ card_name: card.card_name, oracle_id: card.oracle_id, scryfall_id: card.scryfall_id });
-                  setShowCommanderSearch(false);
-                }}
-              />
-            )}
-          </div>
-          <span className="gg-card-meta">
-            {commanderCandidates.length > 0 && !showCommanderSearch
-              ? "Used to personalize card suggestions once this deck is saved."
-              : "Pick your commander now, or paste your decklist below first and we'll suggest one."}
-          </span>
-        </div>
-      )}
 
       <div className="gg-field">
         <label>Paste decklist</label>
