@@ -365,3 +365,31 @@ select cron.schedule(
       'https://geega-games.vercel.app/api/deck-alerts/process'
     );$
 );
+
+
+create or replace function public.deck_card_images(p_deck_id uuid)
+returns table(deck_card_id uuid, image_url text)
+language sql stable security invoker set search_path=public
+as $$
+  select
+    dc.id,
+    coalesce(
+      b.raw->'image_uris'->>'normal',
+      b.raw->'card_faces'->0->'image_uris'->>'normal'
+    ) as image_url
+  from public.customer_deck_cards dc
+  join public.customer_decks d
+    on d.id=dc.deck_id and d.user_id=auth.uid()
+  left join lateral (
+    select sb.raw
+    from public.scryfall_bulk_cards sb
+    where sb.oracle_id=dc.oracle_id and sb.lang='en'
+    order by
+      (sb.scryfall_id=dc.scryfall_id) desc,
+      sb.released_at desc nulls last
+    limit 1
+  ) b on true
+  where dc.deck_id=p_deck_id
+  order by dc.card_name;
+$$;
+grant execute on function public.deck_card_images(uuid) to authenticated;
