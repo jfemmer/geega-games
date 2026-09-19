@@ -31,6 +31,7 @@ select
   x.scryfall_price_cents,
   x.edhrec_rank,
   case
+    when lower(x.type_line) like '%land%' then 'Mana Base'
     when lower(x.oracle_text) ~ '(draw (a|two|three|x|that many|cards)|draw [0-9]+ cards)' then 'Card Draw'
     when lower(x.oracle_text) ~ '(destroy all|exile all|all creatures get -)' then 'Board Wipe'
     when lower(x.oracle_text) ~ '(destroy target|exile target|counter target spell|deals? [0-9x]+ damage to target)' then 'Interaction'
@@ -145,6 +146,7 @@ candidates as (
       when 'Interaction' then 13
       when 'Board Wipe' then 11
       when 'Protection' then 9
+      when 'Mana Base' then 8
       else 2
     end as role_score,
     case
@@ -206,6 +208,7 @@ select
     when b.primary_category='Interaction' then 'Gives you another way to answer opposing threats.'
     when b.primary_category='Board Wipe' then 'Provides a reset button when opponents get too far ahead.'
     when b.primary_category='Protection' then 'Helps protect important permanents from removal.'
+    when b.primary_category='Mana Base' then 'Adds a commonly played land or utility land that fits your commander’s color identity.'
     when b.theme_overlap > 0 then 'Shares themes and mechanics with your commander.'
     else 'Fits your commander color identity and fills a useful deck role.'
   end,
