@@ -1,4 +1,3 @@
-import * as React from "react";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { sendTrackedEmail } from "../_lib/emailService.js";
@@ -61,12 +60,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         from: ServerEnv.fromMarketing(),
         replyTo: ServerEnv.replyTo(),
         subject: `${row.card_name} is back in stock — Geega Games`,
-        react: React.createElement(DeckStockAlert, {
+        react: DeckStockAlert({
           cardName: row.card_name,
           deckNames: row.deck_names ?? [],
           productUrl,
           siteUrl: siteUrl(),
-        }),
+        }) as any,
         text: deckStockAlertText({
           cardName: row.card_name,
           deckNames: row.deck_names ?? [],
