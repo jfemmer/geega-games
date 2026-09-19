@@ -64,18 +64,24 @@ export default function StorewideSaleBanner() {
   return (
     <div className="gg-store-sale" role="status" aria-live="polite">
       <div className="gg-store-sale__inner">
-        <span className="gg-store-sale__badge">{sale.discount_percent}% OFF</span>
-        <span className="gg-store-sale__message">
-          <strong>{sale.name}</strong>
-          <span>Storewide savings are live.</span>
-        </span>
-        <span className="gg-store-sale__timer">
-          <span>Ends in</span>
-          <strong>{formatRemaining(remaining)}</strong>
-        </span>
-        <Link to="/shop" className="gg-store-sale__link">
-          Shop now
-        </Link>
+        <div className="gg-store-sale__lead">
+          <span className="gg-store-sale__eyebrow">Limited-time event</span>
+          <span className="gg-store-sale__message">
+            <strong>{sale.name}</strong>
+            <span>Save {sale.discount_percent}% storewide</span>
+          </span>
+        </div>
+
+        <div className="gg-store-sale__meta">
+          <span className="gg-store-sale__badge">{sale.discount_percent}% OFF</span>
+          <span className="gg-store-sale__timer">
+            <span>Ends in</span>
+            <strong>{formatRemaining(remaining)}</strong>
+          </span>
+          <Link to="/shop" className="gg-store-sale__link">
+            Shop sale
+          </Link>
+        </div>
       </div>
     </div>
   );
