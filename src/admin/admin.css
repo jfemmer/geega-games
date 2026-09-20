@@ -371,6 +371,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-table__row--clickable { cursor: pointer; }
 .gg-table__row--clickable:hover td { background: var(--gg-surface-2); }
 .gg-table__row--selected td { background: rgba(102,51,153,0.06); }
+.gg-table__row--variant td { background: rgba(234,179,8,0.08); }
+.gg-table__row--variant:hover td { background: rgba(234,179,8,0.14); }
 .gg-align-right { text-align: right; font-variant-numeric: tabular-nums; }
 .gg-align-center { text-align: center; }
 .gg-table__checkcol { width: 42px; text-align: center; }

@@ -23,12 +23,15 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
   const srcSet = card.imageUrl ? scryfallSrcSet(card.imageUrl) : null;
 
   return (
-    <div className="gg-card">
+    <div className={`gg-card${card.variantType ? " gg-card--variant" : ""}`}>
       <div className={`gg-card-imgwrap ${card.finish !== "nonfoil" ? "gg-card-imgwrap--foil" : ""}`}>
         {card.isDeal && (
           <span className="gg-deal-ribbon">
             {card.dealDiscountPercent ? `${card.dealDiscountPercent}% OFF` : "SPECIAL"}
           </span>
+        )}
+        {card.variantType && (
+          <span className="gg-variant-ribbon">★ {card.variantType}</span>
         )}
         {card.imageUrl ? (
           <>

@@ -39,6 +39,8 @@ export type CartLine = {
   priceCents: number;
   /** Current sellable stock for this item (physical minus active reservations). */
   sellable: number;
+  /** "Artist Proof", "Special Edition", a custom label, or null for a standard copy. */
+  variantType: string | null;
 };
 
 type CartContextValue = {
@@ -68,6 +70,7 @@ type PublicRow = {
   image_url: string | null;
   price_cents: number | null;
   quantity: number | null; // sellable (view already subtracts reservations)
+  variant_type: string | null;
 };
 
 /** Fetch sellable stock + display fields for a set of inventory item ids. */
@@ -77,7 +80,7 @@ async function fetchItemsByIds(ids: string[]): Promise<Map<string, PublicRow>> {
   const { data, error } = await supabase
     .from("inventory_public")
     .select(
-      "id, card_name, set_code, set_name, condition, finish, image_url, price_cents, quantity",
+      "id, card_name, set_code, set_name, condition, finish, image_url, price_cents, quantity, variant_type",
     )
     .in("id", ids);
   if (error) throw new Error(error.message);
@@ -98,6 +101,7 @@ function buildLine(row: PublicRow, quantity: number): CartLine {
     imageUrl: storefrontImageUrl(row.image_url ?? null),
     priceCents: row.price_cents ?? 0,
     sellable,
+    variantType: row.variant_type || null,
   };
 }
 

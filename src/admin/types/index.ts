@@ -523,6 +523,8 @@ export interface OrderItem {
   imageUrl: string | null;
   condition: CardCondition;
   finish: CardFinish;
+  /** "Artist Proof", "Special Edition", a custom label, or null for a standard copy. */
+  variantType?: string | null;
   quantity: number;
   unitPriceCents: number;
   lineTotalCents: number;

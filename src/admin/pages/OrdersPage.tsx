@@ -456,6 +456,9 @@ function OrderDetail({
                     <span className="gg-packitem__text">
                       <span className="gg-packitem__name">
                         {it.quantity}× {it.cardName}
+                        {it.variantType && (
+                          <Badge tone="gold">{it.variantType}</Badge>
+                        )}
                       </span>
                       <span className="gg-packitem__meta">
                         {(it.setName ?? it.setCode) ? `${it.setName ?? it.setCode} · ` : ""}

@@ -541,6 +541,7 @@ export function InventoryPage({
               onToggleRow={toggleRow}
               onToggleAll={toggleAll}
               caption="Inventory items"
+              rowClassName={(r) => (r.variantType ? "gg-table__row--variant" : "")}
             />
             <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
           </>

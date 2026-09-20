@@ -27,6 +27,8 @@ interface DataTableProps<T> {
   onToggleAll?: () => void;
   caption?: string;
   emptyContent?: ReactNode;
+  /** Extra class name(s) for a given row -- e.g. to highlight a special row. */
+  rowClassName?: (row: T) => string;
 }
 
 export function DataTable<T>({
@@ -43,6 +45,7 @@ export function DataTable<T>({
   onToggleAll,
   caption,
   emptyContent,
+  rowClassName,
 }: DataTableProps<T>) {
   const allSelected =
     selectable && rows.length > 0 && rows.every((r) => selectedIds?.has(rowKey(r)));
@@ -137,6 +140,7 @@ export function DataTable<T>({
                   className={[
                     onRowClick ? "gg-table__row--clickable" : "",
                     selected ? "gg-table__row--selected" : "",
+                    rowClassName?.(row) ?? "",
                   ]
                     .filter(Boolean)
                     .join(" ")}

@@ -119,7 +119,14 @@ export default function CartDrawer({
                 <div className="gg-line-img" aria-hidden="true" />
               )}
               <div className="gg-line-info">
-                <div className="gg-card-name">{l.name}</div>
+                <div className="gg-card-name">
+                  {l.name}
+                  {l.variantType && (
+                    <span className="gg-badge gg-badge-variant" style={{ marginLeft: "0.4rem" }}>
+                      {l.variantType}
+                    </span>
+                  )}
+                </div>
                 <div className="gg-card-meta">
                   {l.setName ?? l.setCode?.toUpperCase()} · {l.condition}
                   {l.finish !== "nonfoil" ? ` · ${l.finish}` : ""}

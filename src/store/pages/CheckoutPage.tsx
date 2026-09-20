@@ -424,7 +424,14 @@ export default function CheckoutPage() {
                 <img className="gg-line-img" src={l.imageUrl} alt="" loading="lazy" />
               )}
               <div className="gg-line-info">
-                <div className="gg-card-name">{l.name}</div>
+                <div className="gg-card-name">
+                  {l.name}
+                  {l.variantType && (
+                    <span className="gg-badge gg-badge-variant" style={{ marginLeft: "0.4rem" }}>
+                      {l.variantType}
+                    </span>
+                  )}
+                </div>
                 <div className="gg-card-meta">
                   {l.setName ?? l.setCode?.toUpperCase()} · {l.condition} × {l.quantity}
                 </div>

@@ -358,8 +358,43 @@
   color: #92400e;
 }
 .gg-badge-variant {
-  background: #fee2e2;
-  color: #991b1b;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #78350f;
+  font-weight: 800;
+}
+.gg-variant-ribbon {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 8px;
+  padding: .28rem .5rem;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #a16207, #eab308);
+  color: #fff;
+  font-size: .64rem;
+  font-weight: 850;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 10px rgba(180, 130, 20, .5);
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gg-card--variant {
+  border-color: rgba(234, 179, 8, .4);
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, .28), 0 6px 18px rgba(234, 179, 8, .16);
+}
+.gg-card--variant:hover {
+  border-color: rgba(234, 179, 8, .55);
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, .4), 0 8px 24px rgba(234, 179, 8, .28);
+}
+@media (max-width: 640px) {
+  .gg-variant-ribbon {
+    top: 6px;
+    right: 6px;
+    font-size: .58rem;
+  }
 }
 .gg-card-foot {
   margin-top: auto;

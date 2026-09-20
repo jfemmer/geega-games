@@ -944,6 +944,7 @@ type OrderItem = {
   collector_number: string | null;
   condition: string;
   finish: string;
+  variant_type: string | null;
   quantity: number;
   unit_price_cents: number;
   line_total_cents: number;
@@ -977,7 +978,7 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
       const { data: it } = await supabase
         .from("order_items")
         .select(
-          "id, card_name, set_code, set_name, collector_number, condition, finish, quantity, unit_price_cents, line_total_cents, image_url",
+          "id, card_name, set_code, set_name, collector_number, condition, finish, variant_type, quantity, unit_price_cents, line_total_cents, image_url",
         )
         .eq("order_id", orderId);
       setItems((it ?? []) as OrderItem[]);
@@ -1057,7 +1058,14 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
             <img className="gg-line-img" src={it.image_url} alt="" loading="lazy" />
           )}
           <div className="gg-line-info">
-            <div className="gg-card-name">{it.card_name}</div>
+            <div className="gg-card-name">
+              {it.card_name}
+              {it.variant_type && (
+                <span className="gg-badge gg-badge-variant" style={{ marginLeft: "0.4rem" }}>
+                  {it.variant_type}
+                </span>
+              )}
+            </div>
             <div className="gg-card-meta">
               {it.set_name ?? it.set_code?.toUpperCase()}
               {it.collector_number ? ` · #${it.collector_number}` : ""} · {it.condition} ·{" "}

@@ -67,6 +67,7 @@ function mapItem(row: OrderItemRowDb): OrderItem {
     imageUrl: row.image_url,
     condition: row.condition,
     finish: row.finish,
+    variantType: row.variant_type || null,
     quantity: row.quantity,
     unitPriceCents: row.unit_price_cents,
     lineTotalCents: row.line_total_cents,
