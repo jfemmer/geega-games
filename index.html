@@ -44,7 +44,10 @@
     <meta name="twitter:image" content="https://geega-games.com/og-image.png" />
 
     <!-- Structured data: uses only verified business info. Update the URL and
-         add contactPoint/address only once those details are confirmed. -->
+         add contactPoint/address only once those details are confirmed.
+         areaServed reflects the confirmed online-only (no storefront) service
+         region; keep in sync with SellCollectionPage.tsx's SERVICE_JSON_LD if
+         that region changes. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -53,7 +56,11 @@
         "description": "Magic: The Gathering singles — buy, sell, and trade.",
         "url": "https://geega-games.com/",
         "logo": "https://geega-games.com/logo.png",
-        "image": "https://geega-games.com/og-image.png"
+        "image": "https://geega-games.com/og-image.png",
+        "areaServed": [
+          { "@type": "State", "name": "Missouri" },
+          { "@type": "AdministrativeArea", "name": "Metro East, Illinois" }
+        ]
       }
     </script>
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
 import { useAuth } from "../lib/AuthContext";
+import { useSEO } from "../lib/useSEO";
 import { supabase } from "../../supabase";
 import { SellProgress } from "../components/sell/SellProgress";
 import { SellCardSearch } from "../components/sell/SellCardSearch";
@@ -55,6 +56,13 @@ function isValidEmail(email: string): boolean {
 }
 
 export default function SellPage() {
+  useSEO({
+    title: "Sell Your Magic: The Gathering Cards Online — Missouri & Illinois | Geega Games",
+    description:
+      "Get an offer for your Magic: The Gathering cards or collection. Search up singles or upload photos of a full collection — we buy from sellers across Missouri and the Metro East/western Illinois region.",
+    path: "/sell",
+  });
+
   const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<SellDraft>(() => loadDraft() ?? emptyDraft());

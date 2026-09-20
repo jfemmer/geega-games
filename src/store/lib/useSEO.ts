@@ -19,8 +19,13 @@ interface SEOOptions {
   description: string;
   /** Path only, e.g. "/sell-my-collection" — combined with SITE.url for canonical/OG. */
   path: string;
-  /** Optional JSON-LD structured data (e.g. FAQPage) to inject while this page is mounted. */
-  jsonLd?: object;
+  /**
+   * Optional JSON-LD structured data (e.g. FAQPage) to inject while this
+   * page is mounted. Pass an array to emit multiple entities in one script
+   * tag (e.g. [FAQPage, Service]) — Google supports a top-level JSON array
+   * the same as a single object.
+   */
+  jsonLd?: object | object[];
 }
 
 function upsertMeta(attr: "name" | "property", key: string, content: string): void {

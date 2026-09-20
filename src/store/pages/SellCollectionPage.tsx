@@ -1,6 +1,15 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
+import { SITE } from "../../siteConfig";
 import { SUPPORT_EMAIL } from "./StaticPages";
+
+// Service area for SEO/schema purposes. Geega Games is online-only (no
+// physical storefront) — sellers ship in or drop off by arrangement from
+// anywhere, but Missouri and the Illinois Metro East/western-IL area are
+// the core, named service region. Bare names (no state suffix) so this one
+// list works both in prose (joined into a sentence) and in SERVICE_JSON_LD
+// (state expressed separately via containedInPlace) without duplication.
+const MISSOURI_CITIES = ["St. Louis", "Kansas City", "Springfield", "Columbia"];
 
 // SEO landing page for people sitting on a large, unsorted Magic collection
 // (estate, "found it in the attic," quit-playing-years-ago, etc.). Deliberately
@@ -44,6 +53,11 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
     answer:
       "Use the form below. It asks a few quick questions about the collection (size, what's in it, whether you'd rather ship or bring it in) — nothing about individual card values or condition grading is required up front.",
   },
+  {
+    question: "Do I have to live near you to sell my collection?",
+    answer:
+      `No — shipping in works from anywhere. That said, we're proud to be a go-to option for sellers across Missouri and the Metro East/western Illinois area, including ${MISSOURI_CITIES.join(", ")}.`,
+  },
 ];
 
 const FAQ_JSON_LD = {
@@ -59,13 +73,38 @@ const FAQ_JSON_LD = {
   })),
 };
 
+// No physical storefront (mail-in/drop-off by arrangement only), so this is
+// Service + areaServed rather than LocalBusiness — LocalBusiness schema
+// implies a visitable address, which would be inaccurate here.
+const SERVICE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  serviceType: "Magic: The Gathering card and collection buying",
+  provider: {
+    "@type": "Organization",
+    name: SITE.name,
+    url: SITE.url,
+  },
+  areaServed: [
+    { "@type": "State", name: "Missouri" },
+    ...MISSOURI_CITIES.map((name) => ({
+      "@type": "City",
+      name,
+      containedInPlace: { "@type": "State", name: "Missouri" },
+    })),
+    { "@type": "AdministrativeArea", name: "Metro East, Illinois" },
+  ],
+  description:
+    "Buying Magic: The Gathering collections and singles from sellers throughout Missouri and the Metro East/western Illinois region, by mail-in shipment or drop-off by arrangement.",
+};
+
 export default function SellCollectionPage() {
   useSEO({
-    title: "Sell Your Magic: The Gathering Collection — Unsorted Welcome | Geega Games",
+    title: "Sell Your Magic: The Gathering Collection in Missouri — Unsorted Welcome | Geega Games",
     description:
-      "Selling a large Magic: The Gathering collection? Unsorted, mixed, or inherited — no problem. Ship it or bring it in, no sorting or pricing required. Get started today.",
+      "Selling a large Magic: The Gathering collection in Missouri or the Metro East/western Illinois area? Unsorted, mixed, or inherited — no problem. Ship it or bring it in, no sorting or pricing required.",
     path: "/sell-my-collection",
-    jsonLd: FAQ_JSON_LD,
+    jsonLd: [FAQ_JSON_LD, SERVICE_JSON_LD],
   });
 
   return (
@@ -145,6 +184,16 @@ export default function SellCollectionPage() {
           <li>Ship it or bring it in — your call, not a one-size-fits-all process.</li>
           <li>Real people looking through real cards, not an automated bulk-buy calculator.</li>
         </ul>
+      </section>
+
+      <section className="gg-collect-section">
+        <h2>Buying Magic: The Gathering collections from sellers across Missouri and Illinois</h2>
+        <p>
+          We&rsquo;re proud to be a go-to option for Missouri sellers — and the Metro
+          East/western Illinois area — looking to turn a collection into cash. Ship to us from
+          anywhere in the region, including {MISSOURI_CITIES.join(", ")}, and everywhere in
+          between.
+        </p>
       </section>
 
       <section className="gg-collect-section">
