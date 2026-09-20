@@ -2076,6 +2076,15 @@
 .gg-card:has(.gg-deal-ribbon) {
   border-color: rgba(124, 0, 230, .28);
 }
+.gg-deal-note {
+  margin: .2rem 0 0;
+  font-size: .72rem;
+  line-height: 1.35;
+  color: #92400e;
+}
+.gg-deal-note strong {
+  font-weight: 700;
+}
 
 @media (max-width: 640px) {
   .gg-deals-hero {

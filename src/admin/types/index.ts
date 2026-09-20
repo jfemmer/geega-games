@@ -146,13 +146,15 @@ export interface InventoryItem {
   storefrontListedAt?: string;
   /** True when the line should appear in Deals & Specials. */
   isDeal?: boolean;
-  /** Whether the deal was selected by staff or created by the 30-day rule. */
-  dealSource?: "manual" | "aged_inventory" | null;
+  /** Why the line is a deal: staff pick, the 30-day rule, or a flaw/grading quirk. */
+  dealSource?: "manual" | "aged_inventory" | "flawed" | null;
   /** Regular pre-discount price, retained so the storefront can show savings. */
   originalPriceCents?: number | null;
   /** Percent markdown currently applied to this line. */
   dealDiscountPercent?: number | null;
   dealStartedAt?: string | null;
+  /** Customer-facing explanation of the deal (the specific flaw, for dealSource "flawed"). */
+  dealNote?: string | null;
   createdAt: string;
   updatedAt: string;
 }

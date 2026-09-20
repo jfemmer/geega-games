@@ -35,10 +35,11 @@ export interface InventoryRowLike {
   scryfall_price_cents: number | null;
   storefront_listed_at?: string;
   is_deal?: boolean;
-  deal_source?: "manual" | "aged_inventory" | null;
+  deal_source?: "manual" | "aged_inventory" | "flawed" | null;
   original_price_cents?: number | null;
   deal_discount_percent?: number | null;
   deal_started_at?: string | null;
+  deal_note?: string | null;
   storage_location: string | null;
   sku: string | null;
   notes: string | null;
@@ -92,6 +93,7 @@ export function mapInventoryRow(row: InventoryRowLike): InventoryItem {
     originalPriceCents: row.original_price_cents ?? null,
     dealDiscountPercent: row.deal_discount_percent ?? null,
     dealStartedAt: row.deal_started_at ?? null,
+    dealNote: row.deal_note ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

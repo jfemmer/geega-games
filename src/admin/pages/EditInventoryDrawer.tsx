@@ -70,6 +70,10 @@ export function EditInventoryDrawer({
   const [location, setLocation] = useState("");
   const [sku, setSku] = useState("");
   const [notes, setNotes] = useState("");
+  const [storefrontPlacement, setStorefrontPlacement] = useState<"main" | "deals">("main");
+  const [dealDiscount, setDealDiscount] = useState("20");
+  const [dealReason, setDealReason] = useState<"manual" | "flawed">("manual");
+  const [flawNote, setFlawNote] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Printing change: null = keep current printing; a value = staged new printing
@@ -87,6 +91,10 @@ export function EditInventoryDrawer({
     setLocation(item.storageLocation ?? "");
     setSku(item.sku ?? "");
     setNotes(item.notes ?? "");
+    setStorefrontPlacement(item.isDeal ? "deals" : "main");
+    setDealDiscount(String(item.dealDiscountPercent ?? 20));
+    setDealReason(item.dealSource === "flawed" ? "flawed" : "manual");
+    setFlawNote(item.dealSource === "flawed" ? (item.dealNote ?? "") : "");
     setNewPrinting(null);
     setPicking(false);
   }, [item]);
@@ -124,6 +132,14 @@ export function EditInventoryDrawer({
       toast.error("Choose a finish available for this printing.");
       return;
     }
+    if (storefrontPlacement === "deals" && dealReason === "flawed" && !flawNote.trim()) {
+      toast.error("Describe the flaw so customers know what they're buying.");
+      return;
+    }
+    const discountPercent = Math.max(
+      1,
+      Math.min(90, Math.round(Number(dealDiscount) || 20)),
+    );
 
     const edit: InventoryPrintingEdit = {
       condition,
@@ -144,11 +160,18 @@ export function EditInventoryDrawer({
 
     setSaving(true);
     try {
-      const updated = await inventoryRepository.updatePrinting(
-        item.id,
-        edit,
-        currentAdmin.name,
-      );
+      await inventoryRepository.updatePrinting(item.id, edit, currentAdmin.name);
+      // Deal placement/reason/discount/note is a separate PATCH, mirroring how
+      // AddInventoryDrawer sets it in a follow-up call after creating the row.
+      const updated = await inventoryRepository.update(item.id, {
+        isDeal: storefrontPlacement === "deals",
+        dealDiscountPercent: storefrontPlacement === "deals" ? discountPercent : null,
+        dealSource: storefrontPlacement === "deals" ? dealReason : null,
+        dealNote:
+          storefrontPlacement === "deals" && dealReason === "flawed"
+            ? flawNote.trim()
+            : null,
+      });
       toast.success(`Saved changes to ${updated.cardName}.`);
       onSaved(updated);
       onClose();
@@ -338,7 +361,62 @@ export function EditInventoryDrawer({
                 value={sku}
                 onChange={(e) => setSku(e.target.value)}
               />
+              <SelectField
+                label="Storefront placement"
+                value={storefrontPlacement}
+                onChange={(e) => setStorefrontPlacement(e.target.value as "main" | "deals")}
+                hint="Deals & Specials listings are also visible in normal shop searches."
+              >
+                <option value="main">Main Store</option>
+                <option value="deals">Deals & Specials</option>
+              </SelectField>
+              {storefrontPlacement === "deals" && (
+                <>
+                  <SelectField
+                    label="Deal reason"
+                    value={dealReason}
+                    onChange={(e) => setDealReason(e.target.value as "manual" | "flawed")}
+                    hint="Flawed cards show their note to customers on the storefront."
+                  >
+                    <option value="manual">Hand-picked special</option>
+                    <option value="flawed">Hard to grade / has a flaw</option>
+                  </SelectField>
+                  <TextField
+                    label="Deal discount (%)"
+                    type="number"
+                    min={1}
+                    max={90}
+                    step={1}
+                    value={dealDiscount}
+                    onChange={(e) => setDealDiscount(e.target.value)}
+                    hint={
+                      centsFromInput(price) > 0
+                        ? `Regular ${formatCents(centsFromInput(price))} → Deal ${formatCents(
+                            Math.max(
+                              1,
+                              Math.round(
+                                (centsFromInput(price) *
+                                  (100 - Math.max(1, Math.min(90, Number(dealDiscount) || 20)))) /
+                                  100,
+                              ),
+                            ),
+                          )}`
+                        : undefined
+                    }
+                  />
+                </>
+              )}
             </div>
+            {storefrontPlacement === "deals" && dealReason === "flawed" && (
+              <TextArea
+                label="Describe the flaw"
+                placeholder="e.g. small crease on the bottom-left corner, factory miscut, slight ink smudge on the border…"
+                value={flawNote}
+                rows={2}
+                onChange={(e) => setFlawNote(e.target.value)}
+                hint="Shown to customers on the storefront so they know exactly what they're getting."
+              />
+            )}
             <TextArea
               label="Notes"
               placeholder="Optional — signed, altered, etc."

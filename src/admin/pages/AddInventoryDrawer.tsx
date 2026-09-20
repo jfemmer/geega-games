@@ -58,6 +58,8 @@ export function AddInventoryDrawer({
   const [notes, setNotes] = useState("");
   const [storefrontPlacement, setStorefrontPlacement] = useState<"main" | "deals">("main");
   const [dealDiscount, setDealDiscount] = useState("20");
+  const [dealReason, setDealReason] = useState<"manual" | "flawed">("manual");
+  const [flawNote, setFlawNote] = useState("");
   const [addAnother, setAddAnother] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dupe, setDupe] = useState<InventoryItem | null>(null);
@@ -93,6 +95,8 @@ export function AddInventoryDrawer({
     setNotes("");
     setStorefrontPlacement("main");
     setDealDiscount("20");
+    setDealReason("manual");
+    setFlawNote("");
     setDupe(null);
   }
 
@@ -174,6 +178,10 @@ export function AddInventoryDrawer({
       1,
       Math.min(90, Math.round(Number(dealDiscount) || 20)),
     );
+    if (storefrontPlacement === "deals" && dealReason === "flawed" && !flawNote.trim()) {
+      toast.error("Describe the flaw so customers know what they're buying.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -200,6 +208,11 @@ export function AddInventoryDrawer({
           isDeal: storefrontPlacement === "deals",
           dealDiscountPercent:
             storefrontPlacement === "deals" ? discountPercent : null,
+          dealSource: storefrontPlacement === "deals" ? dealReason : null,
+          dealNote:
+            storefrontPlacement === "deals" && dealReason === "flawed"
+              ? flawNote.trim()
+              : null,
         },
         currentAdmin.name,
       );
@@ -363,35 +376,56 @@ export function AddInventoryDrawer({
                 <option value="deals">Deals & Specials</option>
               </SelectField>
               {storefrontPlacement === "deals" && (
-                <TextField
-                  label="Deal discount (%)"
-                  type="number"
-                  min={1}
-                  max={90}
-                  step={1}
-                  value={dealDiscount}
-                  onChange={(e) => setDealDiscount(e.target.value)}
-                  hint={
-                    previewPriceCents > 0
-                      ? `Regular ${formatCents(previewPriceCents)} → Deal ${formatCents(
-                          Math.max(
-                            1,
-                            Math.round(
-                              previewPriceCents *
-                                (100 -
-                                  Math.max(
-                                    1,
-                                    Math.min(90, Number(dealDiscount) || 20),
-                                  )) /
-                                100,
+                <>
+                  <SelectField
+                    label="Deal reason"
+                    value={dealReason}
+                    onChange={(e) => setDealReason(e.target.value as "manual" | "flawed")}
+                    hint="Flawed cards show their note to customers on the storefront."
+                  >
+                    <option value="manual">Hand-picked special</option>
+                    <option value="flawed">Hard to grade / has a flaw</option>
+                  </SelectField>
+                  <TextField
+                    label="Deal discount (%)"
+                    type="number"
+                    min={1}
+                    max={90}
+                    step={1}
+                    value={dealDiscount}
+                    onChange={(e) => setDealDiscount(e.target.value)}
+                    hint={
+                      previewPriceCents > 0
+                        ? `Regular ${formatCents(previewPriceCents)} → Deal ${formatCents(
+                            Math.max(
+                              1,
+                              Math.round(
+                                previewPriceCents *
+                                  (100 -
+                                    Math.max(
+                                      1,
+                                      Math.min(90, Number(dealDiscount) || 20),
+                                    )) /
+                                  100,
+                              ),
                             ),
-                          ),
-                        )}`
-                      : "Enter the regular price above; the discount is applied when saved."
-                  }
-                />
+                          )}`
+                        : "Enter the regular price above; the discount is applied when saved."
+                    }
+                  />
+                </>
               )}
             </div>
+            {storefrontPlacement === "deals" && dealReason === "flawed" && (
+              <TextArea
+                label="Describe the flaw"
+                placeholder="e.g. small crease on the bottom-left corner, factory miscut, slight ink smudge on the border…"
+                value={flawNote}
+                rows={2}
+                onChange={(e) => setFlawNote(e.target.value)}
+                hint="Shown to customers on the storefront so they know exactly what they're getting."
+              />
+            )}
             <TextArea
               label="Notes"
               placeholder="Optional — signed, altered, etc."

@@ -875,6 +875,7 @@ export type Database = {
           created_at: string
           creature_types: string[]
           deal_discount_percent: number | null
+          deal_note: string | null
           deal_source: string | null
           deal_started_at: string | null
           finish: Database["public"]["Enums"]["card_finish"]
@@ -911,6 +912,7 @@ export type Database = {
           created_at?: string
           creature_types?: string[]
           deal_discount_percent?: number | null
+          deal_note?: string | null
           deal_source?: string | null
           deal_started_at?: string | null
           finish?: Database["public"]["Enums"]["card_finish"]
@@ -947,6 +949,7 @@ export type Database = {
           created_at?: string
           creature_types?: string[]
           deal_discount_percent?: number | null
+          deal_note?: string | null
           deal_source?: string | null
           deal_started_at?: string | null
           finish?: Database["public"]["Enums"]["card_finish"]
@@ -2448,6 +2451,7 @@ export type Database = {
           created_at: string
           creature_types: string[]
           deal_discount_percent: number | null
+          deal_note: string | null
           deal_source: string | null
           deal_started_at: string | null
           finish: Database["public"]["Enums"]["card_finish"]
@@ -2624,12 +2628,17 @@ export type Database = {
           cost_cents: number
           created_at: string
           creature_types: string[]
+          deal_discount_percent: number
+          deal_note: string
+          deal_source: string
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean
           id: string
           image_url: string
+          is_deal: boolean
           notes: string
           oracle_id: string
+          original_price_cents: number
           price_cents: number
           quantity: number
           rarity: string
@@ -2661,6 +2670,7 @@ export type Database = {
           created_at: string
           creature_types: string[]
           deal_discount_percent: number | null
+          deal_note: string | null
           deal_source: string | null
           deal_started_at: string | null
           finish: Database["public"]["Enums"]["card_finish"]
@@ -2757,6 +2767,7 @@ export type Database = {
           created_at: string
           creature_types: string[]
           deal_discount_percent: number | null
+          deal_note: string | null
           deal_source: string | null
           deal_started_at: string | null
           finish: Database["public"]["Enums"]["card_finish"]
@@ -3034,6 +3045,7 @@ export type Database = {
           collector_number: string
           condition: Database["public"]["Enums"]["card_condition"]
           deal_discount_percent: number
+          deal_note: string
           deal_source: string
           deal_started_at: string
           finish: Database["public"]["Enums"]["card_finish"]
@@ -3082,6 +3094,7 @@ export type Database = {
           condition: Database["public"]["Enums"]["card_condition"]
           creature_types: string[]
           deal_discount_percent: number
+          deal_note: string
           deal_source: string
           deal_started_at: string
           finish: Database["public"]["Enums"]["card_finish"]

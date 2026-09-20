@@ -55,6 +55,10 @@ interface Body {
   imageUrl?: string | null;
   storefrontPlacement?: "main" | "deals";
   dealDiscountPercent?: number | null;
+  /** Why this line is a deal. Defaults to "manual" for backward compatibility. */
+  dealSource?: "manual" | "flawed";
+  /** Customer-facing explanation shown on the storefront (the specific flaw, for "flawed"). */
+  dealNote?: string | null;
   // Printing / identity edits
   scryfallId?: string | null;
   setCode?: string | null;
@@ -67,6 +71,7 @@ interface Body {
 
 const STATUSES = new Set(["active", "reserved", "archived"]);
 const CONDITIONS = new Set(["NM", "LP", "MP", "HP", "DMG"]);
+const DEAL_SOURCES = new Set(["manual", "flawed"]);
 
 type Finish = Database["public"]["Enums"]["card_finish"];
 type Condition = Database["public"]["Enums"]["card_condition"];
@@ -324,13 +329,27 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
         );
       }
 
+      const dealSource =
+        body.dealSource !== undefined ? body.dealSource : "manual";
+      if (!DEAL_SOURCES.has(dealSource)) {
+        throw new HttpError(400, "Invalid deal reason.");
+      }
+      const dealNote = body.dealNote?.trim() || null;
+      if (dealSource === "flawed" && !dealNote) {
+        throw new HttpError(
+          400,
+          "Describe the flaw so customers know what they're buying.",
+        );
+      }
+
       patch.original_price_cents = regularPrice;
       patch.price_cents = Math.max(
         1,
         Math.round((regularPrice * (100 - discount)) / 100),
       );
       patch.is_deal = true;
-      patch.deal_source = "manual";
+      patch.deal_source = dealSource;
+      patch.deal_note = dealNote;
       patch.deal_discount_percent = discount;
       patch.deal_started_at = new Date().toISOString();
     } else if (current.is_deal) {
@@ -339,6 +358,7 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
         (patch.price_cents !== undefined ? patch.price_cents : current.price_cents);
       patch.is_deal = false;
       patch.deal_source = null;
+      patch.deal_note = null;
       patch.original_price_cents = null;
       patch.deal_discount_percent = null;
       patch.deal_started_at = null;

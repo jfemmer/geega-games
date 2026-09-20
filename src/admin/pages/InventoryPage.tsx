@@ -306,7 +306,11 @@ export function InventoryPage({
       render: (r) =>
         r.isDeal ? (
           <Badge tone="purple">
-            {r.dealSource === "aged_inventory" ? "Auto deal" : "Deals"}
+            {r.dealSource === "aged_inventory"
+              ? "Auto deal"
+              : r.dealSource === "flawed"
+                ? "Flawed"
+                : "Deals"}
           </Badge>
         ) : (
           <span className="gg-muted">Main store</span>

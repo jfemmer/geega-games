@@ -171,8 +171,9 @@ export default function ShopPage() {
             <span className="gg-deals-kicker">Deals & Specials</span>
             <h1 id="gg-deals-title">Save on singles</h1>
             <p>
-              Hand-picked specials plus cards automatically marked down after
-              they’ve been in stock for 30 days.
+              Hand-picked specials, cards automatically marked down after
+              they’ve been in stock for 30 days, and cards with a hard-to-grade
+              flaw — always noted so you know exactly what you’re getting.
             </p>
           </div>
           <button

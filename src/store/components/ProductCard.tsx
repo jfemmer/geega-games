@@ -83,6 +83,13 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
           )}
         </div>
 
+        {card.isDeal && card.dealNote && (
+          <p className="gg-deal-note">
+            {card.dealSource === "flawed" ? <strong>Condition note: </strong> : null}
+            {card.dealNote}
+          </p>
+        )}
+
         {!soldOut && card.quantity <= 3 && !unpriced && (
           <div className="gg-card-stock">Only {card.quantity} left</div>
         )}

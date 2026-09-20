@@ -195,6 +195,8 @@ export const supabaseInventoryRepository: InventoryRepository = {
       body: {
         storefrontPlacement: input.isDeal ? "deals" : "main",
         dealDiscountPercent: input.isDeal ? (input.dealDiscountPercent ?? 20) : null,
+        dealSource: input.isDeal ? (input.dealSource ?? "manual") : undefined,
+        dealNote: input.isDeal ? (input.dealNote ?? null) : undefined,
       },
     });
     return mapInventoryRow(placed);
@@ -218,6 +220,8 @@ export const supabaseInventoryRepository: InventoryRepository = {
         storefrontPlacement:
           patch.isDeal === undefined ? undefined : patch.isDeal ? "deals" : "main",
         dealDiscountPercent: patch.dealDiscountPercent,
+        dealSource: patch.dealSource,
+        dealNote: patch.dealNote,
       },
     });
     return mapInventoryRow(row);

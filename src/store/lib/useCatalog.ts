@@ -43,7 +43,9 @@ export type CatalogCard = {
   isDeal: boolean;
   originalPriceCents: number | null;
   dealDiscountPercent: number | null;
-  dealSource: "manual" | "aged_inventory" | null;
+  dealSource: "manual" | "aged_inventory" | "flawed" | null;
+  /** Customer-facing explanation of the deal (the specific flaw, for dealSource "flawed"). */
+  dealNote: string | null;
 };
 
 export const PAGE_SIZE = 24;
@@ -76,6 +78,7 @@ type SearchRow = {
   original_price_cents?: number | null;
   deal_discount_percent?: number | null;
   deal_source?: string | null;
+  deal_note?: string | null;
 };
 
 function mapRow(row: SearchRow): CatalogCard {
@@ -100,9 +103,12 @@ function mapRow(row: SearchRow): CatalogCard {
     originalPriceCents: row.original_price_cents ?? null,
     dealDiscountPercent: row.deal_discount_percent ?? null,
     dealSource:
-      row.deal_source === "manual" || row.deal_source === "aged_inventory"
+      row.deal_source === "manual" ||
+      row.deal_source === "aged_inventory" ||
+      row.deal_source === "flawed"
         ? row.deal_source
         : null,
+    dealNote: row.deal_note ?? null,
   };
 }
 
