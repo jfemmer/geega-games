@@ -64,6 +64,11 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
       "This path is built for larger, mixed, and unsorted collections in particular — think binders and boxes rather than a handful of cards. If you're not sure whether yours qualifies, submit it anyway and describe what you have; we'll tell you the best way to handle it.",
   },
   {
+    question: "I just want to sell a few Magic cards, not a whole collection — is this the right page?",
+    answer:
+      "Not quite — this page is built for larger, mixed collections. To sell your Magic cards one at a time, use our main Sell page instead: search for and add individual cards there in a couple of clicks, no collection required.",
+  },
+  {
     question: "What if it's a mix of valuable cards and bulk commons?",
     answer:
       "That's the normal case, not an edge case. Most real collections are a mix — a few cards worth looking at closely and a lot that aren't. Send it all; we sort out what's what.",

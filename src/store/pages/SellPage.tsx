@@ -344,6 +344,10 @@ export default function SellPage() {
               Selling a specific handful of cards instead? You can search and add them
               individually further down.
             </p>
+            <p className="gg-card-meta">
+              Based near St. Louis and buying from sellers within about a 6-hour drive — but
+              shipping in works from anywhere, near or far.
+            </p>
           </section>
 
           <section className="gg-sellsteps">
