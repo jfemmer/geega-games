@@ -81,6 +81,9 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
           {card.finish !== "nonfoil" && (
             <span className="gg-badge gg-badge-foil">{card.finish}</span>
           )}
+          {card.variantType && (
+            <span className="gg-badge gg-badge-variant">{card.variantType}</span>
+          )}
         </div>
 
         {card.isDeal && card.dealNote && (

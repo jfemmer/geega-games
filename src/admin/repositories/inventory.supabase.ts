@@ -186,6 +186,7 @@ export const supabaseInventoryRepository: InventoryRepository = {
         storageLocation: input.storageLocation,
         sku: input.sku,
         notes: input.notes,
+        variantType: input.variantType,
         actor: adminName,
       },
     });
@@ -262,6 +263,7 @@ export const supabaseInventoryRepository: InventoryRepository = {
         storageLocation: input.storageLocation,
         sku: input.sku,
         notes: input.notes,
+        variantType: input.variantType,
         actor: adminName,
       },
     });
@@ -308,6 +310,7 @@ export const supabaseInventoryRepository: InventoryRepository = {
     collectorNumber: string,
     condition: CardCondition,
     finish: CardFinish,
+    variantType?: string | null,
   ): Promise<InventoryItem | null> {
     const { data, error } = await supabase
       .from("inventory_items")
@@ -316,6 +319,7 @@ export const supabaseInventoryRepository: InventoryRepository = {
       .eq("collector_number", collectorNumber)
       .eq("condition", condition)
       .eq("finish", finish)
+      .eq("variant_type", variantType || "")
       .neq("status", "archived")
       .limit(1);
     if (error) throw new Error(error.message);
@@ -327,6 +331,7 @@ export const supabaseInventoryRepository: InventoryRepository = {
     scryfallId: string,
     condition: CardCondition,
     finish: CardFinish,
+    variantType?: string | null,
   ): Promise<InventoryItem | null> {
     const { data, error } = await supabase
       .from("inventory_items")
@@ -334,6 +339,7 @@ export const supabaseInventoryRepository: InventoryRepository = {
       .eq("scryfall_id", scryfallId)
       .eq("condition", condition)
       .eq("finish", finish)
+      .eq("variant_type", variantType || "")
       .neq("status", "archived")
       .limit(1);
     if (error) throw new Error(error.message);

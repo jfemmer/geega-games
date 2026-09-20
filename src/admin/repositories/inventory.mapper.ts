@@ -86,6 +86,7 @@ export function mapInventoryRow(row: InventoryRowLike): InventoryItem {
     sku: row.sku ?? null,
     notes: row.notes ?? null,
     status: row.status,
+    variantType: row.variant_type || null,
     scryfallPriceCents: row.scryfall_price_cents ?? null,
     storefrontListedAt: row.storefront_listed_at ?? row.created_at,
     isDeal: row.is_deal ?? false,

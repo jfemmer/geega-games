@@ -51,6 +51,8 @@ interface Body {
   storageLocation?: string | null;
   sku?: string | null;
   notes?: string | null;
+  /** "Artist Proof", "Special Edition", a custom label, or "" for a standard copy. */
+  variantType?: string | null;
   status?: InventoryRow["status"];
   imageUrl?: string | null;
   storefrontPlacement?: "main" | "deals";
@@ -299,6 +301,10 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
     patch.storage_location = body.storageLocation;
   if (body.sku !== undefined) patch.sku = body.sku;
   if (body.notes !== undefined) patch.notes = body.notes;
+  // Matches admin_upsert_inventory's own convention: "" means a standard
+  // copy, never null, so there's exactly one representation of "no variant".
+  if (body.variantType !== undefined)
+    patch.variant_type = body.variantType?.trim() || "";
   // An explicit imageUrl only wins when the printing itself wasn't re-resolved
   // (a printing edit already sets the correct image from the exact printing).
   if (body.imageUrl !== undefined && patch.image_url === undefined)

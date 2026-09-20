@@ -131,6 +131,15 @@ export interface InventoryItem {
   imageUrl: string | null;
   condition: CardCondition;
   finish: CardFinish;
+  /**
+   * Physical-copy designation beyond the printing itself -- "Artist Proof",
+   * "Special Edition", or a custom label. Empty string/null means a standard
+   * copy. Part of the line's identity alongside condition+finish (see
+   * admin_upsert_inventory and the uq_inventory_sku unique index): the same
+   * printing/condition/finish can have separate Standard and Artist Proof
+   * lines without colliding.
+   */
+  variantType?: string | null;
   quantity: number;
   /** Selling price in integer cents. */
   priceCents: number;
@@ -868,6 +877,7 @@ export interface InventoryPrintingEdit {
   storageLocation?: string | null;
   sku?: string | null;
   notes?: string | null;
+  variantType?: string | null;
 }
 
 export interface OrderQuery {

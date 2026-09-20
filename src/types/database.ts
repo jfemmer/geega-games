@@ -3060,6 +3060,7 @@ export type Database = {
           set_name: string
           total_count: number
           type_line: string
+          variant_type: string
         }[]
       }
       search_deck_card_names: {

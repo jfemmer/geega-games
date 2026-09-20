@@ -60,6 +60,9 @@ export function AddInventoryDrawer({
   const [dealDiscount, setDealDiscount] = useState("20");
   const [dealReason, setDealReason] = useState<"manual" | "flawed">("manual");
   const [flawNote, setFlawNote] = useState("");
+  const [variantKind, setVariantKind] = useState<"" | "Artist Proof" | "Special Edition" | "other">("");
+  const [variantOther, setVariantOther] = useState("");
+  const variantType = variantKind === "other" ? variantOther.trim() : variantKind;
   const [addAnother, setAddAnother] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dupe, setDupe] = useState<InventoryItem | null>(null);
@@ -97,6 +100,8 @@ export function AddInventoryDrawer({
     setDealDiscount("20");
     setDealReason("manual");
     setFlawNote("");
+    setVariantKind("");
+    setVariantOther("");
     setDupe(null);
   }
 
@@ -134,7 +139,7 @@ export function AddInventoryDrawer({
       return;
     }
     inventoryRepository
-      .findMatchByScryfall(selected.scryfallId, condition, finish)
+      .findMatchByScryfall(selected.scryfallId, condition, finish, variantType)
       .then(async (match) => {
         const resolved =
           match ??
@@ -143,13 +148,14 @@ export function AddInventoryDrawer({
             selected.collectorNumber,
             condition,
             finish,
+            variantType,
           ));
         if (active) setDupe(resolved);
       });
     return () => {
       active = false;
     };
-  }, [selected, condition, finish]);
+  }, [selected, condition, finish, variantType]);
 
   const finishOptions = useMemo(() => {
     const list = selected?.availableFinishes ?? ["nonfoil"];
@@ -197,6 +203,7 @@ export function AddInventoryDrawer({
           imageUrl: selected.imageUrl,
           condition,
           finish,
+          variantType: variantType || null,
           quantity: qty,
           priceCents,
           costCents: cost ? centsFromInput(cost) : null,
@@ -297,7 +304,8 @@ export function AddInventoryDrawer({
                 <Icon name="warning" size={18} />
                 <div>
                   You already have {dupe.quantity} of this exact printing in{" "}
-                  {condition} {FINISH_LABELS[finish]}. Saving will{" "}
+                  {condition} {FINISH_LABELS[finish]}
+                  {variantType ? ` (${variantType})` : ""}. Saving will{" "}
                   <strong>add to the existing line</strong> through the movement
                   ledger rather than creating a duplicate.
                 </div>
@@ -327,6 +335,25 @@ export function AddInventoryDrawer({
                   </option>
                 ))}
               </SelectField>
+              <SelectField
+                label="Special variant"
+                value={variantKind}
+                onChange={(e) => setVariantKind(e.target.value as typeof variantKind)}
+                hint="Beyond the printing's normal art/frame -- an artist's proof copy, a special edition, or something else worth calling out."
+              >
+                <option value="">Standard copy</option>
+                <option value="Artist Proof">Artist Proof</option>
+                <option value="Special Edition">Special Edition</option>
+                <option value="other">Other…</option>
+              </SelectField>
+              {variantKind === "other" && (
+                <TextField
+                  label="Describe the variant"
+                  placeholder="e.g. World Championship, Judge promo, misprint"
+                  value={variantOther}
+                  onChange={(e) => setVariantOther(e.target.value)}
+                />
+              )}
               <TextField
                 label="Quantity"
                 type="number"

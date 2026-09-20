@@ -46,6 +46,8 @@ export type CatalogCard = {
   dealSource: "manual" | "aged_inventory" | "flawed" | null;
   /** Customer-facing explanation of the deal (the specific flaw, for dealSource "flawed"). */
   dealNote: string | null;
+  /** "Artist Proof", "Special Edition", a custom label, or null for a standard copy. */
+  variantType: string | null;
 };
 
 export const PAGE_SIZE = 24;
@@ -79,6 +81,7 @@ type SearchRow = {
   deal_discount_percent?: number | null;
   deal_source?: string | null;
   deal_note?: string | null;
+  variant_type?: string | null;
 };
 
 function mapRow(row: SearchRow): CatalogCard {
@@ -109,6 +112,7 @@ function mapRow(row: SearchRow): CatalogCard {
         ? row.deal_source
         : null,
     dealNote: row.deal_note ?? null,
+    variantType: row.variant_type || null,
   };
 }
 

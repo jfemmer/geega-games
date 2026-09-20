@@ -74,6 +74,9 @@ export function EditInventoryDrawer({
   const [dealDiscount, setDealDiscount] = useState("20");
   const [dealReason, setDealReason] = useState<"manual" | "flawed">("manual");
   const [flawNote, setFlawNote] = useState("");
+  const [variantKind, setVariantKind] = useState<"" | "Artist Proof" | "Special Edition" | "other">("");
+  const [variantOther, setVariantOther] = useState("");
+  const variantType = variantKind === "other" ? variantOther.trim() : variantKind;
   const [saving, setSaving] = useState(false);
 
   // Printing change: null = keep current printing; a value = staged new printing
@@ -95,6 +98,17 @@ export function EditInventoryDrawer({
     setDealDiscount(String(item.dealDiscountPercent ?? 20));
     setDealReason(item.dealSource === "flawed" ? "flawed" : "manual");
     setFlawNote(item.dealSource === "flawed" ? (item.dealNote ?? "") : "");
+    const existingVariant = item.variantType?.trim() || "";
+    if (existingVariant === "Artist Proof" || existingVariant === "Special Edition") {
+      setVariantKind(existingVariant);
+      setVariantOther("");
+    } else if (existingVariant) {
+      setVariantKind("other");
+      setVariantOther(existingVariant);
+    } else {
+      setVariantKind("");
+      setVariantOther("");
+    }
     setNewPrinting(null);
     setPicking(false);
   }, [item]);
@@ -144,6 +158,7 @@ export function EditInventoryDrawer({
     const edit: InventoryPrintingEdit = {
       condition,
       finish,
+      variantType,
       priceCents,
       costCents: cost.trim() ? centsFromInput(cost) : null,
       storageLocation: location.trim() ? location.trim() : null,
@@ -325,6 +340,25 @@ export function EditInventoryDrawer({
                   </option>
                 ))}
               </SelectField>
+              <SelectField
+                label="Special variant"
+                value={variantKind}
+                onChange={(e) => setVariantKind(e.target.value as typeof variantKind)}
+                hint="Beyond the printing's normal art/frame -- an artist's proof copy, a special edition, or something else worth calling out."
+              >
+                <option value="">Standard copy</option>
+                <option value="Artist Proof">Artist Proof</option>
+                <option value="Special Edition">Special Edition</option>
+                <option value="other">Other…</option>
+              </SelectField>
+              {variantKind === "other" && (
+                <TextField
+                  label="Describe the variant"
+                  placeholder="e.g. World Championship, Judge promo, misprint"
+                  value={variantOther}
+                  onChange={(e) => setVariantOther(e.target.value)}
+                />
+              )}
               <TextField
                 label="Price (USD)"
                 type="number"

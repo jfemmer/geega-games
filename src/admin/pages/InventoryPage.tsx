@@ -257,6 +257,7 @@ export function InventoryPage({
             <span className="gg-cardcell__set">
               {r.setName ?? r.setCode} · #{r.collectorNumber} ·{" "}
               <Badge tone={rarityTone(r.rarity)}>{rarityLabel(r.rarity)}</Badge>
+              {r.variantType && <Badge tone="gold">{r.variantType}</Badge>}
             </span>
           </div>
         </div>
@@ -826,6 +827,11 @@ function InventoryDetail({
                   finish: item.finish,
                 }}
               />
+              {item.variantType && (
+                <span className="gg-treatments">
+                  <Badge tone="gold">{item.variantType}</Badge>
+                </span>
+              )}
             </div>
             <div className="gg-priceblock">
               <div className="gg-priceblock__main">

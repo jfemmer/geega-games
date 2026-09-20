@@ -91,22 +91,30 @@ export interface InventoryRepository {
    */
   delete(id: string): Promise<void>;
   movements(itemId?: string): Promise<InventoryMovement[]>;
-  /** Find an existing printing+condition+finish match (dupe detection). */
+  /**
+   * Find an existing printing+condition+finish(+variantType) match (dupe
+   * detection). variantType defaults to "" (standard copy) to match the
+   * column's own no-variant convention, so a Standard and an Artist Proof
+   * line of the same printing/condition/finish are never treated as the
+   * same match.
+   */
   findMatch(
     setCode: string,
     collectorNumber: string,
     condition: InventoryItem["condition"],
     finish: InventoryItem["finish"],
+    variantType?: string | null,
   ): Promise<InventoryItem | null>;
   /**
    * Preferred dupe detection: identity by Scryfall printing + condition +
-   * finish. Falls back to set/collector matching when a legacy row lacks a
-   * scryfallId. Used by the new Scryfall-powered add + scan flows.
+   * finish + variantType. Falls back to set/collector matching when a legacy
+   * row lacks a scryfallId. Used by the new Scryfall-powered add + scan flows.
    */
   findMatchByScryfall(
     scryfallId: string,
     condition: CardCondition,
     finish: CardFinish,
+    variantType?: string | null,
   ): Promise<InventoryItem | null>;
   searchPrintings(term: string): Promise<CardPrinting[]>;
   /** Current per-rarity price floors (one row per rarity). */
