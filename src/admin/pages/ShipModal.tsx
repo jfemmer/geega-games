@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "../components/ui/Modal";
 import { Button } from "../components/ui/Button";
 import { TextField, SelectField } from "../components/ui/Field";
@@ -39,6 +39,18 @@ export function ShipModal({
   const [buyingLabel, setBuyingLabel] = useState(false);
   const [labelError, setLabelError] = useState<string | null>(null);
   const [printingAddressLabel, setPrintingAddressLabel] = useState(false);
+
+  // ShipModal stays mounted across orders (no `key` in OrdersPage), so
+  // without this a tracking number/carrier typed for one order -- or a
+  // label error from one order -- would still be sitting here when a
+  // different order's Ship modal opens, and "Mark shipped" would submit it
+  // onto the wrong order. Resync whenever the selected order changes.
+  useEffect(() => {
+    setCarrier("USPS");
+    setTracking("");
+    setLabelError(null);
+    setPrintingAddressLabel(false);
+  }, [order?.id]);
 
   if (!order) return null;
 

@@ -116,6 +116,11 @@ export function useCatalog(filters: CatalogFilters, page: number) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
+  // Guards against out-of-order responses: if a newer call to run() starts
+  // before an older one's response comes back (e.g. a slow request for an
+  // earlier search term resolving after a faster, more recent one), the
+  // stale response is discarded instead of overwriting fresher results.
+  const requestRef = useRef(0);
 
   // Serialize filters for a stable effect dependency + debounce key.
   const key = useMemo(() => JSON.stringify({ filters, page }), [filters, page]);
@@ -126,6 +131,7 @@ export function useCatalog(filters: CatalogFilters, page: number) {
       setLoading(false);
       return;
     }
+    const requestId = ++requestRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -149,18 +155,20 @@ export function useCatalog(filters: CatalogFilters, page: number) {
             ...commonArgs,
             p_in_stock_only: true,
           });
+      if (requestId !== requestRef.current) return; // a newer request already landed
       if (response.error) throw new Error(response.error.message);
       const rows = (response.data ?? []) as unknown as SearchRow[];
       setCards(rows.map(mapRow));
       setTotal(rows.length ? (rows[0].total_count ?? 0) : 0);
     } catch (err) {
+      if (requestId !== requestRef.current) return; // a newer request already landed
       setError(
         err instanceof Error ? err.message : "Could not load the catalog.",
       );
       setCards([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) setLoading(false);
     }
   }, [filters, page]);
 

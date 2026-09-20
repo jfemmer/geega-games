@@ -14,66 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      admin_notification_state: {
-        Row: {
-          dismissed_at: string | null
-          notification_key: string
-          read_at: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          dismissed_at?: string | null
-          notification_key: string
-          read_at?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          dismissed_at?: string | null
-          notification_key?: string
-          read_at?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      storewide_sales: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          discount_percent: number
-          enabled: boolean
-          ends_at: string
-          id: string
-          name: string
-          starts_at: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          discount_percent: number
-          enabled?: boolean
-          ends_at: string
-          id?: string
-          name?: string
-          starts_at: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          discount_percent?: number
-          enabled?: boolean
-          ends_at?: string
-          id?: string
-          name?: string
-          starts_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       addresses: {
         Row: {
           city: string
@@ -123,6 +63,69 @@ export type Database = {
           postal_code?: string
           recipient?: string | null
           state?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      admin_audit_log: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string | null
+          actor_role: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          id: string
+          resource_id: string | null
+          resource_type: string
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string | null
+          actor_role?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          resource_id?: string | null
+          resource_type: string
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string | null
+          actor_role?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          resource_id?: string | null
+          resource_type?: string
+        }
+        Relationships: []
+      }
+      admin_notification_state: {
+        Row: {
+          dismissed_at: string | null
+          notification_key: string
+          read_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string | null
+          notification_key: string
+          read_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string | null
+          notification_key?: string
+          read_at?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -290,6 +293,51 @@ export type Database = {
         }
         Relationships: []
       }
+      card_recommendation_catalog: {
+        Row: {
+          card_name: string
+          color_identity: string[]
+          commander_legal: boolean
+          edhrec_rank: number | null
+          image_url: string | null
+          oracle_id: string
+          oracle_text: string | null
+          primary_category: string
+          scryfall_price_cents: number | null
+          themes: string[]
+          type_line: string | null
+          updated_at: string
+        }
+        Insert: {
+          card_name: string
+          color_identity?: string[]
+          commander_legal?: boolean
+          edhrec_rank?: number | null
+          image_url?: string | null
+          oracle_id: string
+          oracle_text?: string | null
+          primary_category?: string
+          scryfall_price_cents?: number | null
+          themes?: string[]
+          type_line?: string | null
+          updated_at?: string
+        }
+        Update: {
+          card_name?: string
+          color_identity?: string[]
+          commander_legal?: boolean
+          edhrec_rank?: number | null
+          image_url?: string | null
+          oracle_id?: string
+          oracle_text?: string | null
+          primary_category?: string
+          scryfall_price_cents?: number | null
+          themes?: string[]
+          type_line?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       card_scans: {
         Row: {
           back_image_path: string | null
@@ -415,6 +463,36 @@ export type Database = {
           },
         ]
       }
+      card_synergy_curated: {
+        Row: {
+          card_a_name: string
+          card_a_oracle_id: string | null
+          card_b_name: string
+          card_b_oracle_id: string | null
+          created_at: string
+          id: string
+          synergy_note: string
+        }
+        Insert: {
+          card_a_name: string
+          card_a_oracle_id?: string | null
+          card_b_name: string
+          card_b_oracle_id?: string | null
+          created_at?: string
+          id?: string
+          synergy_note: string
+        }
+        Update: {
+          card_a_name?: string
+          card_a_oracle_id?: string | null
+          card_b_name?: string
+          card_b_oracle_id?: string | null
+          created_at?: string
+          id?: string
+          synergy_note?: string
+        }
+        Relationships: []
+      }
       cards: {
         Row: {
           condition: string
@@ -524,6 +602,104 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_deck_cards: {
+        Row: {
+          card_name: string
+          created_at: string
+          deck_id: string
+          exact_printing_only: boolean
+          id: string
+          oracle_id: string | null
+          owned: boolean
+          quantity: number
+          scryfall_id: string | null
+          section: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          card_name: string
+          created_at?: string
+          deck_id: string
+          exact_printing_only?: boolean
+          id?: string
+          oracle_id?: string | null
+          owned?: boolean
+          quantity?: number
+          scryfall_id?: string | null
+          section?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          card_name?: string
+          created_at?: string
+          deck_id?: string
+          exact_printing_only?: boolean
+          id?: string
+          oracle_id?: string | null
+          owned?: boolean
+          quantity?: number
+          scryfall_id?: string | null
+          section?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_deck_cards_deck_id_fkey"
+            columns: ["deck_id"]
+            isOneToOne: false
+            referencedRelation: "customer_decks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_decks: {
+        Row: {
+          budget_mode: string
+          commander_name: string | null
+          commander_oracle_id: string | null
+          created_at: string
+          format: string
+          id: string
+          max_card_price_cents: number | null
+          name: string
+          notify_email: boolean
+          notify_in_app: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          budget_mode?: string
+          commander_name?: string | null
+          commander_oracle_id?: string | null
+          created_at?: string
+          format?: string
+          id?: string
+          max_card_price_cents?: number | null
+          name: string
+          notify_email?: boolean
+          notify_in_app?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          budget_mode?: string
+          commander_name?: string | null
+          commander_oracle_id?: string | null
+          created_at?: string
+          format?: string
+          id?: string
+          max_card_price_cents?: number | null
+          name?: string
+          notify_email?: boolean
+          notify_in_app?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           auth_user_id: string | null
@@ -559,6 +735,60 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      deck_stock_notifications: {
+        Row: {
+          card_name: string
+          created_at: string
+          deck_names: string[]
+          email_error: string | null
+          email_sent_at: string | null
+          id: string
+          inventory_item_id: string | null
+          oracle_id: string
+          read_at: string | null
+          user_id: string
+        }
+        Insert: {
+          card_name: string
+          created_at?: string
+          deck_names?: string[]
+          email_error?: string | null
+          email_sent_at?: string | null
+          id?: string
+          inventory_item_id?: string | null
+          oracle_id: string
+          read_at?: string | null
+          user_id: string
+        }
+        Update: {
+          card_name?: string
+          created_at?: string
+          deck_names?: string[]
+          email_error?: string | null
+          email_sent_at?: string | null
+          id?: string
+          inventory_item_id?: string | null
+          oracle_id?: string
+          read_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deck_stock_notifications_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deck_stock_notifications_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       email_deliveries: {
         Row: {
@@ -647,17 +877,16 @@ export type Database = {
           deal_discount_percent: number | null
           deal_source: string | null
           deal_started_at: string | null
-          is_deal: boolean
-          original_price_cents: number | null
-          storefront_listed_at: string
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean | null
           id: string
           image_url: string | null
+          is_deal: boolean
           language: string
           legacy_mongo_id: string | null
           notes: string | null
           oracle_id: string | null
+          original_price_cents: number | null
           price_cents: number | null
           quantity: number
           rarity: string | null
@@ -668,6 +897,7 @@ export type Database = {
           sku: string | null
           status: Database["public"]["Enums"]["inventory_status"]
           storage_location: string | null
+          storefront_listed_at: string
           type_line: string | null
           updated_at: string
           variant_type: string
@@ -678,22 +908,21 @@ export type Database = {
           colors?: string[]
           condition: Database["public"]["Enums"]["card_condition"]
           cost_cents?: number | null
+          created_at?: string
+          creature_types?: string[]
           deal_discount_percent?: number | null
           deal_source?: string | null
           deal_started_at?: string | null
-          is_deal?: boolean
-          original_price_cents?: number | null
-          storefront_listed_at?: string
-          created_at?: string
-          creature_types?: string[]
           finish?: Database["public"]["Enums"]["card_finish"]
           foil?: boolean | null
           id?: string
           image_url?: string | null
+          is_deal?: boolean
           language?: string
           legacy_mongo_id?: string | null
           notes?: string | null
           oracle_id?: string | null
+          original_price_cents?: number | null
           price_cents?: number | null
           quantity?: number
           rarity?: string | null
@@ -704,6 +933,7 @@ export type Database = {
           sku?: string | null
           status?: Database["public"]["Enums"]["inventory_status"]
           storage_location?: string | null
+          storefront_listed_at?: string
           type_line?: string | null
           updated_at?: string
           variant_type?: string
@@ -719,17 +949,16 @@ export type Database = {
           deal_discount_percent?: number | null
           deal_source?: string | null
           deal_started_at?: string | null
-          is_deal?: boolean
-          original_price_cents?: number | null
-          storefront_listed_at?: string
           finish?: Database["public"]["Enums"]["card_finish"]
           foil?: boolean | null
           id?: string
           image_url?: string | null
+          is_deal?: boolean
           language?: string
           legacy_mongo_id?: string | null
           notes?: string | null
           oracle_id?: string | null
+          original_price_cents?: number | null
           price_cents?: number | null
           quantity?: number
           rarity?: string | null
@@ -740,6 +969,7 @@ export type Database = {
           sku?: string | null
           status?: Database["public"]["Enums"]["inventory_status"]
           storage_location?: string | null
+          storefront_listed_at?: string
           type_line?: string | null
           updated_at?: string
           variant_type?: string
@@ -1024,6 +1254,47 @@ export type Database = {
           },
           {
             foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_refunds: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          id: string
+          order_id: string
+          reason: string | null
+          restocked: boolean
+          stripe_refund_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id: string
+          reason?: string | null
+          restocked?: boolean
+          stripe_refund_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          order_id?: string
+          reason?: string | null
+          restocked?: boolean
+          stripe_refund_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_refunds_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
@@ -1924,8 +2195,8 @@ export type Database = {
           created_at?: string
           id?: string
           mime_type?: string
-          side?: string | null
           original_filename?: string
+          side?: string | null
           size_bytes?: number
           storage_path?: string
           submission_id?: string
@@ -2093,6 +2364,42 @@ export type Database = {
         }
         Relationships: []
       }
+      storewide_sales: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          discount_percent: number
+          enabled: boolean
+          ends_at: string
+          id: string
+          name: string
+          starts_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          discount_percent: number
+          enabled?: boolean
+          ends_at: string
+          id?: string
+          name?: string
+          starts_at: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          discount_percent?: number
+          enabled?: boolean
+          ends_at?: string
+          id?: string
+          name?: string
+          starts_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       inventory_public: {
@@ -2102,6 +2409,7 @@ export type Database = {
           colors: string[] | null
           condition: Database["public"]["Enums"]["card_condition"] | null
           creature_types: string[] | null
+          discount_percent: number | null
           finish: Database["public"]["Enums"]["card_finish"] | null
           foil: boolean | null
           id: string | null
@@ -2109,7 +2417,6 @@ export type Database = {
           language: string | null
           oracle_id: string | null
           original_price_cents: number | null
-          discount_percent: number | null
           price_cents: number | null
           quantity: number | null
           rarity: string | null
@@ -2140,14 +2447,19 @@ export type Database = {
           cost_cents: number | null
           created_at: string
           creature_types: string[]
+          deal_discount_percent: number | null
+          deal_source: string | null
+          deal_started_at: string | null
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean | null
           id: string
           image_url: string | null
+          is_deal: boolean
           language: string
           legacy_mongo_id: string | null
           notes: string | null
           oracle_id: string | null
+          original_price_cents: number | null
           price_cents: number | null
           quantity: number
           rarity: string | null
@@ -2158,6 +2470,7 @@ export type Database = {
           sku: string | null
           status: Database["public"]["Enums"]["inventory_status"]
           storage_location: string | null
+          storefront_listed_at: string
           type_line: string | null
           updated_at: string
           variant_type: string
@@ -2347,14 +2660,19 @@ export type Database = {
           cost_cents: number | null
           created_at: string
           creature_types: string[]
+          deal_discount_percent: number | null
+          deal_source: string | null
+          deal_started_at: string | null
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean | null
           id: string
           image_url: string | null
+          is_deal: boolean
           language: string
           legacy_mongo_id: string | null
           notes: string | null
           oracle_id: string | null
+          original_price_cents: number | null
           price_cents: number | null
           quantity: number
           rarity: string | null
@@ -2365,6 +2683,7 @@ export type Database = {
           sku: string | null
           status: Database["public"]["Enums"]["inventory_status"]
           storage_location: string | null
+          storefront_listed_at: string
           type_line: string | null
           updated_at: string
           variant_type: string
@@ -2440,17 +2759,16 @@ export type Database = {
           deal_discount_percent: number | null
           deal_source: string | null
           deal_started_at: string | null
-          is_deal: boolean
-          original_price_cents: number | null
-          storefront_listed_at: string
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean | null
           id: string
           image_url: string | null
+          is_deal: boolean
           language: string
           legacy_mongo_id: string | null
           notes: string | null
           oracle_id: string | null
+          original_price_cents: number | null
           price_cents: number | null
           quantity: number
           rarity: string | null
@@ -2461,6 +2779,7 @@ export type Database = {
           sku: string | null
           status: Database["public"]["Enums"]["inventory_status"]
           storage_location: string | null
+          storefront_listed_at: string
           type_line: string | null
           updated_at: string
           variant_type: string
@@ -2472,6 +2791,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      apply_aged_inventory_deals: { Args: never; Returns: number }
       campaign_audience_count: {
         Args: { p_audience: Database["public"]["Enums"]["campaign_audience"] }
         Returns: number
@@ -2482,6 +2802,7 @@ export type Database = {
       }
       checkout_create_order: {
         Args: {
+          p_guest_email?: string
           p_ship_city?: string
           p_ship_country?: string
           p_ship_line1?: string
@@ -2501,6 +2822,18 @@ export type Database = {
           total_cents: number
         }[]
       }
+      commander_organic_synergy: {
+        Args: { p_commander_oracle_id: string; p_exclude_deck_id: string }
+        Returns: {
+          deck_count: number
+          oracle_id: string
+        }[]
+      }
+      current_app_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      current_staff_role: { Args: never; Returns: string }
       current_storewide_sale: {
         Args: never
         Returns: {
@@ -2511,33 +2844,56 @@ export type Database = {
           starts_at: string
         }[]
       }
-      storefront_effective_discount_percent: {
-        Args: {
-          p_is_deal: boolean
-          p_original_price_cents: number
-          p_price_cents: number
-        }
-        Returns: number
+      deck_card_images: {
+        Args: { p_deck_id: string }
+        Returns: {
+          deck_card_id: string
+          image_url: string
+        }[]
       }
-      storefront_effective_original_price: {
-        Args: {
-          p_is_deal: boolean
-          p_original_price_cents: number
-          p_price_cents: number
-        }
-        Returns: number
+      deck_inventory_matches: {
+        Args: { p_deck_id: string }
+        Returns: {
+          available_quantity: number
+          card_name: string
+          condition: Database["public"]["Enums"]["card_condition"]
+          deck_card_id: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          image_url: string
+          inventory_item_id: string
+          oracle_id: string
+          owned: boolean
+          price_cents: number
+          requested_quantity: number
+          set_code: string
+          set_name: string
+        }[]
       }
-      storefront_effective_price: {
-        Args: {
-          p_is_deal: boolean
-          p_original_price_cents: number
-          p_price_cents: number
-        }
-        Returns: number
-      }
-      current_app_role: {
+      deck_notification_summary: {
         Args: never
-        Returns: Database["public"]["Enums"]["app_role"]
+        Returns: {
+          card_name: string
+          created_at: string
+          deck_names: string[]
+          id: string
+          inventory_item_id: string
+          read_at: string
+        }[]
+      }
+      deck_recommendations: {
+        Args: { p_deck_id: string; p_limit?: number }
+        Returns: {
+          card_name: string
+          category: string
+          image_url: string
+          in_stock: boolean
+          inventory_item_id: string
+          oracle_id: string
+          reason: string
+          score: number
+          scryfall_price_cents: number
+          store_price_cents: number
+        }[]
       }
       get_or_create_my_cart: { Args: never; Returns: string }
       inventory_facets: {
@@ -2599,6 +2955,7 @@ export type Database = {
           total_cents: number
         }[]
       }
+      rebuild_card_recommendation_catalog: { Args: never; Returns: undefined }
       recompute_scan_session: {
         Args: { p_session_id: string }
         Returns: {
@@ -2632,6 +2989,18 @@ export type Database = {
       reserved_quantity: {
         Args: { p_inventory_item_id: string }
         Returns: number
+      }
+      resolve_deck_card_names: {
+        Args: { p_names: string[] }
+        Returns: {
+          card_name: string
+          commander_legal: boolean
+          image_url: string
+          input_name: string
+          oracle_id: string
+          scryfall_id: string
+          type_line: string
+        }[]
       }
       scan_filter_counts: {
         Args: { p_session_id: string }
@@ -2681,6 +3050,14 @@ export type Database = {
           type_line: string
         }[]
       }
+      search_deck_card_names: {
+        Args: { p_limit?: number; p_query: string }
+        Returns: {
+          card_name: string
+          image_url: string
+          type_line: string
+        }[]
+      }
       search_inventory: {
         Args: {
           p_colors?: string[]
@@ -2704,17 +3081,17 @@ export type Database = {
           colors: string[]
           condition: Database["public"]["Enums"]["card_condition"]
           creature_types: string[]
+          deal_discount_percent: number
+          deal_source: string
+          deal_started_at: string
           finish: Database["public"]["Enums"]["card_finish"]
           foil: boolean
           id: string
           image_url: string
           is_deal: boolean
           oracle_id: string
-          price_cents: number
           original_price_cents: number
-          deal_discount_percent: number
-          deal_source: string
-          deal_started_at: string
+          price_cents: number
           quantity: number
           rarity: string
           scryfall_id: string
@@ -2729,6 +3106,30 @@ export type Database = {
       show_trgm: { Args: { "": string }; Returns: string[] }
       staff_or_service_role: { Args: never; Returns: boolean }
       store_credit_balance: { Args: { p_user_id: string }; Returns: number }
+      storefront_effective_discount_percent: {
+        Args: {
+          p_is_deal: boolean
+          p_original_price_cents: number
+          p_price_cents: number
+        }
+        Returns: number
+      }
+      storefront_effective_original_price: {
+        Args: {
+          p_is_deal: boolean
+          p_original_price_cents: number
+          p_price_cents: number
+        }
+        Returns: number
+      }
+      storefront_effective_price: {
+        Args: {
+          p_is_deal: boolean
+          p_original_price_cents: number
+          p_price_cents: number
+        }
+        Returns: number
+      }
     }
     Enums: {
       account_status: "active" | "disabled"
@@ -2795,6 +3196,7 @@ export type Database = {
         | "import"
         | "archive"
         | "restore"
+        | "return_restock"
       inventory_status: "active" | "reserved" | "archived"
       order_channel: "online" | "pos"
       order_status:
@@ -3077,6 +3479,7 @@ export const Constants = {
         "import",
         "archive",
         "restore",
+        "return_restock",
       ],
       inventory_status: ["active", "reserved", "archived"],
       order_channel: ["online", "pos"],
@@ -3175,3 +3578,4 @@ export const Constants = {
     },
   },
 } as const
+

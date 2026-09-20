@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "../components/ui/Modal";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -60,6 +60,20 @@ export function BuyingLeadDetailDrawer({
   const [internalNotes, setInternalNotes] = useState(lead?.internalNotes ?? "");
   const [offerInput, setOfferInput] = useState(dollarsFromCents(lead?.offerValueCents ?? null));
   const [purchaseInput, setPurchaseInput] = useState(dollarsFromCents(lead?.purchaseAmountCents ?? null));
+
+  // This drawer stays mounted across leads (no `key` in BuyingLeadsPage), so
+  // without this the previous lead's unsaved text would still be sitting in
+  // these fields when a different lead opens -- and clicking Save would
+  // write it onto the wrong record. Resync only when the SELECTED LEAD
+  // changes, not on every re-render of the same lead (e.g. after a
+  // successful save re-fetches `lead`), so an in-progress edit to one field
+  // isn't wiped out by saving a different field.
+  useEffect(() => {
+    setInternalNotes(lead?.internalNotes ?? "");
+    setOfferInput(dollarsFromCents(lead?.offerValueCents ?? null));
+    setPurchaseInput(dollarsFromCents(lead?.purchaseAmountCents ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id]);
 
   if (!lead) return null;
 

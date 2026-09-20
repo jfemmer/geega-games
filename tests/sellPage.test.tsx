@@ -20,6 +20,11 @@ vi.mock("../src/supabase", () => ({
         data: { subscription: { unsubscribe() {} } },
       }),
     },
+    // The app shell renders StorewideSaleBanner (fire-and-forget
+    // supabase.rpc("current_storewide_sale") on mount) around every route,
+    // this page included -- without a stub here it throws "rpc is not a
+    // function" as an unhandled rejection on every test in this file.
+    rpc: async () => ({ data: null, error: null }),
   },
 }));
 

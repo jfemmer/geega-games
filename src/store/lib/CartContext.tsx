@@ -210,10 +210,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const guest = readGuestCart();
     if (!guest.length) return;
 
-    const { data: ci } = await supabase
+    const { data: ci, error: readErr } = await supabase
       .from("cart_items")
       .select("inventory_item_id, quantity")
       .eq("cart_id", cartId);
+    if (readErr) throw new Error(readErr.message);
     const serverQuantities: Record<string, number> = {};
     for (const r of (ci ?? []) as {
       inventory_item_id: string;
@@ -234,18 +235,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
       sellableByItem[id] = Math.max(0, items.get(id)?.quantity ?? 0);
     }
 
+    // Every write below is checked and THROWS on failure (rather than being
+    // silently ignored) so a partial/failed merge propagates to the caller's
+    // try/catch, which deliberately skips both marking this user "merged"
+    // and clearing the guest cart -- see the effect below. That way a
+    // transient failure here just means the merge (and the guest cart) is
+    // retried next time instead of the guest's pre-sign-in cart silently
+    // vanishing.
     const plan = planCartMerge(guest, serverQuantities, sellableByItem);
     for (const entry of plan) {
       if (entry.desiredQuantity <= 0) {
-        await supabase
+        const { error } = await supabase
           .from("cart_items")
           .delete()
           .eq("cart_id", cartId)
           .eq("inventory_item_id", entry.inventoryItemId);
+        if (error) throw new Error(error.message);
         continue;
       }
       // Upsert on the (cart_id, inventory_item_id) pair.
-      await supabase.from("cart_items").upsert(
+      const { error } = await supabase.from("cart_items").upsert(
         {
           cart_id: cartId,
           inventory_item_id: entry.inventoryItemId,
@@ -253,6 +262,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         },
         { onConflict: "cart_id,inventory_item_id" },
       );
+      if (error) throw new Error(error.message);
     }
     clearGuestCart();
   }, []);
@@ -306,11 +316,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       const sellable = Math.max(0, row.quantity ?? 0);
       if (user && cartIdRef.current) {
-        const current =
-          lines.find((l) => l.inventoryItemId === inventoryItemId)?.quantity ??
-          0;
+        // Read the CURRENT server-side quantity right before writing rather
+        // than trusting the `lines` React state closure, which can be stale
+        // (another tab, or a request already in flight) and would otherwise
+        // let this upsert silently clobber a quantity it never saw.
+        const { data: existing, error: readErr } = await supabase
+          .from("cart_items")
+          .select("quantity")
+          .eq("cart_id", cartIdRef.current)
+          .eq("inventory_item_id", inventoryItemId)
+          .maybeSingle();
+        if (readErr) {
+          setError(readErr.message);
+          return;
+        }
+        const current = existing?.quantity ?? 0;
         const nextQty = Math.min(sellable, current + qty);
-        await supabase.from("cart_items").upsert(
+        const { error } = await supabase.from("cart_items").upsert(
           {
             cart_id: cartIdRef.current,
             inventory_item_id: inventoryItemId,
@@ -318,6 +340,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           },
           { onConflict: "cart_id,inventory_item_id" },
         );
+        if (error) setError(error.message);
         await hydrateServer();
       } else {
         const guest = readGuestCart();
@@ -326,7 +349,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         await hydrateGuest();
       }
     },
-    [user, lines, hydrateServer, hydrateGuest],
+    [user, hydrateServer, hydrateGuest],
   );
 
   const setQuantity = useCallback(
@@ -334,27 +357,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setError(null);
       if (user && cartIdRef.current) {
         if (qty <= 0) {
-          await supabase
+          const { error } = await supabase
             .from("cart_items")
             .delete()
             .eq("cart_id", cartIdRef.current)
             .eq("inventory_item_id", inventoryItemId);
+          if (error) setError(error.message);
         } else {
           const items = await fetchItemsByIds([inventoryItemId]);
           const sellable = Math.max(0, items.get(inventoryItemId)?.quantity ?? 0);
           const clamped = Math.min(qty, sellable);
           if (clamped <= 0) {
-            await supabase
+            const { error } = await supabase
               .from("cart_items")
               .delete()
               .eq("cart_id", cartIdRef.current)
               .eq("inventory_item_id", inventoryItemId);
+            if (error) setError(error.message);
           } else {
-            await supabase
+            const { error } = await supabase
               .from("cart_items")
               .update({ quantity: clamped })
               .eq("cart_id", cartIdRef.current)
               .eq("inventory_item_id", inventoryItemId);
+            if (error) setError(error.message);
           }
         }
         await hydrateServer();
@@ -374,11 +400,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     async (inventoryItemId: string) => {
       setError(null);
       if (user && cartIdRef.current) {
-        await supabase
+        const { error } = await supabase
           .from("cart_items")
           .delete()
           .eq("cart_id", cartIdRef.current)
           .eq("inventory_item_id", inventoryItemId);
+        if (error) setError(error.message);
         await hydrateServer();
       } else {
         const next = removeGuestLine(readGuestCart(), inventoryItemId);
@@ -392,10 +419,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(async () => {
     setError(null);
     if (user && cartIdRef.current) {
-      await supabase
+      const { error } = await supabase
         .from("cart_items")
         .delete()
         .eq("cart_id", cartIdRef.current);
+      if (error) setError(error.message);
       await hydrateServer();
     } else {
       clearGuestCart();

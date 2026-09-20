@@ -155,8 +155,18 @@ export default function CheckoutPage() {
     supabase
       .from("addresses")
       .select("id, recipient, line1, line2, city, state, postal_code, country")
+      // Secondary sort so ties among non-default (or, in principle, among
+      // multiple default) addresses have a deterministic, meaningful order
+      // instead of whatever arbitrary order Postgres happens to return —
+      // which previously meant the auto-selected `rows[0]` for checkout
+      // could silently be an unpredictable address.
       .order("is_default", { ascending: false })
-      .then(({ data }) => {
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          setError("Could not load your saved addresses. You can still enter one below.");
+          return;
+        }
         const rows = (data ?? []) as Address[];
         setAddresses(rows);
         if (rows.length) setSelectedAddr(rows[0].id);
