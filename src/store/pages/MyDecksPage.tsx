@@ -976,15 +976,14 @@ function DeckDetail({ deckId }: { deckId: string }) {
     const nextMatches = (matchRows ?? []) as InventoryMatch[];
     setMatches(nextMatches);
 
+    // Deck-list thumbnails always show each card's standard art -- never a
+    // special/alternate printing, and never tied to whichever specific
+    // printing happens to be in stock. deck_card_images is the sole image
+    // source here; deck_inventory_matches (nextMatches) is still used
+    // elsewhere in this view for stock/price info, just not for the image.
     const nextImages: Record<string, string> = {};
-    for (const match of nextMatches) {
-      if (match.image_url) nextImages[match.deck_card_id] = match.image_url;
-    }
-
-    const missingImageCards = ((cardRows ?? []) as DeckCard[]).filter(
-      (card) => !nextImages[card.id] && card.oracle_id,
-    );
-    if (missingImageCards.length) {
+    const hasResolvedCards = ((cardRows ?? []) as DeckCard[]).some((card) => card.oracle_id);
+    if (hasResolvedCards) {
       const { data: imageRows } = await db.rpc("deck_card_images", { p_deck_id: deckId });
       for (const row of imageRows ?? []) {
         if (row.image_url) nextImages[row.deck_card_id] = row.image_url;
@@ -1268,7 +1267,10 @@ function DeckDetail({ deckId }: { deckId: string }) {
           )}
           {cards.map((card) => {
             const match = matchByCard.get(card.id);
-            const imageUrl = cardImages[card.id] ?? match?.image_url ?? null;
+            // Standard art only (see load()) -- deliberately not falling
+            // back to match?.image_url, which is whatever specific printing
+            // happens to be in stock and could be a special/alternate art.
+            const imageUrl = cardImages[card.id] ?? null;
             return (
               <div className="gg-deck-visual-row" key={card.id}>
                 <button
