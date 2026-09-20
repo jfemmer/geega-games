@@ -229,7 +229,7 @@ export function parseDecklist(text: string, maxCopies = 99): ParsedCard[] {
 }
 
 function categoryOrder(category: string): number {
-  return ["Ramp", "Mana Base", "Card Draw", "Interaction", "Board Wipe", "Protection", "Synergy"].indexOf(category);
+  return ["Ramp", "Mana Base", "Card Draw", "Tutor", "Interaction", "Board Wipe", "Protection", "Synergy"].indexOf(category);
 }
 
 export function MyDecksSection({ deckId }: { deckId?: string }) {
@@ -1369,7 +1369,12 @@ function DeckDetail({ deckId }: { deckId: string }) {
       )}
 
       {tab === "suggestions" && (
-        <Suggestions recommendations={recommendations} addItem={addItem} commanderFormat={hasCommander(deck.format)} />
+        <Suggestions
+          recommendations={recommendations}
+          addItem={addItem}
+          commanderFormat={hasCommander(deck.format)}
+          hasCommanderSet={!!deck.commander_oracle_id}
+        />
       )}
 
       {enlargedCard && (
@@ -1410,10 +1415,12 @@ function Suggestions({
   recommendations,
   addItem,
   commanderFormat,
+  hasCommanderSet,
 }: {
   recommendations: Recommendation[];
   addItem: (id: string, qty?: number) => Promise<void>;
   commanderFormat: boolean;
+  hasCommanderSet: boolean;
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, Recommendation[]>();
@@ -1427,9 +1434,11 @@ function Suggestions({
   if (!recommendations.length) {
     return (
       <div className="gg-empty">
-        {commanderFormat
-          ? "Set a commander for this deck to unlock personalized card suggestions."
-          : "Suggestions are tailored to Commander and Brawl decks and aren't available for this format yet."}
+        {!commanderFormat
+          ? "Suggestions are tailored to Commander and Brawl decks and aren't available for this format yet."
+          : !hasCommanderSet
+            ? "Set a commander for this deck to unlock personalized card suggestions."
+            : "We don't have any in-stock cards that fit this commander yet — check back as our inventory grows."}
       </div>
     );
   }
@@ -1438,7 +1447,7 @@ function Suggestions({
     <div className="gg-rec-groups">
       <div className="gg-dash-card gg-rec-intro">
         <strong>Beginner-friendly suggestions</strong>
-        <p>These suggestions use your commander’s color identity, themes, common deck roles, and your selected budget. “Available at Geega” is shown separately so inventory never decides what counts as a good fit.</p>
+        <p>These are cards currently in stock at Geega that fit your commander’s color identity, themes, common deck roles, and your selected budget — including in-stock alternatives to popular cards we don’t currently carry.</p>
       </div>
 
       {grouped.map(([category, rows]) => (
