@@ -946,7 +946,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
   const [cardImages, setCardImages] = useState<Record<string, string>>({});
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [enlargedCard, setEnlargedCard] = useState<{ name: string; imageUrl: string } | null>(null);
-  const [tab, setTab] = useState<"deck" | "missing" | "suggestions" | "combos">("deck");
+  const [tab, setTab] = useState<"deck" | "missing" | "suggestions">("deck");
   const [loading, setLoading] = useState(true);
   const [addingAll, setAddingAll] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -1220,7 +1220,6 @@ function DeckDetail({ deckId }: { deckId: string }) {
           ["deck", "Your Deck"],
           ["missing", `Missing (${missing.length})`],
           ["suggestions", "Suggestions"],
-          ["combos", "Combos"],
         ] as const).map(([key, label]) => (
           <button key={key} className={tab === key ? "gg-active" : ""} onClick={() => setTab(key)}>
             {label}
@@ -1387,26 +1386,6 @@ function DeckDetail({ deckId }: { deckId: string }) {
         </div>
       )}
 
-      {tab === "combos" && (
-        <div className="gg-dash-card gg-deck-combos">
-          <h3>Combo & interaction research</h3>
-          <p>
-            Your saved deck is ready to compare against known Commander interactions. For this first release,
-            Geega keeps the deck data private and links you to Commander Spellbook rather than scraping or copying their database.
-          </p>
-          <a
-            className="gg-btn"
-            href="https://commanderspellbook.com/find-my-combos/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Find my combos on Commander Spellbook ↗
-          </a>
-          <p className="gg-card-meta">
-            Tip: export/copy this same decklist there to see known combos and near-combos.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
