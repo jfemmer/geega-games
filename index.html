@@ -45,9 +45,10 @@
 
     <!-- Structured data: uses only verified business info. Update the URL and
          add contactPoint/address only once those details are confirmed.
-         areaServed reflects the confirmed online-only (no storefront) service
-         region; keep in sync with SellCollectionPage.tsx's SERVICE_JSON_LD if
-         that region changes. -->
+         areaServed reflects the confirmed online-only (no storefront)
+         service area: about a 6-hour drive of St. Louis, MO. Keep the state
+         list in sync with SellCollectionPage.tsx's SERVICE_STATES if that
+         region changes. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -58,8 +59,21 @@
         "logo": "https://geega-games.com/logo.png",
         "image": "https://geega-games.com/og-image.png",
         "areaServed": [
+          {
+            "@type": "GeoCircle",
+            "geoMidpoint": { "@type": "GeoCoordinates", "latitude": 38.627, "longitude": -90.1994 },
+            "geoRadius": 563000
+          },
+          { "@type": "City", "name": "St. Louis", "containedInPlace": { "@type": "State", "name": "Missouri" } },
           { "@type": "State", "name": "Missouri" },
-          { "@type": "AdministrativeArea", "name": "Metro East, Illinois" }
+          { "@type": "State", "name": "Illinois" },
+          { "@type": "State", "name": "Kentucky" },
+          { "@type": "State", "name": "Indiana" },
+          { "@type": "State", "name": "Tennessee" },
+          { "@type": "State", "name": "Arkansas" },
+          { "@type": "State", "name": "Kansas" },
+          { "@type": "State", "name": "Iowa" },
+          { "@type": "State", "name": "Oklahoma" }
         ]
       }
     </script>

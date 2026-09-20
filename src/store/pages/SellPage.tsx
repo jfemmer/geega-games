@@ -57,9 +57,9 @@ function isValidEmail(email: string): boolean {
 
 export default function SellPage() {
   useSEO({
-    title: "Sell Your Magic: The Gathering Cards Online — Missouri & Illinois | Geega Games",
+    title: "Sell Your Magic: The Gathering Cards Online — St. Louis & the Midwest | Geega Games",
     description:
-      "Get an offer for your Magic: The Gathering cards or collection. Search up singles or upload photos of a full collection — we buy from sellers across Missouri and the Metro East/western Illinois region.",
+      "Get an offer for your Magic: The Gathering cards or collection. Based near St. Louis, MO, we buy from sellers within about a 6-hour drive — Missouri, Illinois, Kentucky, Indiana, Tennessee, Arkansas, Kansas, Iowa, and Oklahoma.",
     path: "/sell",
   });
 

@@ -4,12 +4,32 @@ import { SITE } from "../../siteConfig";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
 // Service area for SEO/schema purposes. Geega Games is online-only (no
-// physical storefront) — sellers ship in or drop off by arrangement from
-// anywhere, but Missouri and the Illinois Metro East/western-IL area are
-// the core, named service region. Bare names (no state suffix) so this one
-// list works both in prose (joined into a sentence) and in SERVICE_JSON_LD
-// (state expressed separately via containedInPlace) without duplication.
-const MISSOURI_CITIES = ["St. Louis", "Kansas City", "Springfield", "Columbia"];
+// physical storefront), based near St. Louis, MO. Per the business owner,
+// the service area is framed as "about a 6-hour drive from St. Louis"
+// rather than a fixed state list — SERVICE_STATES below is a defensible,
+// clearly-approximate set of states substantially within that radius
+// (Missouri/Illinois/Kentucky/Indiana/Tennessee/Arkansas/Kansas/Iowa sit
+// solidly within ~350 driving miles; Oklahoma is included as a reasonable
+// edge case via Tulsa). This is NOT a precise geometric claim — the
+// visible copy always says "about a 6-hour drive," never a mileage
+// figure, and SERVICE_RADIUS_METERS below is only used in the GeoCircle
+// schema, not shown to readers.
+const HUB_CITY = "St. Louis";
+const SERVICE_STATES = [
+  "Missouri",
+  "Illinois",
+  "Kentucky",
+  "Indiana",
+  "Tennessee",
+  "Arkansas",
+  "Kansas",
+  "Iowa",
+  "Oklahoma",
+];
+// ~350 miles in meters — a rough "6-hour drive at realistic highway speeds
+// including stops" estimate, for the GeoCircle schema's geoRadius only.
+const SERVICE_RADIUS_METERS = 563000;
+const HUB_COORDINATES = { latitude: 38.627, longitude: -90.1994 };
 
 // SEO landing page for people sitting on a large, unsorted Magic collection
 // (estate, "found it in the attic," quit-playing-years-ago, etc.). Deliberately
@@ -56,7 +76,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Do I have to live near you to sell my collection?",
     answer:
-      `No — shipping in works from anywhere. That said, we're proud to be a go-to option for sellers across Missouri and the Metro East/western Illinois area, including ${MISSOURI_CITIES.join(", ")}.`,
+      `No — shipping in works from anywhere. That said, we're based near ${HUB_CITY} and are a go-to option for sellers within about a 6-hour drive, including ${SERVICE_STATES.join(", ")}.`,
   },
 ];
 
@@ -75,7 +95,11 @@ const FAQ_JSON_LD = {
 
 // No physical storefront (mail-in/drop-off by arrangement only), so this is
 // Service + areaServed rather than LocalBusiness — LocalBusiness schema
-// implies a visitable address, which would be inaccurate here.
+// implies a visitable address, which would be inaccurate here. areaServed
+// mixes a GeoCircle (the actual "~6-hour drive" radius, for anything that
+// can use precise geo data) with named State/City entities (for keyword-
+// style relevance — "sell cards Kentucky" is a real query shape a bare
+// radius can't match on its own).
 const SERVICE_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Service",
@@ -86,23 +110,23 @@ const SERVICE_JSON_LD = {
     url: SITE.url,
   },
   areaServed: [
-    { "@type": "State", name: "Missouri" },
-    ...MISSOURI_CITIES.map((name) => ({
-      "@type": "City",
-      name,
-      containedInPlace: { "@type": "State", name: "Missouri" },
-    })),
-    { "@type": "AdministrativeArea", name: "Metro East, Illinois" },
+    {
+      "@type": "GeoCircle",
+      geoMidpoint: { "@type": "GeoCoordinates", ...HUB_COORDINATES },
+      geoRadius: SERVICE_RADIUS_METERS,
+    },
+    { "@type": "City", name: HUB_CITY, containedInPlace: { "@type": "State", name: "Missouri" } },
+    ...SERVICE_STATES.map((name) => ({ "@type": "State", name })),
   ],
   description:
-    "Buying Magic: The Gathering collections and singles from sellers throughout Missouri and the Metro East/western Illinois region, by mail-in shipment or drop-off by arrangement.",
+    `Buying Magic: The Gathering collections and singles from sellers within about a 6-hour drive of ${HUB_CITY}, MO — including ${SERVICE_STATES.join(", ")} — by mail-in shipment or drop-off by arrangement.`,
 };
 
 export default function SellCollectionPage() {
   useSEO({
-    title: "Sell Your Magic: The Gathering Collection in Missouri — Unsorted Welcome | Geega Games",
+    title: "Sell Your Magic: The Gathering Collection — St. Louis & the Midwest | Geega Games",
     description:
-      "Selling a large Magic: The Gathering collection in Missouri or the Metro East/western Illinois area? Unsorted, mixed, or inherited — no problem. Ship it or bring it in, no sorting or pricing required.",
+      "Based near St. Louis, MO, we buy Magic: The Gathering collections from sellers within about a 6-hour drive — Missouri, Illinois, Kentucky, Indiana, Tennessee, Arkansas, Kansas, Iowa, and Oklahoma. Unsorted, mixed, or inherited — no problem.",
     path: "/sell-my-collection",
     jsonLd: [FAQ_JSON_LD, SERVICE_JSON_LD],
   });
@@ -187,12 +211,12 @@ export default function SellCollectionPage() {
       </section>
 
       <section className="gg-collect-section">
-        <h2>Buying Magic: The Gathering collections from sellers across Missouri and Illinois</h2>
+        <h2>Buying Magic: The Gathering collections within about a 6-hour drive of St. Louis</h2>
         <p>
-          We&rsquo;re proud to be a go-to option for Missouri sellers — and the Metro
-          East/western Illinois area — looking to turn a collection into cash. Ship to us from
-          anywhere in the region, including {MISSOURI_CITIES.join(", ")}, and everywhere in
-          between.
+          Based near {HUB_CITY}, we&rsquo;re a go-to option for sellers turning a collection
+          into cash from anywhere within about a six-hour drive — {SERVICE_STATES.join(", ")},
+          and everywhere in between. Farther out? Shipping in works from anywhere, so distance
+          doesn&rsquo;t rule you out either.
         </p>
       </section>
 
