@@ -7,6 +7,11 @@ import {
   type OrderEmailData,
   type OrderItemSnapshot,
 } from "./emails/OrderConfirmation.js";
+import {
+  OrderAdminNotification,
+  orderAdminNotificationText,
+  type OrderAdminEmailData,
+} from "./emails/OrderAdminNotification.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
 
@@ -109,6 +114,74 @@ export async function sendOrderConfirmation(
     subject: `Your Geega Games order ${orderNumber} is confirmed`,
     react: React.createElement(OrderConfirmation, data),
     text: orderConfirmationText(data),
+    orderId: order.id,
+  });
+}
+
+// Notifies staff of a new online order, mirroring
+// sendSellSubmissionAdminNotification's pattern. Online-only by design: a POS
+// sale is already being handled in person by whichever staff member rang it
+// up, so a self-notification there would just be noise. Same trust model as
+// sendOrderConfirmation (order id only, loads everything server-side) and the
+// same idempotency guarantee via sendTrackedEmail.
+export async function sendOrderAdminNotification(
+  orderId: string,
+): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
+  const db = getSupabaseAdmin();
+
+  const { data: order, error: orderErr } = await db
+    .from("orders")
+    .select("id, email, payment_status, total_cents, ship_recipient, user_id, channel")
+    .eq("id", orderId)
+    .single();
+  if (orderErr || !order) {
+    return { status: "skipped", reason: "order-not-found" };
+  }
+  if (order.payment_status !== "paid") {
+    return { status: "skipped", reason: `payment_status=${order.payment_status}` };
+  }
+  if (order.channel !== "online") {
+    return { status: "skipped", reason: "not-online" };
+  }
+
+  const { count: itemCount } = await db
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("order_id", orderId);
+
+  let customerName = order.ship_recipient ?? order.email ?? "Guest";
+  if (order.user_id) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", order.user_id)
+      .maybeSingle();
+    const full = `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+    if (full) customerName = full;
+  }
+
+  const orderNumber = `GG-${String(order.id).slice(0, 8).toUpperCase()}`;
+
+  const data: OrderAdminEmailData = {
+    orderNumber,
+    customerName,
+    customerEmail: order.email ?? "—",
+    itemCount: itemCount ?? 0,
+    totalCents: order.total_cents,
+    adminUrl: `${siteUrl()}/admin_dashboard/orders?order=${order.id}`,
+    siteUrl: siteUrl(),
+    logoUrl: logoUrl(),
+    supportEmail: ServerEnv.replyTo(),
+  };
+
+  return sendTrackedEmail({
+    emailType: "order_admin_notification",
+    idempotencyKey: `order-admin-notification-${order.id}`,
+    to: ServerEnv.orderNotificationEmail(),
+    from: ServerEnv.fromOrders(),
+    subject: `New order — ${orderNumber}`,
+    react: React.createElement(OrderAdminNotification, data),
+    text: orderAdminNotificationText(data),
     orderId: order.id,
   });
 }

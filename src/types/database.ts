@@ -463,6 +463,33 @@ export type Database = {
           },
         ]
       }
+      card_stock_subscriptions: {
+        Row: {
+          card_name: string
+          created_at: string
+          email: string
+          id: string
+          notified_at: string | null
+          oracle_id: string
+        }
+        Insert: {
+          card_name: string
+          created_at?: string
+          email: string
+          id?: string
+          notified_at?: string | null
+          oracle_id: string
+        }
+        Update: {
+          card_name?: string
+          created_at?: string
+          email?: string
+          id?: string
+          notified_at?: string | null
+          oracle_id?: string
+        }
+        Relationships: []
+      }
       card_synergy_curated: {
         Row: {
           card_a_name: string
@@ -1572,6 +1599,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           customer_name: string
+          email: string | null
           id: string
           notes: string | null
           order_id: string | null
@@ -1585,6 +1613,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_name: string
+          email?: string | null
           id?: string
           notes?: string | null
           order_id?: string | null
@@ -1598,6 +1627,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           customer_name?: string
+          email?: string | null
           id?: string
           notes?: string | null
           order_id?: string | null
@@ -2906,6 +2936,7 @@ export type Database = {
           store_price_cents: number
         }[]
       }
+      get_card_detail: { Args: { p_slug: string }; Returns: Json }
       get_or_create_my_cart: { Args: never; Returns: string }
       inventory_facets: {
         Args: never
@@ -2921,7 +2952,12 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_staff: { Args: never; Returns: boolean }
       kiosk_create_pickup_request: {
-        Args: { p_customer_name: string; p_items: Json; p_phone: string }
+        Args: {
+          p_customer_name: string
+          p_email?: string
+          p_items: Json
+          p_phone: string
+        }
         Returns: string
       }
       mark_order_paid: {
@@ -3118,6 +3154,7 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      slugify_card_name: { Args: { p_name: string }; Returns: string }
       staff_or_service_role: { Args: never; Returns: boolean }
       store_credit_balance: { Args: { p_user_id: string }; Returns: number }
       storefront_effective_discount_percent: {

@@ -4,7 +4,7 @@ import { getStripe } from "../_lib/stripe.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { ServerEnv } from "../_lib/env.js";
 import { readRawBody } from "../_lib/http.js";
-import { sendOrderConfirmation } from "../_lib/orderConfirmation.js";
+import { sendOrderConfirmation, sendOrderAdminNotification } from "../_lib/orderConfirmation.js";
 
 // POST /api/webhooks/stripe
 //
@@ -103,6 +103,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (mailErr) {
           // Email failure must not fail the webhook (order is already paid).
           console.error("[stripe] confirmation email failed", mailErr);
+        }
+        try {
+          await sendOrderAdminNotification(orderId);
+        } catch (mailErr) {
+          console.error("[stripe] admin notification email failed", mailErr);
         }
       }
     }

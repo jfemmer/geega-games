@@ -39,6 +39,11 @@ export const ServerEnv = {
   // they actually want new buying leads to land in.
   sellLeadsNotificationEmail: () =>
     optionalEnv("SELL_LEADS_NOTIFICATION_EMAIL", optionalEnv("RESEND_REPLY_TO", "support@geega-games.com")),
+  // Where new-online-order notifications are sent. Same default-to-reply-to
+  // fallback as sell leads, kept as its own variable so the owner can route
+  // orders and buying leads to different inboxes if they ever want to.
+  orderNotificationEmail: () =>
+    optionalEnv("ORDER_NOTIFICATION_EMAIL", optionalEnv("RESEND_REPLY_TO", "support@geega-games.com")),
   // Stripe (server-only secrets; never expose to the browser). These are read
   // lazily so only the payment/webhook functions require them — the rest of the
   // API keeps working before Stripe is configured.

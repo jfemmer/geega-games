@@ -16,8 +16,8 @@ const h = (
   );
 
 // The subset of sell_submission_status transitions worth emailing a seller
-// about. "new" and "reviewing" are internal-only starting states, and
-// "closed" is an ambiguous catch-all — none of those reach this template.
+// about. "new" and "reviewing" are internal-only starting states and never
+// reach this template.
 export type NotifiableSellStatus =
   | "needs_more_photos"
   | "needs_in_person_review"
@@ -25,7 +25,8 @@ export type NotifiableSellStatus =
   | "offer_made"
   | "accepted"
   | "declined"
-  | "completed";
+  | "completed"
+  | "closed";
 
 export type SellSubmissionStatusEmailData = {
   status: NotifiableSellStatus;
@@ -74,6 +75,11 @@ const COPY: Record<
     subject: (ref) => `Sale complete — ${ref}`,
     heading: "Sale complete — thank you!",
     body: "Your sale is complete. Thanks for selling to Geega Games — we'd love to work with you again.",
+  },
+  closed: {
+    subject: (ref) => `Your submission has been closed — ${ref}`,
+    heading: "This submission has been closed",
+    body: "We've closed out this submission without a sale. If that doesn't sound right or you'd like to resubmit, just reply to this email.",
   },
 };
 

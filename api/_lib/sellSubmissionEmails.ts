@@ -29,6 +29,7 @@ const NOTIFIABLE_SELL_STATUSES: ReadonlySet<string> = new Set([
   "accepted",
   "declined",
   "completed",
+  "closed",
 ]);
 
 export function isNotifiableSellStatus(status: string): status is NotifiableSellStatus {
