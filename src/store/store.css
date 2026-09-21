@@ -3738,6 +3738,34 @@
   flex-basis: 100%;
 }
 
+.gg-notify-form {
+  margin-top: 1rem;
+}
+.gg-notify-form label {
+  display: block;
+  font-weight: 600;
+  color: var(--gg-ink);
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+.gg-notify-form__row {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 420px;
+}
+.gg-notify-form__row input {
+  flex: 1;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  font: inherit;
+}
+@media (max-width: 480px) {
+  .gg-notify-form__row {
+    flex-direction: column;
+  }
+}
+
 /* ---------------------- Card detail page (/shop/card/:slug) --------------------- */
 .gg-breadcrumbs {
   font-size: 0.85rem;

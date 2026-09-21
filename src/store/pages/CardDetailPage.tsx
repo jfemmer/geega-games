@@ -77,6 +77,9 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   const [notFound, setNotFound] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
+  const [notifyError, setNotifyError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -108,6 +111,32 @@ export default function CardDetailPage({ slug }: { slug: string }) {
       active = false;
     };
   }, [slug]);
+
+  async function submitNotifyMe(e: React.FormEvent) {
+    e.preventDefault();
+    if (!detail) return;
+    setNotifyState("submitting");
+    setNotifyError(null);
+    try {
+      const res = await fetch("/api/stock-alerts/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oracleId: detail.oracleId,
+          cardName: detail.cardName,
+          email: notifyEmail,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.ok) {
+        throw new Error(body?.message || "Could not save your request. Please try again.");
+      }
+      setNotifyState("done");
+    } catch (err) {
+      setNotifyState("error");
+      setNotifyError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    }
+  }
 
   const path = `/shop/card/${slug}`;
   const canonicalUrl = `${SITE.url.replace(/\/+$/, "")}${path}`;
@@ -326,6 +355,32 @@ export default function CardDetailPage({ slug }: { slug: string }) {
             This card is out of stock right now. <Link to="/shop">Browse what&rsquo;s available</Link>{" "}
             or check back soon.
           </p>
+          {notifyState === "done" ? (
+            <p className="gg-alert gg-alert-ok">
+              We&rsquo;ll email you as soon as {detail.cardName} is back in stock.
+            </p>
+          ) : (
+            <form className="gg-notify-form" onSubmit={submitNotifyMe}>
+              <label htmlFor="notify-email">Notify me when it&rsquo;s back in stock</label>
+              <div className="gg-notify-form__row">
+                <input
+                  id="notify-email"
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                  value={notifyEmail}
+                  onChange={(e) => setNotifyEmail(e.target.value)}
+                  disabled={notifyState === "submitting"}
+                />
+                <button className="gg-btn gg-btn-sm" type="submit" disabled={notifyState === "submitting"}>
+                  {notifyState === "submitting" ? "Saving…" : "Notify me"}
+                </button>
+              </div>
+              {notifyState === "error" && notifyError && (
+                <p className="gg-alert gg-alert-error">{notifyError}</p>
+              )}
+            </form>
+          )}
         </div>
       )}
     </div>

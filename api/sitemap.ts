@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
+import { slugifyCardName } from "../src/store/lib/cardSlug.js";
 
 // GET /sitemap.xml — rewritten here from the site root by vercel.json, which
 // must route this path to this function BEFORE its catch-all SPA rewrite.
@@ -30,17 +31,6 @@ const STATIC_PAGES: { path: string; changefreq: string; priority: string; lastmo
   { path: "/privacy", changefreq: "yearly", priority: "0.1" },
   { path: "/terms", changefreq: "yearly", priority: "0.1" },
 ];
-
-// Must exactly match public.slugify_card_name() and
-// src/store/lib/cardSlug.ts — all three independently implement the same
-// transform (SQL, browser, and this server function each need their own
-// copy) and must never drift apart.
-function slugifyCardName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function xmlEscape(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
