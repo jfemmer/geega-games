@@ -23,6 +23,7 @@ interface OverviewRpcResult {
   revenue: TimeSeriesPoint[];
   orders: TimeSeriesPoint[];
   recentActivity: AdminActivity[];
+  customerActivity: AdminActivity[];
 }
 
 export const supabaseAnalyticsRepository: AnalyticsRepository = {
@@ -37,6 +38,7 @@ export const supabaseAnalyticsRepository: AnalyticsRepository = {
       revenue: result.revenue ?? [],
       orders: result.orders ?? [],
       recentActivity: result.recentActivity ?? [],
+      customerActivity: result.customerActivity ?? [],
     };
   },
 

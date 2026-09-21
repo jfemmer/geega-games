@@ -482,6 +482,7 @@ export interface AnalyticsRepository {
     revenue: TimeSeriesPoint[];
     orders: TimeSeriesPoint[];
     recentActivity: AdminActivity[];
+    customerActivity: AdminActivity[];
   }>;
   trends(range: DateRangeKey): Promise<TrendMetrics>;
 }

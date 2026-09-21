@@ -328,6 +328,46 @@ export const ADMIN_ACTIVITY_SEED: AdminActivity[] = [
   },
 ];
 
+/* -------------------------- Customer activity -------------------------- */
+
+export const CUSTOMER_ACTIVITY_SEED: AdminActivity[] = [
+  {
+    id: "cact_1",
+    actor: "Morgan Ellis",
+    action: "placed an order",
+    target: "#A1B2C3D4",
+    at: hoursAgo(2),
+  },
+  {
+    id: "cact_2",
+    actor: "jordan.p@example.com",
+    action: "subscribed to the newsletter",
+    target: null,
+    at: hoursAgo(6),
+  },
+  {
+    id: "cact_3",
+    actor: "Taylor Reyes",
+    action: "submitted a sell request",
+    target: "SUB-2041",
+    at: hoursAgo(9),
+  },
+  {
+    id: "cact_4",
+    actor: "New customer",
+    action: "created an account",
+    target: null,
+    at: daysAgo(1),
+  },
+  {
+    id: "cact_5",
+    actor: "Casey Nguyen",
+    action: "saved a deck",
+    target: "Mono-Red Aggro",
+    at: daysAgo(2),
+  },
+];
+
 /* -------------------------- Analytics -------------------------- */
 
 /** Deterministic pseudo-random series so the mock is stable across renders. */

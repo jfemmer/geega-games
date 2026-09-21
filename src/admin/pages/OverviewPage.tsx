@@ -274,26 +274,49 @@ export function OverviewPage({
         </SectionCard>
       </div>
 
-      <SectionCard title="Recent activity">
-        {overview.loading || !overview.data ? (
-          <TableSkeleton rows={4} cols={2} />
-        ) : overview.data.recentActivity.length > 0 ? (
-          <ul className="gg-activity-list">
-            {overview.data.recentActivity.map((a) => (
-              <li key={a.id} className="gg-activity">
-                <span className="gg-activity__dot" aria-hidden="true" />
-                <span className="gg-activity__text">
-                  <strong>{a.actor}</strong> {a.action}
-                  {a.target && <span className="gg-activity__target"> {a.target}</span>}
-                </span>
-                <span className="gg-activity__time">{timeAgo(a.at)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState icon="info" title="No recent activity" message="" />
-        )}
-      </SectionCard>
+      <div className="gg-grid-2">
+        <SectionCard title="Customer activity">
+          {overview.loading || !overview.data ? (
+            <TableSkeleton rows={4} cols={2} />
+          ) : overview.data.customerActivity.length > 0 ? (
+            <ul className="gg-activity-list">
+              {overview.data.customerActivity.map((a) => (
+                <li key={a.id} className="gg-activity">
+                  <span className="gg-activity__dot" aria-hidden="true" />
+                  <span className="gg-activity__text">
+                    <strong>{a.actor}</strong> {a.action}
+                    {a.target && <span className="gg-activity__target"> {a.target}</span>}
+                  </span>
+                  <span className="gg-activity__time">{timeAgo(a.at)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon="info" title="No customer activity yet" message="" />
+          )}
+        </SectionCard>
+
+        <SectionCard title="Staff activity">
+          {overview.loading || !overview.data ? (
+            <TableSkeleton rows={4} cols={2} />
+          ) : overview.data.recentActivity.length > 0 ? (
+            <ul className="gg-activity-list">
+              {overview.data.recentActivity.map((a) => (
+                <li key={a.id} className="gg-activity">
+                  <span className="gg-activity__dot" aria-hidden="true" />
+                  <span className="gg-activity__text">
+                    <strong>{a.actor}</strong> {a.action}
+                    {a.target && <span className="gg-activity__target"> {a.target}</span>}
+                  </span>
+                  <span className="gg-activity__time">{timeAgo(a.at)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon="info" title="No recent activity" message="" />
+          )}
+        </SectionCard>
+      </div>
     </div>
   );
 }

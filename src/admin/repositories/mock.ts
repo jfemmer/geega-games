@@ -11,6 +11,7 @@ import {
 import { ORDERS_SEED } from "../data/orders.mock";
 import {
   ADMIN_ACTIVITY_SEED,
+  CUSTOMER_ACTIVITY_SEED,
   CAMPAIGNS_SEED,
   CUSTOMERS_SEED,
   STAFF_SEED,
@@ -1158,6 +1159,7 @@ export const mockAnalyticsRepository: AnalyticsRepository = {
         revenue,
         orders: orderSeries,
         recentActivity: [...ADMIN_ACTIVITY_SEED],
+        customerActivity: [...CUSTOMER_ACTIVITY_SEED],
       },
       350,
     );
