@@ -145,6 +145,14 @@ export default function CheckoutPage() {
         setError("Your payment wasn't completed. Please try again.");
       } else if (orderId) {
         setPaymentPendingSetup(true);
+      } else {
+        // Neither a recognized status nor an order to fall back on — this
+        // shouldn't happen, but silently doing nothing here would leave the
+        // customer staring at an unchanged checkout page with no idea their
+        // payment might have gone through. Give them something to act on.
+        setError(
+          `We couldn't confirm your payment status. Please contact us and reference this transaction: ${intentId}`,
+        );
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
