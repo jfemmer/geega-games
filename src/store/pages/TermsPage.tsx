@@ -1,9 +1,16 @@
 import { Link } from "../lib/router";
+import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
 const EFFECTIVE_DATE = "September 16, 2026";
 
 export function TermsPage() {
+  useSEO({
+    title: "Terms of Service | Geega Games",
+    description: "The terms governing your use of the Geega Games website and Magic: The Gathering marketplace.",
+    path: "/terms",
+  });
+
   return (
     <div className="gg-page gg-prose">
       <h1>Terms of Service</h1>

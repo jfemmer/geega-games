@@ -1,9 +1,16 @@
 import { Link } from "../lib/router";
+import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
 const EFFECTIVE_DATE = "September 16, 2026";
 
 export function PrivacyPage() {
+  useSEO({
+    title: "Privacy Policy | Geega Games",
+    description: "How Geega Games collects, uses, and protects your personal information.",
+    path: "/privacy",
+  });
+
   return (
     <div className="gg-page gg-prose">
       <h1>Privacy Policy</h1>

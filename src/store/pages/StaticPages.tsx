@@ -1,4 +1,5 @@
 import { Link } from "../lib/router";
+import { useSEO } from "../lib/useSEO";
 import SignupForm from "../../SignupForm";
 
 export const SUPPORT_EMAIL =
@@ -51,6 +52,13 @@ export function HomePage() {
 }
 
 export function ConditionGuidePage() {
+  useSEO({
+    title: "MTG Card Condition Guide — NM, LP, MP, HP, DMG Explained | Geega Games",
+    description:
+      "How Geega Games grades every Magic: The Gathering single before listing it — Near Mint through Damaged, explained in plain language.",
+    path: "/condition-guide",
+  });
+
   return (
     <div className="gg-page gg-prose">
       <h1>Card condition guide</h1>
@@ -92,6 +100,13 @@ export function ConditionGuidePage() {
 }
 
 export function ShippingPage() {
+  useSEO({
+    title: "Shipping Options & Rates | Geega Games",
+    description:
+      "Plain white envelope and tracked shipping options for Magic: The Gathering card orders — costs shown before you pay, with free tracked shipping on qualifying orders.",
+    path: "/shipping",
+  });
+
   return (
     <div className="gg-page gg-prose">
       <h1>Shipping</h1>
@@ -120,6 +135,13 @@ export function ShippingPage() {
 }
 
 export function ReturnsPage() {
+  useSEO({
+    title: "Returns & Refunds | Geega Games",
+    description:
+      "How to start a return or report an issue with your Magic: The Gathering card order from Geega Games.",
+    path: "/returns",
+  });
+
   return (
     <div className="gg-page gg-prose">
       <h1>Returns &amp; refunds</h1>
@@ -141,6 +163,13 @@ export function ReturnsPage() {
 }
 
 export function ContactPage() {
+  useSEO({
+    title: "Contact Us | Geega Games",
+    description:
+      "Questions about an order, a card, or your Magic: The Gathering collection? Get in touch with Geega Games.",
+    path: "/contact",
+  });
+
   return (
     <div className="gg-page gg-prose">
       <h1>Contact</h1>

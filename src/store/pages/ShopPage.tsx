@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "../lib/router";
+import { useSEO } from "../lib/useSEO";
 import {
   useCatalog,
   useFacets,
@@ -20,6 +21,13 @@ const SORTS: { value: CatalogSort; label: string }[] = [
 ];
 
 export default function ShopPage() {
+  useSEO({
+    title: "Shop Magic: The Gathering Singles Online | Geega Games",
+    description:
+      "Browse thousands of Magic: The Gathering singles — search by card name, set, or rarity. Honest condition grading, secure checkout, and fast shipping nationwide.",
+    path: "/shop",
+  });
+
   const { query: urlQuery, navigate } = useRouter();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     ...DEFAULT_FILTERS,
