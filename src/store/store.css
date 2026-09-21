@@ -41,7 +41,18 @@
   align-items: center;
   gap: 0.4rem;
 }
-.gg-header-search input {
+.gg-search-box {
+  /* Anchor point for the .gg-search-suggestions dropdown below — kept
+     separate from .gg-header-search so the dropdown spans only the input,
+     and a click on the adjacent "shop by deck" button correctly counts as
+     outside it for closing the dropdown. */
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.gg-search-box input {
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
@@ -52,8 +63,42 @@
   color: #fff;
   font-size: 1rem;
 }
-.gg-header-search input::placeholder {
+.gg-search-box input::placeholder {
   color: rgba(255, 255, 255, 0.6);
+}
+/* Type-ahead dropdown for the search box. Styled like .gg-deck-shop-popover
+   (light panel, not the dark header chrome) since it holds readable card
+   names. */
+.gg-search-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.4rem;
+  list-style: none;
+  background: #fff;
+  color: #2e2633;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  max-height: min(360px, 70vh);
+  overflow-y: auto;
+  z-index: 45;
+}
+.gg-search-suggestion {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.gg-search-suggestion:hover,
+.gg-search-suggestion--active {
+  background: #f8f4fb;
 }
 .gg-header-actions {
   display: flex;
@@ -400,6 +445,75 @@
     right: 6px;
     font-size: .58rem;
   }
+}
+/* Wishlist heart. Bottom-right (not top, like the deal/variant ribbons
+   above) so it never collides with either badge on a card that has one. The
+   wrap is a relative anchor everywhere it's used (see the plain rule below);
+   on a ProductCard it additionally becomes the absolutely-positioned overlay
+   itself when nested directly in the image wrapper. */
+.gg-wishlist-btn-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.gg-card-imgwrap > .gg-wishlist-btn-wrap {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 6;
+}
+.gg-wishlist-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  color: #8b8490;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.gg-wishlist-btn:hover {
+  background: #fff;
+  color: var(--gg-purple);
+  transform: scale(1.08);
+}
+.gg-wishlist-btn:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+}
+.gg-wishlist-btn--active {
+  color: #e11d48;
+}
+.gg-wishlist-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+  transform: none;
+}
+.gg-wishlist-prompt {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  color: #2e2633;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  padding: 0.75rem;
+  z-index: 20;
+  display: grid;
+  gap: 0.5rem;
+  text-align: center;
+}
+.gg-wishlist-prompt p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #444;
 }
 .gg-card-foot {
   margin-top: auto;
@@ -1055,6 +1169,84 @@
   display: flex;
   align-items: center;
   gap: 0.9rem;
+}
+
+/* Account wishlist grid -- same auto-fill responsiveness as the shop's own
+   .gg-grid, since it's the same "cards in a grid" shape at a smaller scale. */
+.gg-wishlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+.gg-wishlist-card {
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+.gg-wishlist-card__imgwrap {
+  position: relative;
+  aspect-ratio: 488 / 680;
+  background: #ece6f7;
+  display: block;
+}
+.gg-wishlist-card__imgwrap img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.gg-wishlist-card__noimage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 0.8rem;
+}
+.gg-wishlist-card__body {
+  padding: 0.65rem 0.7rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+}
+.gg-wishlist-card__actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+.gg-wishlist-card__actions .gg-btn {
+  flex: 1;
+}
+.gg-wishlist-card__remove {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gg-line);
+  border-radius: 999px;
+  background: #fff;
+  color: #8b8490;
+  cursor: pointer;
+}
+.gg-wishlist-card__remove:hover {
+  border-color: var(--gg-danger);
+  color: var(--gg-danger);
+}
+.gg-wishlist-card__remove:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
 }
 
 .gg-form-grid {
@@ -3805,6 +3997,20 @@
   margin: 0 0 0.3rem;
   color: var(--gg-ink);
   font-size: 1.6rem;
+}
+.gg-card-detail__titlerow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.gg-card-detail__titlerow h1 {
+  margin: 0 0 0.3rem;
+}
+.gg-card-detail__titlerow .gg-wishlist-btn {
+  background: #f4f1f9;
+  box-shadow: none;
+  border: 1px solid var(--gg-line);
 }
 .gg-card-detail__type {
   color: #555;

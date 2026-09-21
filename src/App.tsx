@@ -5,6 +5,7 @@ import Footer from "./Footer";
 import { RouterProvider, useRouter, matchRoute } from "./store/lib/router";
 import { AuthProvider } from "./store/lib/AuthContext";
 import { CartProvider } from "./store/lib/CartContext";
+import { WishlistProvider } from "./store/lib/WishlistContext";
 import Header from "./store/components/Header";
 import ShopPage from "./store/pages/ShopPage";
 import CardDetailPage from "./store/pages/CardDetailPage";
@@ -28,6 +29,7 @@ import CheckoutPage from "./store/pages/CheckoutPage";
 import SellPage from "./store/pages/SellPage";
 import SellCollectionPage from "./store/pages/SellCollectionPage";
 import { AccountPage } from "./store/pages/AccountPages";
+import TrackOrderPage from "./store/pages/TrackOrderPage";
 import KioskPage from "./store/pages/KioskPage";
 
 function Routes() {
@@ -42,6 +44,7 @@ function Routes() {
   if (path === "/forgot-password") return <ForgotPasswordPage />;
   if (path === "/reset-password") return <ResetPasswordPage />;
   if (path === "/checkout") return <CheckoutPage />;
+  if (path === "/track-order") return <TrackOrderPage />;
   if (path === "/sell") return <SellPage />;
   if (path === "/sell-my-collection") return <SellCollectionPage />;
   if (path === "/condition-guide") return <ConditionGuidePage />;
@@ -68,18 +71,20 @@ export default function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <RouterProvider>
-          <div className="app">
-            <a className="skip-link" href="#main">
-              Skip to content
-            </a>
-            <Header />
-            <main id="main">
-              <Routes />
-            </main>
-            <Footer />
-          </div>
-        </RouterProvider>
+        <WishlistProvider>
+          <RouterProvider>
+            <div className="app">
+              <a className="skip-link" href="#main">
+                Skip to content
+              </a>
+              <Header />
+              <main id="main">
+                <Routes />
+              </main>
+              <Footer />
+            </div>
+          </RouterProvider>
+        </WishlistProvider>
       </CartProvider>
     </AuthProvider>
   );

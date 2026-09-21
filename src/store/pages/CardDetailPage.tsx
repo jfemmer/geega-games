@@ -7,6 +7,7 @@ import { storefrontImageUrl, scryfallSrcSet } from "../../cards";
 import { formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../components/ProductCard";
+import WishlistButton from "../components/WishlistButton";
 
 // One indexable page per unique card (grouped by oracle_id across every
 // in-stock printing/condition — see public.get_card_detail), distinct from
@@ -248,7 +249,10 @@ export default function CardDetailPage({ slug }: { slug: string }) {
         </div>
 
         <div className="gg-card-detail__info">
-          <h1>{detail.cardName}</h1>
+          <div className="gg-card-detail__titlerow">
+            <h1>{detail.cardName}</h1>
+            <WishlistButton oracleId={detail.oracleId} cardName={detail.cardName} />
+          </div>
           {detail.typeLine && <p className="gg-card-detail__type">{detail.typeLine}</p>}
           {(detail.manaCost || detail.power || detail.toughness || detail.loyalty) && (
             <p className="gg-card-detail__stats">

@@ -727,6 +727,30 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_wishlist_items: {
+        Row: {
+          card_name: string
+          created_at: string
+          id: string
+          oracle_id: string
+          user_id: string
+        }
+        Insert: {
+          card_name: string
+          created_at?: string
+          id?: string
+          oracle_id: string
+          user_id: string
+        }
+        Update: {
+          card_name?: string
+          created_at?: string
+          id?: string
+          oracle_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           auth_user_id: string | null
@@ -2600,6 +2624,10 @@ export type Database = {
           set_name: string
         }[]
       }
+      admin_orders_matching_id_prefix: {
+        Args: { p_prefix: string }
+        Returns: string[]
+      }
       admin_release_customer_reservations: {
         Args: {
           p_customer_id: string
@@ -2938,6 +2966,10 @@ export type Database = {
       }
       get_card_detail: { Args: { p_slug: string }; Returns: Json }
       get_or_create_my_cart: { Args: never; Returns: string }
+      guest_order_lookup: {
+        Args: { p_email: string; p_order_number: string }
+        Returns: Json
+      }
       inventory_facets: {
         Args: never
         Returns: {
@@ -2978,6 +3010,19 @@ export type Database = {
         }[]
       }
       my_store_credit_balance: { Args: never; Returns: number }
+      my_wishlist: {
+        Args: never
+        Returns: {
+          card_name: string
+          created_at: string
+          id: string
+          image_url: string
+          in_stock: boolean
+          inventory_item_id: string
+          min_price_cents: number
+          oracle_id: string
+        }[]
+      }
       pos_cancel_pickup_request: {
         Args: { p_pickup_request_id: string; p_reason?: string }
         Returns: undefined
@@ -3087,6 +3132,7 @@ export type Database = {
           finish: Database["public"]["Enums"]["card_finish"]
           id: string
           image_url: string
+          oracle_id: string
           original_price_cents: number
           price_cents: number
           quantity: number
@@ -3150,6 +3196,12 @@ export type Database = {
           total_count: number
           type_line: string
           variant_type: string
+        }[]
+      }
+      shop_card_name_suggestions: {
+        Args: { p_query: string }
+        Returns: {
+          card_name: string
         }[]
       }
       show_limit: { Args: never; Returns: number }

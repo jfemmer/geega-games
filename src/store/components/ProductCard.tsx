@@ -5,6 +5,7 @@ import { scryfallSrcSet } from "../../cards";
 import { formatCents } from "../lib/money";
 import { Link } from "../lib/router";
 import { cardDetailPath } from "../lib/cardSlug";
+import WishlistButton from "./WishlistButton";
 
 export const CONDITION_LABELS: Record<string, string> = {
   NM: "Near Mint",
@@ -39,6 +40,7 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
         {card.variantType && (
           <span className="gg-variant-ribbon">★ {card.variantType}</span>
         )}
+        <WishlistButton oracleId={card.oracleId} cardName={card.name} />
         {card.imageUrl ? (
           <>
             <img

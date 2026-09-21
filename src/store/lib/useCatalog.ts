@@ -26,6 +26,7 @@ export type CatalogFilters = {
 
 export type CatalogCard = {
   id: string;
+  oracleId: string | null;
   name: string;
   set: string | null;
   setName: string | null;
@@ -65,6 +66,7 @@ export const DEFAULT_FILTERS: CatalogFilters = {
 
 type SearchRow = {
   id: string;
+  oracle_id?: string | null;
   scryfall_id: string | null;
   set_code: string | null;
   set_name: string | null;
@@ -87,6 +89,7 @@ type SearchRow = {
 function mapRow(row: SearchRow): CatalogCard {
   return {
     id: row.id,
+    oracleId: row.oracle_id ?? null,
     name: row.card_name ?? "Unknown card",
     set: row.set_code ?? null,
     setName: row.set_name ?? null,

@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../lib/router";
 import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
+import { supabase } from "../../supabase";
 import CartDrawer from "./CartDrawer";
 import { Icon } from "./Icon";
 import ShopByDeck from "./ShopByDeck";
 import StorewideSaleBanner from "./StorewideSaleBanner";
+
+const SUGGEST_DEBOUNCE_MS = 200;
 
 // Debounce before we write a keystroke into the URL. This is independent of
 // useCatalog's own 300ms fetch debounce (which fires off filters.query) — the
@@ -51,6 +54,69 @@ export default function Header() {
     return () => window.clearTimeout(debounceRef.current);
   }, []);
 
+  // Type-ahead suggestions are a separate concern from the URL-write
+  // debounce above: this one only drives a local dropdown and never
+  // navigates on its own, until a suggestion is actually chosen.
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const suggestDebounceRef = useRef<number | undefined>(undefined);
+  const suggestReqIdRef = useRef(0);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const term = searchInput.trim();
+    window.clearTimeout(suggestDebounceRef.current);
+    if (term.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    suggestDebounceRef.current = window.setTimeout(async () => {
+      // Guard against a slower earlier request resolving after a faster
+      // later one and clobbering it with stale results.
+      const reqId = ++suggestReqIdRef.current;
+      const { data, error } = await supabase.rpc("shop_card_name_suggestions", {
+        p_query: term,
+      });
+      if (reqId !== suggestReqIdRef.current) return;
+      if (error) {
+        console.error("[Header] suggestion fetch failed", error);
+        return;
+      }
+      const rows = (data as { card_name: string }[] | null) ?? [];
+      setSuggestions(rows.map((row) => row.card_name));
+      setHighlightIndex(-1);
+      setShowSuggestions(rows.length > 0);
+    }, SUGGEST_DEBOUNCE_MS);
+    return () => window.clearTimeout(suggestDebounceRef.current);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const onOutside = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  const selectSuggestion = (name: string) => {
+    // A chosen suggestion is an immediate, direct navigation — cancel both
+    // debounces so a stale timer can't fire afterward and stomp on it.
+    window.clearTimeout(debounceRef.current);
+    window.clearTimeout(suggestDebounceRef.current);
+    setSearchInput(name);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setHighlightIndex(-1);
+    const onShop = window.location.pathname === "/shop";
+    const params = new URLSearchParams(onShop ? window.location.search : "");
+    params.set("q", name);
+    navigate(`/shop?${params.toString()}`, { replace: onShop });
+  };
+
   const handleChange = (value: string) => {
     setSearchInput(value);
     window.clearTimeout(debounceRef.current);
@@ -82,16 +148,82 @@ export default function Header() {
         </Link>
 
         <div className="gg-header-search">
-          <label htmlFor="gg-search" className="visually-hidden">
-            Search cards
-          </label>
-          <input
-            id="gg-search"
-            type="search"
-            placeholder="Search singles…"
-            value={searchInput}
-            onChange={(e) => handleChange(e.target.value)}
-          />
+          {/* Own wrapper (distinct from ShopByDeck below) so the dropdown
+              only spans the input and an outside click on the deck-shop
+              button correctly closes it instead of being treated as
+              "inside" the search box. */}
+          <div className="gg-search-box" ref={searchBoxRef}>
+            <label htmlFor="gg-search" className="visually-hidden">
+              Search cards
+            </label>
+            <input
+              id="gg-search"
+              type="search"
+              placeholder="Search singles…"
+              value={searchInput}
+              onChange={(e) => handleChange(e.target.value)}
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
+              onKeyDown={(e) => {
+                if (!showSuggestions || suggestions.length === 0) return;
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setHighlightIndex((i) => (i + 1) % suggestions.length);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setHighlightIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+                } else if (e.key === "Enter") {
+                  if (highlightIndex >= 0 && highlightIndex < suggestions.length) {
+                    e.preventDefault();
+                    selectSuggestion(suggestions[highlightIndex]);
+                  }
+                } else if (e.key === "Escape") {
+                  setShowSuggestions(false);
+                  setHighlightIndex(-1);
+                }
+              }}
+              autoComplete="off"
+              role="combobox"
+              aria-expanded={showSuggestions}
+              aria-controls="gg-search-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                highlightIndex >= 0 ? `gg-suggestion-${highlightIndex}` : undefined
+              }
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <ul
+                id="gg-search-suggestions"
+                className="gg-search-suggestions"
+                role="listbox"
+                aria-label="Card suggestions"
+              >
+                {suggestions.map((name, i) => (
+                  <li
+                    key={name}
+                    id={`gg-suggestion-${i}`}
+                    role="option"
+                    aria-selected={i === highlightIndex}
+                    className={
+                      i === highlightIndex
+                        ? "gg-search-suggestion gg-search-suggestion--active"
+                        : "gg-search-suggestion"
+                    }
+                    onMouseDown={(e) => {
+                      // mousedown (not click) fires before the input's blur, so
+                      // the outside-click handler above can't close this first.
+                      e.preventDefault();
+                      selectSuggestion(name);
+                    }}
+                    onMouseEnter={() => setHighlightIndex(i)}
+                  >
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <ShopByDeck />
         </div>
 

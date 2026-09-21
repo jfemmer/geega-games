@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
+import { useCart } from "../lib/CartContext";
 import { Link, useRouter, matchRoute } from "../lib/router";
 import { formatCents } from "../lib/money";
+import { cardDetailPath } from "../lib/cardSlug";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
@@ -24,10 +26,15 @@ import {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  const { navigate } = useRouter();
+  const { path, navigate } = useRouter();
   useEffect(() => {
-    if (!loading && !user) navigate("/login?next=/account", { replace: true });
-  }, [loading, user, navigate]);
+    // Preserve the originally-requested page (e.g. /account/wishlist) so
+    // signing in lands back where the visitor meant to go, instead of always
+    // dropping them on the dashboard.
+    if (!loading && !user) {
+      navigate(`/login?next=${encodeURIComponent(path)}`, { replace: true });
+    }
+  }, [loading, user, path, navigate]);
   if (loading) return <div className="gg-page">Loading…</div>;
   if (!user) return null;
   return <>{children}</>;
@@ -42,6 +49,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account/profile", label: "Profile" },
   { to: "/account/orders", label: "Orders" },
   { to: "/account/decks", label: "My Decks" },
+  { to: "/account/wishlist", label: "Wishlist" },
   { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
@@ -205,7 +213,7 @@ function AccountShell({
  * Shared bits: status badges, order progress, Track My Order
  * ------------------------------------------------------------------ */
 
-function StatusBadge({
+export function StatusBadge({
   status,
   kind,
 }: {
@@ -221,13 +229,24 @@ function StatusBadge({
   );
 }
 
-function OrderProgress({
+export function OrderProgress({
   status,
   timestamps,
 }: {
   status: OrderStatus;
   timestamps: Partial<Record<OrderStatus, string | null>>;
 }) {
+  const currentRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    // .gg-progress scrolls horizontally on narrow screens (6 steps don't fit
+    // a phone width). Without this, a visitor whose order is further along
+    // (e.g. "Shipped") lands on a view scrolled to the far left, where the
+    // current step's dot — the one thing this panel exists to show — is
+    // off-screen with no visible hint that there's more to scroll to.
+    currentRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [status]);
+
   if (isHaltedStatus(status)) {
     return (
       <div
@@ -250,6 +269,7 @@ function OrderProgress({
         return (
           <li
             key={step.status}
+            ref={isCurrent ? currentRef : undefined}
             className={`gg-progress-step ${done ? "gg-done" : ""} ${isCurrent ? "gg-current" : ""}`}
           >
             <span className="gg-progress-dot" aria-hidden="true" />
@@ -284,7 +304,7 @@ function CopyButton({ value }: { value: string }) {
 }
 
 /** Shared "Track My Order" panel used on the dashboard and order detail. */
-function TrackingPanel({
+export function TrackingPanel({
   shippingMethod,
   status,
   trackingCarrier,
@@ -348,7 +368,7 @@ function TrackingPanel({
   );
 }
 
-function ContactAboutOrderLink({ orderNum }: { orderNum: string }) {
+export function ContactAboutOrderLink({ orderNum }: { orderNum: string }) {
   const subject = encodeURIComponent(`Question about order ${orderNum}`);
   const body = encodeURIComponent(
     `Hi Geega Games,\n\nI have a question about my order ${orderNum}.\n\n`,
@@ -825,6 +845,132 @@ function OrdersSection() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Wishlist -- cards saved via the heart icon on ProductCard/CardDetailPage.
+ * Reads through my_wishlist(), which live-joins current inventory (and falls
+ * back to the Scryfall art cache for an out-of-stock save), so this always
+ * shows real availability rather than a stale add-time snapshot.
+ * ------------------------------------------------------------------ */
+
+type WishlistRow = {
+  id: string;
+  oracle_id: string;
+  card_name: string;
+  created_at: string;
+  image_url: string | null;
+  in_stock: boolean;
+  min_price_cents: number | null;
+  inventory_item_id: string | null;
+};
+
+function WishlistSection() {
+  const { addItem } = useCart();
+  const [rows, setRows] = useState<WishlistRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [addedId, setAddedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .rpc("my_wishlist")
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setRows((data ?? []) as WishlistRow[]);
+      });
+  }, []);
+
+  async function remove(row: WishlistRow) {
+    setRemovingId(row.id);
+    const { error } = await supabase
+      .from("customer_wishlist_items")
+      .delete()
+      .eq("id", row.id);
+    if (!error) {
+      setRows((cur) => (cur ?? []).filter((r) => r.id !== row.id));
+    }
+    setRemovingId(null);
+  }
+
+  if (rows === null && !error) return <p>Loading your wishlist…</p>;
+  if (error)
+    return (
+      <div className="gg-alert gg-alert-error" role="alert">
+        {error}
+      </div>
+    );
+  if (!rows || rows.length === 0)
+    return (
+      <div className="gg-empty">
+        <p>You haven&rsquo;t saved any cards yet.</p>
+        <Link to="/shop" className="gg-btn gg-btn-ghost">
+          Browse the shop
+        </Link>
+      </div>
+    );
+
+  return (
+    <div className="gg-wishlist-grid">
+      {rows.map((row) => (
+        <div className="gg-wishlist-card" key={row.id}>
+          <Link to={cardDetailPath(row.card_name)} className="gg-wishlist-card__imgwrap">
+            {row.image_url ? (
+              <img src={row.image_url} alt={row.card_name} loading="lazy" />
+            ) : (
+              <div className="gg-wishlist-card__noimage">No image</div>
+            )}
+          </Link>
+          <div className="gg-wishlist-card__body">
+            <Link to={cardDetailPath(row.card_name)} className="gg-card-name">
+              {row.card_name}
+            </Link>
+            <div className="gg-card-meta">
+              {row.in_stock ? formatCents(row.min_price_cents ?? 0) : "Currently out of stock"}
+            </div>
+            <div className="gg-wishlist-card__actions">
+              {row.in_stock && row.inventory_item_id ? (
+                <button
+                  className="gg-btn gg-btn-sm"
+                  disabled={addingId === row.id}
+                  onClick={async () => {
+                    setAddingId(row.id);
+                    try {
+                      await addItem(row.inventory_item_id!, 1);
+                      setAddedId(row.id);
+                      window.setTimeout(
+                        () => setAddedId((cur) => (cur === row.id ? null : cur)),
+                        1500,
+                      );
+                    } finally {
+                      setAddingId(null);
+                    }
+                  }}
+                >
+                  {addedId === row.id ? "Added ✓" : addingId === row.id ? "Adding…" : "Add to cart"}
+                </button>
+              ) : (
+                <Link to={cardDetailPath(row.card_name)} className="gg-btn gg-btn-sm gg-btn-ghost">
+                  View card
+                </Link>
+              )}
+              <button
+                type="button"
+                className="gg-wishlist-card__remove"
+                disabled={removingId === row.id}
+                onClick={() => remove(row)}
+                aria-label={`Remove ${row.card_name} from wishlist`}
+                title="Remove from wishlist"
+              >
+                {removingId === row.id ? "…" : "✕"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Sell submissions — read-only status list. Deliberately shows ONLY
  * reference number, date, and status: internal notes, staff valuation
  * estimates, and offer/purchase amounts are staff-only and are never
@@ -1118,7 +1264,7 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
   );
 }
 
-function Row({
+export function Row({
   label,
   value,
   strong,
@@ -1647,6 +1793,10 @@ export function AccountPage() {
     title = "My Decks";
     subtitle = "Build decks, watch missing cards, and get suggestions.";
     body = <MyDecksSection />;
+  } else if (path === "/account/wishlist") {
+    title = "Wishlist";
+    subtitle = "Cards you've saved for later.";
+    body = <WishlistSection />;
   } else if (deckMatch) {
     title = "Deck details";
     body = <MyDecksSection deckId={deckMatch.id} />;
