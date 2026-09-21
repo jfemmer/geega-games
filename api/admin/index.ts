@@ -17,6 +17,7 @@ import {
 } from "../_lib/staff.js";
 import type { Database } from "../../src/types/database.js";
 import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
+import { sendPickupReadyEmail } from "../_lib/pickupEmails.js";
 import { getStripe } from "../_lib/stripe.js";
 import { buyShippingLabel } from "../_lib/easypost.js";
 
@@ -530,6 +531,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .eq("id", requestId)
           .eq("status", "waiting");
         if (error) throw new HttpError(500, error.message);
+        // Email failure must not fail marking it ready — the request is
+        // already updated in the DB either way. Silently no-ops when the
+        // customer didn't leave an email (only phone is required at kiosk).
+        try {
+          await sendPickupReadyEmail(requestId);
+        } catch (mailErr) {
+          console.error("[admin/pickup/mark-ready] pickup-ready email failed", mailErr);
+        }
         return sendJson(res, 200, { ok: true });
       }
 

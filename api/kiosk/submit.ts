@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/http.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
+import { normalizeEmail } from "../_lib/tokens.js";
 
 // POST /api/kiosk/submit
 //
@@ -31,6 +32,7 @@ interface SubmitBody {
   website?: unknown;
   customerName?: unknown;
   phone?: unknown;
+  email?: unknown;
   items?: KioskItemInput[];
 }
 
@@ -64,6 +66,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new HttpError(400, "Please tell us your name so staff can find you.");
     }
     const phone = cleanString(body.phone, 30);
+    // Optional and best-effort: an unparseable email is just dropped rather
+    // than blocking the submission — phone is the required contact method.
+    const email = normalizeEmail(body.email);
 
     const rawItems = Array.isArray(body.items) ? body.items.slice(0, MAX_ITEMS) : [];
     if (rawItems.length === 0) {
@@ -83,6 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       p_customer_name: customerName,
       p_phone: phone ?? "",
       p_items: items,
+      p_email: email ?? undefined,
     });
 
     if (error) {

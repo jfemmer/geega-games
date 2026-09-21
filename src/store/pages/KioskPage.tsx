@@ -51,6 +51,7 @@ export default function KioskPage() {
   const [phase, setPhase] = useState<Phase>("browsing");
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,6 +103,7 @@ export default function KioskPage() {
     setList([]);
     setCustomerName("");
     setPhone("");
+    setEmail("");
     setError(null);
     setPhase("browsing");
   }
@@ -120,6 +122,7 @@ export default function KioskPage() {
         body: JSON.stringify({
           customerName,
           phone: phone || undefined,
+          email: email || undefined,
           items: list.map((l) => ({ inventoryItemId: l.card.id, quantity: l.quantity })),
         }),
       });
@@ -243,6 +246,15 @@ export default function KioskPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="In case staff need to reach you"
+                />
+              </div>
+              <div className="gg-field">
+                <label>Email (optional)</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="We'll email you when it's ready"
                 />
               </div>
             </div>
