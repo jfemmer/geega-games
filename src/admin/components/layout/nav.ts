@@ -50,6 +50,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "sparkle",
     path: `${ADMIN_BASE}/sale`,
   },
+  {
+    key: "audit-log",
+    label: "Audit Log",
+    icon: "clock",
+    path: `${ADMIN_BASE}/audit-log`,
+  },
 ];
 
 export const SECTION_TITLES: Record<string, string> = {
@@ -64,4 +70,5 @@ export const SECTION_TITLES: Record<string, string> = {
   users: "Users",
   trends: "Trends",
   sale: "Storewide Sale",
+  "audit-log": "Audit Log",
 };

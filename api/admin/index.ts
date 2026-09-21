@@ -17,6 +17,7 @@ import {
 } from "../_lib/staff.js";
 import type { Database } from "../../src/types/database.js";
 import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
+import { logAdminAction } from "../_lib/auditLog.js";
 import { sendPickupReadyEmail } from "../_lib/pickupEmails.js";
 import { getStripe } from "../_lib/stripe.js";
 import { buyShippingLabel } from "../_lib/easypost.js";
@@ -599,7 +600,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const nextStatus = status as "packing" | "ready_to_ship" | "cancelled";
         const { data: existing, error: readErr } = await admin
           .from("orders")
-          .select("id, packed_at, ready_at, cancelled_at")
+          .select("id, status, packed_at, ready_at, cancelled_at")
           .eq("id", orderId)
           .maybeSingle();
         if (readErr) throw new HttpError(500, readErr.message);
@@ -633,6 +634,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error("[admin/orders/set-status] cancellation email failed", mailErr);
           }
         }
+        await logAdminAction(admin, staff, {
+          action: `order.${nextStatus}`,
+          resourceType: "order",
+          resourceId: orderId,
+          before: { status: existing.status },
+          after: { status: nextStatus },
+        });
         return sendJson(res, 200, { ok: true });
       }
 
@@ -691,6 +699,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (mailErr) {
           console.error("[admin/orders/ship] shipped email failed", mailErr);
         }
+        await logAdminAction(admin, staff, {
+          action: "order.shipped",
+          resourceType: "order",
+          resourceId: orderId,
+          before: { status: order.status },
+          after: { status: "shipped", carrier, trackingNumber },
+        });
         return sendJson(res, 200, { ok: true });
       }
 

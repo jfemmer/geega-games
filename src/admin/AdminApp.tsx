@@ -16,6 +16,7 @@ import { BuyingLeadsPage } from "./pages/BuyingLeadsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
 import { StorewideSalePage } from "./pages/StorewideSalePage";
+import { AuditLogPage } from "./pages/AuditLogPage";
 import "./admin.css";
 
 // The dashboard itself is only rendered once AdminAuthGate confirms a signed-in
@@ -83,6 +84,8 @@ function AdminDashboard() {
         return <TrendsPage />;
       case "sale":
         return <StorewideSalePage />;
+      case "audit-log":
+        return <AuditLogPage />;
       case "overview":
       default:
         return <OverviewPage onNavigate={navigate} />;

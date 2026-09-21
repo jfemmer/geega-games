@@ -2541,3 +2541,92 @@ body.gg-printing-label .gg-labelprint-overlay {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------- Audit log ---------------------------- */
+.gg-auditlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.gg-auditlist__row {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+}
+.gg-auditlist__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+.gg-auditlist__resource {
+  color: var(--gg-text);
+  font-weight: 600;
+}
+.gg-auditlist__actor {
+  color: var(--gg-text-faint);
+}
+.gg-auditlist__time {
+  margin-left: auto;
+  color: var(--gg-text-faint);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.gg-auditdiff {
+  margin-top: 0.5rem;
+}
+.gg-auditdiff__body {
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--gg-surface-2);
+  border-radius: var(--gg-radius-sm);
+}
+.gg-auditdiff__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+}
+.gg-auditdiff__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.gg-auditdiff__field {
+  font-weight: 600;
+  color: var(--gg-text);
+  min-width: 120px;
+}
+.gg-auditdiff__from {
+  color: var(--gg-danger);
+  text-decoration: line-through;
+  word-break: break-word;
+}
+.gg-auditdiff__to {
+  color: var(--gg-text);
+  font-weight: 600;
+  word-break: break-word;
+}
+@media (max-width: 640px) {
+  .gg-auditlist__main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+  }
+  .gg-auditlist__time {
+    margin-left: 0;
+  }
+  .gg-auditdiff__field {
+    min-width: auto;
+    width: 100%;
+  }
+}

@@ -7,6 +7,7 @@ import {
 } from "../../_lib/http.js";
 import { requireStaff, type StaffContext } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
+import { logAdminAction } from "../../_lib/auditLog.js";
 import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import {
   availableFinishesForCard,
@@ -390,6 +391,13 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
   }
 
   const fresh = await getRowOr404(admin, id);
+  await logAdminAction(admin, staff, {
+    action: "inventory.update",
+    resourceType: "inventory_item",
+    resourceId: id,
+    before: current as unknown as Record<string, unknown>,
+    after: fresh as unknown as Record<string, unknown>,
+  });
   return sendJson(res, 200, fresh as unknown as Record<string, unknown>);
 }
 
@@ -398,12 +406,12 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
  * ------------------------------------------------------------------ */
 
 async function handleDelete(req: VercelRequest, res: VercelResponse) {
-  await requireStaff(req);
+  const staff = await requireStaff(req);
   const id = readId(req);
   const admin = getSupabaseAdmin();
 
   // Confirm the row exists (clean 404 rather than a silent no-op).
-  await getRowOr404(admin, id);
+  const current = await getRowOr404(admin, id);
 
   // Historical safety: refuse when referenced by orders/carts/scans.
   const blockers = await inventoryDeleteBlockers(admin, id).catch(() => {
@@ -430,6 +438,14 @@ async function handleDelete(req: VercelRequest, res: VercelResponse) {
     }
     throw new HttpError(500, "Could not delete the inventory item.");
   }
+
+  await logAdminAction(admin, staff, {
+    action: "inventory.delete",
+    resourceType: "inventory_item",
+    resourceId: id,
+    before: current as unknown as Record<string, unknown>,
+    after: null,
+  });
 
   res.status(204).end();
 }
