@@ -244,22 +244,31 @@ export const supabaseOrderRepository: OrderRepository = {
     if (status === "needs_packing") q = q.eq("status", "paid");
     else if (status !== "all") q = q.eq("status", status as OrderStatus);
 
+    // Search runs server-side (not a fetch-500-then-filter-in-JS pass) so an
+    // order outside the current status filter's most recent 500 is still
+    // findable — email/recipient are plain ilike; the order number (the
+    // first 8 hex chars of the uuid id) needs a helper RPC since PostgREST's
+    // ilike filter can't cast a uuid column to text on its own.
+    const term = search?.trim();
+    if (term) {
+      const escaped = term.replace(/[%_]/g, "");
+      const orFilters = [`email.ilike.%${escaped}%`, `ship_recipient.ilike.%${escaped}%`];
+      const hexPrefix = term.replace(/^#|^gg-/i, "").trim();
+      if (/^[0-9a-f]{2,32}$/i.test(hexPrefix)) {
+        const { data: idMatches } = await supabase.rpc("admin_orders_matching_id_prefix", {
+          p_prefix: hexPrefix,
+        });
+        for (const id of idMatches ?? []) orFilters.push(`id.eq.${id}`);
+      }
+      q = q.or(orFilters.join(","));
+    }
+
     const column = sortBy === "total" ? "total_cents" : "created_at";
     q = q.order(column, { ascending: sortDir === "asc" });
 
     const { data, error } = await q.limit(500);
     if (error) throw new Error(error.message);
-    let rows = (data ?? []) as unknown as OrderRowWithItems[];
-
-    const term = search?.trim().toLowerCase();
-    if (term) {
-      rows = rows.filter(
-        (o) =>
-          orderNumberFromId(o.id).toLowerCase().includes(term) ||
-          (o.email ?? "").toLowerCase().includes(term) ||
-          (o.ship_recipient ?? "").toLowerCase().includes(term),
-      );
-    }
+    const rows = (data ?? []) as unknown as OrderRowWithItems[];
 
     const names = await resolveCustomerNames(rows);
     return rows.map((o) => mapOrder(o, nameFor(names, o)));
