@@ -26,6 +26,13 @@ interface SEOOptions {
    * the same as a single object.
    */
   jsonLd?: object | object[];
+  /**
+   * Set true for a page that resolved but shouldn't be indexed (e.g. a
+   * card detail page with zero in-stock listings right now). Omit/false
+   * for the normal indexable case — index.html's default robots tag
+   * already covers that.
+   */
+  noIndex?: boolean;
 }
 
 function upsertMeta(attr: "name" | "property", key: string, content: string): void {
@@ -42,7 +49,7 @@ function readMeta(attr: "name" | "property", key: string): string {
   return document.querySelector(`meta[${attr}="${key}"]`)?.getAttribute("content") ?? "";
 }
 
-export function useSEO({ title, description, path, jsonLd }: SEOOptions): void {
+export function useSEO({ title, description, path, jsonLd, noIndex }: SEOOptions): void {
   const jsonLdKey = jsonLd ? JSON.stringify(jsonLd) : "";
 
   useEffect(() => {
@@ -55,6 +62,7 @@ export function useSEO({ title, description, path, jsonLd }: SEOOptions): void {
     const prevTwitterDescription = readMeta("name", "twitter:description");
     const canonicalEl = document.querySelector('link[rel="canonical"]');
     const prevCanonical = canonicalEl?.getAttribute("href") ?? "";
+    const prevRobots = readMeta("name", "robots");
 
     const url = `${SITE.url.replace(/\/+$/, "")}${path}`;
 
@@ -66,6 +74,7 @@ export function useSEO({ title, description, path, jsonLd }: SEOOptions): void {
     upsertMeta("name", "twitter:title", title);
     upsertMeta("name", "twitter:description", description);
     if (canonicalEl) canonicalEl.setAttribute("href", url);
+    if (noIndex) upsertMeta("name", "robots", "noindex, follow");
 
     let jsonLdEl: HTMLScriptElement | null = null;
     if (jsonLdKey) {
@@ -84,7 +93,8 @@ export function useSEO({ title, description, path, jsonLd }: SEOOptions): void {
       upsertMeta("name", "twitter:title", prevTwitterTitle);
       upsertMeta("name", "twitter:description", prevTwitterDescription);
       if (canonicalEl) canonicalEl.setAttribute("href", prevCanonical);
+      if (noIndex) upsertMeta("name", "robots", prevRobots || "index, follow");
       jsonLdEl?.remove();
     };
-  }, [title, description, path, jsonLdKey]);
+  }, [title, description, path, jsonLdKey, noIndex]);
 }

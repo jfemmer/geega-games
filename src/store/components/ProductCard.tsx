@@ -3,8 +3,10 @@ import type { CatalogCard } from "../lib/useCatalog";
 import { useCart } from "../lib/CartContext";
 import { scryfallSrcSet } from "../../cards";
 import { formatCents } from "../lib/money";
+import { Link } from "../lib/router";
+import { cardDetailPath } from "../lib/cardSlug";
 
-const CONDITION_LABELS: Record<string, string> = {
+export const CONDITION_LABELS: Record<string, string> = {
   NM: "Near Mint",
   LP: "Lightly Played",
   MP: "Moderately Played",
@@ -21,10 +23,14 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
   const unpriced = card.priceCents == null || card.priceCents <= 0;
   const canBuy = !soldOut && !unpriced;
   const srcSet = card.imageUrl ? scryfallSrcSet(card.imageUrl) : null;
+  const detailPath = cardDetailPath(card.name);
 
   return (
     <div className={`gg-card${card.variantType ? " gg-card--variant" : ""}`}>
-      <div className={`gg-card-imgwrap ${card.finish !== "nonfoil" ? "gg-card-imgwrap--foil" : ""}`}>
+      <Link
+        to={detailPath}
+        className={`gg-card-imgwrap ${card.finish !== "nonfoil" ? "gg-card-imgwrap--foil" : ""}`}
+      >
         {card.isDeal && (
           <span className="gg-deal-ribbon">
             {card.dealDiscountPercent ? `${card.dealDiscountPercent}% OFF` : "SPECIAL"}
@@ -67,12 +73,12 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
             No image
           </div>
         )}
-      </div>
+      </Link>
 
       <div className="gg-card-body">
-        <div className="gg-card-name" title={card.name}>
+        <Link to={detailPath} className="gg-card-name" title={card.name}>
           {card.name}
-        </div>
+        </Link>
         <div className="gg-card-meta">
           {card.setName ?? card.set?.toUpperCase()}
           {card.collectorNumber ? ` · #${card.collectorNumber}` : ""}

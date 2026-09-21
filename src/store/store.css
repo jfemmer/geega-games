@@ -325,11 +325,16 @@
   font-size: 0.92rem;
   line-height: 1.25;
   color: var(--gg-ink);
+  text-decoration: none;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 2.3em;
+}
+.gg-card-name:hover {
+  color: var(--gg-purple);
+  text-decoration: underline;
 }
 .gg-card-meta {
   font-size: 0.78rem;
@@ -3731,4 +3736,129 @@
 }
 .gg-deck-unresolved .gg-deck-add-card {
   flex-basis: 100%;
+}
+
+/* ---------------------- Card detail page (/shop/card/:slug) --------------------- */
+.gg-breadcrumbs {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 1rem;
+}
+.gg-breadcrumbs a {
+  color: var(--gg-purple);
+  text-decoration: none;
+}
+.gg-breadcrumbs a:hover {
+  text-decoration: underline;
+}
+.gg-card-detail__layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 1.75rem;
+  align-items: start;
+}
+.gg-card-detail__image img {
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(20, 10, 40, 0.15);
+}
+.gg-card-detail__noimage {
+  aspect-ratio: 488 / 680;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ece6f7;
+  border-radius: 14px;
+  color: #999;
+  font-size: 0.85rem;
+}
+.gg-card-detail__info h1 {
+  margin: 0 0 0.3rem;
+  color: var(--gg-ink);
+  font-size: 1.6rem;
+}
+.gg-card-detail__type {
+  color: #555;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.gg-card-detail__stats {
+  color: #444;
+  font-size: 0.92rem;
+  margin: 0 0 0.75rem;
+}
+.gg-card-detail__oracle {
+  white-space: pre-line;
+  line-height: 1.5;
+  margin: 0 0 0.75rem;
+}
+.gg-card-detail__flavor {
+  font-style: italic;
+  color: #666;
+  white-space: pre-line;
+  margin: 0 0 1rem;
+}
+.gg-card-detail__pricesummary {
+  font-size: 1.05rem;
+  color: var(--gg-ink);
+}
+.gg-card-detail__listings {
+  margin-top: 2rem;
+}
+.gg-card-detail__listings h2 {
+  font-size: 1.1rem;
+  color: var(--gg-ink);
+  margin-bottom: 0.75rem;
+}
+.gg-card-detail__listinglist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.gg-card-detail__listing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  background: #fdfcfe;
+}
+.gg-card-detail__listingmeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.gg-card-detail__listingset {
+  font-weight: 600;
+  color: var(--gg-ink);
+  font-size: 0.9rem;
+}
+.gg-card-detail__listingbuy {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+@media (max-width: 640px) {
+  .gg-card-detail__layout {
+    grid-template-columns: 1fr;
+  }
+  .gg-card-detail__image {
+    max-width: 280px;
+    margin: 0 auto;
+  }
+  .gg-card-detail__listing {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .gg-card-detail__listingbuy {
+    width: 100%;
+    justify-content: space-between;
+  }
 }

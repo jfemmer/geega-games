@@ -2,11 +2,12 @@ import "./App.css";
 import "./store/store.css";
 import "./store/brand-refresh.css";
 import Footer from "./Footer";
-import { RouterProvider, useRouter } from "./store/lib/router";
+import { RouterProvider, useRouter, matchRoute } from "./store/lib/router";
 import { AuthProvider } from "./store/lib/AuthContext";
 import { CartProvider } from "./store/lib/CartContext";
 import Header from "./store/components/Header";
 import ShopPage from "./store/pages/ShopPage";
+import CardDetailPage from "./store/pages/CardDetailPage";
 import {
   LoginPage,
   SignupPage,
@@ -34,6 +35,8 @@ function Routes() {
 
   if (path === "/" || path === "") return <HomePage />;
   if (path === "/shop") return <ShopPage />;
+  const cardMatch = matchRoute("/shop/card/:slug", path);
+  if (cardMatch) return <CardDetailPage slug={cardMatch.slug} />;
   if (path === "/login") return <LoginPage />;
   if (path === "/signup") return <SignupPage />;
   if (path === "/forgot-password") return <ForgotPasswordPage />;

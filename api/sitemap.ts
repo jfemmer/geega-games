@@ -1,0 +1,103 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
+
+// GET /sitemap.xml — rewritten here from the site root by vercel.json, which
+// must route this path to this function BEFORE its catch-all SPA rewrite.
+//
+// Static marketing pages (previously a hand-maintained public/sitemap.xml)
+// plus one URL per distinct card currently in stock, so individual Magic:
+// The Gathering singles are discoverable/indexable instead of living only
+// behind the /shop browse grid. See src/store/pages/CardDetailPage.tsx for
+// the page these URLs resolve to, and public.get_card_detail for the RPC
+// that page calls — the slug here must match that RPC's own slugify logic.
+//
+// Falls back to the static-only list on any DB error rather than failing
+// the request: an incomplete sitemap is far less harmful to crawlability
+// than an unreachable one.
+
+const SITE_URL = "https://geega-games.com";
+const MAX_CARD_URLS = 5000;
+
+const STATIC_PAGES: { path: string; changefreq: string; priority: string; lastmod?: string }[] = [
+  { path: "/", changefreq: "daily", priority: "1.0" },
+  { path: "/shop", changefreq: "daily", priority: "0.9" },
+  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9" },
+  { path: "/sell", changefreq: "weekly", priority: "0.7" },
+  { path: "/condition-guide", changefreq: "monthly", priority: "0.4" },
+  { path: "/shipping", changefreq: "monthly", priority: "0.4" },
+  { path: "/returns", changefreq: "monthly", priority: "0.3" },
+  { path: "/contact", changefreq: "monthly", priority: "0.3" },
+  { path: "/privacy", changefreq: "yearly", priority: "0.1" },
+  { path: "/terms", changefreq: "yearly", priority: "0.1" },
+];
+
+// Must exactly match public.slugify_card_name() and
+// src/store/lib/cardSlug.ts — all three independently implement the same
+// transform (SQL, browser, and this server function each need their own
+// copy) and must never drift apart.
+function slugifyCardName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function urlEntry(loc: string, changefreq: string, priority: string, lastmod?: string): string {
+  return [
+    "  <url>",
+    `    <loc>${xmlEscape(loc)}</loc>`,
+    lastmod ? `    <lastmod>${lastmod}</lastmod>` : "",
+    `    <changefreq>${changefreq}</changefreq>`,
+    `    <priority>${priority}</priority>`,
+    "  </url>",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.setHeader("Allow", "GET, HEAD");
+    res.status(405).send("Method not allowed");
+    return;
+  }
+
+  const entries = STATIC_PAGES.map((p) => urlEntry(`${SITE_URL}${p.path}`, p.changefreq, p.priority, p.lastmod));
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("inventory_items")
+      .select("card_name, oracle_id, created_at")
+      .eq("status", "active")
+      .gt("quantity", 0)
+      .order("created_at", { ascending: false })
+      .limit(MAX_CARD_URLS);
+
+    if (error) throw error;
+
+    const seen = new Set<string>();
+    for (const row of data ?? []) {
+      const cardName = row.card_name;
+      if (!cardName) continue;
+      const dedupeKey = row.oracle_id ?? cardName;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      const slug = slugifyCardName(cardName);
+      if (!slug) continue;
+      entries.push(urlEntry(`${SITE_URL}/shop/card/${slug}`, "weekly", "0.6"));
+    }
+  } catch (err) {
+    console.error("[/sitemap.xml] DB lookup failed, serving static pages only:", err);
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>\n`;
+
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+  res.status(200).send(xml);
+}
