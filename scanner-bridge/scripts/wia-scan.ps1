@@ -79,6 +79,18 @@
 .PARAMETER ListDevicesOnly
   Enumerate visible WIA devices and exit - no scan attempted, nothing
   touches the feeder. Run this first, always.
+
+.PARAMETER Diagnose
+  Connects to the matched device and the feeder item, prints every
+  device- and item-level property this driver actually reports (name,
+  id, current value, and valid range/list where the driver exposes
+  one), then tries Transfer() several different ways (no format
+  argument at all, then each known WIA format GUID in turn) and
+  reports which ones succeed or fail. Never saves an image either way
+  - purely diagnostic, safe to run repeatedly. Use this when a plain
+  scan attempt fails with an unhelpful generic error (e.g. "The
+  parameter is incorrect.") and the reason isn't obvious from that
+  message alone.
 #>
 param(
     [Parameter(Mandatory = $true)]
@@ -92,7 +104,9 @@ param(
 
     [int]$Resolution = 600,
 
-    [switch]$ListDevicesOnly
+    [switch]$ListDevicesOnly,
+
+    [switch]$Diagnose
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,6 +133,40 @@ function Set-WiaProperty {
         catch {
             Write-Host "WARN:could not set '$Name' (id $Id) to $Value : $($_.Exception.Message)"
             return $false
+        }
+    }
+}
+
+# -Diagnose only: prints what this driver actually reports for every
+# property on $device or $item, including its valid range/list where the
+# driver exposes one (SubType: 1=Range, 2=List, 3=Flag - see Microsoft's
+# WIA Automation Layer Property object reference). This is ground truth
+# from the real device, not an assumption about what a "normal" WIA
+# scanner supports.
+function Show-WiaProperties {
+    param($Target, [string]$Label)
+    Write-Host "PROPS:$Label"
+    foreach ($p in $Target.Properties) {
+        try {
+            $name = $p.Name
+            $id = $p.PropertyID
+            $value = try { $p.Value } catch { "(unreadable)" }
+            $extra = ""
+            $subType = try { $p.SubType } catch { -1 }
+            if ($subType -eq 1) {
+                $extra = "range $($p.SubTypeMin)-$($p.SubTypeMax) step $($p.SubTypeStep)"
+            }
+            elseif ($subType -eq 2 -or $subType -eq 3) {
+                $vals = @()
+                for ($i = 1; $i -le $p.SubTypeValues.Count; $i++) {
+                    $vals += $p.SubTypeValues.Item($i)
+                }
+                $extra = "values: $($vals -join ', ')"
+            }
+            Write-Host "  PROP:$name (id=$id) = $value  $extra"
+        }
+        catch {
+            Write-Host "  PROP:(could not read one property: $($_.Exception.Message))"
         }
     }
 }
@@ -190,6 +238,40 @@ try {
 catch {
     Write-Result -Status "ERROR" -Message "Could not get the device's scan item: $($_.Exception.Message)"
     exit 1
+}
+
+if ($Diagnose) {
+    Show-WiaProperties -Target $device -Label "device"
+    Show-WiaProperties -Target $item -Label "item"
+
+    Write-Host "TRY:bare Transfer() with no format argument"
+    try {
+        $img = $item.Transfer()
+        Write-Host "TRY-OK:bare Transfer()"
+    }
+    catch {
+        Write-Host "TRY-FAIL:bare Transfer(): $($_.Exception.Message) [HResult=$($_.Exception.HResult)] [$($_.Exception.GetType().FullName)]"
+    }
+
+    $formatsToTry = [ordered]@{
+        "BMP"  = "{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}"
+        "PNG"  = "{B96B3CAF-0728-11D3-9D7B-0000F81EF32E}"
+        "GIF"  = "{B96B3CB0-0728-11D3-9D7B-0000F81EF32E}"
+        "JPEG" = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
+        "TIFF" = "{B96B3CB1-0728-11D3-9D7B-0000F81EF32E}"
+    }
+    foreach ($fmtName in $formatsToTry.Keys) {
+        try {
+            $img = $item.Transfer($formatsToTry[$fmtName])
+            Write-Host "TRY-OK:Transfer($fmtName)"
+        }
+        catch {
+            Write-Host "TRY-FAIL:Transfer($fmtName): $($_.Exception.Message) [HResult=$($_.Exception.HResult)] [$($_.Exception.GetType().FullName)]"
+        }
+    }
+
+    Write-Result -Status "OK" -Message "diagnostics complete - see PROPS/TRY-OK/TRY-FAIL lines above"
+    exit 0
 }
 
 # --- Item-level: resolution + color, applied once - persists across every Transfer() below ---
