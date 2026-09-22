@@ -249,6 +249,7 @@ describe("email templates render to HTML", () => {
         firstName: "Jordan",
         referenceNumber: "GG-S-100042",
         offerValueCents: 35000,
+        responseUrl: "https://geega-games.com/sell/offer?ref=GG-S-100042&email=jordan%40example.com",
         siteUrl: "https://geega-games.com",
         logoUrl: "https://geega-games.com/logo.png",
         supportEmail: "support@geega-games.com",
@@ -258,5 +259,85 @@ describe("email templates render to HTML", () => {
     expect(html).toContain("$350.00");
     expect(html).toContain("our offer for your collection");
     expect(html).toContain("PayPal Goods");
+    expect(html).toContain("Respond to this offer");
+    expect(html).toContain(
+      "https://geega-games.com/sell/offer?ref=GG-S-100042&amp;email=jordan%40example.com",
+    );
+  });
+
+  it("SellSubmissionOfferResponse renders declined and countered confirmations to the seller", async () => {
+    const { SellSubmissionOfferResponse } = await import(
+      "../api/_lib/emails/SellSubmissionOfferResponse.js"
+    );
+    const declined = await render(
+      React.createElement(SellSubmissionOfferResponse, {
+        kind: "declined",
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        offerValueCents: 35000,
+        counterOfferCents: null,
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(declined).toContain("GG-S-100042");
+    expect(declined).toContain("$350.00");
+    expect(declined).toContain("declined our offer");
+
+    const countered = await render(
+      React.createElement(SellSubmissionOfferResponse, {
+        kind: "countered",
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        offerValueCents: 35000,
+        counterOfferCents: 42000,
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(countered).toContain("$350.00");
+    expect(countered).toContain("$420.00");
+    expect(countered).toContain("counter-offer");
+  });
+
+  it("SellSubmissionOfferResponseAdminNotification renders all three response kinds", async () => {
+    const { SellSubmissionOfferResponseAdminNotification } = await import(
+      "../api/_lib/emails/SellSubmissionOfferResponseAdminNotification.js"
+    );
+    const accepted = await render(
+      React.createElement(SellSubmissionOfferResponseAdminNotification, {
+        response: "accepted",
+        referenceNumber: "GG-S-100042",
+        sellerName: "Jordan Vega",
+        offerValueCents: 35000,
+        counterOfferCents: null,
+        adminUrl: "https://geega-games.com/admin_dashboard/buying-leads?submission=abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(accepted).toContain("accepted your offer");
+    expect(accepted).toContain("Jordan Vega");
+    expect(accepted).toContain("$350.00");
+
+    const countered = await render(
+      React.createElement(SellSubmissionOfferResponseAdminNotification, {
+        response: "countered",
+        referenceNumber: "GG-S-100042",
+        sellerName: "Jordan Vega",
+        offerValueCents: 35000,
+        counterOfferCents: 42000,
+        adminUrl: "https://geega-games.com/admin_dashboard/buying-leads?submission=abc",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(countered).toContain("$350.00");
+    expect(countered).toContain("$420.00");
+    expect(countered).toContain("counter-offer");
   });
 });

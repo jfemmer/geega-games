@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Heading, Hr, Section, Text } from "@react-email/components";
+import { Button, Heading, Hr, Link, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
 
 // Loosely-typed createElement wrapper: React Email components type `children`
@@ -27,6 +27,8 @@ export type SellSubmissionOfferEmailData = {
   firstName: string | null;
   referenceNumber: string;
   offerValueCents: number;
+  /** Deep link to the public /sell/offer page, ref + email pre-filled — see sellSubmissionEmails.ts. */
+  responseUrl: string;
   siteUrl: string;
   logoUrl: string;
   supportEmail: string;
@@ -60,7 +62,17 @@ export function SellSubmissionOffer(data: SellSubmissionOfferEmailData) {
     h(
       Text,
       { key: "body2", style: p },
-      "Reply to this email to accept, decline, or ask any questions — no rush, and no obligation either way. If you accept, we'll follow up with next steps; payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out.",
+      "You can accept, decline, or respond right on our site — no rush, and no obligation either way:",
+    ),
+    h(
+      Section,
+      { key: "cta", style: { textAlign: "center", margin: "4px 0 16px" } },
+      h(Button, { href: data.responseUrl, style: button }, "Respond to this offer"),
+    ),
+    h(
+      Text,
+      { key: "body3", style: p },
+      "If you accept, we'll follow up with next steps; payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.",
     ),
     h(
       Section,
@@ -69,7 +81,13 @@ export function SellSubmissionOffer(data: SellSubmissionOfferEmailData) {
       h(Text, { key: "v", style: refValue }, data.referenceNumber),
     ),
     h(Hr, { key: "hr", style: hr }),
-    h(Text, { key: "p2", style: p }, "Questions? Just reply to this email."),
+    h(
+      Text,
+      { key: "p2", style: small },
+      "Or paste this link into your browser:",
+      h("br", { key: "br" }),
+      h(Link, { key: "link", href: data.responseUrl, style: linkStyle }, data.responseUrl),
+    ),
   );
 }
 
@@ -87,7 +105,10 @@ export function sellSubmissionOfferText(d: SellSubmissionOfferEmailData): string
     "",
     `Offer: ${money(d.offerValueCents)}`,
     "",
-    "Reply to this email to accept, decline, or ask any questions — no rush, and no obligation either way. If you accept, we'll follow up with next steps; payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out.",
+    "You can accept, decline, or respond right on our site — no rush, and no obligation either way:",
+    d.responseUrl,
+    "",
+    "If you accept, we'll follow up with next steps; payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.",
     "",
     `Reference number: ${d.referenceNumber}`,
     "",
@@ -147,3 +168,24 @@ const refValue: React.CSSProperties = {
   margin: 0,
 };
 const hr: React.CSSProperties = { borderColor: brand.line, margin: "16px 0" };
+const button: React.CSSProperties = {
+  backgroundColor: brand.purple,
+  color: "#ffffff",
+  fontSize: "15px",
+  fontWeight: 600,
+  borderRadius: "10px",
+  padding: "12px 22px",
+  textDecoration: "none",
+  display: "inline-block",
+};
+const small: React.CSSProperties = {
+  color: brand.muted,
+  fontSize: "13px",
+  lineHeight: "20px",
+  margin: 0,
+  wordBreak: "break-all",
+};
+const linkStyle: React.CSSProperties = {
+  color: brand.purple,
+  textDecoration: "underline",
+};

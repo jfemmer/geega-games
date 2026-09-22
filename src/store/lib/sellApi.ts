@@ -191,3 +191,63 @@ export async function submitSellForm(payload: {
   }
   return { ok: true, referenceNumber: body.referenceNumber };
 }
+
+export interface SellOfferLookup {
+  id: string;
+  reference_number: string;
+  first_name: string | null;
+  offer_value_cents: number;
+  offer_sent_at: string;
+  offer_response: "accepted" | "declined" | "countered" | null;
+  counter_offer_cents: number | null;
+  offer_responded_at: string | null;
+  allow_counter: boolean;
+}
+
+/**
+ * Looks up a sent offer by reference number + email — see
+ * sell_submission_offer_lookup(), a SECURITY DEFINER RPC requiring an exact
+ * match on both together (same anti-enumeration pattern as
+ * guest_order_lookup). Returns null for no match, an unsent offer, or a
+ * wrong ref/email — all indistinguishable, by design.
+ */
+export async function lookupSellOffer(
+  referenceNumber: string,
+  email: string,
+): Promise<SellOfferLookup | null> {
+  const { data, error } = await supabase.rpc("sell_submission_offer_lookup", {
+    p_reference_number: referenceNumber.trim(),
+    p_email: email.trim(),
+  });
+  if (error) throw new Error(error.message);
+  return (data as SellOfferLookup | null) ?? null;
+}
+
+export interface RespondToSellOfferResult {
+  ok: boolean;
+  response?: "accepted" | "declined" | "countered";
+  message?: string;
+}
+
+/** Submits the seller's response — see /api/sell/respond-to-offer.ts, which independently re-verifies everything here rather than trusting this call. */
+export async function respondToSellOffer(payload: {
+  referenceNumber: string;
+  email: string;
+  response: "accepted" | "declined" | "countered";
+  counterOfferCents?: number;
+}): Promise<RespondToSellOfferResult> {
+  const res = await fetch("/api/sell/respond-to-offer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.ok) {
+    return {
+      ok: false,
+      message: (body && typeof body.message === "string" && body.message) ||
+        "We couldn't submit your response. Please try again.",
+    };
+  }
+  return { ok: true, response: body.response };
+}

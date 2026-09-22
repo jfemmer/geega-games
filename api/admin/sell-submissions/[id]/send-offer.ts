@@ -16,6 +16,14 @@ import { sendSellSubmissionOffer } from "../../../_lib/sellSubmissionEmails.js";
 // comment). This records the amount, marks the submission offer_made +
 // offer_sent_at, and sends the one email that states the dollar figure.
 // Staff-only, same as every other admin write to this table.
+//
+// Resets offer_response / counter_offer_cents / offer_responded_at back to
+// null on every send: this is how staff re-offer after a decline or counter
+// (the normal negotiation loop — see api/sell/respond-to-offer.ts), and a
+// stale response from a PRIOR offer must never be mistaken for a response to
+// THIS one. Without this reset, a seller who countered offer #1 would find
+// the public /sell/offer page permanently showing "you already responded"
+// even after staff sent a brand-new offer #2.
 
 interface Body {
   offerValueCents?: unknown;
@@ -42,6 +50,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         offer_value_cents: offerValueCents,
         status: "offer_made",
         offer_sent_at: now,
+        offer_response: null,
+        counter_offer_cents: null,
+        offer_responded_at: null,
       })
       .eq("id", id)
       .select("id")

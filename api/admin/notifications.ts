@@ -44,6 +44,8 @@ function safeName(first: string | null, last: string | null): string {
   return [first, last].filter(Boolean).join(" ").trim() || "Customer";
 }
 
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
 async function buildCandidates(): Promise<NotificationCandidate[]> {
   const admin = getSupabaseAdmin();
 
@@ -62,8 +64,18 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
       .limit(20),
     admin
       .from("sell_submissions")
-      .select("id, reference_number, status, priority, first_name, last_name, created_at, updated_at, total_cards")
-      .in("status", ["new", "needs_more_photos", "needs_in_person_review", "accepted"])
+      .select(
+        "id, reference_number, status, priority, first_name, last_name, created_at, updated_at, total_cards, offer_value_cents, offer_response, counter_offer_cents, offer_responded_at",
+      )
+      // Two independent reasons a lead needs staff attention: its workflow
+      // status (new/needs-photos/etc, or accepted — which a seller's own
+      // "accept" response also sets, see respond-to-offer.ts), OR a
+      // decline/counter response, which deliberately does NOT change status
+      // (staff still decide what happens next) and so would never surface
+      // here without checking offer_response too.
+      .or(
+        "status.in.(new,needs_more_photos,needs_in_person_review,accepted),offer_response.in.(declined,countered)",
+      )
       .order("updated_at", { ascending: false })
       .limit(20),
     admin
@@ -134,36 +146,76 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
     });
   }
 
+  // Statuses this loop knows how to describe. The query below also returns
+  // leads matched ONLY via a decline/counter response (see the .or() filter
+  // above), which can carry any other status (typically "offer_made") — those
+  // fall through to the offer-response notification below instead of this
+  // status-driven one, rather than being mislabeled with a "New buying lead"
+  // default that no longer reflects what's actually going on.
+  const KNOWN_LEAD_STATUSES = new Set(["new", "needs_more_photos", "needs_in_person_review", "accepted"]);
+
   for (const lead of leadsRes.data ?? []) {
     const name = safeName(lead.first_name, lead.last_name);
     const ref = lead.reference_number || "Buying lead";
-    let title = `New buying lead · ${ref}`;
-    let detail = `${name} submitted a collection${lead.total_cards ? ` with ${lead.total_cards} cards` : ""}.`;
-    let tone: NotificationTone = lead.priority === "high_interest" ? "danger" : "info";
 
-    if (lead.status === "needs_more_photos") {
-      title = `Buying lead needs photos · ${ref}`;
-      detail = `${name}'s submission is waiting on additional photos.`;
-      tone = "warning";
-    } else if (lead.status === "needs_in_person_review") {
-      title = `In-person review needed · ${ref}`;
-      detail = `${name}'s collection needs an in-person review.`;
-      tone = "warning";
-    } else if (lead.status === "accepted") {
-      title = `Offer accepted · ${ref}`;
-      detail = `${name} accepted the offer; finish the purchase workflow.`;
-      tone = "success";
+    if (KNOWN_LEAD_STATUSES.has(lead.status)) {
+      let title = `New buying lead · ${ref}`;
+      let detail = `${name} submitted a collection${lead.total_cards ? ` with ${lead.total_cards} cards` : ""}.`;
+      let tone: NotificationTone = lead.priority === "high_interest" ? "danger" : "info";
+
+      if (lead.status === "needs_more_photos") {
+        title = `Buying lead needs photos · ${ref}`;
+        detail = `${name}'s submission is waiting on additional photos.`;
+        tone = "warning";
+      } else if (lead.status === "needs_in_person_review") {
+        title = `In-person review needed · ${ref}`;
+        detail = `${name}'s collection needs an in-person review.`;
+        tone = "warning";
+      } else if (lead.status === "accepted") {
+        title = `Offer accepted · ${ref}`;
+        detail = `${name} accepted the offer; finish the purchase workflow.`;
+        tone = "success";
+      }
+
+      notifications.push({
+        key: `buying_lead:${lead.status}:${lead.id}`,
+        kind: "buying_lead",
+        tone,
+        title,
+        detail,
+        at: lead.updated_at ?? lead.created_at,
+        href: `/admin_dashboard/buying-leads?submission=${lead.id}`,
+      });
     }
 
-    notifications.push({
-      key: `buying_lead:${lead.status}:${lead.id}`,
-      kind: "buying_lead",
-      tone,
-      title,
-      detail,
-      at: lead.updated_at ?? lead.created_at,
-      href: `/admin_dashboard/buying-leads?submission=${lead.id}`,
-    });
+    // Declining or countering deliberately never changes `status` (staff
+    // still decide the next step — see respond-to-offer.ts), so it needs its
+    // own notification entirely separate from the status-based one above;
+    // otherwise it would be invisible here. Accepting isn't handled a second
+    // time — it already set status to "accepted" and is covered above.
+    if (lead.offer_response === "declined" && lead.offer_responded_at) {
+      notifications.push({
+        key: `buying_lead:offer_declined:${lead.id}`,
+        kind: "buying_lead",
+        tone: "warning",
+        title: `Seller declined offer · ${ref}`,
+        detail: `${name} declined your ${money(lead.offer_value_cents ?? 0)} offer.`,
+        at: lead.offer_responded_at,
+        href: `/admin_dashboard/buying-leads?submission=${lead.id}`,
+      });
+    } else if (lead.offer_response === "countered" && lead.offer_responded_at) {
+      notifications.push({
+        key: `buying_lead:offer_countered:${lead.id}`,
+        kind: "buying_lead",
+        tone: "warning",
+        title: `Seller countered · ${ref}`,
+        detail: `${name} countered your ${money(lead.offer_value_cents ?? 0)} offer with ${money(
+          lead.counter_offer_cents ?? 0,
+        )}.`,
+        at: lead.offer_responded_at,
+        href: `/admin_dashboard/buying-leads?submission=${lead.id}`,
+      });
+    }
   }
 
   for (const scan of scansRes.data ?? []) {

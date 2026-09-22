@@ -139,6 +139,17 @@ export const SELL_COLLECTION_SIZE_OPTIONS: { value: string; label: string }[] = 
   { value: "not_sure", label: "Not sure" },
 ];
 
+// The single source of truth for "large collection" across the admin Buying
+// Leads filter (buyingLeads.supabase.ts) and the counter-offer eligibility
+// rule (api/sell/respond-to-offer.ts, sell_submission_offer_lookup RPC):
+// Counter is only ever offered for a large, unsorted (no card list)
+// collection. Both consumers import this rather than each keeping their own
+// copy of the threshold.
+export const LARGE_SELL_COLLECTION_SIZES: ReadonlySet<string> = new Set([
+  "5000_to_10000",
+  "10000_plus",
+]);
+
 export const SELL_COLLECTION_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "individual_singles", label: "Individual singles" },
   { value: "binder_collection", label: "Binder collection" },

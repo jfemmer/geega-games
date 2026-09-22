@@ -24,6 +24,20 @@ import {
   sellSubmissionOfferText,
   type SellSubmissionOfferEmailData,
 } from "./emails/SellSubmissionOffer.js";
+import {
+  SellSubmissionOfferResponse,
+  sellSubmissionOfferResponseSubject,
+  sellSubmissionOfferResponseText,
+  type SellOfferResponseKind,
+  type SellSubmissionOfferResponseEmailData,
+} from "./emails/SellSubmissionOfferResponse.js";
+import {
+  SellSubmissionOfferResponseAdminNotification,
+  sellSubmissionOfferResponseAdminSubject,
+  sellSubmissionOfferResponseAdminText,
+  type SellSubmissionOfferResponseKind,
+  type SellSubmissionOfferResponseAdminEmailData,
+} from "./emails/SellSubmissionOfferResponseAdminNotification.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
 
@@ -250,10 +264,15 @@ export async function sendSellSubmissionOffer(
     return { status: "skipped", reason: "submission-not-found" };
   }
 
+  const responseUrl = `${siteUrl()}/sell/offer?ref=${encodeURIComponent(
+    submission.reference_number,
+  )}&email=${encodeURIComponent(submission.email)}`;
+
   const data: SellSubmissionOfferEmailData = {
     firstName: submission.first_name,
     referenceNumber: submission.reference_number,
     offerValueCents,
+    responseUrl,
     siteUrl: siteUrl(),
     logoUrl: logoUrl(),
     supportEmail: ServerEnv.replyTo(),
@@ -268,5 +287,106 @@ export async function sendSellSubmissionOffer(
     subject: sellSubmissionOfferSubject(data),
     react: React.createElement(SellSubmissionOffer, data),
     text: sellSubmissionOfferText(data),
+  });
+}
+
+// Confirms the seller's own decline/counter response to a sent offer (see
+// api/sell/respond-to-offer.ts, the only caller). "accepted" is not a valid
+// `kind` here — accepting also flips status to 'accepted', which already
+// triggers sendSellSubmissionStatusUpdate's richer, tested confirmation
+// (PayPal/next-steps copy); duplicating that as a second template here would
+// just create two "you accepted" emails that could drift apart.
+//
+// Idempotency includes the offer amount (and the counter amount, when
+// present) even though a seller can only ever respond once per offer
+// (offer_responded_at gates that in the endpoint) — send-offer.ts resets
+// offer_responded_at on every new offer, so keying on the amount here keeps
+// this consistent with every other tracked email in this file rather than
+// relying solely on that gate.
+export async function sendSellSubmissionOfferResponseConfirmation(
+  submissionId: string,
+  kind: SellOfferResponseKind,
+  offerValueCents: number,
+  counterOfferCents: number | null,
+): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
+  const db = getSupabaseAdmin();
+
+  const { data: submission, error } = await db
+    .from("sell_submissions")
+    .select("id, first_name, email, reference_number")
+    .eq("id", submissionId)
+    .single();
+  if (error || !submission) {
+    return { status: "skipped", reason: "submission-not-found" };
+  }
+
+  const data: SellSubmissionOfferResponseEmailData = {
+    kind,
+    firstName: submission.first_name,
+    referenceNumber: submission.reference_number,
+    offerValueCents,
+    counterOfferCents,
+    siteUrl: siteUrl(),
+    logoUrl: logoUrl(),
+    supportEmail: ServerEnv.replyTo(),
+  };
+
+  const amountSuffix = kind === "countered" ? `-${counterOfferCents}` : "";
+  return sendTrackedEmail({
+    emailType: `sell_submission_offer_${kind}`,
+    idempotencyKey: `sell-submission-offer-${kind}-${submission.id}-${offerValueCents}${amountSuffix}`,
+    to: submission.email,
+    from: ServerEnv.fromOrders(),
+    replyTo: ServerEnv.replyTo(),
+    subject: sellSubmissionOfferResponseSubject(data),
+    react: React.createElement(SellSubmissionOfferResponse, data),
+    text: sellSubmissionOfferResponseText(data),
+  });
+}
+
+// Tells staff a seller responded to a sent offer — for ALL THREE response
+// kinds, including "accepted". Every other status change in this file is
+// something staff themselves clicked in the admin dashboard (no notification
+// needed — they already know); a seller's response via the public
+// /sell/offer page is the one transition an outside actor triggers on their
+// own, so this is the only way staff find out without checking back.
+export async function sendSellSubmissionOfferResponseAdminNotification(
+  submissionId: string,
+  response: SellSubmissionOfferResponseKind,
+  offerValueCents: number,
+  counterOfferCents: number | null,
+): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
+  const db = getSupabaseAdmin();
+
+  const { data: submission, error } = await db
+    .from("sell_submissions")
+    .select("id, first_name, last_name, reference_number")
+    .eq("id", submissionId)
+    .single();
+  if (error || !submission) {
+    return { status: "skipped", reason: "submission-not-found" };
+  }
+
+  const data: SellSubmissionOfferResponseAdminEmailData = {
+    response,
+    referenceNumber: submission.reference_number,
+    sellerName: `${submission.first_name} ${submission.last_name}`.trim(),
+    offerValueCents,
+    counterOfferCents,
+    adminUrl: `${siteUrl()}/admin_dashboard/buying-leads?submission=${submission.id}`,
+    siteUrl: siteUrl(),
+    logoUrl: logoUrl(),
+    supportEmail: ServerEnv.replyTo(),
+  };
+
+  const amountSuffix = response === "countered" ? `-${counterOfferCents}` : "";
+  return sendTrackedEmail({
+    emailType: `sell_submission_offer_${response}_admin_notification`,
+    idempotencyKey: `sell-submission-offer-${response}-admin-${submission.id}-${offerValueCents}${amountSuffix}`,
+    to: ServerEnv.sellLeadsNotificationEmail(),
+    from: ServerEnv.fromOrders(),
+    subject: sellSubmissionOfferResponseAdminSubject(data),
+    react: React.createElement(SellSubmissionOfferResponseAdminNotification, data),
+    text: sellSubmissionOfferResponseAdminText(data),
   });
 }

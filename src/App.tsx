@@ -32,6 +32,7 @@ import SellPage from "./store/pages/SellPage";
 import SellCollectionPage from "./store/pages/SellCollectionPage";
 import { AccountPage } from "./store/pages/AccountPages";
 import TrackOrderPage from "./store/pages/TrackOrderPage";
+import RespondToOfferPage from "./store/pages/RespondToOfferPage";
 import KioskPage from "./store/pages/KioskPage";
 
 function Routes() {
@@ -50,6 +51,7 @@ function Routes() {
   if (path === "/reset-password") return <ResetPasswordPage />;
   if (path === "/checkout") return <CheckoutPage />;
   if (path === "/track-order") return <TrackOrderPage />;
+  if (path === "/sell/offer") return <RespondToOfferPage />;
   if (path === "/sell") return <SellPage />;
   if (path === "/sell-my-collection") return <SellCollectionPage />;
   if (path === "/condition-guide") return <ConditionGuidePage />;

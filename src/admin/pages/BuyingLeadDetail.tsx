@@ -413,6 +413,36 @@ export function BuyingLeadDetailDrawer({
               seller until you click &ldquo;Send offer to seller.&rdquo;
             </p>
           )}
+          {lead.offerResponse && (
+            <div
+              className={`gg-inline-note gg-inline-note--${
+                lead.offerResponse === "declined" ? "warning" : "info"
+              }`}
+            >
+              <Icon
+                name={
+                  lead.offerResponse === "accepted"
+                    ? "checkCircle"
+                    : lead.offerResponse === "declined"
+                      ? "close"
+                      : "dollar"
+                }
+                size={16}
+              />
+              <div>
+                {lead.offerResponse === "accepted" && "Seller accepted this offer."}
+                {lead.offerResponse === "declined" && "Seller declined this offer."}
+                {lead.offerResponse === "countered" &&
+                  `Seller countered with ${formatCents(lead.counterOfferCents ?? 0)}.`}
+                {lead.offerRespondedAt && (
+                  <>
+                    <br />
+                    <span className="gg-card-meta">{formatDateTime(lead.offerRespondedAt)}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           <p className="gg-card-meta">The final purchase amount stays internal only.</p>
 
           <TextArea
