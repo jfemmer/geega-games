@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, PointerEventHandler } from "react";
+import { feature } from "topojson-client";
+import type { GeometryCollection, Topology } from "topojson-specification";
+import type { Geometry, Position } from "geojson";
 import { PageHeader } from "../components/layout/PageHeader";
 import { SectionCard } from "../components/ui/Card";
 import { BarChart } from "../components/ui/Charts";
@@ -134,11 +137,21 @@ type MapPoint = {
   lon: number;
   orderCount: number;
   revenueCents: number;
+  /** Which side of the dot the name label renders on. Defaults to "start" (right of the dot). */
+  labelAnchor?: "start" | "end";
 };
 
 const SAMPLE_MAP_POINTS: MapPoint[] = [
   { city: "St. Louis", state: "MO", lat: 38.63, lon: -90.2, orderCount: 42, revenueCents: 215000 },
-  { city: "Kansas City", state: "MO", lat: 39.1, lon: -94.58, orderCount: 9, revenueCents: 41000 },
+  {
+    city: "Kansas City",
+    state: "MO",
+    lat: 39.1,
+    lon: -94.58,
+    orderCount: 9,
+    revenueCents: 41000,
+    labelAnchor: "end", // sits just west of St. Louis; label to the left avoids colliding with it
+  },
   { city: "Chicago", state: "IL", lat: 41.88, lon: -87.63, orderCount: 27, revenueCents: 148000 },
   { city: "Nashville", state: "TN", lat: 36.16, lon: -86.78, orderCount: 14, revenueCents: 71000 },
   { city: "Indianapolis", state: "IN", lat: 39.77, lon: -86.16, orderCount: 11, revenueCents: 56000 },
@@ -153,24 +166,6 @@ const SAMPLE_MAP_POINTS: MapPoint[] = [
   { city: "Los Angeles", state: "CA", lat: 34.05, lon: -118.24, orderCount: 22, revenueCents: 121000 },
   { city: "Seattle", state: "WA", lat: 47.61, lon: -122.33, orderCount: 12, revenueCents: 63000 },
   { city: "Minneapolis", state: "MN", lat: 44.98, lon: -93.27, orderCount: 7, revenueCents: 33000 },
-];
-
-// Simplified low-poly continental-US border, [lat, lon] pairs traced
-// clockwise from Maine. Stylized for a dashboard backdrop, not survey-grade.
-const US_OUTLINE: [number, number][] = [
-  [47.35, -68.2], [45.05, -67.05], [44.3, -68.2], [43.65, -70.2], [42.85, -70.75],
-  [41.7, -70.0], [41.3, -71.9], [41.05, -73.4], [40.6, -73.9], [39.6, -74.25],
-  [38.9, -75.05], [37.9, -75.4], [37.0, -76.0], [35.9, -75.6], [33.9, -78.0],
-  [32.7, -79.9], [31.1, -81.3], [30.35, -81.4], [28.9, -80.6], [26.7, -80.05],
-  [25.25, -80.5], [26.0, -81.8], [27.5, -82.6], [29.7, -84.4], [30.4, -87.2],
-  [30.2, -89.1], [29.15, -89.4], [29.75, -91.1], [29.75, -93.3], [29.3, -94.8],
-  [27.8, -97.2], [25.95, -97.15], [29.4, -101.4], [31.75, -106.5], [31.35, -108.2],
-  [31.33, -111.05], [32.5, -114.8], [32.55, -117.1], [34.0, -119.7], [36.6, -121.9],
-  [37.8, -122.5], [40.4, -124.3], [43.3, -124.4], [46.2, -124.1], [48.1, -124.6],
-  [48.4, -122.7], [49.0, -117.0], [49.0, -104.0], [49.35, -97.2], [49.35, -95.15],
-  [48.0, -94.8], [47.5, -92.1], [47.0, -88.4], [45.8, -84.8], [45.0, -83.4],
-  [43.6, -82.5], [42.0, -83.1], [41.5, -82.7], [42.1, -79.8], [43.6, -79.4],
-  [44.5, -75.8], [45.0, -73.3], [45.3, -71.1],
 ];
 
 const MAP_WIDTH = 960;
@@ -202,30 +197,194 @@ function bucketFor(orderCount: number) {
   );
 }
 
+// --- Real state borders ---------------------------------------------------
+// Fetched at runtime from the public us-atlas TopoJSON dataset (not bundled
+// into the JS, and not type-inferred by tsc) so the map shows accurate state
+// outlines instead of a hand-sketched one. Alaska, Hawaii, and the
+// territories are dropped — this equirectangular projection only covers the
+// continental US, matching the sample cities above.
+
+const EXCLUDED_STATE_NAMES = new Set([
+  "Alaska",
+  "Hawaii",
+  "American Samoa",
+  "Guam",
+  "Commonwealth of the Northern Mariana Islands",
+  "Puerto Rico",
+  "United States Virgin Islands",
+]);
+
+type StateShape = { name: string; path: string };
+
+function ringToPathSegment(ring: Position[]): string {
+  return (
+    "M " +
+    ring
+      .map((pos) => {
+        const [x, y] = projectLatLon(pos[1], pos[0]);
+        return `${x.toFixed(1)} ${y.toFixed(1)}`;
+      })
+      .join(" L ") +
+    " Z"
+  );
+}
+
+function polygonToPath(coordinates: Position[][]): string {
+  return coordinates.map(ringToPathSegment).join(" ");
+}
+
+function geometryToPath(geometry: Geometry): string {
+  if (geometry.type === "Polygon") return polygonToPath(geometry.coordinates);
+  if (geometry.type === "MultiPolygon") return geometry.coordinates.map(polygonToPath).join(" ");
+  return "";
+}
+
+/** Loads and decodes the state-border topology once, on first render. */
+function useStateBorders(): StateShape[] | null {
+  const [shapes, setShapes] = useState<StateShape[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/geo/us-states-10m.json")
+      .then((res) => res.json())
+      .then((topology: Topology) => {
+        if (cancelled) return;
+        const states = topology.objects.states as GeometryCollection<{ name: string }>;
+        const collection = feature(topology, states);
+        setShapes(
+          collection.features
+            .filter((f) => !EXCLUDED_STATE_NAMES.has(f.properties?.name ?? ""))
+            .map((f) => ({ name: f.properties?.name ?? "", path: geometryToPath(f.geometry) })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setShapes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return shapes;
+}
+
+// --- Pan & zoom ------------------------------------------------------------
+// A plain viewBox crop, not a library: wheel-to-zoom (toward the cursor),
+// drag-to-pan, and +/-/reset buttons for touch. Dots, rings, and labels are
+// all counter-scaled by the current zoom so they stay a constant size on
+// screen rather than ballooning as the user zooms in.
+
+const MAP_MIN_SCALE = 1;
+const MAP_MAX_SCALE = 10;
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(Math.max(n, min), max);
+}
+
+type MapView = { x: number; y: number; w: number; h: number };
+
+const DEFAULT_MAP_VIEW: MapView = { x: 0, y: 0, w: MAP_WIDTH, h: MAP_HEIGHT };
+
 function OrdersMap({ points }: { points: MapPoint[] }) {
-  const outlinePath =
-    US_OUTLINE.map(([lat, lon], i) => {
-      const [x, y] = projectLatLon(lat, lon);
-      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ") + " Z";
+  const borders = useStateBorders();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; view: MapView } | null>(null);
+  const [view, setView] = useState<MapView>(DEFAULT_MAP_VIEW);
+
+  const scale = MAP_WIDTH / view.w;
   const maxCount = Math.max(...points.map((p) => p.orderCount), 1);
+
+  const zoomAt = useCallback((clientX: number, clientY: number, factor: number) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const px = (clientX - rect.left) / rect.width;
+    const py = (clientY - rect.top) / rect.height;
+    setView((v) => {
+      const newW = clamp(v.w / factor, MAP_WIDTH / MAP_MAX_SCALE, MAP_WIDTH / MAP_MIN_SCALE);
+      const newH = newW * (MAP_HEIGHT / MAP_WIDTH);
+      const focusX = v.x + px * v.w;
+      const focusY = v.y + py * v.h;
+      return {
+        w: newW,
+        h: newH,
+        x: clamp(focusX - px * newW, 0, MAP_WIDTH - newW),
+        y: clamp(focusY - py * newH, 0, MAP_HEIGHT - newH),
+      };
+    });
+  }, []);
+
+  // Wheel needs a non-passive native listener — React's onWheel prop can't
+  // reliably preventDefault, so the page would scroll instead of the map zooming.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.25 : 1 / 1.25);
+    }
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [zoomAt]);
+
+  const handlePointerDown: PointerEventHandler<SVGSVGElement> = (e) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, view };
+  };
+  const handlePointerMove: PointerEventHandler<SVGSVGElement> = (e) => {
+    const drag = dragRef.current;
+    const svg = svgRef.current;
+    if (!drag || !svg) return;
+    const rect = svg.getBoundingClientRect();
+    const dx = ((e.clientX - drag.startX) / rect.width) * drag.view.w;
+    const dy = ((e.clientY - drag.startY) / rect.height) * drag.view.h;
+    setView((v) => ({
+      ...v,
+      x: clamp(drag.view.x - dx, 0, MAP_WIDTH - v.w),
+      y: clamp(drag.view.y - dy, 0, MAP_HEIGHT - v.h),
+    }));
+  };
+  const handlePointerUp: PointerEventHandler<SVGSVGElement> = () => {
+    dragRef.current = null;
+  };
+
+  function zoomButton(factor: number) {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+  }
 
   return (
     <div className="gg-mapchart">
-      <div className="gg-mapchart__scroll">
+      <div className="gg-mapchart__frame">
         <svg
-          viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+          ref={svgRef}
+          viewBox={`${view.x.toFixed(1)} ${view.y.toFixed(1)} ${view.w.toFixed(1)} ${view.h.toFixed(1)}`}
           className="gg-mapchart__svg"
           role="img"
           aria-label={`Sample order locations: ${points
             .map((p) => `${p.city}, ${p.state} ${p.orderCount} orders`)
             .join(", ")}.`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
         >
-          <path d={outlinePath} className="gg-mapchart__outline" />
+          <rect x={0} y={0} width={MAP_WIDTH} height={MAP_HEIGHT} className="gg-mapchart__water" />
+          {borders?.map((s) => (
+            <path
+              key={s.name}
+              d={s.path}
+              className="gg-mapchart__state"
+              style={{ strokeWidth: 1 / scale }}
+            />
+          ))}
           {points.map((p) => {
             const [cx, cy] = projectLatLon(p.lat, p.lon);
             const bucket = bucketFor(p.orderCount);
-            const r = 6 + Math.sqrt(p.orderCount / maxCount) * 16;
+            const baseR = 6 + Math.sqrt(p.orderCount / maxCount) * 16;
+            const r = baseR / scale;
+            const labelSize = 11 / scale;
+            const anchor = p.labelAnchor ?? "start";
+            const labelGap = r + 4 / scale;
             return (
               <g key={`${p.state}-${p.city}`}>
                 <circle
@@ -233,9 +392,18 @@ function OrdersMap({ points }: { points: MapPoint[] }) {
                   cy={cy}
                   r={r}
                   className="gg-mapchart__dot"
-                  style={{ fillOpacity: bucket.opacity }}
+                  style={{ fillOpacity: bucket.opacity, strokeWidth: 2 / scale }}
                 />
-                <circle cx={cx} cy={cy} r={Math.max(16, r)} className="gg-mapchart__hit">
+                <text
+                  x={anchor === "end" ? cx - labelGap : cx + labelGap}
+                  y={cy + labelSize / 3}
+                  textAnchor={anchor}
+                  className="gg-mapchart__citylabel"
+                  style={{ fontSize: labelSize }}
+                >
+                  {p.city}
+                </text>
+                <circle cx={cx} cy={cy} r={Math.max(16 / scale, r)} className="gg-mapchart__hit">
                   <title>
                     {p.city}, {p.state} — {formatNumber(p.orderCount)} orders —{" "}
                     {formatCents(p.revenueCents)}
@@ -245,6 +413,17 @@ function OrdersMap({ points }: { points: MapPoint[] }) {
             );
           })}
         </svg>
+        <div className="gg-mapchart__zoomctl">
+          <button type="button" onClick={() => zoomButton(1.5)} aria-label="Zoom in">
+            +
+          </button>
+          <button type="button" onClick={() => zoomButton(1 / 1.5)} aria-label="Zoom out">
+            −
+          </button>
+          <button type="button" onClick={() => setView(DEFAULT_MAP_VIEW)} aria-label="Reset zoom">
+            Reset
+          </button>
+        </div>
       </div>
       <div className="gg-mapchart__legend">
         {MAP_LEGEND_BUCKETS.map((b) => (

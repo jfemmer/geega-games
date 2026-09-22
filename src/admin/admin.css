@@ -543,11 +543,30 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-donut__legendval { color: var(--gg-text-soft); margin-left: auto; font-variant-numeric: tabular-nums; }
 
 .gg-mapchart { display: flex; flex-direction: column; gap: 12px; }
-.gg-mapchart__scroll { overflow-x: auto; }
-.gg-mapchart__svg { display: block; width: 100%; min-width: 640px; height: auto; }
-.gg-mapchart__outline { fill: var(--gg-surface-3); stroke: var(--gg-line-strong); stroke-width: 1; }
-.gg-mapchart__dot { fill: var(--gg-brand); stroke: var(--gg-surface); stroke-width: 2; }
+.gg-mapchart__frame {
+  position: relative; border: 1px solid var(--gg-line); border-radius: var(--gg-radius);
+  overflow: hidden; background: var(--gg-surface-2);
+}
+.gg-mapchart__svg { display: block; width: 100%; height: auto; touch-action: none; cursor: grab; }
+.gg-mapchart__svg:active { cursor: grabbing; }
+.gg-mapchart__water { fill: var(--gg-surface-2); }
+.gg-mapchart__state { fill: var(--gg-surface); stroke: var(--gg-line); }
+.gg-mapchart__dot { fill: var(--gg-brand); stroke: var(--gg-surface); }
 .gg-mapchart__hit { fill: transparent; }
+.gg-mapchart__citylabel {
+  fill: var(--gg-text-soft); font-family: var(--gg-sans); dominant-baseline: middle;
+  pointer-events: none; user-select: none;
+}
+.gg-mapchart__zoomctl {
+  position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 4px;
+}
+.gg-mapchart__zoomctl button {
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--gg-line); border-radius: 8px; background: var(--gg-surface);
+  color: var(--gg-text); font-size: 1rem; line-height: 1; cursor: pointer; box-shadow: var(--gg-shadow-sm);
+}
+.gg-mapchart__zoomctl button:hover { background: var(--gg-surface-2); border-color: var(--gg-line-strong); }
+.gg-mapchart__zoomctl button:last-child { width: auto; padding: 0 8px; font-size: 0.72rem; font-weight: 600; }
 .gg-mapchart__legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.8rem; color: var(--gg-text-soft); }
 .gg-mapchart__legend-item { display: flex; align-items: center; gap: 7px; }
 .gg-mapchart__legend-dot { display: inline-block; border-radius: 999px; background: var(--gg-brand); flex: 0 0 auto; }
