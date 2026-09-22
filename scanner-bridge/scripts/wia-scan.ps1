@@ -81,16 +81,18 @@
   touches the feeder. Run this first, always.
 
 .PARAMETER Diagnose
-  Connects to the matched device and the feeder item, prints every
-  device- and item-level property this driver actually reports (name,
-  id, current value, and valid range/list where the driver exposes
-  one), then tries Transfer() several different ways (no format
-  argument at all, then each known WIA format GUID in turn) and
-  reports which ones succeed or fail. Never saves an image either way
-  - purely diagnostic, safe to run repeatedly. Use this when a plain
-  scan attempt fails with an unhelpful generic error (e.g. "The
-  parameter is incorrect.") and the reason isn't obvious from that
-  message alone.
+  Connects to the matched device and the feeder item, sets the same
+  resolution/Current Intent the normal scan path sets (so the item is in
+  the same state a real scan would leave it in, not driver defaults),
+  prints every device- and item-level property this driver actually
+  reports (name, id, current value, and valid range/list where the
+  driver exposes one), then tries Transfer() several different ways (no
+  format argument at all, then each known WIA format GUID in turn, then
+  CommonDialog.ShowTransfer as a fallback transfer method) and reports
+  which ones succeed or fail. Never saves an image either way - purely
+  diagnostic, safe to run repeatedly. Use this when a plain scan attempt
+  fails with an unhelpful generic error (e.g. "The parameter is
+  incorrect.") and the reason isn't obvious from that message alone.
 #>
 param(
     [Parameter(Mandatory = $true)]
@@ -240,6 +242,19 @@ catch {
     exit 1
 }
 
+# --- Item-level: resolution + color, applied once - persists across every Transfer() below. ---
+# Set BEFORE branching into -Diagnose too, not just the normal scan path: real hardware showed
+# every Transfer()/ShowTransfer() variant fail identically with E_INVALIDARG ("The parameter is
+# incorrect.", HResult 0x80070057) - including bare Transfer() with NO format argument at all,
+# which rules out the format argument itself as the cause. Meanwhile this driver's own reported
+# valid values for Current Intent are 1, 2, 4, 65536, 131072, 262144 - NOT including its actual
+# default of 0. A failure that doesn't change based on which (or whether any) format is passed
+# points at the item's own property state being rejected before the format is ever considered.
+# Diagnose mode never exercised this until now, since it used to branch off before this ran.
+Set-WiaProperty -Target $item -Name "Horizontal Resolution" -Id 6147 -Value $Resolution | Out-Null
+Set-WiaProperty -Target $item -Name "Vertical Resolution" -Id 6148 -Value $Resolution | Out-Null
+Set-WiaProperty -Target $item -Name "Current Intent" -Id 6146 -Value 0x1 | Out-Null   # 1 = color
+
 if ($Diagnose) {
     Show-WiaProperties -Target $device -Label "device"
     Show-WiaProperties -Target $item -Label "item"
@@ -305,11 +320,6 @@ if ($Diagnose) {
     Write-Result -Status "OK" -Message "diagnostics complete - see PROPS/TRY-OK/TRY-FAIL lines above"
     exit 0
 }
-
-# --- Item-level: resolution + color, applied once - persists across every Transfer() below ---
-Set-WiaProperty -Target $item -Name "Horizontal Resolution" -Id 6147 -Value $Resolution | Out-Null
-Set-WiaProperty -Target $item -Name "Vertical Resolution" -Id 6148 -Value $Resolution | Out-Null
-Set-WiaProperty -Target $item -Name "Current Intent" -Id 6146 -Value 0x1 | Out-Null   # 1 = color
 
 # {B96B3CAE-...} is wiaFormatJPEG, not TIFF - real hardware caught this:
 # Transfer() rejected it outright with "The parameter is incorrect." The
