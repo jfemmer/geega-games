@@ -156,6 +156,61 @@ continues the same session instead of starting a new one each time. Click
 deliberately want the next batch to start a fresh session — or delete that
 file by hand if you'd rather not leave the bridge running to do it.
 
+## 7. Scanning directly from the dashboard (no PaperStream)
+
+The admin dashboard's Scan Sessions page has a "Scan now" button that
+drives the fi-8170 directly through its WIA driver (`scripts/wia-scan.ps1`)
+— no PaperStream IP window, no manual profile selection. Scanned pages land
+in `WATCH_FOLDER` exactly like a PaperStream-written file would, so
+everything from pairing onward (sections 2 and 5 above) works completely
+unchanged.
+
+**This is the one part of the whole bridge not verified against real
+hardware** — no Windows PC or physical fi-8170 was available while building
+it, only Ricoh's own published driver docs and the long-documented WIA
+scripting API. Everything downstream of "a TIFF lands in the watch folder"
+(pairing, upload, recognition) has its own real, passing tests; only the
+PowerShell script's actual conversation with the scanner hardware is
+untested. **Keep PaperStream IP installed and working as a fallback** —
+don't rely on this exclusively until you've validated it.
+
+### Validating it on your machine, in order
+
+1. **Check scanner connection** (the button next to "Scan now", or run
+   `scripts\wia-scan.ps1 -OutputFolder . -ListDevicesOnly` from a
+   PowerShell prompt in `scanner-bridge`). This only asks Windows what WIA
+   devices it sees — it never touches the feeder, so there's no risk in
+   trying it. If it doesn't find the fi-8170: confirm it shows up in
+   Windows' own Scan app (Start → search "Windows Fax and Scan" or "Scan")
+   first — if it's not there either, this is a driver/Windows issue, not a
+   Geega one. If it IS there but under a different name than expected, set
+   `WIA_DEVICE_NAME_MATCH` in `.env` to match (see `.env.example`).
+2. **One small real scan.** Load a handful of cards you don't mind
+   re-scanning if something's off (not your most valuable ones, the first
+   time) and click "Scan now". Watch the bridge's console output — it
+   narrates every property it sets and why, and prints the exact PowerShell
+   error text if anything fails, not just "it didn't work."
+3. **Check the result in Scan Review**, same as any session, but look
+   specifically at whether the card sits well-cropped and upright in the
+   image, the way a PaperStream-scanned card does. WIA drivers don't always
+   include the same auto-crop/deskew PaperStream IP provides — if cards
+   come through noticeably rougher (skewed, a visible scan-bed border,
+   wrong orientation), recognition accuracy will suffer even though nothing
+   "failed": say so, with a sample image if you can, since fixing that is a
+   separate, real piece of work (real crop/deskew logic in the recognition
+   pipeline), not a one-line tweak.
+4. **A full-size batch** only once 2 and 3 look right — front/back pairing
+   depends on WIA producing pages at a steady enough pace (see
+   `WatcherControl` in `watcher.ts`, which deliberately holds off
+   auto-processing for the whole scan's duration specifically so pacing
+   can't split a batch's pairs), which hasn't been exercised at real
+   ADF-batch scale either.
+
+If a scan fails partway through (a jam, the feeder running dry
+unexpectedly), whatever pages it DID save before failing are still picked
+up normally — nothing scanned successfully is discarded just because the
+run as a whole errored.
+
 ## Limitations
 
 - **Batches over ~200 cards**: uploads and database inserts happen in

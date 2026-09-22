@@ -15,6 +15,29 @@ function isScannedImage(filePath: string): boolean {
   return IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
+export interface WatcherControl {
+  /**
+   * Call right before starting a WIA-driven scan (scan/start in
+   * statusServer.ts). PaperStream writes a whole ADF run's pages in a fast
+   * burst, which is what the quiet-period heuristic below is tuned for —
+   * WIA's real per-page timing on the fi-8170 hasn't been verified here,
+   * so rather than trust that heuristic for this path too, suppress it
+   * entirely: files chokidar sees while suppressed still accumulate in
+   * `pending` exactly as normal (so status.pendingFiles stays live), only
+   * the auto-trigger is held back. Without this, a single slower-than-
+   * usual gap between two pages could let the quiet timer fire mid-run and
+   * split one physical batch's front/back pairs across two separate
+   * processBatch() calls — silently mispairing cards, not just a timing
+   * inconvenience.
+   */
+  suppressAutoProcess(): void;
+  /** Call once the WIA scan process has fully finished, success or
+   * failure — resumes normal auto-processing and immediately processes
+   * whatever accumulated while suppressed, rather than waiting for a quiet
+   * period that will never come once the last file's already landed. */
+  resumeAndProcessNow(): void;
+}
+
 /**
  * Watches WATCH_FOLDER for new files PaperStream IP drops there, waits for a
  * quiet period (a whole ADF feed run writes its pages in a burst, not one at
@@ -27,11 +50,12 @@ export function startWatcher(
   api: ApiClient,
   supabase: SupabaseClient,
   status: BridgeStatus,
-): void {
+): WatcherControl {
   const pending = new Set<string>();
   let quietTimer: NodeJS.Timeout | null = null;
   let retryTimer: NodeJS.Timeout | null = null;
   let processing = false;
+  let suppressed = false;
 
   const watcher = chokidar.watch(config.watchFolder, {
     ignored: (p: string) => {
@@ -48,6 +72,7 @@ export function startWatcher(
   });
 
   function scheduleProcessing() {
+    if (suppressed) return;
     if (quietTimer) clearTimeout(quietTimer);
     quietTimer = setTimeout(() => {
       void processBatch();
@@ -134,4 +159,18 @@ export function startWatcher(
 
   status.state = "watching";
   console.log(`[geega-scanner-bridge] Watching ${config.watchFolder} for new scans…`);
+
+  return {
+    suppressAutoProcess() {
+      suppressed = true;
+      if (quietTimer) {
+        clearTimeout(quietTimer);
+        quietTimer = null;
+      }
+    },
+    resumeAndProcessNow() {
+      suppressed = false;
+      void processBatch();
+    },
+  };
 }

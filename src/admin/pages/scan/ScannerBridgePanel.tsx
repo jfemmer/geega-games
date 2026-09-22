@@ -29,12 +29,27 @@ import type { BadgeTone } from "../../utils/labels";
 // prompt before this ever succeeds. Denying it looks identical to "bridge
 // not running" from here, so the empty state mentions it explicitly rather
 // than leaving staff to guess.
+//
+// "Scan now" and "Check scanner connection" (Phase 2) drive the fi-8170
+// directly via the bridge's WIA scan endpoints — no PaperStream IP window.
+// This is the one part of the whole feature NOT verified against real
+// hardware (no Windows PC or physical scanner in the environment this was
+// built in) — see scanner-bridge/scripts/wia-scan.ps1's own header comment
+// for exactly what's assumed. "Check scanner connection" is the safe,
+// read-only first thing to try: it only lists what WIA can see, never
+// touches the feeder.
 
 const BRIDGE_URL =
   (import.meta.env.VITE_SCANNER_BRIDGE_URL as string | undefined) ?? "http://127.0.0.1:8787";
 const POLL_MS = 4000;
 
-type BridgeState = "starting" | "watching" | "uploading" | "error";
+type BridgeState = "starting" | "watching" | "uploading" | "scanning" | "error";
+
+interface DeviceCheckResult {
+  ok: boolean;
+  message: string;
+  rawOutput: string;
+}
 
 interface BridgeStatus {
   state: BridgeState;
@@ -54,6 +69,7 @@ const STATE_LABEL: Record<BridgeState, string> = {
   starting: "Starting",
   watching: "Watching for scans",
   uploading: "Uploading a batch",
+  scanning: "Scanning cards",
   error: "Error",
 };
 
@@ -61,6 +77,7 @@ const STATE_TONE: Record<BridgeState, BadgeTone> = {
   starting: "info",
   watching: "success",
   uploading: "info",
+  scanning: "info",
   error: "danger",
 };
 
@@ -73,6 +90,9 @@ export function ScannerBridgePanel({
   const [status, setStatus] = useState<BridgeStatus | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [checkingDevices, setCheckingDevices] = useState(false);
+  const [deviceCheck, setDeviceCheck] = useState<DeviceCheckResult | null>(null);
 
   const poll = useCallback(async () => {
     try {
@@ -106,6 +126,42 @@ export function ScannerBridgePanel({
       setEnding(false);
     }
   }, [poll, toast]);
+
+  const startScan = useCallback(async () => {
+    setStarting(true);
+    try {
+      const res = await fetch(`${BRIDGE_URL}/scan/start`, { method: "POST" });
+      if (res.status === 409) {
+        toast.error("A scan is already running.");
+        return;
+      }
+      if (!res.ok) throw new Error(`Bridge returned ${res.status}`);
+      toast.success("Scan started — feed the cards into the ADF now.");
+      await poll();
+    } catch {
+      toast.error("Could not reach the scanner bridge to start a scan.");
+    } finally {
+      setStarting(false);
+    }
+  }, [poll, toast]);
+
+  const checkDevices = useCallback(async () => {
+    setCheckingDevices(true);
+    setDeviceCheck(null);
+    try {
+      const res = await fetch(`${BRIDGE_URL}/scan/devices`);
+      const data = (await res.json()) as DeviceCheckResult;
+      setDeviceCheck(data);
+    } catch {
+      setDeviceCheck({
+        ok: false,
+        message: "Could not reach the scanner bridge.",
+        rawOutput: "",
+      });
+    } finally {
+      setCheckingDevices(false);
+    }
+  }, []);
 
   // Nothing rendered until the first check resolves (status and unreachable
   // both still at their initial values) — avoids a flash of "not connected"
@@ -161,6 +217,22 @@ export function ScannerBridgePanel({
         </p>
       )}
 
+      <div className="gg-bridge-panel__scannow">
+        <Button
+          variant="primary"
+          icon="scan"
+          loading={starting}
+          disabled={status.state === "scanning" || status.state === "uploading"}
+          onClick={startScan}
+        >
+          Scan now
+        </Button>
+        <span className="gg-muted">
+          Drives the fi-8170 directly — no need to open PaperStream IP. Feed cards into
+          the ADF once this starts.
+        </span>
+      </div>
+
       <div className="gg-bridge-panel__actions">
         {status.currentSessionId ? (
           <Button
@@ -184,6 +256,27 @@ export function ScannerBridgePanel({
         >
           End session
         </Button>
+      </div>
+
+      <div className="gg-bridge-panel__diagnostic">
+        <Button variant="ghost" size="sm" loading={checkingDevices} onClick={checkDevices}>
+          Check scanner connection
+        </Button>
+        {deviceCheck && (
+          <p
+            className={deviceCheck.ok ? "gg-bridge-panel__diagnostic-ok" : "gg-bridge-panel__error"}
+            role={deviceCheck.ok ? undefined : "alert"}
+          >
+            {deviceCheck.ok ? <Icon name="checkCircle" size={16} /> : <Icon name="alert" size={16} />}
+            {deviceCheck.message}
+            {deviceCheck.rawOutput && (
+              <>
+                {" — "}
+                <code className="gg-bridge-panel__diagnostic-raw">{deviceCheck.rawOutput.trim()}</code>
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       <p className="gg-bridge-panel__started">
