@@ -165,4 +165,20 @@ describe("POST /api/admin/sell-submissions/:id/send-offer — staff-only", () =>
     expect(state.updated).toMatchObject({ offer_value_cents: 35000, status: "offer_made" });
     expect(state.updated?.offer_sent_at).toBeTruthy();
   });
+
+  it("resets any prior offer_response/counter_offer_cents/offer_responded_at on every send — a stale response to a PRIOR offer must never look like a response to this new one", async () => {
+    state.user = { id: "u1", app_metadata: { role: "staff" } };
+    const { req, res } = makeReqRes(
+      { offerValueCents: 42000 },
+      { authorization: "Bearer sometoken" },
+      "POST",
+    );
+    await sendOfferHandler(req as never, res as never);
+    expect(res.statusCode).toBe(200);
+    expect(state.updated).toMatchObject({
+      offer_response: null,
+      counter_offer_cents: null,
+      offer_responded_at: null,
+    });
+  });
 });

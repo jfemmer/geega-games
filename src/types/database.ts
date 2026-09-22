@@ -2314,6 +2314,7 @@ export type Database = {
             | null
           collection_types: string[]
           contacted_at: string | null
+          counter_offer_cents: number | null
           created_at: string
           email: string
           estimated_value_cents: number | null
@@ -2324,6 +2325,10 @@ export type Database = {
           last_name: string
           legacy_mongo_id: string | null
           notes: string | null
+          offer_responded_at: string | null
+          offer_response:
+            | Database["public"]["Enums"]["sell_offer_response"]
+            | null
           offer_sent_at: string | null
           offer_value_cents: number | null
           phone: string | null
@@ -2353,6 +2358,7 @@ export type Database = {
             | null
           collection_types?: string[]
           contacted_at?: string | null
+          counter_offer_cents?: number | null
           created_at?: string
           email: string
           estimated_value_cents?: number | null
@@ -2363,6 +2369,10 @@ export type Database = {
           last_name: string
           legacy_mongo_id?: string | null
           notes?: string | null
+          offer_responded_at?: string | null
+          offer_response?:
+            | Database["public"]["Enums"]["sell_offer_response"]
+            | null
           offer_sent_at?: string | null
           offer_value_cents?: number | null
           phone?: string | null
@@ -2392,6 +2402,7 @@ export type Database = {
             | null
           collection_types?: string[]
           contacted_at?: string | null
+          counter_offer_cents?: number | null
           created_at?: string
           email?: string
           estimated_value_cents?: number | null
@@ -2402,6 +2413,10 @@ export type Database = {
           last_name?: string
           legacy_mongo_id?: string | null
           notes?: string | null
+          offer_responded_at?: string | null
+          offer_response?:
+            | Database["public"]["Enums"]["sell_offer_response"]
+            | null
           offer_sent_at?: string | null
           offer_value_cents?: number | null
           phone?: string | null
@@ -3419,6 +3434,7 @@ export type Database = {
         | "5000_to_10000"
         | "10000_plus"
         | "not_sure"
+      sell_offer_response: "accepted" | "declined" | "countered"
       sell_preferred_contact_method: "email" | "phone" | "text"
       sell_priority: "normal" | "high_interest"
       sell_submission_status:
@@ -3708,6 +3724,7 @@ export const Constants = {
         "10000_plus",
         "not_sure",
       ],
+      sell_offer_response: ["accepted", "declined", "countered"],
       sell_preferred_contact_method: ["email", "phone", "text"],
       sell_priority: ["normal", "high_interest"],
       sell_submission_status: [

@@ -10,6 +10,7 @@ import type {
   BuyingLeadsQuery,
 } from "../types";
 import type { Database } from "../../types/database";
+import { LARGE_SELL_COLLECTION_SIZES } from "../../store/lib/sellTypes";
 
 // LIVE BuyingLeadsRepository — real Sell Your Cards / Sell Your Collection
 // submissions. Reads use the browser client directly (staff-scoped RLS on
@@ -26,7 +27,6 @@ import type { Database } from "../../types/database";
 
 const SELL_PHOTOS_BUCKET = "sell-photos";
 const SIGNED_URL_TTL_SECONDS = 60 * 30;
-const LARGE_COLLECTION_SIZES = new Set(["5000_to_10000", "10000_plus"]);
 
 type SubmissionRow = Database["public"]["Tables"]["sell_submissions"]["Row"];
 type CardRow = Database["public"]["Tables"]["sell_submission_cards"]["Row"];
@@ -107,7 +107,7 @@ export const buyingLeadsRepository = {
       q = q.gt("total_cards", 0);
     }
     if (query.largeCollection) {
-      q = q.in("collection_size", Array.from(LARGE_COLLECTION_SIZES));
+      q = q.in("collection_size", Array.from(LARGE_SELL_COLLECTION_SIZES));
     }
     const term = query.search?.trim();
     if (term) {
@@ -167,6 +167,9 @@ export const buyingLeadsRepository = {
       referralSource: row.referral_source,
       offerValueCents: row.offer_value_cents,
       offerSentAt: row.offer_sent_at,
+      offerResponse: row.offer_response,
+      counterOfferCents: row.counter_offer_cents,
+      offerRespondedAt: row.offer_responded_at,
       purchaseAmountCents: row.purchase_amount_cents,
       contactedAt: row.contacted_at,
       closedAt: row.closed_at,

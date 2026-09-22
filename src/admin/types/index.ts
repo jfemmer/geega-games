@@ -1076,6 +1076,11 @@ export interface BuyingLeadDetail extends BuyingLeadSummary {
   offerValueCents: number | null;
   /** When staff actually sent offerValueCents to the seller via Send Offer. Null means it's still just a private note. */
   offerSentAt: string | null;
+  /** How the seller responded on the public /sell/offer page. Reset to null whenever a new offer is sent — see send-offer.ts. */
+  offerResponse: "accepted" | "declined" | "countered" | null;
+  /** The seller's counter amount — set only when offerResponse === "countered". */
+  counterOfferCents: number | null;
+  offerRespondedAt: string | null;
   purchaseAmountCents: number | null;
   contactedAt: string | null;
   closedAt: string | null;
