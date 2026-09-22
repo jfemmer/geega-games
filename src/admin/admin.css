@@ -542,6 +542,16 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-donut__swatch { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; }
 .gg-donut__legendval { color: var(--gg-text-soft); margin-left: auto; font-variant-numeric: tabular-nums; }
 
+.gg-mapchart { display: flex; flex-direction: column; gap: 12px; }
+.gg-mapchart__scroll { overflow-x: auto; }
+.gg-mapchart__svg { display: block; width: 100%; min-width: 640px; height: auto; }
+.gg-mapchart__outline { fill: var(--gg-surface-3); stroke: var(--gg-line-strong); stroke-width: 1; }
+.gg-mapchart__dot { fill: var(--gg-brand); stroke: var(--gg-surface); stroke-width: 2; }
+.gg-mapchart__hit { fill: transparent; }
+.gg-mapchart__legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.8rem; color: var(--gg-text-soft); }
+.gg-mapchart__legend-item { display: flex; align-items: center; gap: 7px; }
+.gg-mapchart__legend-dot { display: inline-block; border-radius: 999px; background: var(--gg-brand); flex: 0 0 auto; }
+
 .gg-splitstat { display: flex; gap: 32px; flex-wrap: wrap; padding: 8px 0; }
 .gg-splitstat__value { font-family: var(--gg-sans); font-size: 1.8rem; font-weight: 700; color: var(--gg-ink); display: block; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .gg-splitstat__label { font-size: 0.84rem; color: var(--gg-text-soft); }
