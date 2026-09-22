@@ -15,7 +15,10 @@ async function main() {
   const api = createApiClient(config.apiBaseUrl, getAccessToken);
   const status = createStatus(config.watchFolder);
 
-  startStatusServer(config.statusPort, status);
+  startStatusServer(config.statusPort, status, {
+    allowedOrigin: config.apiBaseUrl,
+    sessionStateFile: config.sessionStateFile,
+  });
   startWatcher(config, api, supabase, status);
 
   console.log(

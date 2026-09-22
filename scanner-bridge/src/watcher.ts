@@ -73,6 +73,7 @@ export function startWatcher(
       );
 
       const sessionId = await ensureSession(config, api, supabase);
+      status.currentSessionId = sessionId;
       const result = await uploadBatch(api, supabase, sessionId, pairs);
 
       for (const outcome of result.fileOutcomes) {

@@ -107,6 +107,15 @@ available at `http://127.0.0.1:8787/status` (or whatever `STATUS_PORT` you
 set) for troubleshooting; it is bound to `127.0.0.1` only and never reachable
 from the network.
 
+The admin dashboard's Scan Sessions page shows this same status live (state,
+pending files, counts, last error) and lets you end the current session
+without leaving the browser — see "Resuming after a restart" below. The
+first time it connects, Chrome may show a one-time "use devices on your
+local network?" permission prompt for the dashboard's site — that's Chrome's
+Local Network Access protection (a public site reaching a loopback address),
+not a Geega prompt; click Allow, or the panel will just show "not
+connected" indefinitely.
+
 ### Running it continuously (as a background service)
 
 The simplest option is a scheduled task that starts it at logon:
@@ -142,8 +151,10 @@ admin app's Scan Review page, same as any other session.
 
 The bridge remembers the current session id in a hidden file
 (`.geega-session-id`) inside the watch folder, so stopping and restarting it
-continues the same session instead of starting a new one each time. Delete
-that file if you deliberately want the next batch to start a fresh session.
+continues the same session instead of starting a new one each time. Click
+"End session" on the admin dashboard's Scan Sessions page if you
+deliberately want the next batch to start a fresh session — or delete that
+file by hand if you'd rather not leave the bridge running to do it.
 
 ## Limitations
 

@@ -14,6 +14,7 @@ import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatDateTime, timeAgo } from "../../utils/format";
 import { SCAN_MODE_SHORT } from "../../utils/labels";
 import { NewScanSessionModal } from "./NewScanSessionModal";
+import { ScannerBridgePanel } from "./ScannerBridgePanel";
 import type { ScanSession, ScanSessionStatus } from "../../types";
 import type { BadgeTone } from "../../utils/labels";
 
@@ -105,6 +106,8 @@ export function ScanSessionsPage({
           }
         />
       </div>
+
+      <ScannerBridgePanel onNavigate={onNavigate} />
 
       <SectionCard
         title="Scan sessions"
