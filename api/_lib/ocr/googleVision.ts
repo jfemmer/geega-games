@@ -1,6 +1,6 @@
 import { HttpError } from "../http.js";
 import { ServerEnv } from "../env.js";
-import type { OcrProvider, OcrTextResult } from "./types.js";
+import type { OcrHint, OcrProvider, OcrTextResult } from "./types.js";
 
 // Google Cloud Vision REST adapter — DOCUMENT_TEXT_DETECTION, chosen over
 // plain TEXT_DETECTION because its response includes a real per-page
@@ -90,7 +90,10 @@ export const googleVisionOcrProvider: OcrProvider = {
     return apiKey() !== null;
   },
 
-  async recognizeText(image: Buffer, _mimeType: string): Promise<OcrTextResult> {
+  // _hint is unused: DOCUMENT_TEXT_DETECTION already handles both a single
+  // line and a denser block well without a page-segmentation hint, and
+  // Vision has no equivalent of a character whitelist in this API mode.
+  async recognizeText(image: Buffer, _mimeType: string, _hint?: OcrHint): Promise<OcrTextResult> {
     const result = await callVision(image);
     const text = result.fullTextAnnotation?.text?.trim() ?? "";
     if (!text) return { text: "", confidence: 0 };

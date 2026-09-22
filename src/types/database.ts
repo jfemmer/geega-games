@@ -3276,6 +3276,43 @@ export type Database = {
           variant_type: string
         }[]
       }
+      search_scryfall_bulk_by_name_trgm: {
+        Args: { p_limit?: number; p_name: string }
+        Returns: {
+          border_color: string | null
+          bulk_updated_at: string
+          card_name: string
+          collector_number: string
+          finishes: string[]
+          frame: string | null
+          frame_effects: string[]
+          full_art: boolean
+          lang: string
+          layout: string | null
+          oracle_id: string | null
+          printed_name: string | null
+          promo: boolean
+          promo_types: string[]
+          rarity: string | null
+          raw: Json
+          released_at: string | null
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          textless: boolean
+          variation: boolean
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "scryfall_bulk_cards"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      sell_submission_offer_lookup: {
+        Args: { p_email: string; p_reference_number: string }
+        Returns: Json
+      }
       shop_card_name_suggestions: {
         Args: { p_query: string }
         Returns: {
@@ -3770,4 +3807,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -14,4 +14,4 @@ export const ocrProvider: OcrProvider = googleVisionOcrProvider.implemented
   ? googleVisionOcrProvider
   : tesseractOcrProvider;
 
-export type { OcrProvider, OcrTextResult } from "./types.js";
+export type { OcrHint, OcrProvider, OcrTextResult } from "./types.js";
