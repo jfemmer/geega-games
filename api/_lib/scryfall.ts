@@ -45,7 +45,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function scryfallGetUrl<T>(url: string): Promise<T> {
+// A 429 here is Scryfall's own real rate limit, not this app's — it's most
+// likely to show up as transient burstiness (e.g. a seller's pasted/CSV card
+// list auto-resolving many lines in quick succession, see BulkListInput.tsx)
+// rather than a sustained overage. A couple of short, backed-off retries
+// clears most of those invisibly instead of surfacing a scary error for
+// what resolves itself a moment later.
+const RATE_LIMIT_MAX_RETRIES = 2;
+const RATE_LIMIT_RETRY_DELAY_MS = 400;
+
+async function scryfallGetUrl<T>(url: string, attempt = 0): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: Response;
@@ -61,6 +70,10 @@ async function scryfallGetUrl<T>(url: string): Promise<T> {
   }
 
   if (res.status === 429) {
+    if (attempt < RATE_LIMIT_MAX_RETRIES) {
+      await sleep(RATE_LIMIT_RETRY_DELAY_MS * (attempt + 1));
+      return scryfallGetUrl<T>(url, attempt + 1);
+    }
     throw new HttpError(429, "Scryfall rate limit reached. Retry shortly.");
   }
   if (res.status === 404) {

@@ -39,6 +39,11 @@ export function BulkListInput({
       if (line.setCode) query += ` set:${line.setCode.toLowerCase()}`;
       let result = await searchSellPrintings(query);
       if (result.printings.length === 0 && line.setCode) {
+        // Pace this fallback call too — without a gap here, a line whose set
+        // code doesn't match anything fires two Scryfall-bound requests back
+        // to back, which is how a big list can spike past Scryfall's own
+        // rate limit even though the outer loop looks well-paced.
+        await sleep(RESOLVE_DELAY_MS);
         result = await searchSellPrintings(`!"${line.cardName}"`);
       }
       if (result.printings.length === 1) {

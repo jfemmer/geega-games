@@ -154,9 +154,22 @@ describe("scryfallSearch — pagination & combining", () => {
     expect(url).toContain("dir=desc");
   });
 
-  it("surfaces a 429 as an HttpError", async () => {
-    fetchMock.mockResolvedValueOnce(statusResponse(429));
+  it("retries a 429 a couple of times before surfacing it as an HttpError", async () => {
+    fetchMock.mockResolvedValue(statusResponse(429));
     await expect(scryfallSearch("x")).rejects.toBeInstanceOf(HttpError);
+    // 1 initial attempt + 2 retries, all still rate-limited.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("recovers from a transient 429 without surfacing an error", async () => {
+    fetchMock
+      .mockResolvedValueOnce(statusResponse(429))
+      .mockResolvedValueOnce(
+        listResponse({ object: "list", total_cards: 1, has_more: false, data: [card("1")] }),
+      );
+    const res = await scryfallSearch("x");
+    expect(res.data.map((c) => c.id)).toEqual(["1"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces a 404 as an HttpError (handler maps it to an empty list)", async () => {
