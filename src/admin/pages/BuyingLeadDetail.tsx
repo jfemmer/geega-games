@@ -21,13 +21,16 @@ import {
 } from "../utils/labels";
 import type { BuyingLeadDetail, BuyingLeadPriority, BuyingLeadStatus } from "../types";
 
+// "offer_made" is deliberately absent — it's only ever reached through the
+// Send Offer action below, which actually emails the seller the amount.
+// Picking it here directly would leave the submission claiming an offer was
+// sent when nothing was ever communicated.
 const STATUS_OPTIONS: BuyingLeadStatus[] = [
   "new",
   "reviewing",
   "needs_more_photos",
   "needs_in_person_review",
   "contacted",
-  "offer_made",
   "accepted",
   "declined",
   "completed",
@@ -92,6 +95,23 @@ export function BuyingLeadDetailDrawer({
       setSavingField(null);
     }
   }
+
+  const handleSendOffer = () => {
+    const cents = centsFromDollars(offerInput);
+    if (cents == null || cents <= 0) {
+      toast.error("Enter a valid offer amount first.");
+      return;
+    }
+    const sellerName = `${lead.firstName} ${lead.lastName}`.trim() || "the seller";
+    if (
+      !window.confirm(
+        `Send an offer of ${formatCents(cents)} to ${sellerName}? This emails them immediately.`,
+      )
+    ) {
+      return;
+    }
+    void run("sendOffer", () => buyingLeadsRepository.sendOffer(lead.id, cents), "Offer sent to the seller.");
+  };
 
   return (
     <Modal
@@ -300,6 +320,14 @@ export function BuyingLeadDetailDrawer({
                   {BUYING_LEAD_STATUS_LABELS[s]}
                 </option>
               ))}
+              {lead.status === "offer_made" && (
+                // Reachable only via Send Offer below, never by picking it
+                // here — kept as a disabled option so a lead already in this
+                // state still displays correctly instead of showing blank.
+                <option value="offer_made" disabled>
+                  {BUYING_LEAD_STATUS_LABELS.offer_made} (sent via Send Offer)
+                </option>
+              )}
             </SelectField>
             <SelectField
               label="Priority"
@@ -320,7 +348,7 @@ export function BuyingLeadDetailDrawer({
 
           <div className="gg-form-grid">
             <TextField
-              label="Offer amount (USD, internal)"
+              label="Offer amount (USD)"
               type="number"
               min={0}
               step="0.01"
@@ -352,6 +380,14 @@ export function BuyingLeadDetailDrawer({
               Save offer
             </Button>
             <Button
+              variant="primary"
+              size="sm"
+              loading={savingField === "sendOffer"}
+              onClick={handleSendOffer}
+            >
+              Send offer to seller
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               loading={savingField === "purchase"}
@@ -366,9 +402,18 @@ export function BuyingLeadDetailDrawer({
               Save purchase amount
             </Button>
           </div>
-          <p className="gg-card-meta">
-            Offer and purchase amounts are internal only and are never shown to the seller.
-          </p>
+          {lead.offerSentAt ? (
+            <p className="gg-card-meta">
+              Offer of {formatCents(lead.offerValueCents ?? 0)} emailed to the seller on{" "}
+              {formatDateTime(lead.offerSentAt)}.
+            </p>
+          ) : (
+            <p className="gg-card-meta">
+              &ldquo;Save offer&rdquo; only jots down a private number — nothing reaches the
+              seller until you click &ldquo;Send offer to seller.&rdquo;
+            </p>
+          )}
+          <p className="gg-card-meta">The final purchase amount stays internal only.</p>
 
           <TextArea
             label="Internal notes (staff only)"

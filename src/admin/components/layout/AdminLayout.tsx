@@ -4,6 +4,7 @@ import { TopBar } from "./TopBar";
 import { GlobalSearch } from "./GlobalSearch";
 import { SECTION_TITLES } from "./nav";
 import { orderRepository } from "../../repositories";
+import { buyingLeadsRepository } from "../../repositories/buyingLeads.supabase";
 import { useToast } from "../../hooks/useToast";
 import { supabase } from "../../../supabase";
 
@@ -27,8 +28,14 @@ export function AdminLayout({
   useEffect(() => {
     let active = true;
     orderRepository.counts().then((c) => {
-      if (active) setCounts(c);
+      if (active) setCounts((prev) => ({ ...prev, ...c }));
     });
+    buyingLeadsRepository
+      .counts()
+      .then((c) => {
+        if (active) setCounts((prev) => ({ ...prev, new_leads: c.new ?? 0 }));
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };

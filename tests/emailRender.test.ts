@@ -7,6 +7,7 @@ import { SellSubmissionConfirmation } from "../api/_lib/emails/SellSubmissionCon
 import { SellSubmissionAdminNotification } from "../api/_lib/emails/SellSubmissionAdminNotification.js";
 import { OrderStatusUpdate } from "../api/_lib/emails/OrderStatusUpdate.js";
 import { SellSubmissionStatusUpdate } from "../api/_lib/emails/SellSubmissionStatusUpdate.js";
+import { SellSubmissionOffer } from "../api/_lib/emails/SellSubmissionOffer.js";
 import * as React from "react";
 
 describe("email templates render to HTML", () => {
@@ -240,5 +241,22 @@ describe("email templates render to HTML", () => {
       }),
     );
     expect(inPerson).toContain("closer look");
+  });
+
+  it("SellSubmissionOffer states the actual dollar amount, unlike the generic status email", async () => {
+    const html = await render(
+      React.createElement(SellSubmissionOffer, {
+        firstName: "Jordan",
+        referenceNumber: "GG-S-100042",
+        offerValueCents: 35000,
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("GG-S-100042");
+    expect(html).toContain("$350.00");
+    expect(html).toContain("our offer for your collection");
+    expect(html).toContain("PayPal Goods");
   });
 });

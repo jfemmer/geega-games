@@ -39,9 +39,16 @@ vi.mock("../api/_lib/supabaseAdmin.js", () => ({
 }));
 
 const { default: handler } = await import("../api/admin/sell-submissions/[id].ts");
+const { default: sendOfferHandler } = await import(
+  "../api/admin/sell-submissions/[id]/send-offer.ts"
+);
 
-function makeReqRes(body: Record<string, unknown>, headers: Record<string, string> = {}) {
-  const req = { method: "PATCH", headers, body, query: { id: "sub-1" } };
+function makeReqRes(
+  body: Record<string, unknown>,
+  headers: Record<string, string> = {},
+  method = "PATCH",
+) {
+  const req = { method, headers, body, query: { id: "sub-1" } };
   const res = {
     statusCode: 200,
     body: undefined as unknown,
@@ -113,5 +120,49 @@ describe("PATCH /api/admin/sell-submissions/:id — staff-only", () => {
     await handler(req as never, res as never);
     expect(res.statusCode).toBe(200);
     expect(state.updated?.contacted_at).toBeTruthy();
+  });
+});
+
+describe("POST /api/admin/sell-submissions/:id/send-offer — staff-only", () => {
+  it("rejects a request with no Authorization header", async () => {
+    const { req, res } = makeReqRes({ offerValueCents: 35000 }, {}, "POST");
+    await sendOfferHandler(req as never, res as never);
+    expect(res.statusCode).toBe(401);
+    expect(state.updated).toBeNull();
+  });
+
+  it("rejects a request from an authenticated but non-staff user", async () => {
+    state.user = { id: "u1", app_metadata: { role: "customer" } };
+    const { req, res } = makeReqRes(
+      { offerValueCents: 35000 },
+      { authorization: "Bearer sometoken" },
+      "POST",
+    );
+    await sendOfferHandler(req as never, res as never);
+    expect(res.statusCode).toBe(403);
+    expect(state.updated).toBeNull();
+  });
+
+  it("rejects a missing or non-positive offer amount even from staff", async () => {
+    state.user = { id: "u1", app_metadata: { role: "staff" } };
+    for (const bad of [{}, { offerValueCents: 0 }, { offerValueCents: -100 }]) {
+      const { req, res } = makeReqRes(bad, { authorization: "Bearer sometoken" }, "POST");
+      await sendOfferHandler(req as never, res as never);
+      expect(res.statusCode).toBe(400);
+      expect(state.updated).toBeNull();
+    }
+  });
+
+  it("records the amount, flips status to offer_made, and stamps offer_sent_at for a verified staff user", async () => {
+    state.user = { id: "u1", app_metadata: { role: "staff" } };
+    const { req, res } = makeReqRes(
+      { offerValueCents: 35000 },
+      { authorization: "Bearer sometoken" },
+      "POST",
+    );
+    await sendOfferHandler(req as never, res as never);
+    expect(res.statusCode).toBe(200);
+    expect(state.updated).toMatchObject({ offer_value_cents: 35000, status: "offer_made" });
+    expect(state.updated?.offer_sent_at).toBeTruthy();
   });
 });

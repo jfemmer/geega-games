@@ -18,14 +18,22 @@ import {
   type NotifiableSellStatus,
   type SellSubmissionStatusEmailData,
 } from "./emails/SellSubmissionStatusUpdate.js";
+import {
+  SellSubmissionOffer,
+  sellSubmissionOfferSubject,
+  sellSubmissionOfferText,
+  type SellSubmissionOfferEmailData,
+} from "./emails/SellSubmissionOffer.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
 
+// "offer_made" is deliberately absent — it's only ever reached through
+// sendSellSubmissionOffer below, which sends its own dedicated email with
+// the actual dollar amount rather than this generic status notice.
 const NOTIFIABLE_SELL_STATUSES: ReadonlySet<string> = new Set([
   "needs_more_photos",
   "needs_in_person_review",
   "contacted",
-  "offer_made",
   "accepted",
   "declined",
   "completed",
@@ -159,7 +167,7 @@ export async function sendSellSubmissionAdminNotification(
 }
 
 // Sends the status-update email to the seller (needs more photos, needs
-// in-person review, contacted, offer made, accepted, declined, completed).
+// in-person review, contacted, accepted, declined, completed, closed).
 // Same trust model and idempotency pattern as the confirmation emails above.
 //
 // Preference gating: a signed-in seller's profiles.sell_submission_notifications
@@ -212,5 +220,53 @@ export async function sendSellSubmissionStatusUpdate(
     subject: sellSubmissionStatusUpdateSubject(data),
     react: React.createElement(SellSubmissionStatusUpdate, data),
     text: sellSubmissionStatusUpdateText(data),
+  });
+}
+
+// Sends the actual offer to the seller — the ONE place a real dollar amount
+// is ever communicated (see api/admin/sell-submissions/[id]/send-offer.ts,
+// the only caller). Unlike sendSellSubmissionStatusUpdate above, this
+// deliberately ignores the seller's sell_submission_notifications
+// preference: that toggle is for routine status noise, and an offer is the
+// core reason the seller submitted in the first place — silently skipping
+// it would mean they never find out money was offered for their cards.
+//
+// Idempotency is keyed on the amount, not just the submission id, so a
+// revised offer after negotiation still sends; sending the exact same
+// amount twice in a row is treated as a duplicate, same tradeoff every
+// other tracked email in this file makes.
+export async function sendSellSubmissionOffer(
+  submissionId: string,
+  offerValueCents: number,
+): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
+  const db = getSupabaseAdmin();
+
+  const { data: submission, error } = await db
+    .from("sell_submissions")
+    .select("id, first_name, email, reference_number")
+    .eq("id", submissionId)
+    .single();
+  if (error || !submission) {
+    return { status: "skipped", reason: "submission-not-found" };
+  }
+
+  const data: SellSubmissionOfferEmailData = {
+    firstName: submission.first_name,
+    referenceNumber: submission.reference_number,
+    offerValueCents,
+    siteUrl: siteUrl(),
+    logoUrl: logoUrl(),
+    supportEmail: ServerEnv.replyTo(),
+  };
+
+  return sendTrackedEmail({
+    emailType: "sell_submission_offer",
+    idempotencyKey: `sell-submission-offer-${submission.id}-${offerValueCents}`,
+    to: submission.email,
+    from: ServerEnv.fromOrders(),
+    replyTo: ServerEnv.replyTo(),
+    subject: sellSubmissionOfferSubject(data),
+    react: React.createElement(SellSubmissionOffer, data),
+    text: sellSubmissionOfferText(data),
   });
 }

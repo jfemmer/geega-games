@@ -1074,6 +1074,8 @@ export interface BuyingLeadDetail extends BuyingLeadSummary {
   internalNotes: string | null;
   referralSource: string | null;
   offerValueCents: number | null;
+  /** When staff actually sent offerValueCents to the seller via Send Offer. Null means it's still just a private note. */
+  offerSentAt: string | null;
   purchaseAmountCents: number | null;
   contactedAt: string | null;
   closedAt: string | null;

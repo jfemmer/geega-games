@@ -17,12 +17,14 @@ const h = (
 
 // The subset of sell_submission_status transitions worth emailing a seller
 // about. "new" and "reviewing" are internal-only starting states and never
-// reach this template.
+// reach this template. "offer_made" is deliberately absent — that transition
+// is now only ever reached through the Send Offer action, which sends its
+// own dedicated email actually stating the amount (see
+// api/_lib/emails/SellSubmissionOffer.ts) rather than this generic notice.
 export type NotifiableSellStatus =
   | "needs_more_photos"
   | "needs_in_person_review"
   | "contacted"
-  | "offer_made"
   | "accepted"
   | "declined"
   | "completed"
@@ -55,11 +57,6 @@ const COPY: Record<
     subject: (ref) => `We're in touch about your submission — ${ref}`,
     heading: "We've reached out about your submission",
     body: "We contacted you using your preferred contact method to discuss your collection. If you haven't heard from us yet, check your spam folder or reply to this email.",
-  },
-  offer_made: {
-    subject: (ref) => `We've made you an offer — ${ref}`,
-    heading: "We've made you an offer",
-    body: "We've sent you an offer for your collection using your preferred contact method. Reply to this email if you have any questions before deciding.",
   },
   accepted: {
     subject: (ref) => `Offer accepted — ${ref}`,

@@ -1,6 +1,12 @@
 import { Icon } from "../ui/Icon";
 import { NAV_ITEMS } from "./nav";
 
+/** Which `counts` key, if any, badges each nav item. */
+const NAV_BADGE_COUNT_KEY: Partial<Record<(typeof NAV_ITEMS)[number]["key"], string>> = {
+  orders: "needs_packing",
+  "buying-leads": "new_leads",
+};
+
 export function Sidebar({
   activeKey,
   collapsed,
@@ -54,8 +60,8 @@ export function Sidebar({
 
         <nav className="gg-sidebar__nav">
           {NAV_ITEMS.map((item) => {
-            const badge =
-              item.key === "orders" ? counts.needs_packing : undefined;
+            const badgeKey = NAV_BADGE_COUNT_KEY[item.key];
+            const badge = badgeKey ? counts[badgeKey] : undefined;
             const active = activeKey === item.key;
             return (
               <button

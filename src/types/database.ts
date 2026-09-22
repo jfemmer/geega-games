@@ -2324,6 +2324,7 @@ export type Database = {
           last_name: string
           legacy_mongo_id: string | null
           notes: string | null
+          offer_sent_at: string | null
           offer_value_cents: number | null
           phone: string | null
           photo_count: number
@@ -2362,6 +2363,7 @@ export type Database = {
           last_name: string
           legacy_mongo_id?: string | null
           notes?: string | null
+          offer_sent_at?: string | null
           offer_value_cents?: number | null
           phone?: string | null
           photo_count?: number
@@ -2400,6 +2402,7 @@ export type Database = {
           last_name?: string
           legacy_mongo_id?: string | null
           notes?: string | null
+          offer_sent_at?: string | null
           offer_value_cents?: number | null
           phone?: string | null
           photo_count?: number
