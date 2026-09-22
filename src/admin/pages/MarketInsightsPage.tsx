@@ -12,6 +12,7 @@ import { Tabs } from "../components/ui/Nav";
 import { DataTable, type Column } from "../components/ui/DataTable";
 import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { useAsync } from "../hooks/useAsync";
+import { geocodeOrderLocation } from "../utils/geocodeOrderLocation";
 import { insightsRepository } from "../repositories";
 import { formatCents, formatNumber } from "../utils/format";
 import type {
@@ -125,10 +126,11 @@ function rollupByState(rows: OrderGeographyRow[]): StateRollup[] {
   return [...map.values()].sort((a, b) => b.orderCount - a.orderCount);
 }
 
-// --- Sample order-location map -------------------------------------------
-// Preview only — hand-picked sample points, not wired to insightsRepository.
-// Real geography rows have no lat/long yet; plotting live orders later needs
-// a city → coordinates lookup (or capturing lat/long at checkout).
+// --- Order-location map ----------------------------------------------------
+// Real order geography, geocoded client-side (see geocodeOrderLocation) since
+// checkout captures city/state/zip as free text with no coordinates. Rows
+// that can't be confidently placed are dropped from the map but still count
+// in the tables below, which don't need coordinates.
 
 type MapPoint = {
   city: string;
@@ -137,36 +139,78 @@ type MapPoint = {
   lon: number;
   orderCount: number;
   revenueCents: number;
-  /** Which side of the dot the name label renders on. Defaults to "start" (right of the dot). */
-  labelAnchor?: "start" | "end";
 };
 
-const SAMPLE_MAP_POINTS: MapPoint[] = [
-  { city: "St. Louis", state: "MO", lat: 38.63, lon: -90.2, orderCount: 42, revenueCents: 215000 },
-  {
-    city: "Kansas City",
-    state: "MO",
-    lat: 39.1,
-    lon: -94.58,
-    orderCount: 9,
-    revenueCents: 41000,
-    labelAnchor: "end", // sits just west of St. Louis; label to the left avoids colliding with it
-  },
-  { city: "Chicago", state: "IL", lat: 41.88, lon: -87.63, orderCount: 27, revenueCents: 148000 },
-  { city: "Nashville", state: "TN", lat: 36.16, lon: -86.78, orderCount: 14, revenueCents: 71000 },
-  { city: "Indianapolis", state: "IN", lat: 39.77, lon: -86.16, orderCount: 11, revenueCents: 56000 },
-  { city: "Austin", state: "TX", lat: 30.27, lon: -97.74, orderCount: 16, revenueCents: 84000 },
-  { city: "Dallas", state: "TX", lat: 32.78, lon: -96.8, orderCount: 13, revenueCents: 69000 },
-  { city: "Atlanta", state: "GA", lat: 33.75, lon: -84.39, orderCount: 19, revenueCents: 97000 },
-  { city: "New York", state: "NY", lat: 40.71, lon: -74.01, orderCount: 31, revenueCents: 178000 },
-  { city: "Boston", state: "MA", lat: 42.36, lon: -71.06, orderCount: 15, revenueCents: 79000 },
-  { city: "Miami", state: "FL", lat: 25.76, lon: -80.19, orderCount: 10, revenueCents: 52000 },
-  { city: "Denver", state: "CO", lat: 39.74, lon: -104.99, orderCount: 8, revenueCents: 39000 },
-  { city: "Phoenix", state: "AZ", lat: 33.45, lon: -112.07, orderCount: 6, revenueCents: 27000 },
-  { city: "Los Angeles", state: "CA", lat: 34.05, lon: -118.24, orderCount: 22, revenueCents: 121000 },
-  { city: "Seattle", state: "WA", lat: 47.61, lon: -122.33, orderCount: 12, revenueCents: 63000 },
-  { city: "Minneapolis", state: "MN", lat: 44.98, lon: -93.27, orderCount: 7, revenueCents: 33000 },
-];
+/** Resolves real order-geography rows to map points as `rows` loads/changes. */
+function useResolvedMapPoints(rows: OrderGeographyRow[] | null) {
+  const [result, setResult] = useState<{ points: MapPoint[]; unresolvedCount: number }>({
+    points: [],
+    unresolvedCount: 0,
+  });
+  const [resolving, setResolving] = useState(false);
+
+  useEffect(() => {
+    if (!rows || rows.length === 0) {
+      setResult({ points: [], unresolvedCount: 0 });
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    Promise.all(
+      rows.map(async (row) => {
+        const coords = await geocodeOrderLocation(row);
+        return coords ? { row, coords } : null;
+      }),
+    ).then((resolved) => {
+      if (cancelled) return;
+      const hits = resolved.filter(
+        (r): r is { row: OrderGeographyRow; coords: [number, number] } => r !== null,
+      );
+      setResult({
+        points: hits.map(({ row, coords }) => ({
+          city: row.shipCity,
+          state: row.shipState,
+          lat: coords[0],
+          lon: coords[1],
+          orderCount: row.orderCount,
+          revenueCents: row.totalRevenueCents,
+        })),
+        unresolvedCount: rows.length - hits.length,
+      });
+      setResolving(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
+
+  return { ...result, resolving };
+}
+
+// Nudges a city's label to the other side of its dot when a neighbor sits
+// close by to the right — a simple, general stand-in for per-point tuning
+// (which doesn't scale once this is real, growing order data).
+const LABEL_COLLISION_DX = 45;
+const LABEL_COLLISION_DY = 18;
+
+function computeLabelAnchors(points: MapPoint[]): Map<MapPoint, "start" | "end"> {
+  const projected = points.map((p) => {
+    const [x, y] = projectLatLon(p.lat, p.lon);
+    return { p, x, y };
+  });
+  const anchors = new Map<MapPoint, "start" | "end">();
+  for (const a of projected) {
+    const crowded = projected.some(
+      (b) =>
+        b.p !== a.p &&
+        b.x - a.x > 0 &&
+        b.x - a.x < LABEL_COLLISION_DX &&
+        Math.abs(b.y - a.y) < LABEL_COLLISION_DY,
+    );
+    anchors.set(a.p, crowded ? "end" : "start");
+  }
+  return anchors;
+}
 
 const MAP_WIDTH = 960;
 const MAP_HEIGHT = 580;
@@ -291,6 +335,7 @@ function OrdersMap({ points }: { points: MapPoint[] }) {
 
   const scale = MAP_WIDTH / view.w;
   const maxCount = Math.max(...points.map((p) => p.orderCount), 1);
+  const labelAnchors = useMemo(() => computeLabelAnchors(points), [points]);
 
   const zoomAt = useCallback((clientX: number, clientY: number, factor: number) => {
     const svg = svgRef.current;
@@ -360,7 +405,7 @@ function OrdersMap({ points }: { points: MapPoint[] }) {
           viewBox={`${view.x.toFixed(1)} ${view.y.toFixed(1)} ${view.w.toFixed(1)} ${view.h.toFixed(1)}`}
           className="gg-mapchart__svg"
           role="img"
-          aria-label={`Sample order locations: ${points
+          aria-label={`Order locations: ${points
             .map((p) => `${p.city}, ${p.state} ${p.orderCount} orders`)
             .join(", ")}.`}
           onPointerDown={handlePointerDown}
@@ -383,7 +428,7 @@ function OrdersMap({ points }: { points: MapPoint[] }) {
             const baseR = 6 + Math.sqrt(p.orderCount / maxCount) * 16;
             const r = baseR / scale;
             const labelSize = 11 / scale;
-            const anchor = p.labelAnchor ?? "start";
+            const anchor = labelAnchors.get(p) ?? "start";
             const labelGap = r + 4 / scale;
             return (
               <g key={`${p.state}-${p.city}`}>
@@ -436,6 +481,7 @@ function OrdersMap({ points }: { points: MapPoint[] }) {
             <span>{b.label}</span>
           </div>
         ))}
+        <span className="gg-mapchart__hint">Zoom in (scroll or +/−), then drag to pan around</span>
       </div>
     </div>
   );
@@ -448,6 +494,7 @@ function OrderGeographyTab() {
   const rows = geography.data ?? [];
   const stateRollup = useMemo(() => rollupByState(rows), [rows]);
   const cityRows = selectedState ? rows.filter((r) => r.shipState === selectedState) : [];
+  const mapPoints = useResolvedMapPoints(geography.data);
 
   const stateColumns: Column<StateRollup>[] = [
     {
@@ -481,16 +528,38 @@ function OrderGeographyTab() {
 
   return (
     <>
-      <SectionCard
-        title="Where orders ship"
-        action={<Badge tone="info">Sample data — preview</Badge>}
-      >
-        <p className="gg-card-meta" style={{ marginTop: 0 }}>
-          A first look at plotting order locations on a map — these are illustrative sample
-          points, not your real orders yet. Once you like how it looks, this can be wired to the
-          same paid-order data as the table below.
-        </p>
-        <OrdersMap points={SAMPLE_MAP_POINTS} />
+      <SectionCard title="Where orders ship">
+        {geography.error ? (
+          <ErrorState message={geography.error} onRetry={geography.reload} />
+        ) : geography.loading ? (
+          <TableSkeleton rows={5} cols={3} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon="package"
+            title="No paid orders yet"
+            message="Once you have paid orders, this shows where they ship — the clearest signal of where demand for Geega Games actually is."
+          />
+        ) : (
+          <>
+            <p className="gg-card-meta" style={{ marginTop: 0 }}>
+              Real paid orders, geocoded from the shipping address at checkout. Scroll or use
+              +/− to zoom into a region, then drag to pan around it.
+            </p>
+            <OrdersMap points={mapPoints.points} />
+            {mapPoints.resolving ? (
+              <p className="gg-card-meta">Placing orders on the map…</p>
+            ) : (
+              mapPoints.unresolvedCount > 0 && (
+                <p className="gg-card-meta">
+                  {formatNumber(mapPoints.unresolvedCount)} of {formatNumber(rows.length)} location
+                  {rows.length === 1 ? "" : "s"} couldn&rsquo;t be matched to a map position —
+                  usually a typo in the shipping city, state, or zip at checkout. Still counted in
+                  the table below.
+                </p>
+              )
+            )}
+          </>
+        )}
       </SectionCard>
 
       <SectionCard title="Orders by state">

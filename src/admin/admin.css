@@ -567,9 +567,10 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 }
 .gg-mapchart__zoomctl button:hover { background: var(--gg-surface-2); border-color: var(--gg-line-strong); }
 .gg-mapchart__zoomctl button:last-child { width: auto; padding: 0 8px; font-size: 0.72rem; font-weight: 600; }
-.gg-mapchart__legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.8rem; color: var(--gg-text-soft); }
+.gg-mapchart__legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 0.8rem; color: var(--gg-text-soft); }
 .gg-mapchart__legend-item { display: flex; align-items: center; gap: 7px; }
 .gg-mapchart__legend-dot { display: inline-block; border-radius: 999px; background: var(--gg-brand); flex: 0 0 auto; }
+.gg-mapchart__hint { margin-left: auto; color: var(--gg-text-faint); font-size: 0.76rem; }
 
 .gg-splitstat { display: flex; gap: 32px; flex-wrap: wrap; padding: 8px 0; }
 .gg-splitstat__value { font-family: var(--gg-sans); font-size: 1.8rem; font-weight: 700; color: var(--gg-ink); display: block; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }

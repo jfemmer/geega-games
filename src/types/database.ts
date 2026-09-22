@@ -2666,6 +2666,7 @@ export type Database = {
           first_order_at: string
           last_order_at: string
           order_count: number
+          sample_postal_code: string
           ship_city: string
           ship_state: string
           total_revenue_cents: number

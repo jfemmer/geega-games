@@ -25,6 +25,7 @@ interface OrderGeographyDbRow {
   total_revenue_cents: number;
   first_order_at: string;
   last_order_at: string;
+  sample_postal_code: string | null;
 }
 
 interface MarketResearchNoteRow {
@@ -76,6 +77,7 @@ export const supabaseInsightsRepository: InsightsRepository = {
       totalRevenueCents: r.total_revenue_cents,
       firstOrderAt: r.first_order_at,
       lastOrderAt: r.last_order_at,
+      samplePostalCode: r.sample_postal_code,
     }));
   },
 

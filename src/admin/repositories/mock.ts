@@ -1195,23 +1195,27 @@ const SOURCING_SIGNALS_SEED: SourcingSignal[] = [
 ];
 
 const ORDER_GEOGRAPHY_SEED: OrderGeographyRow[] = [
-  {
-    shipState: "Missouri",
-    shipCity: "St. Louis",
-    orderCount: 5,
-    totalRevenueCents: 21000,
-    firstOrderAt: "2026-08-01T00:00:00Z",
-    lastOrderAt: "2026-09-15T00:00:00Z",
-  },
-  {
-    shipState: "Illinois",
-    shipCity: "Chicago",
-    orderCount: 2,
-    totalRevenueCents: 8500,
-    firstOrderAt: "2026-08-20T00:00:00Z",
-    lastOrderAt: "2026-09-10T00:00:00Z",
-  },
-];
+  { shipState: "Missouri", shipCity: "St. Louis", orderCount: 42, totalRevenueCents: 215000, samplePostalCode: "63101" },
+  { shipState: "Missouri", shipCity: "Kansas City", orderCount: 9, totalRevenueCents: 41000, samplePostalCode: "64105" },
+  { shipState: "Illinois", shipCity: "Chicago", orderCount: 27, totalRevenueCents: 148000, samplePostalCode: "60601" },
+  { shipState: "Tennessee", shipCity: "Nashville", orderCount: 14, totalRevenueCents: 71000, samplePostalCode: "37201" },
+  { shipState: "Indiana", shipCity: "Indianapolis", orderCount: 11, totalRevenueCents: 56000, samplePostalCode: "46204" },
+  { shipState: "Texas", shipCity: "Austin", orderCount: 16, totalRevenueCents: 84000, samplePostalCode: "78701" },
+  { shipState: "Texas", shipCity: "Dallas", orderCount: 13, totalRevenueCents: 69000, samplePostalCode: "75201" },
+  { shipState: "Georgia", shipCity: "Atlanta", orderCount: 19, totalRevenueCents: 97000, samplePostalCode: "30303" },
+  { shipState: "New York", shipCity: "New York", orderCount: 31, totalRevenueCents: 178000, samplePostalCode: "10001" },
+  { shipState: "Massachusetts", shipCity: "Boston", orderCount: 15, totalRevenueCents: 79000, samplePostalCode: "02108" },
+  { shipState: "Florida", shipCity: "Miami", orderCount: 10, totalRevenueCents: 52000, samplePostalCode: "33130" },
+  { shipState: "Colorado", shipCity: "Denver", orderCount: 8, totalRevenueCents: 39000, samplePostalCode: "80202" },
+  { shipState: "Arizona", shipCity: "Phoenix", orderCount: 6, totalRevenueCents: 27000, samplePostalCode: "85003" },
+  { shipState: "California", shipCity: "Los Angeles", orderCount: 22, totalRevenueCents: 121000, samplePostalCode: "90012" },
+  { shipState: "Washington", shipCity: "Seattle", orderCount: 12, totalRevenueCents: 63000, samplePostalCode: "98101" },
+  { shipState: "Minnesota", shipCity: "Minneapolis", orderCount: 7, totalRevenueCents: 33000, samplePostalCode: "55401" },
+].map((r, i) => ({
+  ...r,
+  firstOrderAt: new Date(Date.now() - (60 - i) * 86400000).toISOString(),
+  lastOrderAt: new Date(Date.now() - i * 86400000).toISOString(),
+}));
 
 const MARKET_RESEARCH_NOTES_SEED: MarketResearchNote[] = [
   {

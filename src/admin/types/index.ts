@@ -850,6 +850,8 @@ export interface OrderGeographyRow {
   totalRevenueCents: number;
   firstOrderAt: string;
   lastOrderAt: string;
+  /** A real 5-digit zip from one of this group's orders, if any looked valid — used to place this city on the map. */
+  samplePostalCode: string | null;
 }
 
 /** A manually-researched note on a candidate market (competitor count,
