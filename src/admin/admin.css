@@ -2268,6 +2268,46 @@ body.gg-printing-label .gg-labelprint-overlay {
   }
 }
 
+/* Scanner bridge live status panel */
+.gg-bridge-panel { margin-bottom: 20px; }
+.gg-bridge-panel__stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.gg-bridgestat {
+  display: flex; flex-direction: column; align-items: center; min-width: 90px;
+  padding: 10px 8px; border: 1px solid var(--gg-line); background: var(--gg-surface-2);
+  border-radius: 10px;
+}
+.gg-bridgestat__value { font-weight: 700; font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+.gg-bridgestat--danger .gg-bridgestat__value { color: var(--gg-danger); }
+.gg-bridgestat__label {
+  margin-top: 2px; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--gg-text-faint); text-align: center;
+}
+.gg-bridge-panel__meta { color: var(--gg-text-soft); font-size: .85rem; margin: 0 0 8px; }
+.gg-bridge-panel__error {
+  display: flex; align-items: center; gap: 6px; color: var(--gg-danger);
+  font-size: .85rem; margin: 0 0 12px;
+}
+.gg-bridge-panel__actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.gg-bridge-panel__scannow {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--gg-line);
+}
+.gg-bridge-panel__diagnostic {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--gg-line);
+}
+.gg-bridge-panel__diagnostic-ok {
+  display: flex; align-items: center; gap: 6px; color: var(--gg-success, #2e7d4f);
+  font-size: .85rem; margin: 0;
+}
+.gg-bridge-panel__diagnostic-raw {
+  font-size: .78rem; color: var(--gg-text-faint); background: var(--gg-surface-2);
+  padding: 1px 6px; border-radius: 4px; white-space: pre-wrap; word-break: break-word;
+}
+.gg-bridge-panel__started { margin: 12px 0 0; color: var(--gg-text-faint); font-size: .72rem; }
+
 
 /* ==================================================================
  * Live admin notifications

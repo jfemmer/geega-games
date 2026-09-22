@@ -15,8 +15,15 @@ async function main() {
   const api = createApiClient(config.apiBaseUrl, getAccessToken);
   const status = createStatus(config.watchFolder);
 
-  startStatusServer(config.statusPort, status);
-  startWatcher(config, api, supabase, status);
+  const watcherControl = startWatcher(config, api, supabase, status);
+  startStatusServer(config.statusPort, status, {
+    allowedOrigin: config.apiBaseUrl,
+    sessionStateFile: config.sessionStateFile,
+    watchFolder: config.watchFolder,
+    wiaDeviceNameMatch: config.wiaDeviceNameMatch,
+    duplex: config.duplex,
+    watcherControl,
+  });
 
   console.log(
     `[geega-scanner-bridge] Ready. Duplex: ${config.duplex}. Scanner: ${config.scannerName}.`,

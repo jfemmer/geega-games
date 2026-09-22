@@ -45,6 +45,15 @@ export interface BridgeConfig {
    * front. See scanMode below. */
   duplex: boolean;
   scannerName: string;
+  /** Substring to match against WIA device names when scanning directly
+   * (Phase 2 — see scripts/wia-scan.ps1). The real string a WIA driver
+   * reports isn't verified here (could be "RICOH fi-8170", "fi-8170", or
+   * something else entirely, driver-dependent), so this is adjustable
+   * without a code change: run the "Check scanner connection" action in
+   * the admin dashboard (or scripts/wia-scan.ps1 -ListDevicesOnly
+   * directly) to see the real name and set this if the "8170" default
+   * doesn't match it. */
+  wiaDeviceNameMatch: string;
   /** What the recognition pipeline does for every card in sessions this
    * bridge creates. "both" (default) identifies and grades condition;
    * "card_matching" skips condition (and only needs a front scan);
@@ -100,6 +109,7 @@ export function loadConfig(): BridgeConfig {
     failedFolder,
     duplex: duplexForMode(scanMode),
     scannerName: optional("SCANNER_NAME", "Ricoh fi-8170"),
+    wiaDeviceNameMatch: optional("WIA_DEVICE_NAME_MATCH", "8170"),
     scanMode,
     batchQuietMs: optionalInt("BATCH_QUIET_MS", 5000),
     statusPort: optionalInt("STATUS_PORT", 8787),
