@@ -28,6 +28,30 @@ const SCRIPT_PATH = path.join(
 // killing a real, still-progressing scan.
 const SCAN_TIMEOUT_MS = 10 * 60_000;
 
+/**
+ * Windows PowerShell 5.1's standard, effectively-universal install
+ * location — ships as part of Windows itself since Windows 7, and stays
+ * installed even on machines that also have PowerShell 7+ (pwsh.exe)
+ * alongside it. Resolved directly rather than spawning the bare command
+ * "powershell.exe" and trusting PATH lookup: confirmed against a real
+ * machine that Node's child_process spawn/execFile on Windows does not
+ * reliably search PATH the same way an interactive shell does — it failed
+ * with ENOENT there even though powershell.exe plainly worked from that
+ * same machine's own terminal. Falls back to the bare command only if
+ * SystemRoot/windir are somehow both unset (not expected on any real
+ * Windows install).
+ */
+export function resolvePowerShellExecutable(): string {
+  const systemRoot = process.env.SystemRoot ?? process.env.windir;
+  if (!systemRoot) return "powershell.exe";
+  // path.win32 explicitly, not the platform-dependent path.join: SystemRoot
+  // is a Windows-only environment variable in the first place (this whole
+  // function only ever means anything on Windows), and explicit .win32
+  // keeps this correctly testable from a non-Windows dev machine too,
+  // rather than silently depending on whatever OS happens to run the test.
+  return path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+}
+
 interface PowerShellRun {
   stdout: string;
   stderr: string;
@@ -39,7 +63,7 @@ interface PowerShellRun {
 function runPowerShell(args: string[]): Promise<PowerShellRun> {
   return new Promise((resolve) => {
     execFile(
-      "powershell.exe",
+      resolvePowerShellExecutable(),
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_PATH, ...args],
       { timeout: SCAN_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
       (error, stdout, stderr) => {
