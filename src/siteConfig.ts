@@ -34,6 +34,7 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Help",
     links: [
+      { label: "About us", href: "/about" },
       { label: "Track your order", href: "/track-order" },
       { label: "Contact", href: "/contact" },
       { label: "Shipping", href: "/shipping" },

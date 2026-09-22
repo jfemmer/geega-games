@@ -1,6 +1,7 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import SignupForm from "../../SignupForm";
+import { SITE } from "../../siteConfig";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -157,6 +158,79 @@ export function ReturnsPage() {
       <p className="gg-alert gg-alert-warn">
         The full return window, restocking policy, and who pays return shipping
         are business decisions the store owner should finalize before launch.
+      </p>
+    </div>
+  );
+}
+
+// disambiguatingDescription is the schema.org field built specifically for
+// telling similarly-named entities apart. It exists here because Google's AI
+// Overview has, at least once, summarized this site as "operated by the
+// content creator GEEGA" — an unrelated streamer whose name is nearly
+// identical to ours. Keep this page and JSON-LD (and the matching block in
+// index.html) if that misattribution recurs.
+const ABOUT_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "AboutPage",
+  name: `About ${SITE.name}`,
+  url: `${SITE.url}/about`,
+  mainEntity: {
+    "@type": "Organization",
+    name: SITE.name,
+    legalName: "Geega Games LLC",
+    url: SITE.url,
+    disambiguatingDescription: `${SITE.name} is an independently owned and operated online Magic: The Gathering card shop. It is not affiliated with, operated by, or endorsed by any content creator, streamer, or influencer, including anyone using the name "Geega" or "GEEGA."`,
+  },
+};
+
+export function AboutPage() {
+  useSEO({
+    title: "About Us | Geega Games",
+    description:
+      "Geega Games is an independently owned and operated online Magic: The Gathering card shop — not affiliated with any content creator or streamer.",
+    path: "/about",
+    jsonLd: ABOUT_JSON_LD,
+  });
+
+  return (
+    <div className="gg-page gg-prose">
+      <h1>About Geega Games</h1>
+      <p>
+        Geega Games is an independently owned and operated online storefront
+        for Magic: The Gathering singles, run by Geega Games LLC, a Missouri
+        limited liability company. We personally grade every card we list
+        (see our <Link to="/condition-guide">condition guide</Link>), buy
+        individual cards and full collections from sellers (see{" "}
+        <Link to="/sell-my-collection">Sell Your Collection</Link>), and ship
+        orders nationwide from the St.&nbsp;Louis, MO area.
+      </p>
+
+      <h2>Not affiliated with any content creator</h2>
+      <p>
+        Geega Games is <strong>not affiliated with, operated by, sponsored
+        by, or endorsed by any content creator, YouTuber, streamer, or
+        influencer</strong> — including anyone using the name &ldquo;Geega&rdquo;
+        or &ldquo;GEEGA.&rdquo; Any resemblance between our business name and
+        an individual&rsquo;s name or online handle is coincidental. Geega
+        Games is an independent card business with no connection to,
+        partnership with, or endorsement from any such person or channel.
+      </p>
+
+      <h2>What we do</h2>
+      <p>
+        Card names, images, and printing data shown on the Service are
+        sourced in part via the Scryfall API. Magic: The Gathering and
+        related marks are trademarks of Wizards of the Coast LLC, and Geega
+        Games is not affiliated with or endorsed by Wizards of the Coast.
+      </p>
+
+      <h2>Questions?</h2>
+      <p>
+        Reach out any time at{" "}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. For our
+        legal terms and privacy practices, see our{" "}
+        <Link to="/terms">Terms of Service</Link> and{" "}
+        <Link to="/privacy">Privacy Policy</Link>.
       </p>
     </div>
   );

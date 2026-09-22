@@ -48,13 +48,24 @@
          areaServed reflects the confirmed online-only (no storefront)
          service area: about a 6-hour drive of St. Louis, MO. Keep the state
          list in sync with SellCollectionPage.tsx's SERVICE_STATES if that
-         region changes. -->
+         region changes.
+
+         legalName/disambiguatingDescription exist because Google's AI
+         Overview has, at least once, summarized this site as "operated by
+         the content creator GEEGA" — an unrelated streamer whose name is
+         nearly identical to ours. disambiguatingDescription is the
+         schema.org field built for exactly this (distinguishing an entity
+         from other similarly-named ones); keep it if that misattribution
+         recurs. See also the matching AboutPage JSON-LD in
+         StaticPages.tsx's AboutPage. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "OnlineStore",
         "name": "Geega Games",
+        "legalName": "Geega Games LLC",
         "description": "Magic: The Gathering singles — buy, sell, and trade.",
+        "disambiguatingDescription": "Geega Games is an independently owned and operated online card shop. It is not affiliated with, operated by, or endorsed by any content creator, streamer, or influencer, including anyone using the name \"Geega\" or \"GEEGA.\"",
         "url": "https://geega-games.com/",
         "logo": "https://geega-games.com/logo.png",
         "image": "https://geega-games.com/og-image.png",

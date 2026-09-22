@@ -27,6 +27,7 @@ const STATIC_PAGES: { path: string; changefreq: string; priority: string; lastmo
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4" },
   { path: "/shipping", changefreq: "monthly", priority: "0.4" },
   { path: "/returns", changefreq: "monthly", priority: "0.3" },
+  { path: "/about", changefreq: "monthly", priority: "0.4" },
   { path: "/contact", changefreq: "monthly", priority: "0.3" },
   { path: "/privacy", changefreq: "yearly", priority: "0.1" },
   { path: "/terms", changefreq: "yearly", priority: "0.1" },

@@ -17,6 +17,7 @@ import {
 } from "./store/pages/AuthPages";
 import {
   HomePage,
+  AboutPage,
   ConditionGuidePage,
   ShippingPage,
   ReturnsPage,
@@ -50,6 +51,7 @@ function Routes() {
   if (path === "/condition-guide") return <ConditionGuidePage />;
   if (path === "/shipping") return <ShippingPage />;
   if (path === "/returns") return <ReturnsPage />;
+  if (path === "/about") return <AboutPage />;
   if (path === "/contact") return <ContactPage />;
   if (path === "/privacy") return <PrivacyPage />;
   if (path === "/terms") return <TermsPage />;
