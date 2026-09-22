@@ -270,6 +270,38 @@ if ($Diagnose) {
         }
     }
 
+    # Item.Transfer() failing uniformly across every format (including the
+    # device's own reported "Preferred Format") on otherwise-valid-looking
+    # properties matches a documented real-world pattern: some WIA drivers'
+    # Item.Transfer automation method is unreliable even when the device
+    # itself works fine, and CommonDialog.ShowTransfer (a different
+    # wiaaut.dll code path, the same one behind the driver's own capture
+    # UI) succeeds where it doesn't. ShowProgressBar=$false keeps this
+    # headless - no dialog shown - it operates on the item we already
+    # selected and configured, it does not prompt to pick a device/image.
+    try {
+        $dialog = New-Object -ComObject WIA.CommonDialog
+        Write-Host "TRY:CommonDialog.ShowTransfer(item, BMP, ShowProgressBar=false)"
+        try {
+            $img = $dialog.ShowTransfer($item, $formatsToTry["BMP"], $false)
+            Write-Host "TRY-OK:CommonDialog.ShowTransfer(BMP)"
+        }
+        catch {
+            Write-Host "TRY-FAIL:CommonDialog.ShowTransfer(BMP): $($_.Exception.Message) [HResult=$($_.Exception.HResult)] [$($_.Exception.GetType().FullName)]"
+        }
+        Write-Host "TRY:CommonDialog.ShowTransfer(item, no format, ShowProgressBar=false)"
+        try {
+            $img = $dialog.ShowTransfer($item, $null, $false)
+            Write-Host "TRY-OK:CommonDialog.ShowTransfer(no format)"
+        }
+        catch {
+            Write-Host "TRY-FAIL:CommonDialog.ShowTransfer(no format): $($_.Exception.Message) [HResult=$($_.Exception.HResult)] [$($_.Exception.GetType().FullName)]"
+        }
+    }
+    catch {
+        Write-Host "TRY-FAIL:could not create WIA.CommonDialog at all: $($_.Exception.Message)"
+    }
+
     Write-Result -Status "OK" -Message "diagnostics complete - see PROPS/TRY-OK/TRY-FAIL lines above"
     exit 0
 }
