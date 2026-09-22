@@ -1185,6 +1185,42 @@ export type Database = {
           },
         ]
       }
+      market_research_notes: {
+        Row: {
+          competitor_count: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          population: number | null
+          region_label: string
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          competitor_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          population?: number | null
+          region_label: string
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          competitor_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          population?: number | null
+          region_label?: string
+          state?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       newsletter_subscribers: {
         Row: {
           confirmation_expires_at: string | null
@@ -2624,6 +2660,17 @@ export type Database = {
           set_name: string
         }[]
       }
+      admin_order_geography: {
+        Args: never
+        Returns: {
+          first_order_at: string
+          last_order_at: string
+          order_count: number
+          ship_city: string
+          ship_state: string
+          total_revenue_cents: number
+        }[]
+      }
       admin_orders_matching_id_prefix: {
         Args: { p_prefix: string }
         Returns: string[]
@@ -2762,6 +2809,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      admin_sourcing_signals: {
+        Args: never
+        Returns: {
+          card_name: string
+          currently_in_stock: boolean
+          in_stock_quantity: number
+          oracle_id: string
+          stock_alert_count: number
+          total_demand: number
+          wishlist_count: number
+        }[]
       }
       admin_upsert_customer: {
         Args: {

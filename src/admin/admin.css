@@ -2630,3 +2630,62 @@ body.gg-printing-label .gg-labelprint-overlay {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Market Insights — sourcing signals, order geography, market research
+ * ------------------------------------------------------------------------- */
+.gg-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--gg-brand);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.gg-link-btn:hover {
+  text-decoration: underline;
+}
+.gg-marketnotes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.gg-marketnote {
+  border: 1px solid var(--gg-border, #e5e7eb);
+  border-radius: var(--gg-radius-sm, 8px);
+  padding: 14px 16px;
+}
+.gg-marketnote__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.gg-marketnote__head strong {
+  font-size: 1rem;
+}
+.gg-marketnote__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.gg-marketnote__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gg-marketnote__notes {
+  margin: 10px 0 0;
+  color: var(--gg-text-2, #555);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+@media (max-width: 640px) {
+  .gg-marketnote__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

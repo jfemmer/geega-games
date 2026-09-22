@@ -61,6 +61,7 @@
 import {
   mockAnalyticsRepository,
   mockCampaignRepository,
+  mockInsightsRepository,
   mockInventoryRepository,
   mockOrderRepository,
   mockPickupRequestRepository,
@@ -69,6 +70,7 @@ import {
   mockUserRepository,
 } from "./mock";
 import { supabaseAnalyticsRepository } from "./analytics.supabase";
+import { supabaseInsightsRepository } from "./insights.supabase";
 import { supabaseInventoryRepository } from "./inventory.supabase";
 import { supabaseUserRepository } from "./user.supabase";
 import { supabaseCampaignRepository } from "./campaign.supabase";
@@ -87,6 +89,7 @@ import type {
   AnalyticsRepository,
   CampaignRepository,
   CardRecognitionProvider,
+  InsightsRepository,
   InventoryRepository,
   OrderRepository,
   PickupRequestRepository,
@@ -187,6 +190,12 @@ export const scanRepository: ScanRepository = useLiveData
 export const analyticsRepository: AnalyticsRepository = useLiveData
   ? supabaseAnalyticsRepository
   : mockAnalyticsRepository;
+
+// Sourcing signals / order geography / market research notes go LIVE
+// whenever Supabase is configured, same condition as everything else here.
+export const insightsRepository: InsightsRepository = useLiveData
+  ? supabaseInsightsRepository
+  : mockInsightsRepository;
 export const recognitionProvider: CardRecognitionProvider = useLiveData
   ? supabaseRecognitionProvider
   : stubRecognitionProvider;
@@ -208,6 +217,7 @@ export type {
   AnalyticsRepository,
   CampaignRepository,
   CardRecognitionProvider,
+  InsightsRepository,
   InventoryRepository,
   OrderRepository,
   PickupRequestRepository,

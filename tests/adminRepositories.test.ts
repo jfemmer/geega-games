@@ -5,6 +5,7 @@ import {
   mockCampaignRepository as campaigns,
   mockUserRepository as users,
   mockAnalyticsRepository as analytics,
+  mockInsightsRepository as insights,
   __resetMockState,
 } from "../src/admin/repositories/mock";
 import { mockScryfallRepository as scryfall } from "../src/admin/repositories/scryfall.mock";
@@ -491,5 +492,54 @@ describe("scryfall repository — search & pagination", () => {
     expect(byId?.scryfallId).toBe(target.scryfallId);
     expect(byId?.setCode).toBe(target.setCode);
     expect(byId?.collectorNumber).toBe(target.collectorNumber);
+  });
+});
+
+describe("insights repository", () => {
+  it("returns seeded sourcing signals and order geography", async () => {
+    const signals = await insights.sourcingSignals();
+    expect(signals.length).toBeGreaterThan(0);
+    expect(signals[0]).toHaveProperty("totalDemand");
+
+    const geography = await insights.orderGeography();
+    expect(geography.length).toBeGreaterThan(0);
+    expect(geography[0]).toHaveProperty("shipState");
+  });
+
+  it("creates, updates, and deletes a market research note", async () => {
+    const before = await insights.listMarketResearchNotes();
+
+    const created = await insights.saveMarketResearchNote(null, {
+      regionLabel: "Kansas City, MO",
+      state: "Missouri",
+      competitorCount: 3,
+      population: 500000,
+      notes: "Two LGS downtown, one closing soon.",
+    });
+    expect(created.id).toBeTruthy();
+    expect(created.regionLabel).toBe("Kansas City, MO");
+
+    const afterCreate = await insights.listMarketResearchNotes();
+    expect(afterCreate.length).toBe(before.length + 1);
+
+    const updated = await insights.saveMarketResearchNote(created.id, {
+      ...created,
+      competitorCount: 2,
+    });
+    expect(updated.id).toBe(created.id);
+    expect(updated.competitorCount).toBe(2);
+    // Updating must not silently create a second row.
+    expect((await insights.listMarketResearchNotes()).length).toBe(before.length + 1);
+
+    await insights.deleteMarketResearchNote(created.id);
+    const afterDelete = await insights.listMarketResearchNotes();
+    expect(afterDelete.find((n) => n.id === created.id)).toBeUndefined();
+    expect(afterDelete.length).toBe(before.length);
+  });
+
+  it("resets market research notes back to the seed between tests", async () => {
+    const notes = await insights.listMarketResearchNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].regionLabel).toBe("St. Louis, MO");
   });
 });

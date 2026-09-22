@@ -829,6 +829,51 @@ export interface TrendMetrics {
   campaignPerformance: NamedValue[];
 }
 
+/** Unmet demand for a card: wishlist saves + still-pending back-in-stock
+ * subscriptions, cross-referenced against current stock. See
+ * admin_sourcing_signals(). */
+export interface SourcingSignal {
+  oracleId: string;
+  cardName: string;
+  wishlistCount: number;
+  stockAlertCount: number;
+  totalDemand: number;
+  currentlyInStock: boolean;
+  inStockQuantity: number;
+}
+
+/** Paid orders grouped by ship-to state/city. See admin_order_geography(). */
+export interface OrderGeographyRow {
+  shipState: string;
+  shipCity: string;
+  orderCount: number;
+  totalRevenueCents: number;
+  firstOrderAt: string;
+  lastOrderAt: string;
+}
+
+/** A manually-researched note on a candidate market (competitor count,
+ * population, free-text notes) for comparing against OrderGeographyRow when
+ * evaluating a physical location. */
+export interface MarketResearchNote {
+  id: string;
+  regionLabel: string;
+  state: string | null;
+  competitorCount: number | null;
+  population: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketResearchNoteInput {
+  regionLabel: string;
+  state: string | null;
+  competitorCount: number | null;
+  population: number | null;
+  notes: string | null;
+}
+
 /* ------------------------------------------------------------------ *
  * Repository query helpers
  * ------------------------------------------------------------------ */

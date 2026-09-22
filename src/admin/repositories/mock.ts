@@ -33,7 +33,9 @@ import type {
   InventoryPriceFloor,
   InventoryPrintingEdit,
   InventoryQuery,
+  MarketResearchNote,
   Order,
+  OrderGeographyRow,
   OrderQuery,
   Page,
   PickupRequest,
@@ -43,6 +45,7 @@ import type {
   PosTerminalLocation,
   PosTerminalReader,
   ShippingCarrier,
+  SourcingSignal,
   StaffMember,
 } from "../types";
 import { delay, mockId } from "../utils/format";
@@ -50,6 +53,7 @@ import { countRepriceable, isRepriceable, type RepriceCounts } from "../utils/pr
 import type {
   AnalyticsRepository,
   CampaignRepository,
+  InsightsRepository,
   InventoryRepository,
   OrderRepository,
   PickupRequestRepository,
@@ -1169,6 +1173,98 @@ export const mockAnalyticsRepository: AnalyticsRepository = {
   },
 };
 
+const SOURCING_SIGNALS_SEED: SourcingSignal[] = [
+  {
+    oracleId: "mock-oracle-1",
+    cardName: "Sol Ring",
+    wishlistCount: 4,
+    stockAlertCount: 2,
+    totalDemand: 6,
+    currentlyInStock: false,
+    inStockQuantity: 0,
+  },
+  {
+    oracleId: "mock-oracle-2",
+    cardName: "Dark Ritual",
+    wishlistCount: 1,
+    stockAlertCount: 0,
+    totalDemand: 1,
+    currentlyInStock: true,
+    inStockQuantity: 6,
+  },
+];
+
+const ORDER_GEOGRAPHY_SEED: OrderGeographyRow[] = [
+  {
+    shipState: "Missouri",
+    shipCity: "St. Louis",
+    orderCount: 5,
+    totalRevenueCents: 21000,
+    firstOrderAt: "2026-08-01T00:00:00Z",
+    lastOrderAt: "2026-09-15T00:00:00Z",
+  },
+  {
+    shipState: "Illinois",
+    shipCity: "Chicago",
+    orderCount: 2,
+    totalRevenueCents: 8500,
+    firstOrderAt: "2026-08-20T00:00:00Z",
+    lastOrderAt: "2026-09-10T00:00:00Z",
+  },
+];
+
+const MARKET_RESEARCH_NOTES_SEED: MarketResearchNote[] = [
+  {
+    id: "mock-note-1",
+    regionLabel: "St. Louis, MO",
+    state: "Missouri",
+    competitorCount: 6,
+    population: 300000,
+    notes: "Home market — already have order history here.",
+    createdAt: "2026-08-01T00:00:00Z",
+    updatedAt: "2026-08-01T00:00:00Z",
+  },
+];
+let marketResearchNotes: MarketResearchNote[] = MARKET_RESEARCH_NOTES_SEED.map((n) => ({ ...n }));
+
+export const mockInsightsRepository: InsightsRepository = {
+  async sourcingSignals() {
+    return delay([...SOURCING_SIGNALS_SEED], 300);
+  },
+  async orderGeography() {
+    return delay([...ORDER_GEOGRAPHY_SEED], 300);
+  },
+  async listMarketResearchNotes() {
+    return delay([...marketResearchNotes], 300);
+  },
+  async saveMarketResearchNote(id, input) {
+    const now = new Date().toISOString();
+    if (id) {
+      const idx = marketResearchNotes.findIndex((n) => n.id === id);
+      if (idx === -1) throw new Error("Note not found.");
+      const updated: MarketResearchNote = { ...marketResearchNotes[idx], ...input, updatedAt: now };
+      marketResearchNotes = [
+        ...marketResearchNotes.slice(0, idx),
+        updated,
+        ...marketResearchNotes.slice(idx + 1),
+      ];
+      return delay(updated, 250);
+    }
+    const created: MarketResearchNote = {
+      id: mockId("note"),
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+    };
+    marketResearchNotes = [...marketResearchNotes, created];
+    return delay(created, 250);
+  },
+  async deleteMarketResearchNote(id) {
+    marketResearchNotes = marketResearchNotes.filter((n) => n.id !== id);
+    return delay(undefined, 200);
+  },
+};
+
 /** Reset all mock state — used by tests to isolate runs. */
 export function __resetMockState() {
   inventory = INVENTORY_SEED.map((i) => ({ ...i }));
@@ -1185,6 +1281,7 @@ export function __resetMockState() {
   posSettings = { salesTaxBps: 0 };
   posTerminalLocations = [];
   pickupRequests = [];
+  marketResearchNotes = MARKET_RESEARCH_NOTES_SEED.map((n) => ({ ...n }));
   __resetScanState();
 }
 

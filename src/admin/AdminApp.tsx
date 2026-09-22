@@ -15,6 +15,7 @@ import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { BuyingLeadsPage } from "./pages/BuyingLeadsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
+import { MarketInsightsPage } from "./pages/MarketInsightsPage";
 import { StorewideSalePage } from "./pages/StorewideSalePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import "./admin.css";
@@ -82,6 +83,8 @@ function AdminDashboard() {
         return <UsersPage query={query} />;
       case "trends":
         return <TrendsPage />;
+      case "market-insights":
+        return <MarketInsightsPage />;
       case "sale":
         return <StorewideSalePage />;
       case "audit-log":

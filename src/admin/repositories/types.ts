@@ -25,7 +25,10 @@ import type {
   InventoryPriceFloor,
   InventoryPrintingEdit,
   InventoryQuery,
+  MarketResearchNote,
+  MarketResearchNoteInput,
   Order,
+  OrderGeographyRow,
   OrderQuery,
   OverviewMetrics,
   Page,
@@ -43,6 +46,7 @@ import type {
   ScanSession,
   ScanSourceType,
   ShippingCarrier,
+  SourcingSignal,
   StaffMember,
   StaffRole,
   TimeSeriesPoint,
@@ -485,4 +489,18 @@ export interface AnalyticsRepository {
     customerActivity: AdminActivity[];
   }>;
   trends(range: DateRangeKey): Promise<TrendMetrics>;
+}
+
+/** Sourcing/growth intelligence: what to buy next, and where demand is
+ * concentrated geographically. Owner/administrator only — see the RLS on
+ * market_research_notes and the staff-role guard inside both RPCs. */
+export interface InsightsRepository {
+  sourcingSignals(): Promise<SourcingSignal[]>;
+  orderGeography(): Promise<OrderGeographyRow[]>;
+  listMarketResearchNotes(): Promise<MarketResearchNote[]>;
+  saveMarketResearchNote(
+    id: string | null,
+    input: MarketResearchNoteInput,
+  ): Promise<MarketResearchNote>;
+  deleteMarketResearchNote(id: string): Promise<void>;
 }
