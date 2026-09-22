@@ -2314,6 +2314,7 @@ export type Database = {
             | null
           collection_types: string[]
           contacted_at: string | null
+          counter_offer_cents: number | null
           created_at: string
           email: string
           estimated_value_cents: number | null
@@ -2324,6 +2325,10 @@ export type Database = {
           last_name: string
           legacy_mongo_id: string | null
           notes: string | null
+          offer_responded_at: string | null
+          offer_response:
+            | Database["public"]["Enums"]["sell_offer_response"]
+            | null
           offer_sent_at: string | null
           offer_value_cents: number | null
           phone: string | null
@@ -2353,6 +2358,7 @@ export type Database = {
             | null
           collection_types?: string[]
           contacted_at?: string | null
+          counter_offer_cents?: number | null
           created_at?: string
           email: string
           estimated_value_cents?: number | null
@@ -2363,6 +2369,10 @@ export type Database = {
           last_name: string
           legacy_mongo_id?: string | null
           notes?: string | null
+          offer_responded_at?: string | null
+          offer_response?:
+            | Database["public"]["Enums"]["sell_offer_response"]
+            | null
           offer_sent_at?: string | null
           offer_value_cents?: number | null
           phone?: string | null
@@ -2392,6 +2402,7 @@ export type Database = {
             | null
           collection_types?: string[]
           contacted_at?: string | null
+          counter_offer_cents?: number | null
           created_at?: string
           email?: string
           estimated_value_cents?: number | null
@@ -2402,6 +2413,10 @@ export type Database = {
           last_name?: string
           legacy_mongo_id?: string | null
           notes?: string | null
+          offer_responded_at?: string | null
+          offer_response?:
+            | Database["public"]["Enums"]["sell_offer_response"]
+            | null
           offer_sent_at?: string | null
           offer_value_cents?: number | null
           phone?: string | null
@@ -3261,6 +3276,43 @@ export type Database = {
           variant_type: string
         }[]
       }
+      search_scryfall_bulk_by_name_trgm: {
+        Args: { p_limit?: number; p_name: string }
+        Returns: {
+          border_color: string | null
+          bulk_updated_at: string
+          card_name: string
+          collector_number: string
+          finishes: string[]
+          frame: string | null
+          frame_effects: string[]
+          full_art: boolean
+          lang: string
+          layout: string | null
+          oracle_id: string | null
+          printed_name: string | null
+          promo: boolean
+          promo_types: string[]
+          rarity: string | null
+          raw: Json
+          released_at: string | null
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          textless: boolean
+          variation: boolean
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "scryfall_bulk_cards"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      sell_submission_offer_lookup: {
+        Args: { p_email: string; p_reference_number: string }
+        Returns: Json
+      }
       shop_card_name_suggestions: {
         Args: { p_query: string }
         Returns: {
@@ -3419,6 +3471,7 @@ export type Database = {
         | "5000_to_10000"
         | "10000_plus"
         | "not_sure"
+      sell_offer_response: "accepted" | "declined" | "countered"
       sell_preferred_contact_method: "email" | "phone" | "text"
       sell_priority: "normal" | "high_interest"
       sell_submission_status:
@@ -3708,6 +3761,7 @@ export const Constants = {
         "10000_plus",
         "not_sure",
       ],
+      sell_offer_response: ["accepted", "declined", "countered"],
       sell_preferred_contact_method: ["email", "phone", "text"],
       sell_priority: ["normal", "high_interest"],
       sell_submission_status: [
@@ -3753,4 +3807,3 @@ export const Constants = {
     },
   },
 } as const
-

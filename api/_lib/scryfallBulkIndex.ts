@@ -77,9 +77,13 @@ export async function candidatesBySet(
 }
 
 /**
- * Fuzzy name search across every printing (pg_trgm similarity via the
- * card_name trigram index) — the fallback for pre-M15 cards with no machine-
- * readable set code, or when set/collector candidates don't verify.
+ * Fuzzy name search across every printing — real pg_trgm similarity search
+ * (search_scryfall_bulk_by_name_trgm, index-accelerated by the existing
+ * card_name trigram index), not a substring match. This is the fallback for
+ * pre-M15 cards with no machine-readable set code, or when set/collector
+ * candidates don't verify — the path most exposed to OCR noise, so it has
+ * to tolerate a misread character (Tesseract's classic 0/O, B/8 mix-ups)
+ * rather than require an exact substring.
  */
 export async function candidatesByName(
   admin: Admin,
@@ -88,13 +92,12 @@ export async function candidatesByName(
 ): Promise<CardPrinting[]> {
   const cleaned = name.trim();
   if (!cleaned) return [];
-  const { data, error } = await admin
-    .from("scryfall_bulk_cards")
-    .select("*")
-    .ilike("card_name", `%${cleaned}%`)
-    .limit(limit);
+  const { data, error } = await admin.rpc("search_scryfall_bulk_by_name_trgm", {
+    p_name: cleaned,
+    p_limit: limit,
+  });
   if (error || !data) return [];
-  return data.map(toCardPrinting);
+  return (data as BulkRow[]).map(toCardPrinting);
 }
 
 /** Exact oracle_id match — every printing of the same card (all sets/eras). */
