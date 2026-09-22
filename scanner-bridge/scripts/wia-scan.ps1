@@ -197,7 +197,11 @@ Set-WiaProperty -Target $item -Name "Horizontal Resolution" -Id 6147 -Value $Res
 Set-WiaProperty -Target $item -Name "Vertical Resolution" -Id 6148 -Value $Resolution | Out-Null
 Set-WiaProperty -Target $item -Name "Current Intent" -Id 6146 -Value 0x1 | Out-Null   # 1 = color
 
-$wiaFormatTIFF = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
+# {B96B3CAE-...} is wiaFormatJPEG, not TIFF - real hardware caught this:
+# Transfer() rejected it outright with "The parameter is incorrect." The
+# correct wiaFormatTIFF GUID, verified against Microsoft's own FormatID
+# constants reference, is {B96B3CB1-...}.
+$wiaFormatTIFF = "{B96B3CB1-0728-11D3-9D7B-0000F81EF32E}"
 $savedCount = 0
 
 while ($true) {
@@ -207,7 +211,10 @@ while ($true) {
     catch {
         $msg = $_.Exception.Message
         $hr = $_.Exception.HResult
-        $feederEmpty = ($hr -eq -2144747517) -or ($msg -match "(?i)paper|empty|no.*document|feeder")
+        # 0x80210003 (WIA_ERROR_PAPER_EMPTY) as a signed 32-bit int is
+        # -2145320957 - verified by direct computation, not hand arithmetic,
+        # after an earlier version of this file had that wrong too.
+        $feederEmpty = ($hr -eq -2145320957) -or ($msg -match "(?i)paper|empty|no.*document|feeder")
         if ($feederEmpty) {
             Write-Host "INFO:feeder empty after $savedCount page(s) - this ends the batch normally: $msg"
             break
