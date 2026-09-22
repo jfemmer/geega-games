@@ -1,4 +1,4 @@
-import type { OcrProvider } from "../ocr/index.js";
+import type { OcrHint, OcrProvider } from "../ocr/index.js";
 import { cropRegion, preprocessVariants, type RegionName } from "./imageRegions.js";
 
 // Multi-pass OCR per field (Part 6.2). Runs OCR against several
@@ -17,6 +17,19 @@ export interface FieldOcrResult {
 
 const EMPTY_RESULT: FieldOcrResult = { text: "", confidence: 0, winningVariant: "none" };
 
+// Both fields this pipeline OCRs are cropped to a single horizontal text
+// line (see imageRegions.ts's REGIONS), so both hint "line" — an engine
+// that can act on it (currently only Tesseract; see tesseractProvider.ts)
+// gets a real accuracy win from skipping general page-layout analysis it
+// doesn't need. Only collectorInfo also gets a character whitelist: its
+// format is fully known (digits, a handful of uppercase letters, "/",
+// spaces — see parseCollectorLine below), unlike a card name, which is
+// free-form text where almost any character is legitimate.
+const REGION_OCR_HINTS: Partial<Record<RegionName, OcrHint>> = {
+  title: { shape: "line" },
+  collectorInfo: { shape: "line", charWhitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/ " },
+};
+
 /** OCR one region, trying every preprocessing variant, keeping the best read. */
 export async function ocrRegion(
   provider: OcrProvider,
@@ -29,10 +42,11 @@ export async function ocrRegion(
 
   const crop = await cropRegion(normalizedCard, width, height, region);
   const variants = await preprocessVariants(crop);
+  const hint = REGION_OCR_HINTS[region];
 
   const attempts = await Promise.allSettled(
     Object.entries(variants).map(async ([variantName, buf]) => {
-      const result = await provider.recognizeText(buf, "image/png");
+      const result = await provider.recognizeText(buf, "image/png", hint);
       return { variantName, ...result };
     }),
   );
