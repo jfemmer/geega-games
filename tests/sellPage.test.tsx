@@ -351,6 +351,67 @@ describe("submission is blocked until required photos are attached", () => {
   });
 });
 
+describe("bulk list auto-add — uploading or pasting shouldn't require a separate 'Add' click", () => {
+  it("adds cards straight from an uploaded CSV, with no 'Add to my list' click", async () => {
+    mockFetch();
+    const { container } = render(<App />);
+
+    const fileInput = container.querySelector(".gg-sellbulk input[type='file']") as HTMLInputElement;
+    const csv = "Quantity,Name,Set Code\n1,Lightning Bolt,M10\n";
+    const file = new File([csv], "collection.csv", { type: "text/csv" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // The card shows up without ever touching "Add to my list" -- this is
+    // the exact bug: a seller who uploads a file and moves on used to have
+    // it sit unconverted in the paste box and vanish.
+    await waitFor(() => {
+      expect(container.querySelector(".gg-sellcards")?.textContent).toContain("Lightning Bolt");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /start your submission/i }));
+    await screen.findByText(/tell us about the collection/i);
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await screen.findByText(/your contact information/i);
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: "Jordan" } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: "Vega" } });
+    fireEvent.change(screen.getByLabelText(/^email$/i, { selector: "input[type='email']" }), {
+      target: { value: "jordan@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await screen.findByRole("heading", { name: /review & submit/i });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /submit my collection/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("GG-S-100099")).toBeInTheDocument();
+    });
+
+    const submitCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/sell/submit"));
+    const sentBody = JSON.parse((submitCall![1] as RequestInit).body as string);
+    // The uploaded file's card actually reached the request -- exactly what
+    // used to stay stranded in the paste box and trigger the server's
+    // "tell us what you're selling" error on an otherwise-empty submission.
+    expect(sentBody.cards.length).toBeGreaterThan(0);
+    expect(sentBody.cards[0].cardName).toBe("Lightning Bolt");
+  });
+
+  it("adds pasted text once focus leaves the box, without clicking Add", async () => {
+    mockFetch();
+    const { container } = render(<App />);
+
+    const textarea = container.querySelector(".gg-sellbulk textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "2 Lightning Bolt" } });
+    fireEvent.blur(textarea);
+
+    await waitFor(() => {
+      expect(container.querySelector(".gg-sellcards")?.textContent).toContain("Lightning Bolt");
+    });
+    expect(textarea.value).toBe("");
+  });
+});
+
 describe("contact step validation", () => {
   it("blocks continuing past the contact step without a name and valid email", async () => {
     mockFetch();

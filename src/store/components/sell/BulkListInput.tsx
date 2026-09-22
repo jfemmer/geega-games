@@ -65,8 +65,14 @@ export function BulkListInput({
     }
   }
 
-  async function handleAdd() {
-    const parsed = parseCardListText(text);
+  // Parses + adds a block of text (from the paste box OR a freshly-read
+  // file) and kicks off auto-resolve. Pulled out of handleAdd so a file
+  // upload can go straight into the list without also requiring the
+  // separate "Add to my list" click — a seller who uploads a CSV and then
+  // moves on to the next step has every reason to think that file's
+  // contents are already part of their submission.
+  async function addFromText(rawText: string) {
+    const parsed = parseCardListText(rawText);
     if (parsed.length === 0) return;
     const lines: SellCardLine[] = parsed.map((p) => ({
       localId: newLocalId(),
@@ -86,7 +92,6 @@ export function BulkListInput({
       releasedAt: null,
     }));
     onAddCards(lines);
-    setText("");
 
     const toResolve = lines.filter((l) => l.cardName.trim().length > 0).slice(0, AUTO_RESOLVE_LIMIT);
     if (toResolve.length === 0) return;
@@ -100,10 +105,26 @@ export function BulkListInput({
     setResolving(false);
   }
 
+  async function handleAdd() {
+    const raw = text;
+    setText("");
+    await addFromText(raw);
+  }
+
+  // Typed/pasted text is added the moment focus leaves the box — a seller
+  // who types a list and clicks straight into "Continue" shouldn't lose it
+  // for missing a button most people wouldn't know to look for. Safe to
+  // call unconditionally: addFromText no-ops on empty/whitespace text, and
+  // if this already ran via the "Add to my list" click, the box is empty
+  // by the time blur fires, so there's no double-add.
+  async function handleTextareaBlur() {
+    await handleAdd();
+  }
+
   async function handleFile(file: File) {
     try {
       const content = await file.text();
-      setText((prev) => (prev ? `${prev}\n${content}` : content));
+      await addFromText(content);
     } catch {
       /* the user can still paste manually if reading the file fails */
     }
@@ -118,12 +139,14 @@ export function BulkListInput({
           placeholder={"1 Rhystic Study\n2 Smothering Tithe\n4 Lightning Bolt"}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onBlur={handleTextareaBlur}
         />
       </label>
       <p className="gg-card-meta">
-        One card per line. Quantity, set, condition, and finish are picked up when included —
-        don&rsquo;t worry about a perfect format. A CSV exported from TCGplayer&rsquo;s collection
-        tracker works too.
+        One card per line — added to your list automatically once you click away or upload a
+        file. Quantity, set, condition, and finish are picked up when included — don&rsquo;t
+        worry about a perfect format. A CSV exported from TCGplayer&rsquo;s collection tracker
+        works too.
       </p>
       <div className="gg-sellbulk__actions">
         <input
