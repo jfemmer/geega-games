@@ -31,12 +31,14 @@ import type { BadgeTone } from "../../utils/labels";
 // than leaving staff to guess.
 //
 // "Scan now" and "Check scanner connection" (Phase 2) drive the fi-8170
-// directly via the bridge's WIA scan endpoints — no PaperStream IP window.
-// This is the one part of the whole feature NOT verified against real
-// hardware (no Windows PC or physical scanner in the environment this was
-// built in) — see scanner-bridge/scripts/wia-scan.ps1's own header comment
-// for exactly what's assumed. "Check scanner connection" is the safe,
-// read-only first thing to try: it only lists what WIA can see, never
+// directly via the bridge's scan endpoints, which run NAPS2.Console.exe
+// (a free third-party scanning utility, TWAIN by default) — no PaperStream
+// IP window. An earlier version of this scripted Windows' WIA layer
+// directly; real-hardware testing found that layer doesn't implement
+// Transfer at all for this driver, so it was replaced — see
+// scanner-bridge/README.md section 7 for the full story and current
+// validation status. "Check scanner connection" is the safe, read-only
+// first thing to try: it only lists what the driver reports, never
 // touches the feeder.
 
 const BRIDGE_URL =

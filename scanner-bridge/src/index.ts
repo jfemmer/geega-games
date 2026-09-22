@@ -20,7 +20,9 @@ async function main() {
     allowedOrigin: config.apiBaseUrl,
     sessionStateFile: config.sessionStateFile,
     watchFolder: config.watchFolder,
-    wiaDeviceNameMatch: config.wiaDeviceNameMatch,
+    naps2ConsolePath: config.naps2ConsolePath,
+    scannerDriver: config.scannerDriver,
+    scannerDeviceNameMatch: config.scannerDeviceNameMatch,
     duplex: config.duplex,
     watcherControl,
   });

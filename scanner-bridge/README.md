@@ -159,52 +159,84 @@ file by hand if you'd rather not leave the bridge running to do it.
 ## 7. Scanning directly from the dashboard (no PaperStream)
 
 The admin dashboard's Scan Sessions page has a "Scan now" button that
-drives the fi-8170 directly through its WIA driver (`scripts/wia-scan.ps1`)
-— no PaperStream IP window, no manual profile selection. Scanned pages land
-in `WATCH_FOLDER` exactly like a PaperStream-written file would, so
-everything from pairing onward (sections 2 and 5 above) works completely
-unchanged.
+drives the fi-8170 directly — no PaperStream IP window, no manual profile
+selection. Scanned pages land in `WATCH_FOLDER` exactly like a
+PaperStream-written file would, so everything from pairing onward (sections
+2 and 5 above) works completely unchanged.
 
-**This is the one part of the whole bridge not verified against real
-hardware** — no Windows PC or physical fi-8170 was available while building
-it, only Ricoh's own published driver docs and the long-documented WIA
-scripting API. Everything downstream of "a TIFF lands in the watch folder"
-(pairing, upload, recognition) has its own real, passing tests; only the
-PowerShell script's actual conversation with the scanner hardware is
-untested. **Keep PaperStream IP installed and working as a fallback** —
-don't rely on this exclusively until you've validated it.
+This is driven by [NAPS2](https://www.naps2.com/download), a free,
+actively-maintained third-party scanning utility, via its console mode
+(`NAPS2.Console.exe`) — **install it separately on the scanning PC first**,
+using the default install location if asked. The bridge just shells out to
+it; nothing about your NAPS2 install needs to be configured through its own
+GUI for this to work, though opening NAPS2 once after installing (and
+closing it again) is a reasonable first step before ever trying "Scan now",
+in case it has any one-time first-run setup of its own.
+
+### Why NAPS2, and not scripting Windows' WIA driver directly
+
+An earlier version of this feature scripted Windows' WIA (Image
+Acquisition) layer directly, with no extra software required beyond
+Windows itself. That was tested against the real fi-8170 and found to
+fail: the driver's property read/write worked correctly, but every attempt
+to actually transfer a scanned page — through every documented method,
+every image format, and with item properties confirmed valid — failed
+identically with `E_INVALIDARG` ("The parameter is incorrect."), including
+with no format argument supplied at all. That uniformity, plus the
+device's own status flags confirming paper was loaded throughout testing,
+pointed at this specific driver's WIA support simply not implementing
+Transfer, not at any particular setting being wrong. PaperStream IP
+drives the same hardware successfully, almost certainly via TWAIN (the
+backend Fujitsu/PFU's production scanner software is built around) rather
+than WIA — so this now uses NAPS2, which supports TWAIN directly, instead
+of continuing to fight a layer with no working transfer path on this
+device. `SCANNER_DRIVER` in `.env` defaults to `twain` for this reason;
+`wia` is available to try instead if you ever want to (NAPS2's own WIA
+support goes through a different, lower-level API than the one that
+failed here, so it isn't necessarily affected by the same bug) — see
+`.env.example`.
+
+**The NAPS2 command line itself has not yet been verified against the
+real fi-8170** — its options are confirmed from NAPS2's own source code,
+but no Windows PC or physical scanner was available while wiring this up.
+Everything downstream of "a TIFF lands in the watch folder" (pairing,
+upload, recognition) has its own real, passing tests; only NAPS2's actual
+conversation with the scanner hardware is untested. **Keep PaperStream IP
+installed and working as a fallback** — don't rely on this exclusively
+until you've validated it end-to-end.
 
 ### Validating it on your machine, in order
 
-1. **Check scanner connection** (the button next to "Scan now", or run
-   `scripts\wia-scan.ps1 -OutputFolder . -ListDevicesOnly` from a
-   PowerShell prompt in `scanner-bridge`). This only asks Windows what WIA
-   devices it sees — it never touches the feeder, so there's no risk in
-   trying it. If it doesn't find the fi-8170: confirm it shows up in
-   Windows' own Scan app (Start → search "Windows Fax and Scan" or "Scan")
-   first — if it's not there either, this is a driver/Windows issue, not a
-   Geega one. If it IS there but under a different name than expected, set
-   `WIA_DEVICE_NAME_MATCH` in `.env` to match (see `.env.example`).
+1. **Check scanner connection** (the button next to "Scan now"). This
+   asks NAPS2 to list devices through the configured driver (`twain` by
+   default) — it never touches the feeder, so there's no risk in trying
+   it. If it doesn't find the fi-8170: confirm the device shows up under
+   NAPS2's own device picker (open NAPS2's normal window → "Select
+   Source") first — if it's not there either, this is a driver/NAPS2
+   install issue, not a Geega one. If it IS there but under a different
+   name than expected, set `SCANNER_DEVICE_NAME_MATCH` in `.env` to match.
+   If TWAIN finds nothing at all, try `SCANNER_DRIVER=wia` as a fallback
+   before assuming the device itself is the problem.
 2. **One small real scan.** Load a handful of cards you don't mind
    re-scanning if something's off (not your most valuable ones, the first
-   time) and click "Scan now". Watch the bridge's console output — it
-   narrates every property it sets and why, and prints the exact PowerShell
-   error text if anything fails, not just "it didn't work."
+   time) and click "Scan now". Watch the bridge's console output — with
+   `-v`/verbose on, NAPS2 reports its own progress there, and any failure
+   message comes straight from NAPS2 rather than being invented by the
+   bridge.
 3. **Check the result in Scan Review**, same as any session, but look
    specifically at whether the card sits well-cropped and upright in the
-   image, the way a PaperStream-scanned card does. WIA drivers don't always
-   include the same auto-crop/deskew PaperStream IP provides — if cards
+   image, the way a PaperStream-scanned card does. Not every driver/backend
+   includes the same auto-crop/deskew PaperStream IP provides — if cards
    come through noticeably rougher (skewed, a visible scan-bed border,
    wrong orientation), recognition accuracy will suffer even though nothing
    "failed": say so, with a sample image if you can, since fixing that is a
    separate, real piece of work (real crop/deskew logic in the recognition
    pipeline), not a one-line tweak.
 4. **A full-size batch** only once 2 and 3 look right — front/back pairing
-   depends on WIA producing pages at a steady enough pace (see
-   `WatcherControl` in `watcher.ts`, which deliberately holds off
-   auto-processing for the whole scan's duration specifically so pacing
-   can't split a batch's pairs), which hasn't been exercised at real
-   ADF-batch scale either.
+   depends on pages arriving at a steady enough pace (see `WatcherControl`
+   in `watcher.ts`, which deliberately holds off auto-processing for the
+   whole scan's duration specifically so pacing can't split a batch's
+   pairs), which hasn't been exercised at real ADF-batch scale either.
 
 If a scan fails partway through (a jam, the feeder running dry
 unexpectedly), whatever pages it DID save before failing are still picked

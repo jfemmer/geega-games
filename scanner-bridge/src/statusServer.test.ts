@@ -5,32 +5,32 @@ import path from "node:path";
 import type { Server } from "node:http";
 import { createStatus, startStatusServer, type BridgeStatus } from "./statusServer.js";
 import type { WatcherControl } from "./watcher.js";
-import type { WiaDeviceCheckResult, WiaScanResult } from "./wiaScan.js";
+import type { ScanDeviceCheckResult, ScanResult } from "./naps2Scan.js";
 
 // Real HTTP requests against a real (ephemeral, 127.0.0.1-bound) instance —
 // this is the exact same server the admin dashboard's Scan panel talks to,
 // so its CORS headers and endpoint contracts need to be verified for real,
-// not assumed from reading the handler. wiaScan.ts itself is mocked: the
+// not assumed from reading the handler. naps2Scan.ts itself is mocked: the
 // Node-side wiring (routing, the concurrency guard, suppress/resume calls
 // around a scan, status transitions) is fully testable without real
-// hardware — only the PowerShell script's actual scanner interaction
-// isn't, and that boundary is exactly where the mock sits.
+// hardware — only NAPS2.Console.exe's actual scanner interaction isn't, and
+// that boundary is exactly where the mock sits.
 
-vi.mock("./wiaScan.js", () => ({
-  listWiaDevices: vi.fn(),
-  runWiaScan: vi.fn(),
+vi.mock("./naps2Scan.js", () => ({
+  listScanDevices: vi.fn(),
+  runScan: vi.fn(),
 }));
-const { listWiaDevices, runWiaScan } = await import("./wiaScan.js");
-const mockListWiaDevices = vi.mocked(listWiaDevices);
-const mockRunWiaScan = vi.mocked(runWiaScan);
+const { listScanDevices, runScan } = await import("./naps2Scan.js");
+const mockListScanDevices = vi.mocked(listScanDevices);
+const mockRunScan = vi.mocked(runScan);
 
 const ALLOWED_ORIGIN = "https://geega-games.example";
 
-function deviceResult(overrides: Partial<WiaDeviceCheckResult> = {}): WiaDeviceCheckResult {
-  return { ok: true, message: "listed 1 device(s)", rawOutput: "DEVICE:RICOH fi-8170\n", ...overrides };
+function deviceResult(overrides: Partial<ScanDeviceCheckResult> = {}): ScanDeviceCheckResult {
+  return { ok: true, message: "Listed devices — see raw output below.", rawOutput: "RICOH fi-8170\n", ...overrides };
 }
 
-function scanResult(overrides: Partial<WiaScanResult> = {}): WiaScanResult {
+function scanResult(overrides: Partial<ScanResult> = {}): ScanResult {
   return { ok: true, pagesScanned: 2, message: "2 page(s) scanned", rawOutput: "", ...overrides };
 }
 
@@ -51,14 +51,16 @@ describe("startStatusServer", () => {
     suppressAutoProcess = vi.fn();
     resumeAndProcessNow = vi.fn();
     watcherControl = { suppressAutoProcess, resumeAndProcessNow } as unknown as WatcherControl;
-    mockListWiaDevices.mockReset();
-    mockRunWiaScan.mockReset();
+    mockListScanDevices.mockReset();
+    mockRunScan.mockReset();
 
     server = startStatusServer(0, status, {
       allowedOrigin: ALLOWED_ORIGIN,
       sessionStateFile,
       watchFolder: dir,
-      wiaDeviceNameMatch: "8170",
+      naps2ConsolePath: "C:\\Program Files\\NAPS2\\NAPS2.Console.exe",
+      scannerDriver: "twain",
+      scannerDeviceNameMatch: "8170",
       duplex: true,
       watcherControl,
     });
@@ -125,18 +127,21 @@ describe("startStatusServer", () => {
     expect(body.error).toMatch(/status|session\/end/i);
   });
 
-  it("GET /scan/devices relays the WIA device check result", async () => {
-    mockListWiaDevices.mockResolvedValueOnce(deviceResult());
+  it("GET /scan/devices relays the scan device check result", async () => {
+    mockListScanDevices.mockResolvedValueOnce(deviceResult());
     const res = await fetch(`${baseUrl}/scan/devices`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as WiaDeviceCheckResult;
+    const body = (await res.json()) as ScanDeviceCheckResult;
     expect(body.ok).toBe(true);
-    expect(mockListWiaDevices).toHaveBeenCalledWith("8170");
+    expect(mockListScanDevices).toHaveBeenCalledWith(
+      "C:\\Program Files\\NAPS2\\NAPS2.Console.exe",
+      "twain",
+    );
   });
 
   it("POST /scan/start returns 202 immediately, suppresses auto-processing, then resumes it once the scan finishes", async () => {
-    let resolveScan!: (r: WiaScanResult) => void;
-    mockRunWiaScan.mockReturnValueOnce(new Promise((resolve) => (resolveScan = resolve)));
+    let resolveScan!: (r: ScanResult) => void;
+    mockRunScan.mockReturnValueOnce(new Promise((resolve) => (resolveScan = resolve)));
 
     const res = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
     expect(res.status).toBe(202);
@@ -152,9 +157,9 @@ describe("startStatusServer", () => {
     expect(status.lastError).toBeNull();
   });
 
-  it("POST /scan/start records lastError when the scan script reports failure, but still resumes the watcher", async () => {
-    mockRunWiaScan.mockResolvedValueOnce(
-      scanResult({ ok: false, pagesScanned: 0, message: "No WIA device found matching '*8170*'." }),
+  it("POST /scan/start records lastError when the scan reports failure, but still resumes the watcher", async () => {
+    mockRunScan.mockResolvedValueOnce(
+      scanResult({ ok: false, pagesScanned: 0, message: "No device found matching '8170'." }),
     );
 
     const res = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
@@ -163,16 +168,16 @@ describe("startStatusServer", () => {
     await vi.waitFor(() => {
       expect(resumeAndProcessNow).toHaveBeenCalledTimes(1);
     });
-    expect(status.lastError).toMatch(/no wia device/i);
+    expect(status.lastError).toMatch(/no device found/i);
   });
 
   it("POST /scan/start refuses to start a second scan while one is already running", async () => {
-    mockRunWiaScan.mockReturnValueOnce(new Promise(() => {})); // never resolves during this test
+    mockRunScan.mockReturnValueOnce(new Promise(() => {})); // never resolves during this test
     const first = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
     expect(first.status).toBe(202);
 
     const second = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
     expect(second.status).toBe(409);
-    expect(mockRunWiaScan).toHaveBeenCalledTimes(1);
+    expect(mockRunScan).toHaveBeenCalledTimes(1);
   });
 });

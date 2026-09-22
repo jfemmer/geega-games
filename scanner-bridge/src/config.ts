@@ -45,15 +45,32 @@ export interface BridgeConfig {
    * front. See scanMode below. */
   duplex: boolean;
   scannerName: string;
-  /** Substring to match against WIA device names when scanning directly
-   * (Phase 2 — see scripts/wia-scan.ps1). The real string a WIA driver
-   * reports isn't verified here (could be "RICOH fi-8170", "fi-8170", or
-   * something else entirely, driver-dependent), so this is adjustable
+  /** Path to NAPS2's console executable (NAPS2.Console.exe), which drives
+   * the scanner directly for the dashboard's "Scan now" button — no
+   * PaperStream IP window. NAPS2 is a free, separately-installed
+   * third-party tool (https://www.naps2.com/download); see
+   * scanner-bridge/README.md section 7 for setup and why NAPS2 rather than
+   * scripting WIA directly. Not validated at startup (unlike watchFolder)
+   * since it's only needed for this one optional feature — the bridge's
+   * core watch-and-upload path works fine without it. */
+  naps2ConsolePath: string;
+  /** Scanning backend NAPS2 uses to talk to the driver. "twain" is the
+   * default: confirmed on real hardware that this fi-8170's WIA driver
+   * implements property read/write but not Transfer at all, while
+   * PaperStream IP itself — like most production/ADF scanner vendors'
+   * software — almost certainly drives it via TWAIN, so that's the backend
+   * actually proven to work with this device. "wia" is available to try as
+   * a fallback (NAPS2's own WIA support goes through the modern low-level
+   * WIA2 interfaces, not the legacy Automation Layer that failed here, so
+   * it isn't necessarily subject to the same bug) — see .env.example. */
+  scannerDriver: ScannerDriver;
+  /** Substring to match against scan device names (case-insensitive), in
+   * case more than one scanner is ever registered on this PC. The real
+   * string the driver reports isn't verified here, so this is adjustable
    * without a code change: run the "Check scanner connection" action in
-   * the admin dashboard (or scripts/wia-scan.ps1 -ListDevicesOnly
-   * directly) to see the real name and set this if the "8170" default
-   * doesn't match it. */
-  wiaDeviceNameMatch: string;
+   * the admin dashboard to see the real name and set this if the "8170"
+   * default doesn't match it. */
+  scannerDeviceNameMatch: string;
   /** What the recognition pipeline does for every card in sessions this
    * bridge creates. "both" (default) identifies and grades condition;
    * "card_matching" skips condition (and only needs a front scan);
@@ -71,6 +88,16 @@ export function parseScanMode(value: string): "card_matching" | "condition" | "b
   if (value === "card_matching" || value === "condition" || value === "both") return value;
   throw new Error(
     `Invalid SCAN_MODE "${value}" — must be "card_matching", "condition", or "both".`,
+  );
+}
+
+const SCANNER_DRIVERS = ["twain", "wia", "escl", "sane", "apple"] as const;
+export type ScannerDriver = (typeof SCANNER_DRIVERS)[number];
+
+export function parseScannerDriver(value: string): ScannerDriver {
+  if ((SCANNER_DRIVERS as readonly string[]).includes(value)) return value as ScannerDriver;
+  throw new Error(
+    `Invalid SCANNER_DRIVER "${value}" — must be one of: ${SCANNER_DRIVERS.join(", ")}.`,
   );
 }
 
@@ -109,7 +136,12 @@ export function loadConfig(): BridgeConfig {
     failedFolder,
     duplex: duplexForMode(scanMode),
     scannerName: optional("SCANNER_NAME", "Ricoh fi-8170"),
-    wiaDeviceNameMatch: optional("WIA_DEVICE_NAME_MATCH", "8170"),
+    naps2ConsolePath: optional(
+      "NAPS2_CONSOLE_PATH",
+      "C:\\Program Files\\NAPS2\\NAPS2.Console.exe",
+    ),
+    scannerDriver: parseScannerDriver(optional("SCANNER_DRIVER", "twain")),
+    scannerDeviceNameMatch: optional("SCANNER_DEVICE_NAME_MATCH", "8170"),
     scanMode,
     batchQuietMs: optionalInt("BATCH_QUIET_MS", 5000),
     statusPort: optionalInt("STATUS_PORT", 8787),

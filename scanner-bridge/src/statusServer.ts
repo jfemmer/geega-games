@@ -1,7 +1,7 @@
 import http from "node:http";
 import { existsSync, unlinkSync } from "node:fs";
 import type { WatcherControl } from "./watcher.js";
-import { listWiaDevices, runWiaScan } from "./wiaScan.js";
+import { listScanDevices, runScan } from "./naps2Scan.js";
 
 // A local status + control endpoint — bound to 127.0.0.1 ONLY, never
 // 0.0.0.0, so it is never reachable from the network (Part 3's explicit
@@ -19,12 +19,12 @@ import { listWiaDevices, runWiaScan } from "./wiaScan.js";
 // already-resolved session id regardless of when this fires.
 //
 // GET /scan/devices and POST /scan/start (Phase 2) drive the scanner
-// directly via scripts/wia-scan.ps1 — no PaperStream IP window. Scanned
-// pages land in WATCH_FOLDER, so the existing watcher/pairing/upload/
-// recognition pipeline in watcher.ts handles them completely unchanged;
-// this file's job is just process lifecycle (don't let two scans overlap,
-// suppress the watcher's own auto-processing for the duration — see
-// WatcherControl in watcher.ts for why) and status reporting.
+// directly via NAPS2 (naps2Scan.ts, NAPS2.Console.exe) — no PaperStream IP
+// window. Scanned pages land in WATCH_FOLDER, so the existing watcher/
+// pairing/upload/recognition pipeline in watcher.ts handles them completely
+// unchanged; this file's job is just process lifecycle (don't let two scans
+// overlap, suppress the watcher's own auto-processing for the duration —
+// see WatcherControl in watcher.ts for why) and status reporting.
 
 export type BridgeState = "starting" | "watching" | "uploading" | "scanning" | "error";
 
@@ -67,13 +67,17 @@ export interface StatusServerOptions {
   allowedOrigin: string;
   /** Path to the persisted session id file (config.sessionStateFile). */
   sessionStateFile: string;
-  /** Where a direct WIA scan's pages get saved (config.watchFolder) — the
-   * SAME folder the watcher already watches. */
+  /** Where a direct scan's pages get saved (config.watchFolder) — the SAME
+   * folder the watcher already watches. */
   watchFolder: string;
-  /** config.wiaDeviceNameMatch. */
-  wiaDeviceNameMatch: string;
-  /** config.duplex — same front/back-pairing decision a WIA-driven scan
-   * uses as a PaperStream-driven one. */
+  /** config.naps2ConsolePath. */
+  naps2ConsolePath: string;
+  /** config.scannerDriver. */
+  scannerDriver: string;
+  /** config.scannerDeviceNameMatch. */
+  scannerDeviceNameMatch: string;
+  /** config.duplex — same front/back-pairing decision a direct scan uses as
+   * a PaperStream-driven one. */
   duplex: boolean;
   /** Returned by startWatcher() — lets a direct scan hold off the
    * watcher's own auto-processing for its duration. */
@@ -126,7 +130,7 @@ export function startStatusServer(
     if (req.method === "GET" && req.url === "/scan/devices") {
       // Diagnostic only — never touches the feeder. The safe first thing to
       // try, before ever attempting a real scan.
-      listWiaDevices(options.wiaDeviceNameMatch)
+      listScanDevices(options.naps2ConsolePath, options.scannerDriver)
         .then((result) => {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
@@ -156,28 +160,30 @@ export function startStatusServer(
       res.writeHead(202, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ started: true }));
 
-      // Unique per run so a WIA batch's files can never collide with
-      // leftover PaperStream-written ones sitting in the same folder.
-      const filePrefix = `wia_${Date.now()}`;
+      // Unique per run so a direct-scan batch's files can never collide
+      // with leftover PaperStream-written ones sitting in the same folder.
+      const filePrefix = `scan_${Date.now()}`;
       options.watcherControl.suppressAutoProcess();
 
-      runWiaScan({
+      runScan({
+        consolePath: options.naps2ConsolePath,
         outputFolder: options.watchFolder,
         filePrefix,
-        deviceNameMatch: options.wiaDeviceNameMatch,
+        driver: options.scannerDriver,
+        deviceNameMatch: options.scannerDeviceNameMatch,
         duplex: options.duplex,
         resolution: 600,
       })
         .then((result) => {
           if (!result.ok) {
             status.lastError = result.message;
-            console.error(`[geega-scanner-bridge] WIA scan reported an error: ${result.message}`);
+            console.error(`[geega-scanner-bridge] Scan reported an error: ${result.message}`);
           }
-          console.log(`[geega-scanner-bridge] WIA scan finished: ${result.pagesScanned} page(s) saved.`);
+          console.log(`[geega-scanner-bridge] Scan finished: ${result.pagesScanned} page(s) saved.`);
         })
         .catch((err) => {
           status.lastError = err instanceof Error ? err.message : String(err);
-          console.error("[geega-scanner-bridge] WIA scan threw unexpectedly:", err);
+          console.error("[geega-scanner-bridge] Scan threw unexpectedly:", err);
         })
         .finally(() => {
           // Fallback for "nothing was saved" — processBatch()'s own finally

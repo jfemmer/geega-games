@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { duplexForMode, parseScanMode } from "./config.js";
+import { duplexForMode, parseScanMode, parseScannerDriver } from "./config.js";
 
 describe("parseScanMode", () => {
   it("accepts each valid mode", () => {
@@ -21,5 +21,19 @@ describe("duplexForMode", () => {
   it("condition and both need front+back — duplex pairing", () => {
     expect(duplexForMode("condition")).toBe(true);
     expect(duplexForMode("both")).toBe(true);
+  });
+});
+
+describe("parseScannerDriver", () => {
+  it("accepts each driver NAPS2 supports", () => {
+    expect(parseScannerDriver("twain")).toBe("twain");
+    expect(parseScannerDriver("wia")).toBe("wia");
+    expect(parseScannerDriver("escl")).toBe("escl");
+    expect(parseScannerDriver("sane")).toBe("sane");
+    expect(parseScannerDriver("apple")).toBe("apple");
+  });
+
+  it("rejects an unrecognized value rather than silently defaulting", () => {
+    expect(() => parseScannerDriver("magic")).toThrow(/Invalid SCANNER_DRIVER/);
   });
 });
