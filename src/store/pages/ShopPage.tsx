@@ -24,7 +24,7 @@ export default function ShopPage() {
   useSEO({
     title: "Shop Magic: The Gathering Singles Online | Geega Games",
     description:
-      "Browse thousands of Magic: The Gathering singles — search by card name, set, or rarity. Honest condition grading, secure checkout, and fast shipping nationwide.",
+      "Browse hand-picked Magic: The Gathering singles — search by card name, set, or rarity. Honest condition grading, secure checkout, and fast shipping nationwide.",
     path: "/shop",
   });
 

@@ -3968,6 +3968,38 @@
   color: var(--gg-purple);
   text-decoration: none;
 }
+/* "Shop by Set" index tiles. */
+.gg-setgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.gg-settile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+.gg-settile:hover {
+  box-shadow: 0 6px 20px rgba(76, 29, 149, 0.14);
+  transform: translateY(-2px);
+  border-color: rgba(76, 29, 149, 0.3);
+}
+.gg-settile:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+}
+.gg-settile strong {
+  color: var(--gg-ink);
+  font-size: 1rem;
+}
 .gg-breadcrumbs a:hover {
   text-decoration: underline;
 }

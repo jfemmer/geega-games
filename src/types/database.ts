@@ -3204,6 +3204,15 @@ export type Database = {
           card_name: string
         }[]
       }
+      shop_sets_with_counts: {
+        Args: never
+        Returns: {
+          card_count: number
+          min_price_cents: number
+          set_code: string
+          set_name: string
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       slugify_card_name: { Args: { p_name: string }; Returns: string }

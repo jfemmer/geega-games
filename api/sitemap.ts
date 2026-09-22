@@ -22,6 +22,7 @@ const MAX_CARD_URLS = 5000;
 const STATIC_PAGES: { path: string; changefreq: string; priority: string; lastmod?: string }[] = [
   { path: "/", changefreq: "daily", priority: "1.0" },
   { path: "/shop", changefreq: "daily", priority: "0.9" },
+  { path: "/shop/sets", changefreq: "weekly", priority: "0.7" },
   { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9" },
   { path: "/sell", changefreq: "weekly", priority: "0.7" },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4" },
@@ -83,6 +84,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch (err) {
     console.error("[/sitemap.xml] DB lookup failed, serving static pages only:", err);
+  }
+
+  // Set pages: only ones with real depth (2+ cards) are worth asking Google
+  // to crawl on their own — a single-card set page is still reachable from
+  // /shop/sets for a real visitor, just not submitted as a dedicated URL.
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.rpc("shop_sets_with_counts");
+    if (error) throw error;
+    for (const row of (data ?? []) as { set_code: string; card_count: number }[]) {
+      if (row.card_count < 2) continue;
+      entries.push(urlEntry(`${SITE_URL}/shop/set/${row.set_code.toLowerCase()}`, "weekly", "0.5"));
+    }
+  } catch (err) {
+    console.error("[/sitemap.xml] set lookup failed, omitting set pages:", err);
   }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>\n`;

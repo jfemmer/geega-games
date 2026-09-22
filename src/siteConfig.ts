@@ -28,6 +28,7 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: "Shop",
     links: [
       { label: "Browse catalog", href: "#catalog" },
+      { label: "Shop by set", href: "/shop/sets" },
       { label: "Get the launch notice", href: "#launch" },
     ],
   },

@@ -8,6 +8,8 @@ import { CartProvider } from "./store/lib/CartContext";
 import { WishlistProvider } from "./store/lib/WishlistContext";
 import Header from "./store/components/Header";
 import ShopPage from "./store/pages/ShopPage";
+import ShopSetsPage from "./store/pages/ShopSetsPage";
+import ShopSetPage from "./store/pages/ShopSetPage";
 import CardDetailPage from "./store/pages/CardDetailPage";
 import {
   LoginPage,
@@ -37,6 +39,9 @@ function Routes() {
 
   if (path === "/" || path === "") return <HomePage />;
   if (path === "/shop") return <ShopPage />;
+  if (path === "/shop/sets") return <ShopSetsPage />;
+  const setMatch = matchRoute("/shop/set/:code", path);
+  if (setMatch) return <ShopSetPage code={setMatch.code} />;
   const cardMatch = matchRoute("/shop/card/:slug", path);
   if (cardMatch) return <CardDetailPage slug={cardMatch.slug} />;
   if (path === "/login") return <LoginPage />;
