@@ -36,7 +36,18 @@ export const CARD_ASPECT_RATIO = 2.5 / 3.5; // width / height, standard poker ca
 /** Named crop regions, as fractions of the full (already-trimmed) card. */
 export const REGIONS: Record<string, Rect> = {
   full: { x: 0, y: 0, width: 1, height: 1 },
-  title: { x: 0.04, y: 0.025, width: 0.92, height: 0.075 },
+  // Verified against a real scan (Vampire Nighthawk, foil DCI promo), not
+  // just measured on a diagram: the original {y:0.025, width:0.92} crop
+  // caught the card's own outer black/foil border at the top (OCR
+  // confidence 0 - empty read, every preprocessing variant) and the mana
+  // cost symbols at the right (real, correct "Vampire Nighthawk" text
+  // present in the OCR output, but with enough symbol-noise dragging
+  // overall confidence to 47, just under the 0.55 usable threshold).
+  // Shifting the top down past the border and narrowing the width to stop
+  // before the mana cost - re-tested against the same real image with the
+  // actual OCR provider, all 5 preprocessing variants - clears the
+  // threshold outright (confidence 64, clean "Vampire Nighthawk" read).
+  title: { x: 0.04, y: 0.045, width: 0.7, height: 0.075 },
   art: { x: 0.06, y: 0.1, width: 0.88, height: 0.44 },
   typeLine: { x: 0.04, y: 0.545, width: 0.92, height: 0.055 },
   // Set symbol sits at the right end of the type line on modern frames.
