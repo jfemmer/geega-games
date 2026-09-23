@@ -120,4 +120,27 @@ describe("candidatesByName", () => {
     const admin = fakeAdmin(async () => ({ data: null, error: { message: "boom" } }));
     expect(await candidatesByName(admin, "Lightning Bolt")).toEqual([]);
   });
+
+  it("passes setCode through as p_set_code when given (set-first narrowing)", async () => {
+    let capturedArgs: unknown;
+    const admin = fakeAdmin(async (_fn, args) => {
+      capturedArgs = args;
+      return { data: [], error: null };
+    });
+
+    await candidatesByName(admin, "Lightning Bolt", 5, "mh2");
+    expect(capturedArgs).toEqual({ p_name: "Lightning Bolt", p_limit: 5, p_set_code: "mh2" });
+  });
+
+  it("omits p_set_code entirely (not even null) when no set is known yet", async () => {
+    let capturedArgs: unknown;
+    const admin = fakeAdmin(async (_fn, args) => {
+      capturedArgs = args;
+      return { data: [], error: null };
+    });
+
+    await candidatesByName(admin, "Lightning Bolt");
+    expect(capturedArgs).toEqual({ p_name: "Lightning Bolt", p_limit: 30 });
+    expect(capturedArgs).not.toHaveProperty("p_set_code");
+  });
 });

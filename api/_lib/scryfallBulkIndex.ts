@@ -77,24 +77,31 @@ export async function candidatesBySet(
 }
 
 /**
- * Fuzzy name search across every printing — real pg_trgm similarity search
+ * Fuzzy name search — real pg_trgm similarity search
  * (search_scryfall_bulk_by_name_trgm, index-accelerated by the existing
- * card_name trigram index), not a substring match. This is the fallback for
- * pre-M15 cards with no machine-readable set code, or when set/collector
- * candidates don't verify — the path most exposed to OCR noise, so it has
- * to tolerate a misread character (Tesseract's classic 0/O, B/8 mix-ups)
- * rather than require an exact substring.
+ * card_name trigram index), not a substring match. Tolerates a misread
+ * character (Tesseract's classic 0/O, B/8 mix-ups) rather than requiring an
+ * exact substring.
+ *
+ * Pass `setCode` once the set is already known (from set-symbol hashing —
+ * see recognition/setSymbol.ts's identifySetFromSymbol — or a parsed
+ * collector line) to search only that set's ~100-400 cards instead of all
+ * 118k+ printings: faster, and more accurate, since a same-named card from
+ * the WRONG set can no longer outrank the right one on similarity-score
+ * noise alone. Omit it for the original unscoped global search.
  */
 export async function candidatesByName(
   admin: Admin,
   name: string,
   limit = 30,
+  setCode?: string,
 ): Promise<CardPrinting[]> {
   const cleaned = name.trim();
   if (!cleaned) return [];
   const { data, error } = await admin.rpc("search_scryfall_bulk_by_name_trgm", {
     p_name: cleaned,
     p_limit: limit,
+    ...(setCode ? { p_set_code: setCode } : {}),
   });
   if (error || !data) return [];
   return (data as BulkRow[]).map(toCardPrinting);

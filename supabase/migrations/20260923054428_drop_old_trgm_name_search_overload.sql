@@ -1,0 +1,11 @@
+-- create or replace function identifies a function by its FULL parameter
+-- signature, not just its name — the prior migration's added p_set_code
+-- parameter created a SECOND overload rather than replacing the original,
+-- leaving both search_scryfall_bulk_by_name_trgm(text, integer) and
+-- (text, integer, text) live simultaneously. That's a real regression
+-- risk: a 2-argument RPC call (every existing caller) becomes ambiguous
+-- between two valid overloads. Drop the old one so only the new version
+-- (backward-compatible in behavior when p_set_code is omitted) remains.
+-- Verified live: both the old 2-argument calling convention and the new
+-- 3-argument one resolve correctly and return the expected rows.
+drop function if exists public.search_scryfall_bulk_by_name_trgm(text, integer);

@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "email:dev": "email dev --dir api/_lib/emails",
     "scryfall:refresh": "tsx scripts/refreshScryfallBulkIndex.ts",
+    "scryfall:refresh-symbols": "tsx scripts/refreshSetSymbolCache.ts",
     "benchmark": "tsx scripts/benchmarkRecognition.ts"
   },
   "dependencies": {

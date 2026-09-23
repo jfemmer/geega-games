@@ -16,7 +16,7 @@ import {
   candidatesByName,
 } from "../scryfallBulkIndex.js";
 import { verifyCandidatesVisually, isVisuallyVerified, type VisualVerification } from "./verification.js";
-import { matchSetSymbol, type SetSymbolResult } from "./setSymbol.js";
+import { identifySetFromSymbol, type SetSymbolResult } from "./setSymbol.js";
 import { analyzeCondition, type ConditionAnalysis } from "./condition.js";
 import { RECOGNITION_THRESHOLDS } from "./config.js";
 
@@ -53,15 +53,42 @@ export interface ScoredCandidate {
   visual?: VisualVerification;
 }
 
-/** Era-adaptive candidate generation (Part 7). Tries the strongest signal
- * for a modern card first; falls back through progressively weaker signals
- * exactly like the mock's/live resolver's own "try id, then set+collector,
- * then name+set, then name" cascade — grounded in WHAT WAS ACTUALLY READ
- * (a modern collector line either parsed or it didn't) rather than a
- * separate, speculative "guess the decade from the frame" classifier. */
+/**
+ * Set-first, era-adaptive candidate generation (Part 7 / Part 7.1).
+ * setIdentification comes from identifySetFromSymbol — computed from the
+ * scanned set-symbol shape ALONE, independent of OCR — so it's available
+ * even on a card where OCR reads nothing usable at all. Tries the
+ * strongest, most NARROWED signal first, falling back progressively:
+ *
+ *   1. OCR read a complete, machine-readable modern collector line.
+ *   2. The symbol identified a set AND OCR read a collector NUMBER (even
+ *      though the set-code letters themselves didn't parse — common when
+ *      the collector-line crop catches noise/damage/an unfamiliar footer
+ *      layout but the number portion still reads).
+ *   3. The symbol identified a set AND OCR read a usable name: search
+ *      WITHIN that set (~100-400 cards) instead of the whole catalog —
+ *      faster, and a same-named card from the WRONG set can no longer
+ *      outrank the right one on trigram-similarity noise alone.
+ *   4. A usable name, set unknown: the original global fuzzy search.
+ *   5. The symbol identified a set but OCR found NOTHING usable at all:
+ *      fall back to every card in that ONE set and let visual
+ *      verification alone do the work, rather than giving up with zero
+ *      candidates — this is the case that used to have no path forward.
+ *   6. Nothing readable, symbol unidentified either: zero candidates,
+ *      needs_manual_match, never a guess.
+ *
+ * Each step falls through to the next automatically when it finds nothing
+ * (candidates.length === 0) — an incorrect symbol-based set guess is
+ * self-correcting, not a hazard: it just wastes a cheap, purely-local
+ * query before landing on the same result the OCR-only cascade always
+ * reached. combineAndDecide's thresholds are unchanged regardless of which
+ * step produced the candidates, so none of this loosens precision — it
+ * only changes which (and how many) candidates make it to that decision.
+ */
 async function generateCandidates(
   admin: Admin,
   ocr: Awaited<ReturnType<typeof ocrCardFields>>,
+  setIdentification: SetSymbolResult | null,
 ): Promise<{ candidates: CardPrinting[]; era: RecognitionEra; setCodeGuess: string | null; collectorGuess: string | null }> {
   const collectorLine =
     ocr.collectorInfo.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
@@ -73,7 +100,9 @@ async function generateCandidates(
       ? ocr.title.text
       : "";
 
-  // Modern: a machine-readable collector line was actually found.
+  const symbolSetCode = setIdentification?.best?.setCode ?? null;
+
+  // 1. Modern: a machine-readable collector line was actually found.
   if (collectorLine.setCode && collectorLine.collectorNumber) {
     const bySetCollector = await candidatesBySetAndCollector(
       admin,
@@ -91,9 +120,39 @@ async function generateCandidates(
     }
   }
 
-  // Exodus-to-premodern: no set-code text, but a collector number and/or
-  // name were read. Narrow by name first (broad but usually small per-name
-  // result count), let visual + set-symbol verification do the real work.
+  // 2. Set known from the symbol + a collector number OCR did read, even
+  // without the set-code letters parsing.
+  if (symbolSetCode && collectorLine.collectorNumber) {
+    const bySymbolCollector = await candidatesBySetAndCollector(
+      admin,
+      symbolSetCode,
+      collectorLine.collectorNumber,
+    );
+    if (bySymbolCollector.length > 0) {
+      return {
+        candidates: bySymbolCollector,
+        era: "modern",
+        setCodeGuess: symbolSetCode,
+        collectorGuess: collectorLine.collectorNumber,
+      };
+    }
+  }
+
+  // 3. Set known from the symbol + a usable name: narrowed search.
+  if (symbolSetCode && nameText) {
+    const bySymbolName = await candidatesByName(admin, nameText, 30, symbolSetCode);
+    if (bySymbolName.length > 0) {
+      return {
+        candidates: bySymbolName,
+        era: collectorLine.collectorNumber ? "exodus_to_premodern" : "vintage",
+        setCodeGuess: symbolSetCode,
+        collectorGuess: collectorLine.collectorNumber,
+      };
+    }
+  }
+
+  // 4. Exodus-to-premodern (existing): set unknown, but a name was read —
+  // global search, let visual + set-symbol verification narrow it down.
   if (nameText) {
     const byName = await candidatesByName(admin, nameText);
     if (byName.length > 0) {
@@ -106,15 +165,58 @@ async function generateCandidates(
     }
   }
 
-  // Vintage/no readable signal at all: nothing to search on. The pipeline
-  // returns zero candidates — needs_manual_match, never a guess.
+  // 5. Set known from the symbol, but no usable text signal at all (OCR
+  // totally failed — foil glare, a font this pipeline reads poorly, an
+  // unfamiliar frame layout). Fall back to every card in that ONE set and
+  // let visual verification alone do the work, rather than giving up.
+  if (symbolSetCode) {
+    const wholeSet = await candidatesBySet(admin, symbolSetCode);
+    if (wholeSet.length > 0) {
+      return {
+        candidates: wholeSet,
+        era: "unknown",
+        setCodeGuess: symbolSetCode,
+        collectorGuess: collectorLine.collectorNumber,
+      };
+    }
+  }
+
+  // 6. Vintage/no readable signal at all: nothing to search on. The
+  // pipeline returns zero candidates — needs_manual_match, never a guess.
   return { candidates: [], era: "unknown", setCodeGuess: null, collectorGuess: null };
+}
+
+/**
+ * Whether text OCR'd from the collector-info region looks like it's
+ * naming this candidate's artist — the region's PRIMARY job is the modern
+ * collector line (parseCollectorLine), but on cards without one (older
+ * frames — see imageRegions.ts's REGIONS comment), that same crop often
+ * catches the artist credit instead of finding nothing, per the real
+ * "MIKLOS LIGETI" read that motivated this: text that doesn't parse as a
+ * collector line was being discarded entirely even when it was a perfectly
+ * real, usable signal. Matches on the artist's SURNAME (last word) at
+ * minimum, since OCR noise around a full name (initials, a small credit
+ * icon before/after) is common but the surname alone is still specific —
+ * "Ligeti" isn't going to coincidentally appear in OCR noise the way a
+ * single short word might.
+ */
+function artistCreditMatches(possibleArtistText: string | undefined, artist: string | null): boolean {
+  if (!possibleArtistText || !artist) return false;
+  const cleaned = possibleArtistText
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length < 3) return false;
+  const surname = artist.toLowerCase().trim().split(/\s+/).pop() ?? "";
+  return surname.length >= 3 && cleaned.includes(surname);
 }
 
 export function scoreAndRank(
   candidates: CardPrinting[],
   visualResults: VisualVerification[],
   nameText: string,
+  possibleArtistText?: string,
 ): ScoredCandidate[] {
   const visualByCandidate = new Map(visualResults.map((v) => [v.printing.scryfallId, v]));
   const nameLower = nameText.trim().toLowerCase();
@@ -124,6 +226,7 @@ export function scoreAndRank(
       const visual = visualByCandidate.get(printing.scryfallId);
       const hasNameSignal = !!nameLower;
       const nameMatches = hasNameSignal && printing.cardName.toLowerCase().includes(nameLower);
+      const artistMatches = artistCreditMatches(possibleArtistText, printing.artist);
 
       // Visual verification (direct pixel comparison against THIS candidate's
       // actual Scryfall images) is the strongest available signal, so it
@@ -131,21 +234,28 @@ export function scoreAndRank(
       // corroborating/conflicting adjustment on top. Without any visual
       // signal at all, confidence is capped well under the auto-match bar —
       // a candidate reached only via text should never auto-match on its own
-      // (Part 6.4).
+      // (Part 6.4). Artist-credit agreement is a smaller bonus still, and
+      // NEVER a penalty on its own for not matching: the same OCR text
+      // usually already had its primary shot at being a collector line, so
+      // "doesn't look like the artist either" isn't real evidence against a
+      // candidate the way a genuine name conflict is.
       let confidence: number;
       if (visual) {
         confidence = visual.combinedSimilarity;
         if (nameMatches) confidence += 0.05;
         else if (hasNameSignal) confidence -= 0.08; // name was read but conflicts — real evidence against this candidate
+        if (artistMatches) confidence += 0.03;
       } else {
         confidence = 0.3; // base: reached candidate stage at all
         if (nameMatches) confidence += 0.15;
+        if (artistMatches) confidence += 0.05;
       }
       confidence = Math.max(0, Math.min(0.99, confidence)); // never claim absolute certainty — Part 20
 
       const reasonParts = [
         nameMatches ? "name agrees" : hasNameSignal ? "name conflicts" : "name unverified",
         visual ? `visual ${visual.combinedSimilarity.toFixed(2)}` : "no visual signal",
+        ...(artistMatches ? ["artist credit agrees"] : []),
       ];
       return { printing, confidence, reason: reasonParts.join(", "), visual };
     })
@@ -237,15 +347,26 @@ export async function runRecognitionPipeline(
     warnings.push("No front scan — identification requires a front image.");
   }
 
-  const ocr = frontNormalized
-    ? await ocrCardFields(ocrProvider, frontNormalized.buffer, frontNormalized.width, frontNormalized.height)
-    : {
-        title: { text: "", confidence: 0, winningVariant: "none" },
-        collectorInfo: { text: "", confidence: 0, winningVariant: "none" },
-      };
+  // OCR and set-symbol identification are fully independent of each other
+  // (both only need the normalized front image) — run them together rather
+  // than paying their latency serially. identifySetFromSymbol is what lets
+  // candidate generation below narrow to ONE set even on a card where OCR
+  // finds nothing usable at all (see generateCandidates' own comment).
+  const [ocr, setIdentification] = frontNormalized
+    ? await Promise.all([
+        ocrCardFields(ocrProvider, frontNormalized.buffer, frontNormalized.width, frontNormalized.height),
+        identifySetFromSymbol(admin, frontNormalized.buffer, frontNormalized.width, frontNormalized.height),
+      ])
+    : ([
+        {
+          title: { text: "", confidence: 0, winningVariant: "none" },
+          collectorInfo: { text: "", confidence: 0, winningVariant: "none" },
+        },
+        null,
+      ] as const);
 
   const { candidates, era, setCodeGuess, collectorGuess } = frontNormalized
-    ? await generateCandidates(admin, ocr)
+    ? await generateCandidates(admin, ocr, setIdentification)
     : { candidates: [], era: "unknown" as RecognitionEra, setCodeGuess: null, collectorGuess: null };
 
   const visualResults =
@@ -259,20 +380,17 @@ export async function runRecognitionPipeline(
         )
       : [];
 
-  const ranked = scoreAndRank(candidates, visualResults, ocr.title.text);
-  const { autoMatch, reason } = combineAndDecide(ranked);
+  // collectorInfo's OCR text, when usable, doubles as a possible artist
+  // credit read on cards with no modern collector line (see
+  // artistCreditMatches' own comment) — a small corroborating signal,
+  // never a name-conflict-style penalty.
+  const possibleArtistText =
+    ocr.collectorInfo.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
+      ? ocr.collectorInfo.text
+      : undefined;
 
-  let setSymbol: SetSymbolResult | null = null;
-  if (frontNormalized && ranked.length > 0) {
-    const candidateSetCodes = Array.from(new Set(ranked.slice(0, 10).map((r) => r.printing.setCode)));
-    setSymbol = await matchSetSymbol(
-      admin,
-      frontNormalized.buffer,
-      frontNormalized.width,
-      frontNormalized.height,
-      candidateSetCodes,
-    );
-  }
+  const ranked = scoreAndRank(candidates, visualResults, ocr.title.text, possibleArtistText);
+  const { autoMatch, reason } = combineAndDecide(ranked);
 
   const condition = doCondition ? await analyzeCondition(frontNormalized, backNormalized) : null;
 
@@ -307,14 +425,14 @@ export async function runRecognitionPipeline(
       name: ocr.title.confidence,
       collectorNumber: ocr.collectorInfo.confidence,
       setCode: ocr.collectorInfo.confidence,
-      setSymbol: setSymbol?.best?.confidence ?? 0,
+      setSymbol: setIdentification?.best?.confidence ?? 0,
       exactPrinting: overallConfidence,
       overallIdentity: overallConfidence,
     },
     warnings,
     era,
     decisionReason: reason,
-    setSymbolMatch: setSymbol?.best ?? null,
+    setSymbolMatch: setIdentification?.best ?? null,
     visualSimilarity: autoMatch?.visual?.combinedSimilarity ?? ranked[0]?.visual?.combinedSimilarity ?? null,
     ocrRawText: { title: ocr.title.text, collectorInfo: ocr.collectorInfo.text },
     normalizedDimensions: frontNormalized

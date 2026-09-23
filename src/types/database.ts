@@ -3283,7 +3283,7 @@ export type Database = {
         }[]
       }
       search_scryfall_bulk_by_name_trgm: {
-        Args: { p_limit?: number; p_name: string }
+        Args: { p_limit?: number; p_name: string; p_set_code?: string }
         Returns: {
           border_color: string | null
           bulk_updated_at: string

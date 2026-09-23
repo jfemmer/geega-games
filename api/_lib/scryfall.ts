@@ -251,6 +251,33 @@ export function scryfallSet(code: string): Promise<ScryfallSet> {
   return scryfallGet<ScryfallSet>(`/sets/${encodeURIComponent(code.toLowerCase())}`);
 }
 
+interface ScryfallSetsList {
+  object: "list";
+  has_more: boolean;
+  next_page?: string;
+  data: ScryfallSet[];
+}
+
+/**
+ * Every set Scryfall knows about — used by scripts/refreshSetSymbolCache.ts
+ * to bulk-populate scryfall_set_symbol_cache in one pass, rather than
+ * lazily hashing one set the first time a scan happens to identify it. In
+ * practice Scryfall returns the whole list (~1000 sets) on a single page,
+ * but this still walks has_more/next_page defensively, same as
+ * scryfallSearch's pagination, rather than assuming that never changes.
+ */
+export async function listAllScryfallSets(): Promise<ScryfallSet[]> {
+  const sets: ScryfallSet[] = [];
+  let nextUrl: string | null = `${BASE}/sets`;
+  while (nextUrl) {
+    const list: ScryfallSetsList = await scryfallGetUrl<ScryfallSetsList>(nextUrl);
+    sets.push(...(list.data ?? []));
+    nextUrl = list.has_more && list.next_page ? list.next_page : null;
+    if (nextUrl) await sleep(PAGE_DELAY_MS);
+  }
+  return sets;
+}
+
 // ------------------------------------------------------------------------- //
 // Exact-printing resolution (multi-signal, high accuracy)
 // ------------------------------------------------------------------------- //
