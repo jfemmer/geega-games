@@ -15,7 +15,7 @@
   ],
   "functions": {
     "api/admin/scans/[scanId]/recognize.ts": {
-      "includeFiles": "api/_lib/ocr/data/**"
+      "includeFiles": "{api/_lib/ocr/data/**,node_modules/tesseract.js-core/**}"
     }
   }
 }

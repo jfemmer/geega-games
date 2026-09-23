@@ -7,10 +7,19 @@ import type { OcrHint, OcrProvider, OcrTextResult } from "./types.js";
 // key, no account, no per-call billing, ever. Trained-language data is
 // bundled in ./data/eng.traineddata.gz rather than fetched from a CDN at
 // runtime, so recognition needs no external network call and has no
-// per-invocation download latency on a cold start. (vercel.json's
-// `includeFiles` ships that data file with the recognize function, since
-// Vercel's static import tracing can't see it — it's loaded via a dynamic
-// path deep inside tesseract.js, not a JS import.)
+// per-invocation download latency on a cold start.
+//
+// TWO separate sets of files here are loaded via a dynamic path deep inside
+// tesseract.js/tesseract.js-core, not a static JS import — Vercel's file
+// tracer can't see either one, so BOTH must be listed in vercel.json's
+// `includeFiles` for this function or the deployed bundle silently omits
+// them: this file's own ./data/*.traineddata.gz, AND tesseract.js-core's
+// own .wasm engine binaries (node_modules/tesseract.js-core/**). Missing
+// the second one doesn't fail fast — every real OCR call hangs until
+// Vercel's platform-level function timeout kills it (confirmed against
+// production logs: "ENOENT ... tesseract-core-relaxedsimd.wasm", ending in
+// "Task timed out after 300 seconds", not a fast, catchable error), so if
+// OCR ever seems to hang rather than error, check this first.
 //
 // Verified during development against realistic simulated crops (a card
 // title and a dense collector-line string) with 90%+ Tesseract-reported
