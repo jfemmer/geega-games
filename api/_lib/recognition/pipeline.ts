@@ -313,6 +313,7 @@ export async function runRecognitionPipeline(
     decisionReason: reason,
     setSymbolMatch: setSymbol?.best ?? null,
     visualSimilarity: autoMatch?.visual?.combinedSimilarity ?? ranked[0]?.visual?.combinedSimilarity ?? null,
+    ocrRawText: { title: ocr.title.text, collectorInfo: ocr.collectorInfo.text },
   };
 
   return {

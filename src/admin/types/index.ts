@@ -480,6 +480,11 @@ export interface CardRecognitionResult {
   setSymbolMatch?: { setCode: string; confidence: number } | null;
   /** Combined visual similarity (full-card + art) to the accepted/best candidate. */
   visualSimilarity?: number | null;
+  /** Raw OCR text actually read for each region, before parseCollectorLine()
+   * or the usable-confidence gate — ground truth for diagnosing WHY
+   * detectedName/detectedSetCode/detectedCollectorNumber came back null or
+   * wrong, without re-deriving it from a screenshot every time. */
+  ocrRawText?: { title: string; collectorInfo: string };
 }
 
 /* ------------------------------------------------------------------ *
