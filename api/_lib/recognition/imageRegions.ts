@@ -36,18 +36,31 @@ export const CARD_ASPECT_RATIO = 2.5 / 3.5; // width / height, standard poker ca
 /** Named crop regions, as fractions of the full (already-trimmed) card. */
 export const REGIONS: Record<string, Rect> = {
   full: { x: 0, y: 0, width: 1, height: 1 },
-  // Verified against a real scan (Vampire Nighthawk, foil DCI promo), not
-  // just measured on a diagram: the original {y:0.025, width:0.92} crop
-  // caught the card's own outer black/foil border at the top (OCR
-  // confidence 0 - empty read, every preprocessing variant) and the mana
-  // cost symbols at the right (real, correct "Vampire Nighthawk" text
-  // present in the OCR output, but with enough symbol-noise dragging
-  // overall confidence to 47, just under the 0.55 usable threshold).
-  // Shifting the top down past the border and narrowing the width to stop
-  // before the mana cost - re-tested against the same real image with the
-  // actual OCR provider, all 5 preprocessing variants - clears the
-  // threshold outright (confidence 64, clean "Vampire Nighthawk" read).
-  title: { x: 0.04, y: 0.045, width: 0.7, height: 0.075 },
+  // Tuned against two real scans of very different cards (Vampire Nighthawk,
+  // an old-border foil DCI promo; Ragged Short Spear, a 2026 modern-frame
+  // card), not measured on a diagram or guessed from a description. The
+  // original {y:0.025, width:0.92} caught the card's own outer border at
+  // the top (confidence 0, empty read) and the mana cost symbols at the
+  // right (real name text present, but symbol-noise dragged confidence
+  // under the 0.55 usable threshold). A first fix {y:0.045, width:0.70,
+  // height:0.075} cleared the threshold on Vampire Nighthawk alone
+  // (confidence 64) but wasn't generous enough for Ragged Short Spear's
+  // slightly different title-banner geometry. This version was verified
+  // against BOTH real images together with the actual OCR provider (same
+  // PSM/preprocessing config as production) so a fix for one card can't
+  // silently regress the other.
+  //
+  // NOTE: local verification used browser screenshots of the rendered
+  // preview as a stand-in for the actual stored image (no direct Storage
+  // access from this environment) - a real gap between local test
+  // confidence and production confidence has been observed for the same
+  // exact crop, so these numbers are directional evidence, not a production
+  // guarantee. See CardRecognitionResult.normalizedDimensions (added
+  // alongside this change) if another mismatch needs diagnosing without a
+  // screenshot round-trip: compare it against a card's real aspect ratio to
+  // check whether normalizeCardImage() is producing what these percentages
+  // assume.
+  title: { x: 0.04, y: 0.035, width: 0.7, height: 0.095 },
   art: { x: 0.06, y: 0.1, width: 0.88, height: 0.44 },
   typeLine: { x: 0.04, y: 0.545, width: 0.92, height: 0.055 },
   // Set symbol sits at the right end of the type line on modern frames.

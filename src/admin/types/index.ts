@@ -485,6 +485,14 @@ export interface CardRecognitionResult {
    * detectedName/detectedSetCode/detectedCollectorNumber came back null or
    * wrong, without re-deriving it from a screenshot every time. */
   ocrRawText?: { title: string; collectorInfo: string };
+  /** Pixel dimensions of normalizeCardImage()'s actual output for the front
+   * scan — the image REGIONS' percentages are applied against. A local
+   * screenshot-based check of a crop region can't fully substitute for the
+   * real stored image; comparing this against a card's known real aspect
+   * ratio (~2.5:3.5) is a fast way to tell whether normalizeCardImage() is
+   * producing what those percentages assume, without needing Storage
+   * access or another screenshot round-trip. */
+  normalizedDimensions?: { width: number; height: number };
 }
 
 /* ------------------------------------------------------------------ *

@@ -221,6 +221,9 @@ export async function runRecognitionPipeline(
         decisionReason: "Card matching not run — this session is condition-only. Match this card manually to add it to inventory.",
         setSymbolMatch: null,
         visualSimilarity: null,
+        normalizedDimensions: frontNormalized
+          ? { width: frontNormalized.width, height: frontNormalized.height }
+          : undefined,
       },
       autoMatchedPrinting: null,
       condition,
@@ -314,6 +317,9 @@ export async function runRecognitionPipeline(
     setSymbolMatch: setSymbol?.best ?? null,
     visualSimilarity: autoMatch?.visual?.combinedSimilarity ?? ranked[0]?.visual?.combinedSimilarity ?? null,
     ocrRawText: { title: ocr.title.text, collectorInfo: ocr.collectorInfo.text },
+    normalizedDimensions: frontNormalized
+      ? { width: frontNormalized.width, height: frontNormalized.height }
+      : undefined,
   };
 
   return {
