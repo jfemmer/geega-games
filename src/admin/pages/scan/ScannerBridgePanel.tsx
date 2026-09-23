@@ -65,6 +65,12 @@ interface BridgeStatus {
   lastError: string | null;
   startedAt: string;
   currentSessionId: string | null;
+  lastScanResult: {
+    ok: boolean;
+    pagesScanned: number;
+    message: string;
+    at: string;
+  } | null;
 }
 
 const STATE_LABEL: Record<BridgeState, string> = {
@@ -234,6 +240,22 @@ export function ScannerBridgePanel({
           the ADF once this starts.
         </span>
       </div>
+
+      {status.lastScanResult && (
+        <p
+          className={
+            status.lastScanResult.ok ? "gg-bridge-panel__diagnostic-ok" : "gg-bridge-panel__error"
+          }
+          role={status.lastScanResult.ok ? undefined : "alert"}
+        >
+          {status.lastScanResult.ok ? (
+            <Icon name="checkCircle" size={16} />
+          ) : (
+            <Icon name="alert" size={16} />
+          )}
+          Last direct scan ({timeAgo(status.lastScanResult.at)}): {status.lastScanResult.message}
+        </p>
+      )}
 
       <div className="gg-bridge-panel__actions">
         {status.currentSessionId ? (

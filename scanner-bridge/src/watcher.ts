@@ -31,10 +31,17 @@ export interface WatcherControl {
    * inconvenience.
    */
   suppressAutoProcess(): void;
-  /** Call once the WIA scan process has fully finished, success or
-   * failure — resumes normal auto-processing and immediately processes
-   * whatever accumulated while suppressed, rather than waiting for a quiet
-   * period that will never come once the last file's already landed. */
+  /** Call once the direct-scan process has fully finished, success or
+   * failure — resumes normal auto-processing and arms the same quiet-period
+   * timer a PaperStream-driven batch uses, rather than processing
+   * immediately. This is NOT redundant with the quiet period: chokidar's
+   * awaitWriteFinish only fires "add" for a file once it's been stable for
+   * stabilityThreshold (1s) — a page NAPS2 finished writing just before its
+   * process exited may not have crossed that threshold yet, so processing
+   * synchronously here could grab every file EXCEPT that still-stabilizing
+   * tail and silently strand it. batchQuietMs (5s default) is comfortably
+   * longer than the 1s stability window, so this costs a few seconds of
+   * extra latency per scan run, never a lost or mispaired card. */
   resumeAndProcessNow(): void;
 }
 
@@ -80,7 +87,17 @@ export function startWatcher(
   }
 
   async function processBatch() {
-    if (processing || pending.size === 0) return;
+    if (processing) {
+      // A batch is already uploading — these files (often the tail end of
+      // a run whose last page(s) were still inside chokidar's
+      // awaitWriteFinish stability window when this timer was armed) must
+      // not be silently dropped: re-arm so they're picked up once the
+      // in-flight batch finishes, instead of sitting in `pending` until
+      // some unrelated future scan happens to trigger processing again.
+      if (pending.size > 0) scheduleProcessing();
+      return;
+    }
+    if (pending.size === 0) return;
     processing = true;
     const files = Array.from(pending);
     pending.clear();
@@ -170,7 +187,7 @@ export function startWatcher(
     },
     resumeAndProcessNow() {
       suppressed = false;
-      void processBatch();
+      scheduleProcessing();
     },
   };
 }

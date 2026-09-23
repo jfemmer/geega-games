@@ -43,6 +43,18 @@ export interface BridgeStatus {
    * null right after a POST /session/end, until the next batch creates a
    * fresh one. */
   currentSessionId: string | null;
+  /** Result of the most recent direct scan (POST /scan/start) — NAPS2's own
+   * page count/error, exactly as logged to this process's console, but
+   * surfaced here too so the dashboard can show it without anyone needing
+   * to go find that console window. Independent of whether those pages
+   * have finished uploading yet (that's status.state/lastBatchAt). Null
+   * until the first direct scan completes. */
+  lastScanResult: {
+    ok: boolean;
+    pagesScanned: number;
+    message: string;
+    at: string;
+  } | null;
 }
 
 export function createStatus(watchFolder: string): BridgeStatus {
@@ -58,6 +70,7 @@ export function createStatus(watchFolder: string): BridgeStatus {
     lastError: null,
     startedAt: new Date().toISOString(),
     currentSessionId: null,
+    lastScanResult: null,
   };
 }
 
@@ -175,6 +188,12 @@ export function startStatusServer(
         resolution: 600,
       })
         .then((result) => {
+          status.lastScanResult = {
+            ok: result.ok,
+            pagesScanned: result.pagesScanned,
+            message: result.message,
+            at: new Date().toISOString(),
+          };
           if (!result.ok) {
             status.lastError = result.message;
             console.error(`[geega-scanner-bridge] Scan reported an error: ${result.message}`);
@@ -182,7 +201,9 @@ export function startStatusServer(
           console.log(`[geega-scanner-bridge] Scan finished: ${result.pagesScanned} page(s) saved.`);
         })
         .catch((err) => {
-          status.lastError = err instanceof Error ? err.message : String(err);
+          const message = err instanceof Error ? err.message : String(err);
+          status.lastScanResult = { ok: false, pagesScanned: 0, message, at: new Date().toISOString() };
+          status.lastError = message;
           console.error("[geega-scanner-bridge] Scan threw unexpectedly:", err);
         })
         .finally(() => {

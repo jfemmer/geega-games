@@ -155,6 +155,7 @@ describe("startStatusServer", () => {
     });
     expect(status.state).toBe("watching");
     expect(status.lastError).toBeNull();
+    expect(status.lastScanResult).toMatchObject({ ok: true, pagesScanned: 2 });
   });
 
   it("POST /scan/start records lastError when the scan reports failure, but still resumes the watcher", async () => {
@@ -169,6 +170,27 @@ describe("startStatusServer", () => {
       expect(resumeAndProcessNow).toHaveBeenCalledTimes(1);
     });
     expect(status.lastError).toMatch(/no device found/i);
+    expect(status.lastScanResult).toMatchObject({
+      ok: false,
+      pagesScanned: 0,
+      message: expect.stringMatching(/no device found/i),
+    });
+  });
+
+  it("POST /scan/start records lastScanResult even when runScan itself throws", async () => {
+    mockRunScan.mockRejectedValueOnce(new Error("NAPS2.Console.exe ENOENT"));
+
+    const res = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
+    expect(res.status).toBe(202);
+
+    await vi.waitFor(() => {
+      expect(resumeAndProcessNow).toHaveBeenCalledTimes(1);
+    });
+    expect(status.lastScanResult).toMatchObject({
+      ok: false,
+      pagesScanned: 0,
+      message: expect.stringMatching(/enoent/i),
+    });
   });
 
   it("POST /scan/start refuses to start a second scan while one is already running", async () => {
