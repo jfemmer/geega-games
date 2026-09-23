@@ -78,7 +78,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (current.review_status === "added" || current.inventory_item_id) {
         throw new HttpError(409, "This scan has already been added to inventory and cannot be deleted. Adjust or archive the inventory item instead.");
       }
-      const paths = [current.front_image_path, current.back_image_path].filter((p): p is string => !!p);
+      const paths = [
+        current.front_image_path,
+        current.back_image_path,
+        current.front_preview_path,
+        current.back_preview_path,
+      ].filter((p): p is string => !!p);
       const { error: deleteErr } = await admin.from("card_scans").delete().eq("id", scanId);
       if (deleteErr) throw new HttpError(500, "Could not delete the scan.");
       if (paths.length > 0) {

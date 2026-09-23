@@ -36,6 +36,14 @@ export interface RecognitionPipelineResult {
   /** Null when the session's scan mode is "card_matching" — condition
    * analysis never ran, rather than running it and discarding the result. */
   condition: ConditionAnalysis | null;
+  /** The normalized (trimmed/oriented) PNG buffer this run already produced
+   * from frontImage/backImage — a real browser-viewable image, unlike the
+   * scanner-native source file (often TIFF) recognition reads from. Handed
+   * back so the caller can upload it as the scan's preview without a second
+   * download+normalize pass; null exactly when the corresponding input
+   * image was null. */
+  frontPreview: Buffer | null;
+  backPreview: Buffer | null;
 }
 
 export interface ScoredCandidate {
@@ -216,6 +224,8 @@ export async function runRecognitionPipeline(
       },
       autoMatchedPrinting: null,
       condition,
+      frontPreview: frontNormalized?.buffer ?? null,
+      backPreview: backNormalized?.buffer ?? null,
     };
   }
 
@@ -309,6 +319,8 @@ export async function runRecognitionPipeline(
     recognitionResult,
     autoMatchedPrinting: autoMatch?.printing ?? null,
     condition,
+    frontPreview: frontNormalized?.buffer ?? null,
+    backPreview: backNormalized?.buffer ?? null,
   };
 }
 

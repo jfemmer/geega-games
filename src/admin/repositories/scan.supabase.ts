@@ -87,9 +87,14 @@ async function resolveImageUrls(
 ): Promise<Map<string, string>> {
   const paths = Array.from(
     new Set(
-      rows.flatMap((r) => [r.front_image_path, r.back_image_path]).filter(
-        (p): p is string => !!p,
-      ),
+      rows
+        .flatMap((r) => [
+          r.front_image_path,
+          r.back_image_path,
+          r.front_preview_path,
+          r.back_preview_path,
+        ])
+        .filter((p): p is string => !!p),
     ),
   );
   if (paths.length === 0) return new Map();
@@ -113,6 +118,12 @@ async function mapScansWithImages(rows: CardScanRowLike[]): Promise<CardScan[]> 
         : null,
       backImageUrl: row.back_image_path
         ? (urlByPath.get(row.back_image_path) ?? null)
+        : null,
+      frontPreviewUrl: row.front_preview_path
+        ? (urlByPath.get(row.front_preview_path) ?? null)
+        : null,
+      backPreviewUrl: row.back_preview_path
+        ? (urlByPath.get(row.back_preview_path) ?? null)
         : null,
     }),
   );

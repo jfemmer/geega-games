@@ -86,6 +86,18 @@ export function buildStoragePath(
 }
 
 /**
+ * Storage path for a scan's browser-viewable preview (see recognize.ts),
+ * deterministically derived from its original file's path — same path in,
+ * same path out, so re-running recognition overwrites (upsert) the same
+ * object instead of accumulating orphans. Appending rather than swapping
+ * the extension avoids any ambiguity from dots already inside the
+ * collision-resistant original filename buildStoragePath produces.
+ */
+export function buildPreviewStoragePath(originalPath: string): string {
+  return `${originalPath}.preview.png`;
+}
+
+/**
  * Idempotency guard for ingest: given the Storage paths already attached to
  * some scan in this session, drop any upload referencing one of them. A
  * retried ingest call (uploads already succeeded, but the client never saw

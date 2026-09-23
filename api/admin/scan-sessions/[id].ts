@@ -49,7 +49,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === "DELETE") {
       const { data: scans, error: scansErr } = await admin
         .from("card_scans")
-        .select("id, review_status, inventory_item_id, front_image_path, back_image_path")
+        .select(
+          "id, review_status, inventory_item_id, front_image_path, back_image_path, front_preview_path, back_preview_path",
+        )
         .eq("scan_session_id", id);
       if (scansErr) throw new HttpError(500, "Could not inspect the scan session.");
 
@@ -66,9 +68,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const imagePaths = Array.from(
         new Set(
           (scans ?? []).flatMap((scan) =>
-            [scan.front_image_path, scan.back_image_path].filter(
-              (path): path is string => Boolean(path),
-            ),
+            [
+              scan.front_image_path,
+              scan.back_image_path,
+              scan.front_preview_path,
+              scan.back_preview_path,
+            ].filter((path): path is string => Boolean(path)),
           ),
         ),
       );

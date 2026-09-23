@@ -2,8 +2,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { HttpError, methodNotAllowed, sendJson } from "../../../_lib/http.js";
 import { requireStaff } from "../../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../../_lib/supabaseAdmin.js";
-import { SCAN_BUCKET, recomputeSession } from "../../../_lib/scan.js";
+import { SCAN_BUCKET, buildPreviewStoragePath, recomputeSession } from "../../../_lib/scan.js";
 import { runRecognitionPipeline } from "../../../_lib/recognition/pipeline.js";
+import { normalizeCardImage } from "../../../_lib/recognition/imageRegions.js";
 import type { Database } from "../../../../src/types/database.js";
 
 // POST /api/admin/scans/:scanId/recognize
@@ -33,6 +34,32 @@ async function downloadImage(
   const { data, error } = await admin.storage.from(SCAN_BUCKET).download(path);
   if (error || !data) return null;
   return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * Uploads a normalized preview buffer as this scan's browser-viewable
+ * stand-in for its scanner-native (often TIFF, unrenderable in an <img>)
+ * source file. Deterministic path + upsert: re-running recognition simply
+ * overwrites the same object rather than accumulating orphans. Best-effort
+ * — a failed upload logs and returns null so recognition's own result is
+ * never lost over a display-only concern; the caller then just omits that
+ * patch key, leaving whatever preview (if any) already exists untouched.
+ */
+async function uploadPreview(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  originalPath: string,
+  preview: Buffer | null,
+): Promise<string | null> {
+  if (!preview) return null;
+  const previewPath = buildPreviewStoragePath(originalPath);
+  const { error } = await admin.storage
+    .from(SCAN_BUCKET)
+    .upload(previewPath, preview, { contentType: "image/png", upsert: true });
+  if (error) {
+    console.warn(`Could not upload preview for ${originalPath}:`, error.message);
+    return null;
+  }
+  return previewPath;
 }
 
 // Review states this endpoint may move a scan OUT of automatically. A scan
@@ -84,8 +111,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Identification needs a front image; condition-only mode does not (it
     // grades whatever sides exist) — so this short-circuit only applies when
-    // this session actually attempts identity.
+    // this session actually attempts identity. The back image (if any) still
+    // deserves to be viewable in the review UI even though identity failed,
+    // so it gets normalized + previewed here same as the main path below —
+    // this branch returns before ever reaching runRecognitionPipeline.
     if (doIdentity && !front) {
+      const backNormalized = back ? await normalizeCardImage(back) : null;
+      const backPreviewPath = scan.back_image_path
+        ? await uploadPreview(admin, scan.back_image_path, backNormalized?.buffer ?? null)
+        : null;
       await admin
         .from("card_scans")
         .update({
@@ -101,6 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             fieldConfidence: {},
             warnings: ["No front scan image available — cannot identify."],
           } as unknown as Database["public"]["Tables"]["card_scans"]["Update"]["recognition_data"],
+          ...(backPreviewPath ? { back_preview_path: backPreviewPath } : {}),
         })
         .eq("id", scanId);
       const fresh = await admin
@@ -111,8 +146,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return sendJson(res, 200, fresh.data as unknown as Record<string, unknown>);
     }
 
-    const { recognitionResult, autoMatchedPrinting, condition } =
+    const { recognitionResult, autoMatchedPrinting, condition, frontPreview, backPreview } =
       await runRecognitionPipeline(admin, front, back, scanMode);
+
+    const [frontPreviewPath, backPreviewPath] = await Promise.all([
+      scan.front_image_path ? uploadPreview(admin, scan.front_image_path, frontPreview) : null,
+      scan.back_image_path ? uploadPreview(admin, scan.back_image_path, backPreview) : null,
+    ]);
 
     // Cache the auto-matched (or best-candidate) printing so the review UI
     // can show it even without an inventory line yet.
@@ -152,6 +192,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const patch: Database["public"]["Tables"]["card_scans"]["Update"] = {};
+
+    // Display-only, independent of scan mode or match outcome: a scan the
+    // pipeline couldn't identify at all still deserves a viewable image in
+    // the review UI. Omitted (not set to null) on a failed upload, same
+    // "leave whatever was already there alone" rule condition fields below
+    // follow — never regress an existing preview over a transient error.
+    if (frontPreviewPath) patch.front_preview_path = frontPreviewPath;
+    if (backPreviewPath) patch.back_preview_path = backPreviewPath;
 
     // Identity fields: only touched when this session actually attempts
     // card matching. A condition-only session's scans keep whatever

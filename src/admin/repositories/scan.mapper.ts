@@ -153,6 +153,8 @@ export interface CardScanRowLike {
   sequence_number: number;
   front_image_path: string | null;
   back_image_path: string | null;
+  front_preview_path: string | null;
+  back_preview_path: string | null;
   selected_scryfall_id: string | null;
   recognition_status: RecognitionStatus;
   recognition_confidence: number | null;
@@ -185,7 +187,12 @@ export interface CardScanRowLike {
  */
 export function mapCardScanRow(
   row: CardScanRowLike,
-  images: { frontImageUrl: string | null; backImageUrl: string | null },
+  images: {
+    frontImageUrl: string | null;
+    backImageUrl: string | null;
+    frontPreviewUrl: string | null;
+    backPreviewUrl: string | null;
+  },
 ): CardScan {
   const printingRow = Array.isArray(row.card_printings)
     ? (row.card_printings[0] ?? null)
@@ -199,6 +206,8 @@ export function mapCardScanRow(
     backImagePath: row.back_image_path,
     frontImageUrl: images.frontImageUrl,
     backImageUrl: images.backImageUrl,
+    frontPreviewUrl: images.frontPreviewUrl,
+    backPreviewUrl: images.backPreviewUrl,
     selectedScryfallId: row.selected_scryfall_id,
     selectedPrinting: printingRow ? mapCardPrintingRow(printingRow) : null,
     recognitionStatus: row.recognition_status,

@@ -470,7 +470,7 @@ export function ScanReviewPage({
             <div className="gg-findmatch__scan">
               <span className="gg-comparelabel">My scan · #{String(findMatchFor.sequenceNumber).padStart(3, "0")}</span>
               <CardImage
-                images={findMatchFor.frontImageUrl ? { small: findMatchFor.frontImageUrl, normal: findMatchFor.frontImageUrl, large: findMatchFor.frontImageUrl, png: findMatchFor.frontImageUrl, artCrop: findMatchFor.frontImageUrl } : null}
+                images={scanImages(findMatchFor.frontPreviewUrl ?? findMatchFor.frontImageUrl)}
                 alt="Scanned card"
                 size="md"
                 kind="scan"
@@ -658,7 +658,13 @@ function ScanRow({
         aria-label={`Select scan ${scan.sequenceNumber}`}
       />
       <span className="gg-scanrow__seq">#{String(scan.sequenceNumber).padStart(3, "0")}</span>
-      <CardImage images={scanImages(scan.frontImageUrl)} alt="Scan" size="xs" kind="scan" noPreview={!scan.frontImageUrl} />
+      <CardImage
+        images={scanImages(scan.frontPreviewUrl ?? scan.frontImageUrl)}
+        alt="Scan"
+        size="xs"
+        kind="scan"
+        noPreview={!scan.frontPreviewUrl && !scan.frontImageUrl}
+      />
       <span className="gg-scanrow__arrow"><Icon name="chevronRight" size={12} /></span>
       {scan.selectedPrinting ? (
         <CardImage
@@ -745,13 +751,21 @@ function ScanDetail({
           <span className="gg-comparelabel gg-comparelabel--scan">
             My scan · #{String(scan.sequenceNumber).padStart(3, "0")}
           </span>
-          {scan.frontImageUrl ? (
-            <img src={scan.frontImageUrl} alt="Front scan" className="gg-compare__img" />
+          {scan.frontPreviewUrl ?? scan.frontImageUrl ? (
+            <img
+              src={scan.frontPreviewUrl ?? scan.frontImageUrl ?? undefined}
+              alt="Front scan"
+              className="gg-compare__img"
+            />
           ) : (
             <div className="gg-compare__placeholder">No front scan</div>
           )}
-          {scan.backImageUrl && (
-            <img src={scan.backImageUrl} alt="Back scan" className="gg-compare__img gg-compare__img--back" />
+          {(scan.backPreviewUrl ?? scan.backImageUrl) && (
+            <img
+              src={scan.backPreviewUrl ?? scan.backImageUrl ?? undefined}
+              alt="Back scan"
+              className="gg-compare__img gg-compare__img--back"
+            />
           )}
         </div>
         <div className="gg-compare__side">

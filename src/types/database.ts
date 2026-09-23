@@ -341,6 +341,7 @@ export type Database = {
       card_scans: {
         Row: {
           back_image_path: string | null
+          back_preview_path: string | null
           condition_findings: Json | null
           confirmed_condition:
             | Database["public"]["Enums"]["card_condition"]
@@ -348,6 +349,7 @@ export type Database = {
           cost_cents: number | null
           created_at: string
           front_image_path: string | null
+          front_preview_path: string | null
           id: string
           inventory_item_id: string | null
           notes: string | null
@@ -372,6 +374,7 @@ export type Database = {
         }
         Insert: {
           back_image_path?: string | null
+          back_preview_path?: string | null
           condition_findings?: Json | null
           confirmed_condition?:
             | Database["public"]["Enums"]["card_condition"]
@@ -379,6 +382,7 @@ export type Database = {
           cost_cents?: number | null
           created_at?: string
           front_image_path?: string | null
+          front_preview_path?: string | null
           id?: string
           inventory_item_id?: string | null
           notes?: string | null
@@ -403,6 +407,7 @@ export type Database = {
         }
         Update: {
           back_image_path?: string | null
+          back_preview_path?: string | null
           condition_findings?: Json | null
           confirmed_condition?:
             | Database["public"]["Enums"]["card_condition"]
@@ -410,6 +415,7 @@ export type Database = {
           cost_cents?: number | null
           created_at?: string
           front_image_path?: string | null
+          front_preview_path?: string | null
           id?: string
           inventory_item_id?: string | null
           notes?: string | null
@@ -3807,4 +3813,3 @@ export const Constants = {
     },
   },
 } as const
-

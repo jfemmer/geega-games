@@ -237,6 +237,11 @@ export const mockScanRepository: ScanRepository = {
         backImagePath: pair.back ? `scans/${sessionId}/${pair.back.fileName}` : null,
         frontImageUrl: toDisplayUrl(pair.front),
         backImageUrl: toDisplayUrl(pair.back),
+        // Mock files are already browser-viewable (blob URLs from a File
+        // object, never a scanner-native TIFF) — no separate conversion
+        // needed, so the preview is just the same URL as the real thing.
+        frontPreviewUrl: toDisplayUrl(pair.front),
+        backPreviewUrl: toDisplayUrl(pair.back),
         selectedScryfallId: null,
         selectedPrinting: null,
         recognitionStatus: "none",

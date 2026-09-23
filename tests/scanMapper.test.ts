@@ -135,6 +135,8 @@ describe("mapCardScanRow", () => {
       sequence_number: 3,
       front_image_path: "ses-1/3-front-x.jpg",
       back_image_path: null,
+      front_preview_path: null,
+      back_preview_path: null,
       selected_scryfall_id: null,
       recognition_status: "none",
       recognition_confidence: null,
@@ -163,6 +165,8 @@ describe("mapCardScanRow", () => {
     const s = mapCardScanRow(scanRow(), {
       frontImageUrl: "https://signed.example/front",
       backImageUrl: null,
+      frontPreviewUrl: null,
+      backPreviewUrl: null,
     });
     expect(s.sequenceNumber).toBe(3);
     expect(s.frontImageUrl).toBe("https://signed.example/front");
@@ -176,7 +180,7 @@ describe("mapCardScanRow", () => {
         selected_scryfall_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         card_printings: printingRow(),
       }),
-      { frontImageUrl: null, backImageUrl: null },
+      { frontImageUrl: null, backImageUrl: null, frontPreviewUrl: null, backPreviewUrl: null },
     );
     expect(s.selectedPrinting?.cardName).toBe("Lightning Bolt");
   });
@@ -187,7 +191,7 @@ describe("mapCardScanRow", () => {
         selected_scryfall_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         card_printings: [printingRow()],
       }),
-      { frontImageUrl: null, backImageUrl: null },
+      { frontImageUrl: null, backImageUrl: null, frontPreviewUrl: null, backPreviewUrl: null },
     );
     expect(s.selectedPrinting?.cardName).toBe("Lightning Bolt");
   });

@@ -397,6 +397,12 @@ export interface CardScan {
   /** Physical scan images resolved to displayable URLs (Supabase Storage). */
   frontImageUrl: string | null;
   backImageUrl: string | null;
+  /** Browser-viewable preview (PNG) of each side, generated during
+   * recognition — prefer these over frontImageUrl/backImageUrl for on-screen
+   * display, since the original is often a scanner-native TIFF no browser
+   * renders in an <img>. Null until recognition has run at least once. */
+  frontPreviewUrl: string | null;
+  backPreviewUrl: string | null;
 
   /* Chosen Scryfall match (identity by scryfallId). */
   selectedScryfallId: string | null;

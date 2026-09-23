@@ -14,6 +14,8 @@ function fakeScan(): CardScan {
     backImagePath: null,
     frontImageUrl: null,
     backImageUrl: null,
+    frontPreviewUrl: null,
+    backPreviewUrl: null,
     selectedScryfallId: null,
     selectedPrinting: null,
     recognitionStatus: "none",
