@@ -4293,3 +4293,265 @@
     justify-content: space-between;
   }
 }
+
+/* ---- Account perks: home "join" section, signup page, signup nudge ---- */
+.gg-perks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+.gg-perk {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  text-align: left;
+}
+.gg-perk strong {
+  display: block;
+  color: var(--gg-ink);
+  font-size: 0.95rem;
+}
+.gg-perk-body {
+  display: block;
+  color: #5b5362;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin-top: 0.15rem;
+}
+.gg-perk-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f4eaff;
+  color: #663399;
+}
+.gg-perks--compact {
+  gap: 0.45rem;
+}
+.gg-perks--compact .gg-perk {
+  align-items: center;
+  gap: 0.55rem;
+}
+.gg-perks--compact .gg-perk strong {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.gg-perks--compact .gg-perk-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.gg-join {
+  margin: 2rem 0;
+  padding: 1.75rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid var(--gg-line);
+  background:
+    radial-gradient(600px 220px at 100% 0%, rgba(157, 0, 255, 0.1), transparent 70%),
+    #fff;
+}
+.gg-join-head {
+  text-align: center;
+  margin-bottom: 1.4rem;
+}
+.gg-join-head h2 {
+  color: var(--gg-ink);
+  margin: 0 0 0.4rem;
+}
+.gg-join-head p {
+  color: #555;
+  margin: 0;
+}
+.gg-join .gg-perks {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1.1rem 1.5rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.gg-join-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: 1.5rem;
+}
+.gg-join-actions .gg-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.gg-join-signin {
+  font-size: 0.92rem;
+}
+
+.gg-auth-subtitle {
+  text-align: center;
+  color: #5b5362;
+  margin: -0.25rem auto 1.25rem;
+  max-width: 520px;
+}
+.gg-auth-alt {
+  text-align: center;
+  font-size: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--gg-line);
+}
+.gg-signup-layout {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.gg-signup-layout .gg-form {
+  margin: 0;
+  max-width: none;
+}
+.gg-signup-perks {
+  padding: 1.1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 14px;
+  background: #faf7fe;
+}
+@media (min-width: 900px) {
+  .gg-signup-layout {
+    max-width: 900px;
+    grid-template-columns: minmax(0, 420px) minmax(0, 360px);
+    justify-content: center;
+    align-items: start;
+    gap: 2.5rem;
+  }
+  /* Perks move to the right of the form and stay in view while filling it in. */
+  .gg-signup-perks {
+    order: 2;
+    position: sticky;
+    top: 110px;
+  }
+}
+/* Narrower screens: perks sit above the form, titles only, so the form
+   itself still starts near the top of the screen. */
+@media (max-width: 899px) {
+  .gg-signup-perks {
+    padding: 0.85rem 1rem;
+  }
+  .gg-signup-perks .gg-perks {
+    gap: 0.5rem;
+  }
+  .gg-signup-perks .gg-perk {
+    align-items: center;
+  }
+  .gg-signup-perks .gg-perk-body {
+    display: none;
+  }
+  .gg-signup-perks .gg-perk-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+}
+
+.gg-wishlist-prompt-alt {
+  margin-top: 0.5rem !important;
+  font-size: 0.78rem !important;
+}
+
+.gg-nudge {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 44; /* above page content + header (40), below the cart drawer (50) */
+  width: min(330px, calc(100vw - 32px));
+  padding: 1rem 1rem 0.9rem;
+  background: #fff;
+  color: var(--gg-ink);
+  border: 1px solid var(--gg-line);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(25, 0, 42, 0.22);
+  animation: gg-nudge-in 0.25s ease-out;
+}
+@keyframes gg-nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-nudge {
+    animation: none;
+  }
+}
+.gg-nudge h2 {
+  font-size: 1rem;
+  margin: 0 2rem 0.7rem 0;
+  color: var(--gg-ink);
+}
+.gg-nudge-sub {
+  display: none;
+  margin: 0 0 0.7rem;
+  font-size: 0.85rem;
+  color: #5b5362;
+  line-height: 1.45;
+}
+.gg-nudge-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #6d6575;
+  cursor: pointer;
+}
+.gg-nudge-close:hover {
+  background: #f4eaff;
+}
+.gg-nudge-close:focus-visible {
+  outline: 3px solid #a800ff;
+  outline-offset: 1px;
+}
+.gg-nudge-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.9rem;
+}
+.gg-nudge-actions .gg-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.gg-nudge-signin {
+  font-size: 0.88rem;
+}
+/* Phones: a slim card across the bottom — one line of copy instead of the
+   perk list, so it never covers much of the page. */
+@media (max-width: 640px) {
+  .gg-nudge {
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+  .gg-nudge .gg-perks {
+    display: none;
+  }
+  .gg-nudge-sub {
+    display: block;
+  }
+}
+@media print {
+  .gg-nudge {
+    display: none;
+  }
+}

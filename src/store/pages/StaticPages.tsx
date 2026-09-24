@@ -1,6 +1,7 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import SignupForm from "../../SignupForm";
+import { JoinSection } from "../components/AccountPerks";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -23,6 +24,8 @@ export function HomePage() {
           </Link>
         </div>
       </section>
+
+      <JoinSection />
 
       <section className="gg-sellcta">
         <h2>Looking to sell your collection?</h2>

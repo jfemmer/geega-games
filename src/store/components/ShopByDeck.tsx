@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
+import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link } from "../lib/router";
 import { formatCents } from "../lib/money";
 import { Icon } from "./Icon";
@@ -132,8 +133,18 @@ export default function ShopByDeck() {
         <div className="gg-deck-shop-popover">
           {!user ? (
             <div className="gg-deck-shop-empty">
-              <p>Sign in to shop for cards from your saved decks.</p>
-              <Link to="/login" className="gg-btn gg-btn-sm" onClick={closePopover}>
+              <p>
+                Save your decks to see what&rsquo;s in stock, add it all to your cart in one
+                click, and get restock alerts.
+              </p>
+              <Link
+                to={authLinkWithReturn("/signup", "/account/decks")}
+                className="gg-btn gg-btn-sm"
+                onClick={closePopover}
+              >
+                Create a free account
+              </Link>
+              <Link to={authLinkWithReturn("/login")} onClick={closePopover}>
                 Sign in
               </Link>
             </div>

@@ -1,29 +1,48 @@
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
+import { rememberSignupNext, safeNextPath, takeSignupNext } from "../lib/authRedirect";
+import { AccountPerksList } from "../components/AccountPerks";
 import GoogleAddressAutocomplete, {
   type ShippingAddressFields,
 } from "../components/GoogleAddressAutocomplete";
 
 function AuthShell({
   title,
+  subtitle,
   children,
 }: {
   title: string;
+  subtitle?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="gg-page">
       <h1 style={{ textAlign: "center", color: "var(--gg-ink)" }}>{title}</h1>
+      {subtitle && <p className="gg-auth-subtitle">{subtitle}</p>}
       {children}
     </div>
   );
 }
 
+/** `?next=` to hand on to the sibling auth page, if there is one. */
+function withNext(base: string, next: string | null): string {
+  return next ? `${base}?next=${encodeURIComponent(next)}` : base;
+}
+
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, user } = useAuth();
   const { navigate, query } = useRouter();
-  const next = query.get("next") || "/account";
+  const rawNext = query.get("next");
+
+  // Once signed in — by this form, or by the email-confirmation link, which
+  // lands here and signs the visitor in from the URL — move on. An explicit
+  // ?next= wins; otherwise pick up where they were when they signed up.
+  useEffect(() => {
+    if (!user) return;
+    const remembered = takeSignupNext();
+    navigate(safeNextPath(rawNext ?? remembered), { replace: true });
+  }, [user, rawNext, navigate]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -34,8 +53,7 @@ export function LoginPage() {
     setErr(null);
     setBusy(true);
     try {
-      await signIn(email, password);
-      navigate(next);
+      await signIn(email, password); // the effect above navigates
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Sign in failed.");
     } finally {
@@ -78,8 +96,10 @@ export function LoginPage() {
         </button>
         <div style={{ textAlign: "center", fontSize: "0.9rem" }}>
           <Link to="/forgot-password">Forgot password?</Link>
-          {" · "}
-          <Link to="/signup">Create account</Link>
+        </div>
+        <div className="gg-auth-alt">
+          New to Geega Games?{" "}
+          <Link to={withNext("/signup", rawNext)}>Create a free account</Link>
         </div>
       </form>
     </AuthShell>
@@ -88,7 +108,9 @@ export function LoginPage() {
 
 export function SignupPage() {
   const { signUp } = useAuth();
-  const { navigate } = useRouter();
+  const { navigate, query } = useRouter();
+  const rawNext = query.get("next");
+  const next = safeNextPath(rawNext);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -133,6 +155,7 @@ export function SignupPage() {
       return;
     }
     setBusy(true);
+    if (rawNext) rememberSignupNext(next);
     try {
       const { needsEmailConfirmation } = await signUp({
         email,
@@ -147,7 +170,8 @@ export function SignupPage() {
           "Check your email to confirm your account, then sign in. You can close this tab.",
         );
       } else {
-        navigate("/account");
+        takeSignupNext(); // signed straight in — nothing to pick up later
+        navigate(next);
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Sign up failed.");
@@ -157,7 +181,18 @@ export function SignupPage() {
   };
 
   return (
-    <AuthShell title="Create your account">
+    <AuthShell
+      title="Create your free account"
+      subtitle={
+        rawNext === "/checkout"
+          ? "You'll need an account to check out — we'll bring you right back to your cart."
+          : "Takes about a minute. Here's what you get:"
+      }
+    >
+      <div className="gg-signup-layout">
+      <aside className="gg-signup-perks" aria-label="Account benefits">
+        <AccountPerksList />
+      </aside>
       <form className="gg-form" onSubmit={submit} noValidate>
         {err && (
           <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
@@ -307,9 +342,10 @@ export function SignupPage() {
           for marketing email — you can subscribe separately any time.
         </p>
         <div style={{ textAlign: "center", fontSize: "0.9rem" }}>
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account? <Link to={withNext("/login", rawNext)}>Sign in</Link>
         </div>
       </form>
+      </div>
     </AuthShell>
   );
 }
