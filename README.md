@@ -105,8 +105,9 @@ npx supabase gen types typescript --project-id <project-ref> > src/types/databas
 Checkout offers two independent providers on the same payment step; either can
 be enabled on its own via its env vars (see `.env.example`):
 
-- **Stripe** — cards, Apple Pay, Google Pay, Link (`api/checkout/create-payment-intent.ts`,
-  `api/webhooks/stripe.ts`). Which of these appear is set in the Stripe Dashboard.
+- **Stripe** — cards, including Apple Pay and Google Pay (`api/checkout/create-payment-intent.ts`,
+  `api/webhooks/stripe.ts`). Restricted to cards in code (`payment_method_types`), so
+  methods switched on in the Stripe Dashboard (Klarna, bank payments, ...) don't appear.
 - **PayPal + Venmo** — the PayPal JS SDK (`api/checkout/paypal.ts`,
   `api/webhooks/paypal.ts`, `api/_lib/paypalCheckout.ts`). Venmo is not a Stripe
   method, and Stripe doesn't offer PayPal to US businesses, so both go through

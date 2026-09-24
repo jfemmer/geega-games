@@ -26,10 +26,10 @@ import {
 //     Stripe webhook (api/webhooks/stripe.ts) reading back from Stripe — this
 //     page NEVER fabricates a paid state from the client-side confirmPayment
 //     result alone; it polls the order and shows whatever the DB says.
-//   - Which Stripe methods appear in the card form (cards, Apple Pay, Google
-//     Pay, Link, ...) is controlled in the Stripe Dashboard, not here. Some
-//     of those redirect the customer away and back (return_url below); on
-//     return, the client re-reads the PaymentIntent by its client secret
+//   - The Stripe form is cards only (incl. Apple Pay / Google Pay); the
+//     server sets payment_method_types, so Dashboard settings can't add
+//     Klarna, bank payments, etc. If a payment step ever has to leave the
+//     page (return_url below), on return, the client re-reads the PaymentIntent by its client secret
 //     (in the URL Stripe appends) rather than trusting anything else in the
 //     URL, and resumes exactly like the non-redirect path.
 //   - PayPal and Venmo are NOT Stripe methods for a US business; they're a
@@ -114,9 +114,9 @@ export default function CheckoutPage() {
     }
   }, [authLoading, user, navigate]);
 
-  // Handles the return trip from a redirect-based Stripe payment method (e.g.
-  // bank redirects, Klarna, Cash App Pay): Stripe appends
-  // payment_intent_client_secret to return_url.
+  // Handles a return trip to return_url: Stripe appends
+  // payment_intent_client_secret when a payment step (rarely, for cards —
+  // e.g. some bank authentication flows) had to leave the page.
   // We never trust anything else in the URL — the PaymentIntent's own status,
   // read back from Stripe, is the only thing that decides what happens next.
   const handledReturnRef = useRef(false);
@@ -690,9 +690,9 @@ function StripePaymentForm({
       elements,
       redirect: "if_required",
       confirmParams: {
-        // Only used for payment methods that require leaving the page
-        // (bank redirects, Klarna, ...); confirmPayment() resolves in place for
-        // everything else because of redirect: "if_required" above.
+        // Only used if a payment step has to leave the page (rare for
+        // cards); confirmPayment() resolves in place otherwise because of
+        // redirect: "if_required" above.
         return_url: `${window.location.origin}/checkout`,
       },
     });

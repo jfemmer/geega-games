@@ -165,13 +165,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           order_id: order.order_id,
           user_id: userData.user.id,
         },
-        // Which methods actually show up (cards, Apple Pay, Google Pay,
-        // Link, etc.) is controlled in the Stripe Dashboard under Settings →
-        // Payment methods, not here. Some of those methods redirect the
-        // customer away and back — the client handles that return trip; see
-        // CheckoutPage.tsx. PayPal/Venmo are a separate integration
-        // (api/checkout/paypal.ts), not Stripe methods.
-        automatic_payment_methods: { enabled: true },
+        // Cards only — deliberately NOT automatic_payment_methods, which
+        // would show whatever is switched on in the Stripe Dashboard (Klarna,
+        // bank payments, Cash App, ...). Apple Pay and Google Pay still
+        // appear: Stripe treats them as cards. PayPal/Venmo are a separate
+        // integration (api/checkout/paypal.ts), not Stripe methods.
+        payment_method_types: ["card"],
       },
       // Idempotency: retrying the same order won't create duplicate intents.
       { idempotencyKey: `pi_${order.order_id}` },
