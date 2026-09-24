@@ -197,25 +197,66 @@
   position: relative;
   flex: none;
 }
+/* A labeled, violet-lit pill rather than a bare icon: it's a headline
+   feature, so it should read as one next to the search box. */
 .gg-deck-shop-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  gap: 0.45rem;
+  height: 40px;
+  padding: 0 0.95rem;
   flex: none;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: transparent;
+  border: 1px solid rgba(215, 181, 255, 0.55);
+  background: linear-gradient(135deg, #663399 0%, #8500dc 58%, #9d00ff 100%);
   color: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
+  box-shadow: 0 0 16px rgba(157, 0, 255, 0.35);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
 }
 .gg-deck-shop-toggle:hover {
-  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 22px rgba(157, 0, 255, 0.55);
+}
+.gg-deck-shop-toggle:active {
+  transform: translateY(1px);
 }
 .gg-deck-shop-toggle[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: var(--gg-gold);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(157, 0, 255, 0.5), 0 0 22px rgba(157, 0, 255, 0.55);
+}
+.gg-deck-shop-label--short {
+  display: none;
+}
+@media (min-width: 641px) {
+  .gg-deck-shop-toggle {
+    height: 52px;
+    padding: 0 1.15rem;
+    border-radius: 14px;
+  }
+}
+/* Phones: the search box shares its row with this button, so keep it short. */
+@media (max-width: 640px) {
+  .gg-deck-shop-toggle {
+    padding: 0 0.75rem;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+  }
+  .gg-deck-shop-label--full {
+    display: none;
+  }
+  .gg-deck-shop-label--short {
+    display: inline;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-deck-shop-toggle {
+    transition: none;
+  }
 }
 .gg-deck-shop-toggle:focus-visible {
   outline: 3px solid var(--gg-gold);
@@ -4553,5 +4594,209 @@
 @media print {
   .gg-nudge {
     display: none;
+  }
+}
+
+/* ---- Home: "Shop my deck" showcase ---- */
+.gg-deckshow {
+  display: grid;
+  gap: 2rem;
+  align-items: center;
+  margin: 1.5rem 0 2rem;
+  padding: 2rem 1.25rem;
+  border-radius: 20px;
+  color: #fff;
+  background:
+    radial-gradient(700px 320px at 85% 20%, rgba(157, 0, 255, 0.35), transparent 70%),
+    linear-gradient(160deg, #150620 0%, #09070d 70%);
+  border: 1px solid rgba(157, 0, 255, 0.45);
+  box-shadow: 0 18px 50px rgba(25, 0, 42, 0.25);
+}
+@media (min-width: 900px) {
+  .gg-deckshow {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    padding: 2.5rem;
+    gap: 2.5rem;
+  }
+}
+.gg-deckshow-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(157, 0, 255, 0.22);
+  border: 1px solid rgba(215, 181, 255, 0.4);
+  color: #e3ccff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* #main prefix: brand-refresh.css darkens every `#main h2`, and this one
+   sits on a dark panel. */
+#main .gg-deckshow h2 {
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.6rem, 3.4vw, 2.2rem);
+  line-height: 1.15;
+  color: #fff;
+}
+.gg-deckshow-lede {
+  margin: 0 0 1.4rem;
+  color: #d9d0e3;
+  line-height: 1.6;
+  max-width: 560px;
+}
+.gg-deckshow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+@media (min-width: 560px) {
+  .gg-deckshow-steps {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem 1.5rem;
+  }
+}
+.gg-deckshow-steps li {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+.gg-deckshow-steps strong {
+  display: block;
+  color: #fff;
+  font-size: 0.95rem;
+}
+.gg-deckshow-stepbody {
+  display: block;
+  margin-top: 0.15rem;
+  color: #bfb4cb;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.gg-deckshow-num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #9d00ff;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+.gg-deckshow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: 1.6rem;
+}
+.gg-deckshow-actions .gg-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  min-height: 44px;
+}
+.gg-deckshow .gg-btn-ghost {
+  color: #fff;
+  border: 1px solid rgba(215, 181, 255, 0.6);
+  background: transparent;
+}
+.gg-deckshow .gg-btn-ghost:hover:not(:disabled) {
+  background: rgba(157, 0, 255, 0.2);
+}
+.gg-deckshow-signin {
+  color: #e3ccff;
+  font-size: 0.92rem;
+}
+.gg-deckshow-signin:hover {
+  color: #fff;
+}
+.gg-deckshow-hint {
+  margin: 1rem 0 0;
+  color: #a99cb6;
+  font-size: 0.82rem;
+}
+.gg-deckshow-hint strong {
+  color: #e3ccff;
+}
+
+/* Illustration of the header popover. */
+.gg-deckshow-demo {
+  position: relative;
+  justify-self: center;
+  width: min(340px, 100%);
+}
+.gg-deckshow-demo-tag {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  z-index: 1;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: #d7b5ff;
+  color: #25003f;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.gg-deckshow-demo-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.3rem 1.1rem 1.1rem;
+  border-radius: 14px;
+  background: #fff;
+  color: #2e2633;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), 0 0 30px rgba(157, 0, 255, 0.35);
+  transform: rotate(-1.5deg);
+}
+.gg-deckshow-demo-card strong {
+  font-size: 1rem;
+  color: var(--gg-ink);
+}
+.gg-deckshow-demo-meta {
+  font-size: 0.8rem;
+  color: #6d6575;
+}
+.gg-deckshow-demo-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #efe6f8;
+  overflow: hidden;
+}
+.gg-deckshow-demo-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #663399, #9d00ff);
+}
+.gg-deckshow-demo-btn {
+  justify-self: start;
+  padding: 0.45rem 0.8rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #663399 0%, #8500dc 58%, #9d00ff 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.gg-deckshow-demo-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #663399;
+  font-weight: 600;
+}
+@media (max-width: 899px) {
+  .gg-deckshow-demo-card {
+    transform: none;
   }
 }
