@@ -2953,6 +2953,21 @@ export type Database = {
         Args: { p_order_id: string; p_reason?: string }
         Returns: undefined
       }
+      cart_item_availability: {
+        Args: { p_ids: string[] }
+        Returns: {
+          card_name: string
+          condition: Database["public"]["Enums"]["card_condition"]
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string
+          price_cents: number
+          quantity: number
+          set_code: string
+          set_name: string
+          variant_type: string
+        }[]
+      }
       checkout_create_order: {
         Args: {
           p_guest_email?: string

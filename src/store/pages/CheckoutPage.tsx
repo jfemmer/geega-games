@@ -54,6 +54,9 @@ type Address = {
   country: string;
 };
 
+// Mirrors HOLD_MINUTES in api/_lib/checkoutHolds.ts (display only).
+const CHECKOUT_HOLD_MINUTES = 30;
+
 async function getAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
@@ -146,7 +149,7 @@ export default function CheckoutPage() {
       const orderId: string | null = body.orderId ?? null;
       if (orderId) {
         setPlacedOrderId(orderId);
-        await refresh(); // cart was already emptied server-side when the order was created
+        await refresh();
       }
       if (body.status === "succeeded" || body.status === "processing") {
         if (orderId) await handlePaid(orderId);
@@ -242,11 +245,11 @@ export default function CheckoutPage() {
         });
       }
 
-      // Stripe (when configured) creates the order and its PaymentIntent in
-      // one server call; with only PayPal configured the order is created by
-      // the same RPC as the legacy path and paid on the payment step.
-      if (isStripeConfigured) {
-        await placeOrderViaStripe();
+      // Any online payment method → the server creates the order (and the
+      // Stripe PaymentIntent, when Stripe is configured) and first releases
+      // this customer's earlier unpaid checkout holds.
+      if (isStripeConfigured || isPayPalConfigured) {
+        await placeOrderViaServer();
       } else {
         await placeOrderLegacy();
       }
@@ -257,9 +260,12 @@ export default function CheckoutPage() {
     }
   };
 
-  // Stripe-enabled path: server creates the canonical order AND (if a
-  // balance is due) a PaymentIntent for exactly that amount, in one call.
-  const placeOrderViaStripe = async () => {
+  // Online-payment path: server creates the canonical order AND (if a
+  // balance is due and Stripe is configured) a PaymentIntent for exactly
+  // that amount, in one call. The cart is NOT emptied here — the order only
+  // holds its cards for a limited time, and the cart is cleared once the
+  // order is actually paid (mark_order_paid).
+  const placeOrderViaServer = async () => {
     const token = await getAccessToken();
     if (!token) throw new Error("Please sign in to check out.");
     const res = await fetch("/api/checkout/create-payment-intent", {
@@ -300,15 +306,15 @@ export default function CheckoutPage() {
     }
 
     setPlacedOrderId(body.orderId);
-    await refresh(); // cart was emptied server-side
+    await refresh(); // a store-credit order was paid (and its cart cleared) on the spot
 
     if (body.paid) {
       setPaidComplete(true);
       return;
     }
-    if (body.clientSecret) {
+    if (body.clientSecret || isPayPalConfigured) {
       setDueCents(body.amountDueCents ?? 0);
-      setClientSecret(body.clientSecret);
+      setClientSecret(body.clientSecret ?? null);
       setAwaitingPayment(true);
       return;
     }
@@ -316,9 +322,8 @@ export default function CheckoutPage() {
     setPaymentPendingSetup(true);
   };
 
-  // Non-Stripe path: create the order directly. With PayPal configured, a
-  // balance due goes to the PayPal/Venmo payment step; otherwise (legacy, no
-  // online payments at all) it stays pending_payment.
+  // Legacy path (no online payment configured at all): create the order
+  // directly; any balance due stays pending_payment.
   const placeOrderLegacy = async () => {
     const { data, error: rpcError } = await supabase.rpc("checkout_create_order", {
       p_shipping_method: method,
@@ -336,13 +341,10 @@ export default function CheckoutPage() {
     if (!result) throw new Error("Order could not be created.");
 
     setPlacedOrderId(result.order_id);
-    await refresh(); // cart was emptied server-side
+    await refresh();
 
     if (result.amount_due_cents === 0) {
       setPaidComplete(true);
-    } else if (isPayPalConfigured) {
-      setDueCents(result.amount_due_cents);
-      setAwaitingPayment(true);
     } else {
       setPaymentPendingSetup(true);
     }
@@ -356,6 +358,19 @@ export default function CheckoutPage() {
     // the order page will always show the true DB state either way.
     setConfirmingPayment(false);
     setCardPaymentDone(true);
+    // mark_order_paid removed the purchased cards from the cart.
+    await refresh();
+  };
+
+  // Leave the payment step without paying. The order's hold stays until it
+  // expires or the customer continues to payment again (which releases it
+  // first), and the cart was never emptied, so the checkout form is intact.
+  const backToCheckout = () => {
+    setPlacedOrderId(null);
+    setAwaitingPayment(false);
+    setClientSecret(null);
+    setDueCents(0);
+    setError(null);
   };
 
   if (authLoading || cartLoading) {
@@ -399,9 +414,13 @@ export default function CheckoutPage() {
       <div className="gg-page">
         <h1 style={{ color: "var(--gg-ink)" }}>Payment</h1>
         <p className="gg-card-meta">
-          Order #{placedOrderId.slice(0, 8).toUpperCase()} — your cards are reserved.
-          Complete payment below to finish your order.
+          Order #{placedOrderId.slice(0, 8).toUpperCase()} — we&rsquo;re holding your
+          cards for {CHECKOUT_HOLD_MINUTES} minutes. Complete payment below to finish your
+          order; if you don&rsquo;t, they go back on sale and stay in your cart.
         </p>
+        <button type="button" className="gg-btn gg-btn-ghost" onClick={backToCheckout}>
+          ← Back to checkout
+        </button>
         {error && (
           <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
             {error}

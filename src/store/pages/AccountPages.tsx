@@ -428,6 +428,10 @@ function DashboardSection() {
           .select(
             "id, created_at, status, total_cents, shipping_method, tracking_carrier, tracking_number",
           )
+          // Own orders only (RLS also lets staff read everyone's), and not
+          // abandoned checkouts — see ABANDONED_CHECKOUT_FILTER.
+          .eq("user_id", user.id)
+          .or(ABANDONED_CHECKOUT_FILTER)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -781,24 +785,34 @@ function shipmentStatusText(o: OrderRow): string {
   return o.status === "shipped" || o.status === "delivered" ? "Shipped" : "Not yet shipped";
 }
 
+// A checkout the customer never paid for is cancelled when its hold expires
+// (or when they check out again). It isn't an order they placed, so it's
+// hidden from their order history; staff still see it in the admin.
+const ABANDONED_CHECKOUT_FILTER = "status.neq.cancelled,payment_status.neq.unpaid";
+
 function OrdersSection() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     supabase
       .from("orders")
       .select(
         "id, created_at, status, payment_status, total_cents, shipping_method, tracking_number",
       )
+      // Own orders only (RLS also lets staff read everyone's).
+      .eq("user_id", user.id)
+      .or(ABANDONED_CHECKOUT_FILTER)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (error) setError(error.message);
         else setOrders((data ?? []) as OrderRow[]);
         setLoading(false);
       });
-  }, []);
+  }, [user]);
 
   if (loading) return <p>Loading orders…</p>;
   if (error)

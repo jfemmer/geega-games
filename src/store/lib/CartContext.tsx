@@ -24,8 +24,9 @@ import {
 
 // Unified cart across guest (localStorage) and authenticated (Supabase) states.
 // Every displayed line carries the item's CURRENT sellable stock so the UI can
-// warn/clamp when availability changed while browsing. Stock is resolved from
-// inventory_public, which already subtracts active reservations.
+// warn/clamp when availability changed while browsing. Stock is resolved via
+// cart_item_availability (inventory_public, which already subtracts active
+// reservations, plus the customer's own checkout hold).
 
 export type CartLine = {
   inventoryItemId: string;
@@ -73,16 +74,21 @@ type PublicRow = {
   variant_type: string | null;
 };
 
-/** Fetch sellable stock + display fields for a set of inventory item ids. */
+/**
+ * Fetch sellable stock + display fields for a set of inventory item ids.
+ *
+ * Uses cart_item_availability rather than inventory_public directly: same
+ * rows and stock, except a signed-in customer's OWN checkout hold (cards
+ * reserved while they're on the payment step) counts as available to them.
+ * Without that, reloading during/after the payment step would see those
+ * cards as sold out and prune them from the customer's own cart.
+ */
 async function fetchItemsByIds(ids: string[]): Promise<Map<string, PublicRow>> {
   const map = new Map<string, PublicRow>();
   if (!ids.length) return map;
-  const { data, error } = await supabase
-    .from("inventory_public")
-    .select(
-      "id, card_name, set_code, set_name, condition, finish, image_url, price_cents, quantity, variant_type",
-    )
-    .in("id", ids);
+  const { data, error } = await supabase.rpc("cart_item_availability", {
+    p_ids: Array.from(new Set(ids)),
+  });
   if (error) throw new Error(error.message);
   for (const row of (data ?? []) as PublicRow[]) map.set(row.id, row);
   return map;

@@ -68,6 +68,13 @@ function assertPayable(order: OrderRow | null, userId: string): asserts order is
   // 404 for "not yours" too, so order ids can't be probed.
   if (!order || order.user_id !== userId) throw new CheckoutError(404, "Order not found.");
   if (order.payment_status === "paid") throw new CheckoutError(409, "This order is already paid.");
+  if (order.status === "cancelled") {
+    // The checkout hold expired (or was replaced by a newer checkout).
+    throw new CheckoutError(
+      409,
+      "This checkout expired, so your cards were released. Go back to checkout to try again — your cart is saved.",
+    );
+  }
   if (order.status !== "pending_payment" || order.payment_status !== "unpaid") {
     throw new CheckoutError(409, "This order can no longer be paid. Please contact us.");
   }
@@ -210,13 +217,12 @@ export async function applyCapture(orderId: string, capture: PayPalCapture): Pro
     }
     return { outcome: "already_paid", orderId };
   }
-  if (order.status === "cancelled") {
-    console.error("[paypal] capture completed for a CANCELLED order — refund this capture", {
-      orderId,
-      captureId: capture.id,
-    });
-    return { outcome: "rejected", orderId, reason: "order cancelled" };
-  }
+  // A capture can complete after the hold expired (we never START a capture
+  // for a cancelled order, but one already in flight can finish). The money
+  // is taken either way, so it must be recorded: mark_order_paid re-reserves
+  // the cards if they're still available, or keeps the order cancelled and
+  // flags it for a refund in internal_notes.
+  const lateForCancelledOrder = order.status === "cancelled";
 
   const { error: markErr } = await getSupabaseAdmin().rpc("mark_order_paid", {
     p_order_id: orderId,
@@ -226,6 +232,17 @@ export async function applyCapture(orderId: string, capture: PayPalCapture): Pro
   if (markErr) {
     console.error("[paypal] mark_order_paid failed", markErr);
     throw new CheckoutError(500, "Could not record payment.");
+  }
+
+  if (lateForCancelledOrder) {
+    const after = await loadOrder(orderId);
+    if (after?.status === "cancelled") {
+      console.error("[paypal] capture completed for a CANCELLED order — refund this capture", {
+        orderId,
+        captureId: capture.id,
+      });
+      return { outcome: "rejected", orderId, reason: "order cancelled; refund needed" };
+    }
   }
 
   // Same post-payment side effects as the Stripe webhook. Both emails are

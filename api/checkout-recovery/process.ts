@@ -44,9 +44,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let sent = 0;
   let failed = 0;
   let deduped = 0;
+  let superseded = 0;
 
   for (const order of orders ?? []) {
     try {
+      // Each "Continue to payment" creates a new order (releasing the
+      // previous hold), so a customer who came back — and maybe paid — has
+      // a newer online order. Only nag about their most recent checkout.
+      if (order.user_id) {
+        const { data: newer } = await db
+          .from("orders")
+          .select("id")
+          .eq("user_id", order.user_id)
+          .eq("channel", "online")
+          .gt("created_at", order.created_at)
+          .limit(1);
+        if (newer && newer.length > 0) {
+          superseded += 1;
+          continue;
+        }
+      }
+
       let firstName: string | null = null;
       if (order.user_id) {
         const { data: profile } = await db
@@ -92,5 +110,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     sent,
     failed,
     deduped,
+    superseded,
   });
 }

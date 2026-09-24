@@ -2,13 +2,20 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../../src/types/database.js";
 import { ServerEnv } from "../_lib/env.js";
+import { optionalEnv } from "../_lib/env.js";
 import { getStripe } from "../_lib/stripe.js";
+import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { readJsonBody, sendJson } from "../_lib/http.js";
+import { releaseUserHolds } from "../_lib/checkoutHolds.js";
 
 // POST /api/checkout/create-payment-intent
 //
 // Flow (server is the ONLY pricing authority):
 //   1. Authenticate the caller from their Supabase access token.
+//   1b. Release the caller's earlier unpaid checkout holds (cancelling their
+//      Stripe PaymentIntents first), so going back and checking out again
+//      never finds the customer's own cards "sold out". The cart itself is
+//      no longer emptied here — only when the order is paid.
 //   2. Call checkout_create_order AS THAT USER (anon key + their JWT) so RLS and
 //      auth.uid() apply and the DB atomically revalidates SELLABLE stock
 //      (physical minus active reservations) and computes canonical totals.
@@ -16,6 +23,9 @@ import { readJsonBody, sendJson } from "../_lib/http.js";
 //      order paid; return that — no Stripe needed.
 //   4. Otherwise create a Stripe PaymentIntent for EXACTLY amount_due_cents
 //      (server value), attach order_id in metadata, return client_secret.
+//      Its id is stored in orders.payment_reference so the hold-expiry
+//      worker can cancel it. Without Stripe configured (PayPal-only), no
+//      PaymentIntent is created and the page offers PayPal/Venmo alone.
 //
 // The browser never supplies the amount. A tampered client can at most create
 // its own pending order for its own cart; it cannot change the price or buy
@@ -77,6 +87,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return sendJson(res, 401, { ok: false, message: "Session expired. Please sign in again." });
   }
 
+  // Never fatal: if a release fails, the RPC's stock check still protects
+  // correctness and the expiry worker releases the old hold later.
+  try {
+    await releaseUserHolds(userData.user.id);
+  } catch (err) {
+    console.error("[checkout] releasing earlier holds failed", err);
+  }
+
   // Create the canonical order in the DB (atomic sellable-stock revalidation).
   const { data, error } = await userClient.rpc("checkout_create_order", {
     p_shipping_method: body.shippingMethod,
@@ -127,6 +145,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return sendJson(res, 200, {
+      ok: true,
+      orderId: order.order_id,
+      amountDueCents: order.amount_due_cents,
+      clientSecret: null,
+    });
+  }
+
   // Create a PaymentIntent for EXACTLY the server-computed amount.
   try {
     const stripe = getStripe();
@@ -149,6 +176,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Idempotency: retrying the same order won't create duplicate intents.
       { idempotencyKey: `pi_${order.order_id}` },
     );
+
+    // Lets the hold-expiry worker find and cancel this exact PaymentIntent.
+    // (mark_order_paid overwrites it with the final payment reference.)
+    const { error: refErr } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ payment_reference: intent.id })
+      .eq("id", order.order_id)
+      .eq("payment_status", "unpaid");
+    if (refErr) console.error("[checkout] storing PaymentIntent id failed", refErr);
 
     return sendJson(res, 200, {
       ok: true,

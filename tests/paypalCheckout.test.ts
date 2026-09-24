@@ -196,6 +196,24 @@ describe("finalizePayPalCheckout", () => {
     expect(state.captureCalls).toBe(0);
   });
 
+  it("records a capture that completes after the hold expired", async () => {
+    // mark_order_paid decides whether to re-reserve or flag for refund; the
+    // payment must reach it rather than being silently dropped.
+    state.order!.status = "cancelled";
+    const { applyCapture } = await import("../api/_lib/paypalCheckout.ts");
+    await applyCapture(ORDER_ID, completedCapture() as never);
+    expect(state.markPaidCalls).toEqual([{ orderId: ORDER_ID, provider: "paypal", ref: "CAP-1" }]);
+  });
+
+  it("tells the customer an expired checkout can be restarted", async () => {
+    state.order!.status = "cancelled";
+    const { createPayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
+    await expect(createPayPalCheckout(ORDER_ID, "user-1")).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("expired"),
+    });
+  });
+
   it("marks a pending capture as processing, not paid", async () => {
     state.captureResult = ppOrder("COMPLETED", "12.34", [completedCapture("12.34", "PENDING")]);
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
