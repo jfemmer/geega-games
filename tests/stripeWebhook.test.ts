@@ -17,6 +17,7 @@ const state = {
   events: [] as { event_id: string }[],
   markPaidCalls: [] as { orderId: string; ref: string }[],
   emails: [] as string[],
+  failMarkPaid: false,
 };
 
 // The event our fake Stripe will "verify" from any raw body.
@@ -36,6 +37,7 @@ vi.mock("../api/_lib/orderConfirmation.js", () => ({
     state.emails.push(orderId);
     return { status: "sent" };
   },
+  sendOrderAdminNotification: async () => ({ status: "sent" }),
 }));
 
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({
@@ -43,6 +45,14 @@ vi.mock("../api/_lib/supabaseAdmin.js", () => ({
     from: (table: string) => {
       if (table === "payment_events") {
         return {
+          select: () => ({
+            eq: (_col: string, id: string) => ({
+              maybeSingle: async () => ({
+                data: state.events.find((e) => e.event_id === id) ?? null,
+                error: null,
+              }),
+            }),
+          }),
           insert: async (row: { event_id: string }) => {
             if (state.events.some((e) => e.event_id === row.event_id)) {
               // Simulate a unique-violation on event_id.
@@ -57,6 +67,7 @@ vi.mock("../api/_lib/supabaseAdmin.js", () => ({
     },
     rpc: async (fn: string, args: Record<string, unknown>) => {
       if (fn === "mark_order_paid") {
+        if (state.failMarkPaid) return { error: { message: "db down" } };
         state.markPaidCalls.push({
           orderId: args.p_order_id as string,
           ref: args.p_reference as string,
@@ -114,6 +125,7 @@ describe("stripe webhook idempotency", () => {
     state.events = [];
     state.markPaidCalls = [];
     state.emails = [];
+    state.failMarkPaid = false;
     currentEvent = {
       id: "evt_123",
       type: "payment_intent.succeeded",
@@ -137,6 +149,20 @@ describe("stripe webhook idempotency", () => {
     // mark_order_paid and email happened only once total.
     expect(state.markPaidCalls).toHaveLength(1);
     expect(state.emails).toHaveLength(1);
+  });
+
+  it("retries for real when marking the order paid fails (not deduped away)", async () => {
+    state.failMarkPaid = true;
+    const first = await invoke("{}");
+    expect(first.statusCode).toBe(500);
+    expect(state.events).toHaveLength(0); // not recorded, so the retry isn't a "duplicate"
+
+    state.failMarkPaid = false;
+    const retry = await invoke("{}"); // Stripe redelivers the same event
+    expect(retry.statusCode).toBe(200);
+    expect((retry.body as { deduped?: boolean }).deduped).toBeUndefined();
+    expect(state.markPaidCalls).toEqual([{ orderId: "order_abc", ref: "pi_1" }]);
+    expect(state.events).toHaveLength(1);
   });
 
   it("records non-success events without marking paid", async () => {

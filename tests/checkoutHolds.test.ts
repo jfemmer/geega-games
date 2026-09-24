@@ -18,7 +18,12 @@ const state = {
 vi.mock("../api/_lib/stripe.js", () => ({
   getStripe: () => ({
     paymentIntents: {
-      retrieve: async (id: string) => state.intents[id],
+      retrieve: async (id: string) => {
+        if (!state.intents[id]) {
+          throw Object.assign(new Error(`No such payment_intent: '${id}'`), { code: "resource_missing" });
+        }
+        return state.intents[id];
+      },
       search: async () => ({ data: state.searchResults }),
       cancel: async (id: string) => {
         if (state.cancelFails) {
@@ -99,6 +104,12 @@ describe("releaseHold", () => {
     const { releaseHold } = await import("../api/_lib/checkoutHolds.ts");
     expect(await releaseHold({ id: "o-old", payment_reference: null }, "x")).toBe("released");
     expect(state.cancelled).toEqual(["pi_old"]);
+  });
+
+  it("releases a hold whose PaymentIntent is from the other Stripe mode (test→live switch)", async () => {
+    const { releaseHold } = await import("../api/_lib/checkoutHolds.ts");
+    expect(await releaseHold({ id: "o-test", payment_reference: "pi_test_only" }, "x")).toBe("released");
+    expect(state.cancelOrderCalls).toEqual([{ id: "o-test", reason: "x" }]);
   });
 
   it("releases directly when Stripe isn't configured", async () => {

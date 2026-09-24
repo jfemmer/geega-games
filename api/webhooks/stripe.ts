@@ -8,14 +8,19 @@ import { sendOrderConfirmation, sendOrderAdminNotification } from "../_lib/order
 
 // POST /api/webhooks/stripe
 //
-// The ONLY place an order becomes "paid". Never trust a browser success page.
-// Steps:
+// The ONLY place a Stripe-paid order becomes "paid". Never trust a browser
+// success page. Steps:
 //   1. Verify the Stripe signature against STRIPE_WEBHOOK_SECRET (raw body).
-//   2. Idempotency: insert the event id into payment_events; if it already
-//      exists, we've processed it — ack and stop (no duplicate mark-paid, no
-//      duplicate email, no duplicate inventory effects).
-//   3. On payment_intent.succeeded: mark_order_paid(order_id) then send the
-//      existing confirmation email (which itself only sends when paid).
+//   2. Idempotency: if this event id is already in payment_events, it was
+//      fully handled before — ack and stop.
+//   3. On payment_intent.succeeded: mark_order_paid(order_id), then the
+//      confirmation + staff emails. All of these are idempotent.
+//   4. Only AFTER that succeeds, record the event in payment_events.
+//
+// Recording last matters: if marking the order paid fails we return 500 and
+// Stripe's retry actually re-runs it. (Recording first — as this handler
+// used to — turned every retry into a "duplicate" no-op, leaving a charged
+// customer with an unpaid order.)
 //
 // Vercel must not parse the body — signature verification needs exact bytes.
 export const config = { api: { bodyParser: false } };
@@ -53,38 +58,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const db = getSupabaseAdmin();
 
-  // ---- Idempotency guard: record the event first -----------------------------
-  // payment_events.event_id is unique; a duplicate insert tells us we've already
-  // handled this exact event and can safely no-op.
-  const orderIdFromEvent = extractOrderId(event);
-  // Serialize to a plain JSON value for the jsonb payload column.
-  const payloadJson = JSON.parse(JSON.stringify(event));
-  const { error: insertErr } = await db.from("payment_events").insert({
-    event_id: event.id,
-    event_type: event.type,
-    provider: "stripe",
-    order_id: orderIdFromEvent,
-    payload: payloadJson,
-  });
-
-  if (insertErr) {
-    // Unique violation => already processed. Any insert error: ack so Stripe
-    // doesn't hammer retries, but log it. (Duplicate is the expected case.)
-    if (insertErr.code === "23505") {
-      return res.status(200).json({ ok: true, deduped: true });
-    }
-    console.error("[stripe] payment_events insert error", insertErr);
-    // Fall through cautiously only for the success handler below would be unsafe
-    // without a recorded event, so stop here.
-    return res.status(500).json({ ok: false, message: "Event store failed." });
+  const { data: seen, error: seenErr } = await db
+    .from("payment_events")
+    .select("event_id")
+    .eq("event_id", event.id)
+    .maybeSingle();
+  if (seenErr) {
+    console.error("[stripe] payment_events lookup failed", seenErr);
+    return res.status(500).json({ ok: false });
   }
+  if (seen) return res.status(200).json({ ok: true, deduped: true });
+
+  const orderIdFromEvent = extractOrderId(event);
 
   try {
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as Stripe.PaymentIntent;
       const orderId = pi.metadata?.order_id;
       if (orderId) {
-        // Trusted mark-paid in the DB (idempotent: safe if already paid).
+        // Trusted mark-paid in the DB (idempotent: a no-op if already paid).
         const { error: markErr } = await db.rpc("mark_order_paid", {
           p_order_id: orderId,
           p_provider: "stripe",
@@ -92,16 +84,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         if (markErr) {
           console.error("[stripe] mark_order_paid failed", markErr);
-          // Return 500 so Stripe retries; our event row exists but we can make
-          // mark_order_paid idempotent-safe on retry.
+          // Not recorded yet, so Stripe's retry will run this again.
           return res.status(500).json({ ok: false });
         }
-        // Existing Resend confirmation — self-gates on payment_status='paid'
-        // and is safe to call once here (dedup guard prevents repeats).
+        // Both emails self-gate on payment_status='paid' and are idempotent
+        // (keyed per order), so a retry can't send duplicates. A failure
+        // must not fail the webhook — the order is already paid.
         try {
           await sendOrderConfirmation(orderId);
         } catch (mailErr) {
-          // Email failure must not fail the webhook (order is already paid).
           console.error("[stripe] confirmation email failed", mailErr);
         }
         try {
@@ -112,11 +103,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     // Other event types are recorded (for audit) and acked without action.
-    return res.status(200).json({ ok: true });
   } catch (err) {
     console.error("[stripe] handler error", err);
     return res.status(500).json({ ok: false });
   }
+
+  // Serialize to a plain JSON value for the jsonb payload column.
+  const payloadJson = JSON.parse(JSON.stringify(event));
+  const { error: insertErr } = await db.from("payment_events").insert({
+    event_id: event.id,
+    event_type: event.type,
+    provider: "stripe",
+    order_id: orderIdFromEvent,
+    payload: payloadJson,
+  });
+  // 23505 = a concurrent delivery of the same event recorded it first; the
+  // work above is idempotent, so that's fine. Anything else: the event was
+  // handled, only the audit row failed — don't make Stripe retry.
+  if (insertErr && insertErr.code !== "23505") {
+    console.error("[stripe] payment_events insert error", insertErr);
+  }
+  return res.status(200).json({ ok: true });
 }
 
 function extractOrderId(event: Stripe.Event): string | null {

@@ -39,7 +39,15 @@ async function findStripeIntents(hold: HoldRow): Promise<Stripe.PaymentIntent[]>
   // New orders store their PaymentIntent id when it's created; older ones
   // (and any where that write failed) fall back to a metadata search.
   if (hold.payment_reference?.startsWith("pi_")) {
-    return [await stripe.paymentIntents.retrieve(hold.payment_reference)];
+    try {
+      return [await stripe.paymentIntents.retrieve(hold.payment_reference)];
+    } catch (err) {
+      // "No such payment_intent": it belongs to the other Stripe mode (e.g. a
+      // test-mode checkout still open when the site switched to live keys),
+      // so it can't take money under the current key. Nothing to cancel.
+      if ((err as { code?: string }).code === "resource_missing") return [];
+      throw err;
+    }
   }
   const found = await stripe.paymentIntents.search({
     query: `metadata['order_id']:'${hold.id.replace(/'/g, "")}'`,
