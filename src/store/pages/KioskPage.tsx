@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useCatalog,
   useFacets,
   DEFAULT_FILTERS,
   PAGE_SIZE,
+  countActiveFilters,
   type CatalogCard,
   type CatalogFilters,
   type CatalogSort,
 } from "../lib/useCatalog";
 import { formatCents } from "../lib/money";
 import KioskProductCard from "../components/KioskProductCard";
+import CatalogFiltersPanel from "../components/CatalogFiltersPanel";
 
 // The in-store kiosk. Runs on a computer physically in the shop — NOT the
 // staff register (see the admin "Register" page) and NOT the regular
@@ -27,7 +29,6 @@ import KioskProductCard from "../components/KioskProductCard";
 // mirrors the real Shop page's look and feel — same brand, same components
 // where they don't depend on a cart — rather than a stripped-down page.
 
-const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
 const SORTS: { value: CatalogSort; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
   { value: "name_desc", label: "Name Z → A" },
@@ -60,17 +61,18 @@ export default function KioskPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filters.query, filters.sort, filters.sets, filters.rarities, filters.conditions]);
+  }, [
+    filters.query,
+    filters.sort,
+    filters.sets,
+    filters.rarities,
+    filters.conditions,
+    filters.colorGroups,
+    filters.cardTypes,
+    filters.creatureTypes,
+  ]);
 
-  const toggle = (key: "sets" | "rarities" | "conditions", value: string) => {
-    setFilters((f) => {
-      const arr = f[key];
-      return { ...f, [key]: arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value] };
-    });
-  };
-
-  const activeFilterCount =
-    filters.sets.length + filters.rarities.length + filters.conditions.length;
+  const activeFilterCount = countActiveFilters(filters);
 
   function quantityInList(cardId: string): number {
     return list.find((l) => l.card.id === cardId)?.quantity ?? 0;
@@ -141,61 +143,8 @@ export default function KioskPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const listTotalCents = list.reduce((sum, l) => sum + (l.card.priceCents ?? 0) * l.quantity, 0);
 
-  const FiltersPanel = useMemo(
-    () => (
-      <>
-        {facets?.sets && facets.sets.length > 0 && (
-          <div className="gg-filter-group">
-            <h3>Set</h3>
-            {facets.sets.slice(0, 30).map((s) => (
-              <label className="gg-check" key={s.code}>
-                <input
-                  type="checkbox"
-                  checked={filters.sets.includes(s.code)}
-                  onChange={() => toggle("sets", s.code)}
-                />
-                {s.name}
-              </label>
-            ))}
-          </div>
-        )}
-        {facets?.rarities && facets.rarities.length > 0 && (
-          <div className="gg-filter-group">
-            <h3>Rarity</h3>
-            {facets.rarities.map((r) => (
-              <label className="gg-check" key={r}>
-                <input
-                  type="checkbox"
-                  checked={filters.rarities.includes(r)}
-                  onChange={() => toggle("rarities", r)}
-                />
-                {r}
-              </label>
-            ))}
-          </div>
-        )}
-        <div className="gg-filter-group">
-          <h3>Condition</h3>
-          {CONDITIONS.map((c) => (
-            <label className="gg-check" key={c}>
-              <input
-                type="checkbox"
-                checked={filters.conditions.includes(c)}
-                onChange={() => toggle("conditions", c)}
-              />
-              {c}
-            </label>
-          ))}
-        </div>
-        {activeFilterCount > 0 && (
-          <button className="gg-btn gg-btn-ghost gg-btn-sm" onClick={() => setFilters(DEFAULT_FILTERS)}>
-            Clear filters ({activeFilterCount})
-          </button>
-        )}
-      </>
-    ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [facets, filters.sets, filters.rarities, filters.conditions, activeFilterCount],
+  const FiltersPanel = (
+    <CatalogFiltersPanel facets={facets} filters={filters} setFilters={setFilters} />
   );
 
   if (phase === "submitted") {

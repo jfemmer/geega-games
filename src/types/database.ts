@@ -3141,6 +3141,7 @@ export type Database = {
       inventory_facets: {
         Args: never
         Returns: {
+          card_types: string[]
           creature_types: string[]
           price_max_cents: number
           price_min_cents: number
@@ -3279,7 +3280,10 @@ export type Database = {
       }
       search_deals: {
         Args: {
+          p_card_types?: string[]
+          p_color_groups?: string[]
           p_conditions?: Database["public"]["Enums"]["card_condition"][]
+          p_creature_types?: string[]
           p_limit?: number
           p_max_price_cents?: number
           p_min_price_cents?: number
@@ -3323,6 +3327,8 @@ export type Database = {
       }
       search_inventory: {
         Args: {
+          p_card_types?: string[]
+          p_color_groups?: string[]
           p_colors?: string[]
           p_conditions?: Database["public"]["Enums"]["card_condition"][]
           p_creature_types?: string[]

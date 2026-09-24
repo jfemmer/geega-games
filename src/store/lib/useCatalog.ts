@@ -13,11 +13,41 @@ export type CatalogSort =
   | "price_desc"
   | "newest";
 
+/**
+ * Storefront color buckets, matched server-side by
+ * public.mtg_matches_color_groups. A single color matches any card containing
+ * it (multicolor cards included); Colorless excludes lands; Land means a
+ * colorless land.
+ */
+export type ColorGroup =
+  | "white"
+  | "blue"
+  | "black"
+  | "red"
+  | "green"
+  | "multicolor"
+  | "colorless"
+  | "land";
+
+export const COLOR_GROUPS: { value: ColorGroup; label: string }[] = [
+  { value: "white", label: "White" },
+  { value: "blue", label: "Blue" },
+  { value: "black", label: "Black" },
+  { value: "red", label: "Red" },
+  { value: "green", label: "Green" },
+  { value: "multicolor", label: "Multicolor" },
+  { value: "colorless", label: "Colorless" },
+  { value: "land", label: "Land" },
+];
+
 export type CatalogFilters = {
   query: string;
   sets: string[];
   rarities: string[];
   conditions: string[];
+  colorGroups: string[];
+  cardTypes: string[];
+  creatureTypes: string[];
   minPriceCents: number | null;
   maxPriceCents: number | null;
   dealsOnly: boolean;
@@ -58,11 +88,37 @@ export const DEFAULT_FILTERS: CatalogFilters = {
   sets: [],
   rarities: [],
   conditions: [],
+  colorGroups: [],
+  cardTypes: [],
+  creatureTypes: [],
   minPriceCents: null,
   maxPriceCents: null,
   dealsOnly: false,
   sort: "name_asc",
 };
+
+/** Multi-select filter keys rendered as checkbox groups. */
+export type CatalogListFilterKey =
+  | "sets"
+  | "rarities"
+  | "conditions"
+  | "colorGroups"
+  | "cardTypes"
+  | "creatureTypes";
+
+/** Number of user-applied filters (search text, sort and deals mode excluded). */
+export function countActiveFilters(filters: CatalogFilters): number {
+  return (
+    filters.sets.length +
+    filters.rarities.length +
+    filters.conditions.length +
+    filters.colorGroups.length +
+    filters.cardTypes.length +
+    filters.creatureTypes.length +
+    (filters.minPriceCents != null ? 1 : 0) +
+    (filters.maxPriceCents != null ? 1 : 0)
+  );
+}
 
 type SearchRow = {
   id: string;
@@ -155,6 +211,11 @@ export function useCatalog(filters: CatalogFilters, page: number) {
         p_conditions: filters.conditions.length
           ? (filters.conditions as ("NM" | "LP" | "MP" | "HP" | "DMG")[])
           : undefined,
+        p_color_groups: filters.colorGroups.length ? filters.colorGroups : undefined,
+        p_card_types: filters.cardTypes.length ? filters.cardTypes : undefined,
+        p_creature_types: filters.creatureTypes.length
+          ? filters.creatureTypes
+          : undefined,
         p_min_price_cents: filters.minPriceCents ?? undefined,
         p_max_price_cents: filters.maxPriceCents ?? undefined,
         p_sort: filters.sort,
@@ -201,6 +262,7 @@ export type FacetSet = { code: string; name: string };
 export type Facets = {
   sets: FacetSet[];
   rarities: string[];
+  cardTypes: string[];
   creatureTypes: string[];
   priceMinCents: number | null;
   priceMaxCents: number | null;
@@ -219,6 +281,7 @@ export function useFacets() {
         const f = data[0] as {
           sets: FacetSet[] | null;
           rarities: string[] | null;
+          card_types: string[] | null;
           creature_types: string[] | null;
           price_min_cents: number | null;
           price_max_cents: number | null;
@@ -226,6 +289,7 @@ export function useFacets() {
         setFacets({
           sets: f.sets ?? [],
           rarities: f.rarities ?? [],
+          cardTypes: f.card_types ?? [],
           creatureTypes: f.creature_types ?? [],
           priceMinCents: f.price_min_cents,
           priceMaxCents: f.price_max_cents,

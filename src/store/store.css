@@ -634,6 +634,54 @@
   accent-color: var(--gg-purple);
   flex: none;
 }
+/* Color filter swatches (Shop / Kiosk filters). */
+.gg-color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.gg-color-dot-white { background: #f8f4e3; }
+.gg-color-dot-blue { background: #2f6fbd; }
+.gg-color-dot-black { background: #2b2626; }
+.gg-color-dot-red { background: #d3402f; }
+.gg-color-dot-green { background: #2f8a4c; }
+.gg-color-dot-multicolor {
+  background: conic-gradient(#f8f4e3 0 20%, #2f6fbd 0 40%, #2b2626 0 60%, #d3402f 0 80%, #2f8a4c 0);
+}
+.gg-color-dot-colorless { background: #b9b4ae; }
+.gg-color-dot-land { background: #a07a4f; }
+/* Long option lists (creature types) scroll inside the group. */
+.gg-filter-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.gg-filter-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  font: inherit;
+  /* 16px stops iOS Safari from zooming in on focus. */
+  font-size: 16px;
+  color: var(--gg-ink);
+  background: #fff;
+}
+.gg-filter-search:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+.gg-filter-empty {
+  margin: 0.3rem 0;
+  font-size: 0.85rem;
+  color: var(--gg-ink);
+  opacity: 0.7;
+}
 .gg-toolbar {
   display: flex;
   align-items: center;
