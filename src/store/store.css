@@ -866,6 +866,13 @@
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
+  /* PayPal gives its button frames their own z-index. A stacking context
+     here keeps them inside this block, so they scroll UNDER the sticky
+     header (.gg-header, z-index 40) instead of over it. PayPal's full-page
+     popup overlay is attached to <body>, so it isn't affected. */
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
 }
 .gg-pay-wallets iframe {
   display: block;

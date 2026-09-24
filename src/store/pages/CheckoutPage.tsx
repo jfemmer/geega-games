@@ -450,9 +450,25 @@ export default function CheckoutPage() {
               <span>or pay with card</span>
             </div>
           )}
-          {clientSecret && (
-            <Elements stripe={getStripePromise()} options={{ clientSecret }}>
-              <StripePaymentForm dueCents={dueCents} onPaid={() => handlePaid(placedOrderId)} />
+          {clientSecret && dueCents > 0 && (
+            // The form is configured for cards only HERE, independent of the
+            // PaymentIntent, so methods switched on in the Stripe Dashboard
+            // (Klarna, bank payments, Cash App, Link, ...) can never appear.
+            // The PaymentIntent is attached at confirm time (clientSecret).
+            <Elements
+              stripe={getStripePromise()}
+              options={{
+                mode: "payment",
+                amount: dueCents,
+                currency: "usd",
+                paymentMethodTypes: ["card"],
+              }}
+            >
+              <StripePaymentForm
+                clientSecret={clientSecret}
+                dueCents={dueCents}
+                onPaid={() => handlePaid(placedOrderId)}
+              />
             </Elements>
           )}
         </div>
@@ -682,9 +698,11 @@ export default function CheckoutPage() {
 }
 
 function StripePaymentForm({
+  clientSecret,
   dueCents,
   onPaid,
 }: {
+  clientSecret: string;
   dueCents: number;
   onPaid: () => void;
 }) {
@@ -698,8 +716,17 @@ function StripePaymentForm({
     if (!stripe || !elements) return;
     setSubmitting(true);
     setCardError(null);
+    // Required before confirmPayment when the Elements group was created
+    // without a clientSecret: validates the card fields.
+    const { error: submitError } = await elements.submit();
+    if (submitError) {
+      setCardError(submitError.message ?? "Please check your card details.");
+      setSubmitting(false);
+      return;
+    }
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
+      clientSecret,
       redirect: "if_required",
       confirmParams: {
         // Only used if a payment step has to leave the page (rare for
