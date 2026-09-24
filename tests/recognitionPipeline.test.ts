@@ -107,6 +107,19 @@ describe("parseCollectorLine (Part 7 era signals)", () => {
     expect(r.rarity).toBeNull();
     expect(r.language).toBeNull();
   });
+
+  it("parses the concatenation of the two real collector-line crops (pipeline.ts joins them with a space)", () => {
+    // Real OCR reads from imageRegions.ts's split collectorInfo/
+    // collectorInfoLine2 crops (Ragged Short Spear, HOB #108): line 1 "C
+    // 0108", line 2 "HOB * EN % MIKLOS LIGETI" — pipeline.ts concatenates
+    // both before calling this unchanged parser rather than adding a
+    // second parsing path.
+    const r = parseCollectorLine("C 0108 HOB * EN % MIKLOS LIGETI");
+    expect(r.collectorNumber).toBe("108");
+    expect(r.rarity).toBe("common");
+    expect(r.setCode).toBe("HOB");
+    expect(r.language).toBe("en");
+  });
 });
 
 describe("scoreAndRank + combineAndDecide (Part 10 precision-over-recall)", () => {

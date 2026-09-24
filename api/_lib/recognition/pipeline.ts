@@ -90,10 +90,26 @@ async function generateCandidates(
   ocr: Awaited<ReturnType<typeof ocrCardFields>>,
   setIdentification: SetSymbolResult | null,
 ): Promise<{ candidates: CardPrinting[]; era: RecognitionEra; setCodeGuess: string | null; collectorGuess: string | null }> {
-  const collectorLine =
+  // The modern collector line is two real stacked lines on the card itself
+  // (see imageRegions.ts's REGIONS comment) — OCR'd as two separate crops
+  // so each can use its own confidence gate, then concatenated before
+  // parseCollectorLine() so a single unmodified parser still handles both
+  // ("C 0108" + "HOB * EN ... " -> collectorNumber "108", rarity common,
+  // setCode "HOB", language "en"). Either half can be missing/low-confidence
+  // (older frames often have neither) without losing the other's signal.
+  const collectorLineText = [
     ocr.collectorInfo.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
-      ? parseCollectorLine(ocr.collectorInfo.text)
-      : { collectorNumber: null, rarity: null, setCode: null, language: null };
+      ? ocr.collectorInfo.text
+      : "",
+    ocr.collectorInfoLine2.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
+      ? ocr.collectorInfoLine2.text
+      : "",
+  ]
+    .join(" ")
+    .trim();
+  const collectorLine = collectorLineText
+    ? parseCollectorLine(collectorLineText)
+    : { collectorNumber: null, rarity: null, setCode: null, language: null };
 
   const nameText =
     ocr.title.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
@@ -361,6 +377,7 @@ export async function runRecognitionPipeline(
         {
           title: { text: "", confidence: 0, winningVariant: "none" },
           collectorInfo: { text: "", confidence: 0, winningVariant: "none" },
+          collectorInfoLine2: { text: "", confidence: 0, winningVariant: "none" },
         },
         null,
       ] as const);
@@ -380,14 +397,20 @@ export async function runRecognitionPipeline(
         )
       : [];
 
-  // collectorInfo's OCR text, when usable, doubles as a possible artist
-  // credit read on cards with no modern collector line (see
-  // artistCreditMatches' own comment) — a small corroborating signal,
-  // never a name-conflict-style penalty.
+  // collectorInfoLine2 (set code / language / artist credit — see
+  // imageRegions.ts's REGIONS comment) is the primary artist-credit read:
+  // unlike collectorInfo, it carries no uppercase-only whitelist, so a real
+  // name's lowercase/accented letters survive. Falls back to collectorInfo
+  // on cards with no modern collector line at all, where that crop's own
+  // position sometimes catches the artist credit instead of finding
+  // nothing (see artistCreditMatches' own comment) — a small corroborating
+  // signal either way, never a name-conflict-style penalty.
   const possibleArtistText =
-    ocr.collectorInfo.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
-      ? ocr.collectorInfo.text
-      : undefined;
+    ocr.collectorInfoLine2.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
+      ? ocr.collectorInfoLine2.text
+      : ocr.collectorInfo.confidence >= RECOGNITION_THRESHOLDS.ocrFieldMinUsableConfidence
+        ? ocr.collectorInfo.text
+        : undefined;
 
   const ranked = scoreAndRank(candidates, visualResults, ocr.title.text, possibleArtistText);
   const { autoMatch, reason } = combineAndDecide(ranked);
@@ -424,7 +447,7 @@ export async function runRecognitionPipeline(
     fieldConfidence: {
       name: ocr.title.confidence,
       collectorNumber: ocr.collectorInfo.confidence,
-      setCode: ocr.collectorInfo.confidence,
+      setCode: ocr.collectorInfoLine2.confidence,
       setSymbol: setIdentification?.best?.confidence ?? 0,
       exactPrinting: overallConfidence,
       overallIdentity: overallConfidence,
@@ -434,7 +457,11 @@ export async function runRecognitionPipeline(
     decisionReason: reason,
     setSymbolMatch: setIdentification?.best ?? null,
     visualSimilarity: autoMatch?.visual?.combinedSimilarity ?? ranked[0]?.visual?.combinedSimilarity ?? null,
-    ocrRawText: { title: ocr.title.text, collectorInfo: ocr.collectorInfo.text },
+    ocrRawText: {
+      title: ocr.title.text,
+      collectorInfo: ocr.collectorInfo.text,
+      collectorInfoLine2: ocr.collectorInfoLine2.text,
+    },
     normalizedDimensions: frontNormalized
       ? { width: frontNormalized.width, height: frontNormalized.height }
       : undefined,

@@ -484,7 +484,7 @@ export interface CardRecognitionResult {
    * or the usable-confidence gate — ground truth for diagnosing WHY
    * detectedName/detectedSetCode/detectedCollectorNumber came back null or
    * wrong, without re-deriving it from a screenshot every time. */
-  ocrRawText?: { title: string; collectorInfo: string };
+  ocrRawText?: { title: string; collectorInfo: string; collectorInfoLine2: string };
   /** Pixel dimensions of normalizeCardImage()'s actual output for the front
    * scan — the image REGIONS' percentages are applied against. A local
    * screenshot-based check of a crop region can't fully substitute for the

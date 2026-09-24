@@ -17,17 +17,19 @@ export interface FieldOcrResult {
 
 const EMPTY_RESULT: FieldOcrResult = { text: "", confidence: 0, winningVariant: "none" };
 
-// Both fields this pipeline OCRs are cropped to a single horizontal text
-// line (see imageRegions.ts's REGIONS), so both hint "line" — an engine
+// Every field this pipeline OCRs is cropped to a single horizontal text
+// line (see imageRegions.ts's REGIONS), so all hint "line" — an engine
 // that can act on it (currently only Tesseract; see tesseractProvider.ts)
 // gets a real accuracy win from skipping general page-layout analysis it
 // doesn't need. Only collectorInfo also gets a character whitelist: its
 // format is fully known (digits, a handful of uppercase letters, "/",
-// spaces — see parseCollectorLine below), unlike a card name, which is
-// free-form text where almost any character is legitimate.
+// spaces — see parseCollectorLine below), unlike a card name or an artist
+// credit (collectorInfoLine2), both free-form text where lowercase letters
+// and accents are legitimate.
 const REGION_OCR_HINTS: Partial<Record<RegionName, OcrHint>> = {
   title: { shape: "line" },
   collectorInfo: { shape: "line", charWhitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/ " },
+  collectorInfoLine2: { shape: "line" },
 };
 
 /** OCR one region, trying every preprocessing variant, keeping the best read. */
@@ -65,11 +67,11 @@ export async function ocrRegion(
 
 /**
  * OCR the fields the recognition pipeline actually cares about, in parallel.
- * Deliberately just title + collectorInfo — generateCandidates() only ever
- * reads those two, so OCR'ing typeLine/footer too (as this used to do) cost
- * a full extra 2 regions x 5 preprocessing variants of billable Vision API
- * calls per card for results nothing consumed. Add a field back here only
- * once something downstream actually reads it.
+ * Deliberately just title + the two collector-line halves — generateCandidates()
+ * only ever reads those, so OCR'ing typeLine/footer too (as this used to do)
+ * cost a full extra 2 regions x 5 preprocessing variants of billable Vision
+ * API calls per card for results nothing consumed. Add a field back here
+ * only once something downstream actually reads it.
  */
 export async function ocrCardFields(
   provider: OcrProvider,
@@ -79,12 +81,14 @@ export async function ocrCardFields(
 ): Promise<{
   title: FieldOcrResult;
   collectorInfo: FieldOcrResult;
+  collectorInfoLine2: FieldOcrResult;
 }> {
-  const [title, collectorInfo] = await Promise.all([
+  const [title, collectorInfo, collectorInfoLine2] = await Promise.all([
     ocrRegion(provider, normalizedCard, width, height, "title"),
     ocrRegion(provider, normalizedCard, width, height, "collectorInfo"),
+    ocrRegion(provider, normalizedCard, width, height, "collectorInfoLine2"),
   ]);
-  return { title, collectorInfo };
+  return { title, collectorInfo, collectorInfoLine2 };
 }
 
 /**
