@@ -2759,3 +2759,8 @@ body.gg-printing-label .gg-labelprint-overlay {
     align-items: flex-start;
   }
 }
+
+/* Overview: sub-section heading ("Website visitors") */
+.gg-overview-heading { margin-top: 8px; }
+.gg-overview-heading h2 { margin: 0; font-size: 1.1rem; color: var(--gg-text); }
+.gg-overview-heading p { margin: 4px 0 0; font-size: .85rem; }

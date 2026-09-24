@@ -1398,6 +1398,36 @@ export type Database = {
           },
         ]
       }
+      site_page_views: {
+        Row: {
+          country: string | null
+          device: string
+          id: number
+          path: string
+          referrer_host: string | null
+          viewed_at: string
+          visitor_hash: string
+        }
+        Insert: {
+          country?: string | null
+          device: string
+          id?: never
+          path: string
+          referrer_host?: string | null
+          viewed_at?: string
+          visitor_hash: string
+        }
+        Update: {
+          country?: string | null
+          device?: string
+          id?: never
+          path?: string
+          referrer_host?: string | null
+          viewed_at?: string
+          visitor_hash?: string
+        }
+        Relationships: []
+      }
       store_settings: {
         Row: {
           id: boolean
@@ -2979,6 +3009,10 @@ export type Database = {
       cancel_unpaid_order: {
         Args: { p_order_id: string; p_reason?: string }
         Returns: undefined
+      }
+      admin_site_traffic: {
+        Args: { p_range?: string }
+        Returns: Json
       }
       store_ordering_status: {
         Args: never

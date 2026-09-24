@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "../../../supabase";
+import { markStaffDevice } from "../../../store/lib/pageViews";
 
 // Access gate for the admin dashboard.
 //
@@ -73,7 +74,20 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
     return <AdminDenied email={session.user.email ?? null} />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <StaffDeviceMarker />
+      {children}
+    </>
+  );
+}
+
+/** Staff browsing the storefront from this device is left out of visitor stats. */
+function StaffDeviceMarker(): null {
+  useEffect(() => {
+    markStaffDevice();
+  }, []);
+  return null;
 }
 
 /* ------------------------------------------------------------------ *

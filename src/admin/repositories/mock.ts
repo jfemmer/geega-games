@@ -43,6 +43,7 @@ import type {
   PosSaleResult,
   PosSettings,
   PosTerminalLocation,
+  SiteTraffic,
   PosTerminalReader,
   ShippingCarrier,
   SourcingSignal,
@@ -1170,6 +1171,45 @@ export const mockAnalyticsRepository: AnalyticsRepository = {
   },
   async trends(range: DateRangeKey) {
     return delay(trendMetricsFor(range), 350);
+  },
+  async traffic(range: DateRangeKey): Promise<SiteTraffic> {
+    // Illustrative only (mock mode): visitors track the mock order series.
+    const series = overviewSeriesFor(range).orders.map((p) => ({
+      date: p.date,
+      value: 18 + p.value * 9,
+    }));
+    const visitors = series.reduce((a, p) => a + p.value, 0);
+    return delay(
+      {
+        visitors,
+        visitorsPrev: Math.round(visitors * 0.86),
+        pageViews: Math.round(visitors * 3.4),
+        pageViewsPrev: Math.round(visitors * 2.9),
+        liveNow: 3,
+        series,
+        topPages: [
+          { label: "/", value: Math.round(visitors * 0.9) },
+          { label: "/shop", value: Math.round(visitors * 0.7) },
+          { label: "/shop/sets", value: Math.round(visitors * 0.3) },
+          { label: "/sell-my-collection", value: Math.round(visitors * 0.2) },
+        ],
+        referrers: [
+          { label: "Direct / unknown", value: Math.round(visitors * 0.5) },
+          { label: "google.com", value: Math.round(visitors * 0.3) },
+          { label: "facebook.com", value: Math.round(visitors * 0.15) },
+        ],
+        devices: [
+          { label: "Mobile", value: Math.round(visitors * 0.62) },
+          { label: "Desktop", value: Math.round(visitors * 0.33) },
+          { label: "Tablet", value: Math.round(visitors * 0.05) },
+        ],
+        countries: [
+          { label: "US", value: Math.round(visitors * 0.9) },
+          { label: "CA", value: Math.round(visitors * 0.06) },
+        ],
+      },
+      300,
+    );
   },
 };
 

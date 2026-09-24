@@ -13,6 +13,7 @@ import type {
   DateRangeKey,
   NamedValue,
   OverviewMetrics,
+  SiteTraffic,
   TimeSeriesPoint,
   TrendMetrics,
 } from "../types";
@@ -39,6 +40,24 @@ export const supabaseAnalyticsRepository: AnalyticsRepository = {
       orders: result.orders ?? [],
       recentActivity: result.recentActivity ?? [],
       customerActivity: result.customerActivity ?? [],
+    };
+  },
+
+  async traffic(range: DateRangeKey): Promise<SiteTraffic> {
+    const { data, error } = await supabase.rpc("admin_site_traffic", { p_range: range });
+    if (error) throw new Error(error.message);
+    const r = (data ?? {}) as unknown as Partial<SiteTraffic>;
+    return {
+      visitors: r.visitors ?? 0,
+      visitorsPrev: r.visitorsPrev ?? 0,
+      pageViews: r.pageViews ?? 0,
+      pageViewsPrev: r.pageViewsPrev ?? 0,
+      liveNow: r.liveNow ?? 0,
+      series: r.series ?? [],
+      topPages: r.topPages ?? [],
+      referrers: r.referrers ?? [],
+      devices: r.devices ?? [],
+      countries: r.countries ?? [],
     };
   },
 

@@ -805,6 +805,24 @@ export interface TimeSeriesPoint {
   value: number;
 }
 
+/** Storefront visitor stats for the Overview (admin_site_traffic RPC). */
+export interface SiteTraffic {
+  /** Sum of each day's unique visitors (the anonymous id rotates daily). */
+  visitors: number;
+  visitorsPrev: number;
+  pageViews: number;
+  pageViewsPrev: number;
+  /** Unique visitors in the last 5 minutes. */
+  liveNow: number;
+  /** Unique visitors per day. */
+  series: TimeSeriesPoint[];
+  topPages: NamedValue[];
+  referrers: NamedValue[];
+  devices: NamedValue[];
+  /** ISO country codes ("??" when unknown). */
+  countries: NamedValue[];
+}
+
 export interface NamedValue {
   label: string;
   value: number;

@@ -51,6 +51,7 @@ import type {
   StaffRole,
   TimeSeriesPoint,
   TrendMetrics,
+  SiteTraffic,
 } from "../types";
 
 export interface InventoryRepository {
@@ -489,6 +490,8 @@ export interface AnalyticsRepository {
     customerActivity: AdminActivity[];
   }>;
   trends(range: DateRangeKey): Promise<TrendMetrics>;
+  /** Website visitors (first-party, privacy-friendly page-view tracking). */
+  traffic(range: DateRangeKey): Promise<SiteTraffic>;
 }
 
 /** Sourcing/growth intelligence: what to buy next, and where demand is

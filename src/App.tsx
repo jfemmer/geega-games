@@ -4,6 +4,7 @@ import "./store/brand-refresh.css";
 import Footer from "./Footer";
 import { RouterProvider, useRouter, matchRoute } from "./store/lib/router";
 import { AuthProvider } from "./store/lib/AuthContext";
+import { PageViewTracker } from "./store/lib/pageViews";
 import { CartProvider } from "./store/lib/CartContext";
 import { WishlistProvider } from "./store/lib/WishlistContext";
 import Header from "./store/components/Header";
@@ -80,6 +81,7 @@ export default function App() {
       <CartProvider>
         <WishlistProvider>
           <RouterProvider>
+            <PageViewTracker />
             <div className="app">
               <a className="skip-link" href="#main">
                 Skip to content
