@@ -44,7 +44,8 @@ export type IconName =
   | "scan"
   | "layers"
   | "keyboard"
-  | "sparkle";
+  | "sparkle"
+  | "pause";
 
 const PATHS: Record<IconName, string> = {
   overview:
@@ -104,6 +105,7 @@ const PATHS: Record<IconName, string> = {
   keyboard:
     "M2 6h20v12H2V6Zm4 3h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6",
   sparkle: "M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1L12 2Z",
+  pause: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm-2-14v8m4-8v8",
 };
 
 interface IconProps {

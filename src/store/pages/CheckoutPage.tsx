@@ -13,6 +13,7 @@ import { useCart } from "../lib/CartContext";
 import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
+import { formatReopenDate, refreshStoreStatus, useStoreStatus } from "../lib/storeStatus";
 import {
   formatCents,
   previewOrderTotals,
@@ -92,6 +93,7 @@ export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
   const { lines, subtotalCents, loading: cartLoading, refresh } = useCart();
   const { navigate } = useRouter();
+  const storeStatus = useStoreStatus();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | "new">("new");
@@ -237,6 +239,10 @@ export default function CheckoutPage() {
     }
     setPlacing(true);
     try {
+      // Re-check vacation mode right before ordering (the page may have been
+      // open since before it was switched on). The server enforces it too.
+      if ((await refreshStoreStatus()).ordersPaused) return;
+
       // Persist a new address if entered inline (so it's saved for reuse).
       if (selectedAddr === "new" && user) {
         await supabase.from("addresses").insert({
@@ -307,6 +313,10 @@ export default function CheckoutPage() {
           setPaymentPendingSetup(true);
         }
         return;
+      }
+      if (body?.code === "orders_paused") {
+        await refreshStoreStatus(); // shows the banner/notice with the store's message
+        throw new Error(body.message || friendlyCheckoutError("orders paused"));
       }
       throw new Error(friendlyCheckoutError(body?.message || ""));
     }
@@ -673,19 +683,30 @@ export default function CheckoutPage() {
             </p>
           )}
 
+          {storeStatus.ordersPaused && (
+            <p className="gg-paused-note" role="status" style={{ marginTop: "0.75rem" }}>
+              {storeStatus.message}
+              {storeStatus.pausedUntil && (
+                <> Checkout reopens {formatReopenDate(storeStatus.pausedUntil)}.</>
+              )}
+            </p>
+          )}
+
           <button
             className="gg-btn"
             style={{ width: "100%", marginTop: "0.5rem" }}
-            disabled={placing || !addressValid}
+            disabled={placing || !addressValid || storeStatus.ordersPaused}
             onClick={placeOrder}
           >
-            {placing
-              ? "Placing…"
-              : totals.amountDueCents === 0
-                ? "Place order (store credit)"
-                : isStripeConfigured || isPayPalConfigured
-                  ? "Continue to payment"
-                  : "Place order"}
+            {storeStatus.ordersPaused
+              ? "Checkout paused"
+              : placing
+                ? "Placing…"
+                : totals.amountDueCents === 0
+                  ? "Place order (store credit)"
+                  : isStripeConfigured || isPayPalConfigured
+                    ? "Continue to payment"
+                    : "Place order"}
           </button>
           <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>
             Final totals are confirmed by our server; stock is re-checked when you
@@ -955,6 +976,8 @@ function SummaryRow({
 
 function friendlyCheckoutError(msg: string): string {
   const m = msg.toLowerCase();
+  if (m.includes("orders paused"))
+    return "We’re not taking orders right now. Your cart is saved — please check back soon.";
   if (m.includes("insufficient stock") || m.includes("stock_conflict"))
     return "Some items just sold out or changed availability. Your cart was updated — please review and try again.";
   if (m.includes("no price"))

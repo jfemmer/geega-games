@@ -3,6 +3,7 @@ import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
 import { formatCents } from "../lib/money";
+import { formatReopenDate, useStoreStatus } from "../lib/storeStatus";
 
 // Accessible slide-over cart. Focus is trapped while open; Escape closes;
 // the trigger is restored on close. Live cart data comes from CartContext.
@@ -17,6 +18,7 @@ export default function CartDrawer({
   const { lines, subtotalCents, itemCount, setQuantity, removeItem, clear, loading, error, stockAdjusted } =
     useCart();
   const { user } = useAuth();
+  const { ordersPaused, message: pausedMessage, pausedUntil } = useStoreStatus();
   const { navigate } = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -195,15 +197,22 @@ export default function CartDrawer({
             <p className="gg-card-meta" style={{ marginTop: 0 }}>
               Shipping & store credit are calculated at checkout.
             </p>
+            {ordersPaused && (
+              <p className="gg-paused-note" role="status">
+                {pausedMessage}
+                {pausedUntil && <> Checkout reopens {formatReopenDate(pausedUntil)}.</>}
+              </p>
+            )}
             <button
               className="gg-btn"
               style={{ width: "100%", marginBottom: "0.5rem" }}
+              disabled={ordersPaused}
               onClick={() => {
                 onClose();
                 navigate(user ? "/checkout" : "/login?next=/checkout");
               }}
             >
-              {user ? "Checkout" : "Sign in to check out"}
+              {ordersPaused ? "Checkout paused" : user ? "Checkout" : "Sign in to check out"}
             </button>
             <button
               className="gg-btn gg-btn-ghost gg-btn-sm"

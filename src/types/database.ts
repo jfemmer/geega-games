@@ -1398,6 +1398,33 @@ export type Database = {
           },
         ]
       }
+      store_settings: {
+        Row: {
+          id: boolean
+          orders_paused: boolean
+          orders_paused_message: string
+          orders_paused_until: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: boolean
+          orders_paused?: boolean
+          orders_paused_message?: string
+          orders_paused_until?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: boolean
+          orders_paused?: boolean
+          orders_paused_message?: string
+          orders_paused_until?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           amount_due_cents: number
@@ -2952,6 +2979,14 @@ export type Database = {
       cancel_unpaid_order: {
         Args: { p_order_id: string; p_reason?: string }
         Returns: undefined
+      }
+      store_ordering_status: {
+        Args: never
+        Returns: {
+          message: string
+          paused: boolean
+          paused_until: string | null
+        }[]
       }
       cart_item_availability: {
         Args: { p_ids: string[] }

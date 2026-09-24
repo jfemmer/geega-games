@@ -17,6 +17,7 @@ import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
 import { MarketInsightsPage } from "./pages/MarketInsightsPage";
 import { StorewideSalePage } from "./pages/StorewideSalePage";
+import { VacationModePage } from "./pages/VacationModePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import "./admin.css";
 
@@ -87,6 +88,8 @@ function AdminDashboard() {
         return <MarketInsightsPage />;
       case "sale":
         return <StorewideSalePage />;
+      case "vacation":
+        return <VacationModePage />;
       case "audit-log":
         return <AuditLogPage />;
       case "overview":

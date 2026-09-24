@@ -87,6 +87,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return sendJson(res, 401, { ok: false, message: "Session expired. Please sign in again." });
   }
 
+  // Vacation mode. Checked before releasing the customer's earlier holds so
+  // a paused store doesn't drop a hold they could still pay for.
+  // checkout_create_order enforces the same rule in the DB.
+  const { data: storeStatus } = await userClient.rpc("store_ordering_status");
+  const storeRow = Array.isArray(storeStatus) ? storeStatus[0] : null;
+  if (storeRow?.paused) {
+    return sendJson(res, 503, {
+      ok: false,
+      code: "orders_paused",
+      message: storeRow.message,
+    });
+  }
+
   // Never fatal: if a release fails, the RPC's stock check still protects
   // correctness and the expiry worker releases the old hold later.
   try {
@@ -114,6 +127,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (error) {
     // Map known RPC errors to safe, useful messages.
     const msg = error.message.toLowerCase();
+    if (msg.includes("orders paused")) {
+      return sendJson(res, 503, {
+        ok: false,
+        code: "orders_paused",
+        message: "We’re not taking orders right now. Please check back soon.",
+      });
+    }
     if (msg.includes("insufficient stock")) {
       return sendJson(res, 409, {
         ok: false,

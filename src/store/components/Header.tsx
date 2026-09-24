@@ -7,6 +7,7 @@ import CartDrawer from "./CartDrawer";
 import { Icon } from "./Icon";
 import ShopByDeck from "./ShopByDeck";
 import StorewideSaleBanner from "./StorewideSaleBanner";
+import OrdersPausedBanner from "./OrdersPausedBanner";
 
 const SUGGEST_DEBOUNCE_MS = 200;
 
@@ -266,6 +267,7 @@ export default function Header() {
         </div>
       </div>
 
+      <OrdersPausedBanner />
       <StorewideSaleBanner />
 
       <nav className="gg-nav" aria-label="Primary">

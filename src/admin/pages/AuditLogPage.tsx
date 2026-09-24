@@ -31,6 +31,7 @@ const RESOURCE_TABS = [
   { key: "all", label: "All" },
   { key: "inventory_item", label: "Inventory" },
   { key: "order", label: "Orders" },
+  { key: "store_settings", label: "Store" },
 ];
 
 const ACTION_TONE: Record<string, "info" | "warning" | "danger" | "success"> = {
@@ -38,6 +39,8 @@ const ACTION_TONE: Record<string, "info" | "warning" | "danger" | "success"> = {
   cancelled: "danger",
   update: "info",
   shipped: "success",
+  paused: "warning",
+  resumed: "success",
 };
 
 function toneFor(action: string): "info" | "warning" | "danger" | "success" {
