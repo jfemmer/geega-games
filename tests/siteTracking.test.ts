@@ -107,6 +107,24 @@ describe("POST /api/track", () => {
     expect(stored).not.toContain("bolt");
   });
 
+  it("records approximate city and state from Vercel's geo headers", async () => {
+    await track(
+      { p: "/" },
+      { "x-vercel-ip-country-region": "MO", "x-vercel-ip-city": "St.%20Louis" },
+    );
+    expect(inserted[0]).toMatchObject({ country: "US", region: "MO", city: "St. Louis" });
+
+    await track({ p: "/" }, { "x-vercel-ip-city": "S%C3%A3o%20Paulo", "x-vercel-ip-country": "BR", "x-vercel-ip-country-region": "SP" });
+    expect(inserted[1]).toMatchObject({ country: "BR", region: "SP", city: "São Paulo" });
+  });
+
+  it("stores no location when the geo headers are missing or malformed", async () => {
+    await track({ p: "/" }, { "x-vercel-ip-country-region": "not-a-region", "x-vercel-ip-city": "%E0%A4%A" });
+    expect(inserted[0]).toMatchObject({ region: null, city: null });
+    await track({ p: "/" });
+    expect(inserted[1]).toMatchObject({ region: null, city: null });
+  });
+
   it("detects phones", async () => {
     await track({ p: "/" }, { "user-agent": IPHONE });
     expect(inserted[0].device).toBe("mobile");

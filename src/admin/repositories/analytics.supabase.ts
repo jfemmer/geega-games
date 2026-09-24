@@ -58,6 +58,10 @@ export const supabaseAnalyticsRepository: AnalyticsRepository = {
       referrers: r.referrers ?? [],
       devices: r.devices ?? [],
       countries: r.countries ?? [],
+      // Absent until the 20260924130000 migration is applied.
+      cities: r.cities ?? [],
+      regions: r.regions ?? [],
+      recentVisitors: r.recentVisitors ?? [],
     };
   },
 

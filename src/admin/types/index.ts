@@ -821,6 +821,39 @@ export interface SiteTraffic {
   devices: NamedValue[];
   /** ISO country codes ("??" when unknown). */
   countries: NamedValue[];
+  /** Top cities by visitors (approximate, from Vercel's geo-IP headers). */
+  cities: VisitorCity[];
+  /** Top states / regions by visitors. */
+  regions: VisitorRegion[];
+  /** Most recently active visitors in the last 2 days, newest first. */
+  recentVisitors: RecentVisitor[];
+}
+
+export interface VisitorRegion {
+  /** ISO 3166-2 subdivision code without the country, e.g. "MO". */
+  region: string;
+  /** ISO country code, or null if unknown. */
+  country: string | null;
+  value: number;
+}
+
+export interface VisitorCity {
+  city: string;
+  region: string | null;
+  country: string | null;
+  value: number;
+}
+
+export interface RecentVisitor {
+  lastSeen: string;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  device: "mobile" | "tablet" | "desktop";
+  /** First external site they arrived from, if any. */
+  referrer: string | null;
+  lastPage: string;
+  pages: number;
 }
 
 export interface NamedValue {

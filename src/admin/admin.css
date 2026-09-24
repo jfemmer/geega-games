@@ -2764,3 +2764,9 @@ body.gg-printing-label .gg-labelprint-overlay {
 .gg-overview-heading { margin-top: 8px; }
 .gg-overview-heading h2 { margin: 0; font-size: 1.1rem; color: var(--gg-text); }
 .gg-overview-heading p { margin: 4px 0 0; font-size: .85rem; }
+
+/* Overview → Recent visitors: only three columns remain on phones (the rest
+   are .gg-col-secondary), so it fits without the usual 640px table scroll. */
+@media (max-width: 760px) {
+  .gg-recent-visitors .gg-table { min-width: 0; }
+}
