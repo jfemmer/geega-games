@@ -102,7 +102,17 @@ npx supabase gen types typescript --project-id <project-ref> > src/types/databas
 
 ## Payments
 
-No payment provider is wired up yet. When one is chosen, order confirmations must
-be triggered only after a verified server-side payment event (e.g. a
-signature-verified Stripe webhook for a completed payment) marks the order paid —
-never from a browser success page.
+Checkout offers two independent providers on the same payment step; either can
+be enabled on its own via its env vars (see `.env.example`):
+
+- **Stripe** — cards, Apple Pay, Google Pay, Link (`api/checkout/create-payment-intent.ts`,
+  `api/webhooks/stripe.ts`). Which of these appear is set in the Stripe Dashboard.
+- **PayPal + Venmo** — the PayPal JS SDK (`api/checkout/paypal.ts`,
+  `api/webhooks/paypal.ts`, `api/_lib/paypalCheckout.ts`). Venmo is not a Stripe
+  method, and Stripe doesn't offer PayPal to US businesses, so both go through
+  PayPal. The Venmo button only appears for eligible US buyers.
+
+In both cases the server prices the order, and an order is marked paid only from a
+payment the provider itself confirmed server-side (a verified webhook, or for
+PayPal a capture the server made and re-read) — never from a browser success page.
+Order confirmations are sent only after that.

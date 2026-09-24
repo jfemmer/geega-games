@@ -7,8 +7,8 @@ import { sendJson } from "../_lib/http.js";
 
 // GET /api/checkout/payment-intent-status?id=pi_...
 //
-// Used only on the return trip from a redirect-based payment method (PayPal,
-// Venmo, ...): the browser has a PaymentIntent id from the URL Stripe
+// Used only on the return trip from a redirect-based Stripe payment method (e.g.
+// bank redirects, Klarna): the browser has a PaymentIntent id from the URL Stripe
 // appended, but PaymentIntent metadata (which carries our order_id) is never
 // exposed to the client directly — Stripe's client SDK redacts it. This
 // endpoint reads it server-side, with the secret key, and returns only what

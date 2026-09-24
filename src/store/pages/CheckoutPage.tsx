@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
 import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
+import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
 import {
   formatCents,
   previewOrderTotals,
@@ -24,17 +26,22 @@ import {
 //     Stripe webhook (api/webhooks/stripe.ts) reading back from Stripe — this
 //     page NEVER fabricates a paid state from the client-side confirmPayment
 //     result alone; it polls the order and shows whatever the DB says.
-//   - Which payment methods actually appear (cards, PayPal, Venmo, Apple
-//     Pay, ...) is controlled in the Stripe Dashboard, not here. Some of
-//     those redirect the customer away and back (return_url below); on
+//   - Which Stripe methods appear in the card form (cards, Apple Pay, Google
+//     Pay, Link, ...) is controlled in the Stripe Dashboard, not here. Some
+//     of those redirect the customer away and back (return_url below); on
 //     return, the client re-reads the PaymentIntent by its client secret
 //     (in the URL Stripe appends) rather than trusting anything else in the
 //     URL, and resumes exactly like the non-redirect path.
+//   - PayPal and Venmo are NOT Stripe methods for a US business; they're a
+//     separate PayPal integration shown on the same payment step (see
+//     PayPalPaymentButtons below and api/checkout/paypal.ts). The server
+//     captures the PayPal payment and marks the order paid itself — this
+//     page again only reads the result back.
 //
-// If VITE_STRIPE_PUBLISHABLE_KEY isn't set (e.g. a preview env without
-// Stripe configured yet), checkout falls back to the legacy path: the order
-// is created pending_payment and the customer is told, honestly, that card
-// payment isn't live yet.
+// If neither VITE_STRIPE_PUBLISHABLE_KEY nor VITE_PAYPAL_CLIENT_ID is set
+// (e.g. a preview env without payments configured yet), checkout falls back
+// to the legacy path: the order is created pending_payment and the customer
+// is told, honestly, that online payment isn't live yet.
 
 type Address = {
   id: string;
@@ -90,7 +97,11 @@ export default function CheckoutPage() {
   const [paidComplete, setPaidComplete] = useState(false); // zero-balance (store credit) order
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [dueCents, setDueCents] = useState(0);
-  const [paymentPendingSetup, setPaymentPendingSetup] = useState(false); // legacy / Stripe unavailable
+  // True while the payment step (Stripe card form and/or PayPal/Venmo buttons)
+  // should be shown for placedOrderId.
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
+  const [paymentPendingSetup, setPaymentPendingSetup] = useState(false); // legacy / payments unavailable
+  const [paymentProcessing, setPaymentProcessing] = useState(false); // PayPal capture pending review
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [cardPaymentDone, setCardPaymentDone] = useState(false);
 
@@ -100,8 +111,9 @@ export default function CheckoutPage() {
     }
   }, [authLoading, user, navigate]);
 
-  // Handles the return trip from a redirect-based payment method (PayPal,
-  // Venmo, ...): Stripe appends payment_intent_client_secret to return_url.
+  // Handles the return trip from a redirect-based Stripe payment method (e.g.
+  // bank redirects, Klarna, Cash App Pay): Stripe appends
+  // payment_intent_client_secret to return_url.
   // We never trust anything else in the URL — the PaymentIntent's own status,
   // read back from Stripe, is the only thing that decides what happens next.
   const handledReturnRef = useRef(false);
@@ -142,6 +154,7 @@ export default function CheckoutPage() {
       } else if (body.status === "requires_payment_method") {
         setDueCents(body.amountDueCents ?? 0);
         setClientSecret(returnedSecret);
+        setAwaitingPayment(true);
         setError("Your payment wasn't completed. Please try again.");
       } else if (orderId) {
         setPaymentPendingSetup(true);
@@ -229,6 +242,9 @@ export default function CheckoutPage() {
         });
       }
 
+      // Stripe (when configured) creates the order and its PaymentIntent in
+      // one server call; with only PayPal configured the order is created by
+      // the same RPC as the legacy path and paid on the payment step.
       if (isStripeConfigured) {
         await placeOrderViaStripe();
       } else {
@@ -270,8 +286,14 @@ export default function CheckoutPage() {
       // failed after order creation) — surface that honestly if so.
       if (body?.orderId) {
         setPlacedOrderId(body.orderId);
-        setPaymentPendingSetup(true);
         await refresh();
+        // Card payment couldn't start, but PayPal/Venmo may still work.
+        if (isPayPalConfigured && body.amountDueCents > 0) {
+          setDueCents(body.amountDueCents);
+          setAwaitingPayment(true);
+        } else {
+          setPaymentPendingSetup(true);
+        }
         return;
       }
       throw new Error(friendlyCheckoutError(body?.message || ""));
@@ -287,14 +309,16 @@ export default function CheckoutPage() {
     if (body.clientSecret) {
       setDueCents(body.amountDueCents ?? 0);
       setClientSecret(body.clientSecret);
+      setAwaitingPayment(true);
       return;
     }
     // Shouldn't happen, but fail honestly rather than silently.
     setPaymentPendingSetup(true);
   };
 
-  // Legacy path (no VITE_STRIPE_PUBLISHABLE_KEY configured): create the
-  // order directly; any balance due stays pending_payment.
+  // Non-Stripe path: create the order directly. With PayPal configured, a
+  // balance due goes to the PayPal/Venmo payment step; otherwise (legacy, no
+  // online payments at all) it stays pending_payment.
   const placeOrderLegacy = async () => {
     const { data, error: rpcError } = await supabase.rpc("checkout_create_order", {
       p_shipping_method: method,
@@ -316,6 +340,9 @@ export default function CheckoutPage() {
 
     if (result.amount_due_cents === 0) {
       setPaidComplete(true);
+    } else if (isPayPalConfigured) {
+      setDueCents(result.amount_due_cents);
+      setAwaitingPayment(true);
     } else {
       setPaymentPendingSetup(true);
     }
@@ -351,7 +378,23 @@ export default function CheckoutPage() {
     );
   }
 
-  if (placedOrderId && clientSecret && !confirmingPayment) {
+  if (placedOrderId && paymentProcessing) {
+    return (
+      <div className="gg-page gg-empty">
+        <h1>Payment processing</h1>
+        <p>
+          PayPal is still processing your payment for order #
+          {placedOrderId.slice(0, 8).toUpperCase()}. Your cards are reserved, and
+          we&rsquo;ll email you as soon as it clears.
+        </p>
+        <Link to={`/account/orders/${placedOrderId}`} className="gg-btn">
+          View order
+        </Link>
+      </div>
+    );
+  }
+
+  if (placedOrderId && awaitingPayment && !confirmingPayment) {
     return (
       <div className="gg-page">
         <h1 style={{ color: "var(--gg-ink)" }}>Payment</h1>
@@ -364,9 +407,24 @@ export default function CheckoutPage() {
             {error}
           </div>
         )}
-        <Elements stripe={getStripePromise()} options={{ clientSecret }}>
-          <StripePaymentForm dueCents={dueCents} onPaid={() => handlePaid(placedOrderId)} />
-        </Elements>
+        {isPayPalConfigured && (
+          <PayPalPaymentButtons
+            orderId={placedOrderId}
+            onPaid={() => handlePaid(placedOrderId)}
+            onPending={() => setPaymentProcessing(true)}
+            onError={setError}
+          />
+        )}
+        {isPayPalConfigured && clientSecret && (
+          <div className="gg-pay-divider" role="separator">
+            <span>or pay with card</span>
+          </div>
+        )}
+        {clientSecret && (
+          <Elements stripe={getStripePromise()} options={{ clientSecret }}>
+            <StripePaymentForm dueCents={dueCents} onPaid={() => handlePaid(placedOrderId)} />
+          </Elements>
+        )}
       </div>
     );
   }
@@ -389,7 +447,7 @@ export default function CheckoutPage() {
           reserved your cards, but <strong>no money has been charged</strong>.
         </p>
         <p className="gg-alert gg-alert-warn" style={{ maxWidth: 560, margin: "1rem auto" }}>
-          {isStripeConfigured
+          {isStripeConfigured || isPayPalConfigured
             ? "We couldn't start payment just now — please try again shortly, or contact us and reference this order."
             : "The store owner is finishing payment setup. Your order is saved as pending — you can view it in your account."}
         </p>
@@ -551,9 +609,19 @@ export default function CheckoutPage() {
             <SummaryRow label="Amount due" value={totals.amountDueCents} strong />
           </div>
 
-          {totals.amountDueCents > 0 && !isStripeConfigured && (
+          {totals.amountDueCents > 0 && (isStripeConfigured || isPayPalConfigured) && (
+            <p className="gg-card-meta" style={{ margin: "0.5rem 0 0" }}>
+              Pay by{" "}
+              {[isStripeConfigured && "card", isPayPalConfigured && "PayPal or Venmo"]
+                .filter(Boolean)
+                .join(", ")}{" "}
+              on the next step.
+            </p>
+          )}
+
+          {totals.amountDueCents > 0 && !isStripeConfigured && !isPayPalConfigured && (
             <p className="gg-alert gg-alert-warn" style={{ fontSize: "0.85rem" }}>
-              Card payment isn&rsquo;t live yet. Placing this order reserves your
+              Online payment isn&rsquo;t live yet. Placing this order reserves your
               cards as <strong>pending</strong>; you won&rsquo;t be charged now.
             </p>
           )}
@@ -568,7 +636,7 @@ export default function CheckoutPage() {
               ? "Placing…"
               : totals.amountDueCents === 0
                 ? "Place order (store credit)"
-                : isStripeConfigured
+                : isStripeConfigured || isPayPalConfigured
                   ? "Continue to payment"
                   : "Place order"}
           </button>
@@ -604,7 +672,7 @@ function StripePaymentForm({
       redirect: "if_required",
       confirmParams: {
         // Only used for payment methods that require leaving the page
-        // (PayPal, Venmo, ...); confirmPayment() resolves in place for
+        // (bank redirects, Klarna, ...); confirmPayment() resolves in place for
         // everything else because of redirect: "if_required" above.
         return_url: `${window.location.origin}/checkout`,
       },
@@ -645,6 +713,113 @@ function StripePaymentForm({
         {submitting ? "Processing…" : `Pay ${formatCents(dueCents)}`}
       </button>
     </form>
+  );
+}
+
+// PayPal + Venmo buttons for an already-created order. PayPal's SDK decides
+// which buttons render: Venmo only appears for eligible US buyers (on mobile,
+// or as a QR code on desktop). Cards stay with Stripe, so PayPal's own card
+// button is disabled when Stripe is available to avoid two card forms.
+function PayPalPaymentButtons({
+  orderId,
+  onPaid,
+  onPending,
+  onError,
+}: {
+  orderId: string;
+  onPaid: () => void;
+  onPending: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  // PayPal's SDK wraps errors thrown from createOrder in its own generic
+  // error, so keep our customer-facing message here for onError to show.
+  const lastErrorRef = useRef<string | null>(null);
+
+  const call = async (payload: Record<string, unknown>) => {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Please sign in to check out.");
+    const res = await fetch("/api/checkout/paypal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      credentials: "same-origin",
+      body: JSON.stringify({ orderId, ...payload }),
+    });
+    const body = await res.json().catch(() => null);
+    return { res, body };
+  };
+
+  return (
+    <div style={{ maxWidth: 480, marginTop: "1rem", position: "relative" }} aria-busy={busy}>
+      <PayPalScriptProvider
+        options={{
+          clientId: paypalClientId,
+          currency: "USD",
+          intent: "capture",
+          components: "buttons",
+          enableFunding: "venmo",
+          ...(isStripeConfigured ? { disableFunding: "card" } : {}),
+        }}
+      >
+        <PayPalButtons
+          style={{ layout: "vertical", shape: "rect" }}
+          disabled={busy}
+          createOrder={async () => {
+            onError(null);
+            lastErrorRef.current = null;
+            const { res, body } = await call({ action: "create" });
+            if (!res.ok || !body?.ok || !body.paypalOrderId) {
+              const message: string = body?.message || "PayPal couldn’t start. Please try again.";
+              lastErrorRef.current = message;
+              throw new Error(message);
+            }
+            return body.paypalOrderId as string;
+          }}
+          onApprove={async (data, actions) => {
+            setBusy(true);
+            try {
+              const { res, body } = await call({
+                action: "capture",
+                paypalOrderId: data.orderID,
+              });
+              if (res.ok && body?.outcome === "paid") {
+                onPaid();
+                return;
+              }
+              if (res.ok && body?.outcome === "pending") {
+                onPending();
+                return;
+              }
+              if (body?.outcome === "declined" && body.retryable) {
+                // Re-opens PayPal so the buyer can pick another funding source.
+                await actions.restart();
+                return;
+              }
+              onError(body?.message || "We couldn’t confirm your payment. Please contact us.");
+            } catch {
+              onError(
+                "We couldn’t confirm your payment. Please check your order in your account before trying again.",
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onCancel={() => onError(null)}
+          onError={(err) => {
+            console.error("[paypal] button error", err);
+            onError(
+              lastErrorRef.current ??
+                "PayPal ran into a problem. Please try again or use another payment method.",
+            );
+          }}
+        />
+      </PayPalScriptProvider>
+      {busy && (
+        <p className="gg-card-meta" role="status" style={{ textAlign: "center" }}>
+          Confirming your payment…
+        </p>
+      )}
+    </div>
   );
 }
 

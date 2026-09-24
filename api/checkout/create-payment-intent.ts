@@ -138,11 +138,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           order_id: order.order_id,
           user_id: userData.user.id,
         },
-        // Which methods actually show up (cards, PayPal, Venmo, Apple Pay,
-        // etc.) is controlled in the Stripe Dashboard under Settings →
+        // Which methods actually show up (cards, Apple Pay, Google Pay,
+        // Link, etc.) is controlled in the Stripe Dashboard under Settings →
         // Payment methods, not here. Some of those methods redirect the
-        // customer away and back (PayPal, Venmo) — the client handles that
-        // return trip; see CheckoutPage.tsx.
+        // customer away and back — the client handles that return trip; see
+        // CheckoutPage.tsx. PayPal/Venmo are a separate integration
+        // (api/checkout/paypal.ts), not Stripe methods.
         automatic_payment_methods: { enabled: true },
       },
       // Idempotency: retrying the same order won't create duplicate intents.
@@ -161,6 +162,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return sendJson(res, 502, {
       ok: false,
       orderId: order.order_id,
+      // Lets the checkout page still offer PayPal/Venmo for this order.
+      amountDueCents: order.amount_due_cents,
       message:
         "Your order was created but we couldn’t start payment. It’s saved as pending; please try again shortly.",
     });
