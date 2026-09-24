@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
+import {
+  FUNDING,
+  PayPalButtons,
+  PayPalScriptProvider,
+  usePayPalScriptReducer,
+  type PayPalButtonsComponentProps,
+} from "@paypal/react-paypal-js";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
@@ -412,38 +418,44 @@ export default function CheckoutPage() {
   if (placedOrderId && awaitingPayment && !confirmingPayment) {
     return (
       <div className="gg-page">
-        <h1 style={{ color: "var(--gg-ink)" }}>Payment</h1>
-        <p className="gg-card-meta">
-          Order #{placedOrderId.slice(0, 8).toUpperCase()} — we&rsquo;re holding your
-          cards for {CHECKOUT_HOLD_MINUTES} minutes. Complete payment below to finish your
-          order; if you don&rsquo;t, they go back on sale and stay in your cart.
-        </p>
-        <button type="button" className="gg-btn gg-btn-ghost" onClick={backToCheckout}>
-          ← Back to checkout
-        </button>
-        {error && (
-          <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
-            {error}
+        <div className="gg-pay">
+          <button type="button" className="gg-pay-back" onClick={backToCheckout}>
+            ← Back to checkout
+          </button>
+          <h1 className="gg-pay-title">Payment</h1>
+          <div className="gg-pay-total">
+            <span>Amount due</span>
+            <strong>{formatCents(dueCents)}</strong>
           </div>
-        )}
-        {isPayPalConfigured && (
-          <PayPalPaymentButtons
-            orderId={placedOrderId}
-            onPaid={() => handlePaid(placedOrderId)}
-            onPending={() => setPaymentProcessing(true)}
-            onError={setError}
-          />
-        )}
-        {isPayPalConfigured && clientSecret && (
-          <div className="gg-pay-divider" role="separator">
-            <span>or pay with card</span>
-          </div>
-        )}
-        {clientSecret && (
-          <Elements stripe={getStripePromise()} options={{ clientSecret }}>
-            <StripePaymentForm dueCents={dueCents} onPaid={() => handlePaid(placedOrderId)} />
-          </Elements>
-        )}
+          <p className="gg-card-meta gg-pay-note">
+            Order #{placedOrderId.slice(0, 8).toUpperCase()} — we&rsquo;re holding your
+            cards for {CHECKOUT_HOLD_MINUTES} minutes. If you don&rsquo;t finish, they go
+            back on sale and stay in your cart.
+          </p>
+          {error && (
+            <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
+              {error}
+            </div>
+          )}
+          {isPayPalConfigured && (
+            <PayPalPaymentButtons
+              orderId={placedOrderId}
+              onPaid={() => handlePaid(placedOrderId)}
+              onPending={() => setPaymentProcessing(true)}
+              onError={setError}
+            />
+          )}
+          {isPayPalConfigured && clientSecret && (
+            <div className="gg-pay-divider" role="separator">
+              <span>or pay with card</span>
+            </div>
+          )}
+          {clientSecret && (
+            <Elements stripe={getStripePromise()} options={{ clientSecret }}>
+              <StripePaymentForm dueCents={dueCents} onPaid={() => handlePaid(placedOrderId)} />
+            </Elements>
+          )}
+        </div>
       </div>
     );
   }
@@ -716,16 +728,15 @@ function StripePaymentForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="gg-form" style={{ maxWidth: 480, marginTop: "1rem" }}>
+    <form onSubmit={handleSubmit} className="gg-form gg-pay-card">
       <PaymentElement />
       {cardError && (
-        <div className="gg-alert gg-alert-error" role="alert" style={{ marginTop: "1rem" }}>
+        <div className="gg-alert gg-alert-error" role="alert">
           {cardError}
         </div>
       )}
       <button
         className="gg-btn"
-        style={{ width: "100%", marginTop: "1rem" }}
         disabled={!stripe || !elements || submitting}
         type="submit"
       >
@@ -735,10 +746,30 @@ function StripePaymentForm({
   );
 }
 
-// PayPal + Venmo buttons for an already-created order. PayPal's SDK decides
-// which buttons render: Venmo only appears for eligible US buyers (on mobile,
-// or as a QR code on desktop). Cards stay with Stripe, so PayPal's own card
-// button is disabled when Stripe is available to avoid two card forms.
+// PayPal + Venmo buttons for an already-created order.
+//
+// Each funding source is its own standalone button (rather than PayPal's
+// default stacked group) so we control exactly which ones appear and they
+// all share one size and shape:
+//   - PayPal: always.
+//   - Venmo: rendered only when PayPal says the buyer is eligible (US, and
+//     mostly on phones; desktop gets a QR code). Ineligible → no button.
+//   - Pay Later / PayPal Credit: never (disabled at the SDK level too).
+//   - Card: only when Stripe isn't configured, so there's never a second
+//     card form next to Stripe's.
+const WALLET_BUTTON_STYLE = {
+  layout: "horizontal",
+  shape: "rect",
+  borderRadius: 8,
+  height: 45,
+  tagline: false,
+} as const;
+const PAYPAL_BUTTON_STYLE = { ...WALLET_BUTTON_STYLE, color: "gold" } as const;
+const VENMO_BUTTON_STYLE = { ...WALLET_BUTTON_STYLE, color: "blue" } as const;
+const CARD_BUTTON_STYLE = { ...WALLET_BUTTON_STYLE, color: "black" } as const;
+
+const PAYPAL_DISABLED_FUNDING = ["paylater", "credit", ...(isStripeConfigured ? ["card"] : [])].join(",");
+
 function PayPalPaymentButtons({
   orderId,
   onPaid,
@@ -768,8 +799,61 @@ function PayPalPaymentButtons({
     return { res, body };
   };
 
+  // Shared by every button: they all pay the same order the same way.
+  const handlers: PayPalButtonsComponentProps = {
+    disabled: busy,
+    createOrder: async () => {
+      onError(null);
+      lastErrorRef.current = null;
+      const { res, body } = await call({ action: "create" });
+      if (!res.ok || !body?.ok || !body.paypalOrderId) {
+        const message: string = body?.message || "PayPal couldn’t start. Please try again.";
+        lastErrorRef.current = message;
+        throw new Error(message);
+      }
+      return body.paypalOrderId as string;
+    },
+    onApprove: async (data, actions) => {
+      setBusy(true);
+      try {
+        const { res, body } = await call({
+          action: "capture",
+          paypalOrderId: data.orderID,
+        });
+        if (res.ok && body?.outcome === "paid") {
+          onPaid();
+          return;
+        }
+        if (res.ok && body?.outcome === "pending") {
+          onPending();
+          return;
+        }
+        if (body?.outcome === "declined" && body.retryable) {
+          // Re-opens PayPal so the buyer can pick another funding source.
+          await actions.restart();
+          return;
+        }
+        onError(body?.message || "We couldn’t confirm your payment. Please contact us.");
+      } catch {
+        onError(
+          "We couldn’t confirm your payment. Please check your order in your account before trying again.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    onCancel: () => onError(null),
+    onError: (err) => {
+      console.error("[paypal] button error", err);
+      onError(
+        lastErrorRef.current ??
+          "PayPal ran into a problem. Please try again or use another payment method.",
+      );
+    },
+  };
+
   return (
-    <div style={{ maxWidth: 480, marginTop: "1rem", position: "relative" }} aria-busy={busy}>
+    <div className="gg-pay-wallets" aria-busy={busy}>
       <PayPalScriptProvider
         options={{
           clientId: paypalClientId,
@@ -777,68 +861,44 @@ function PayPalPaymentButtons({
           intent: "capture",
           components: "buttons",
           enableFunding: "venmo",
-          ...(isStripeConfigured ? { disableFunding: "card" } : {}),
+          disableFunding: PAYPAL_DISABLED_FUNDING,
         }}
       >
-        <PayPalButtons
-          style={{ layout: "vertical", shape: "rect" }}
-          disabled={busy}
-          createOrder={async () => {
-            onError(null);
-            lastErrorRef.current = null;
-            const { res, body } = await call({ action: "create" });
-            if (!res.ok || !body?.ok || !body.paypalOrderId) {
-              const message: string = body?.message || "PayPal couldn’t start. Please try again.";
-              lastErrorRef.current = message;
-              throw new Error(message);
-            }
-            return body.paypalOrderId as string;
-          }}
-          onApprove={async (data, actions) => {
-            setBusy(true);
-            try {
-              const { res, body } = await call({
-                action: "capture",
-                paypalOrderId: data.orderID,
-              });
-              if (res.ok && body?.outcome === "paid") {
-                onPaid();
-                return;
-              }
-              if (res.ok && body?.outcome === "pending") {
-                onPending();
-                return;
-              }
-              if (body?.outcome === "declined" && body.retryable) {
-                // Re-opens PayPal so the buyer can pick another funding source.
-                await actions.restart();
-                return;
-              }
-              onError(body?.message || "We couldn’t confirm your payment. Please contact us.");
-            } catch {
-              onError(
-                "We couldn’t confirm your payment. Please check your order in your account before trying again.",
-              );
-            } finally {
-              setBusy(false);
-            }
-          }}
-          onCancel={() => onError(null)}
-          onError={(err) => {
-            console.error("[paypal] button error", err);
-            onError(
-              lastErrorRef.current ??
-                "PayPal ran into a problem. Please try again or use another payment method.",
-            );
-          }}
-        />
+        <WalletButtons handlers={handlers} />
       </PayPalScriptProvider>
       {busy && (
-        <p className="gg-card-meta" role="status" style={{ textAlign: "center" }}>
+        <p className="gg-card-meta gg-pay-status" role="status">
           Confirming your payment…
         </p>
       )}
     </div>
+  );
+}
+
+// Must render inside PayPalScriptProvider (reads its loading state).
+function WalletButtons({ handlers }: { handlers: PayPalButtonsComponentProps }) {
+  const [{ isPending, isRejected }] = usePayPalScriptReducer();
+
+  if (isRejected) {
+    return (
+      <p className="gg-card-meta gg-pay-status">
+        PayPal and Venmo couldn&rsquo;t load. Refresh the page
+        {isStripeConfigured ? " or pay by card below" : " to try again"}.
+      </p>
+    );
+  }
+  if (isPending) {
+    // Holds the PayPal button's space so the page doesn't jump when it loads.
+    return <div className="gg-pay-skeleton" aria-label="Loading PayPal" />;
+  }
+  return (
+    <>
+      <PayPalButtons {...handlers} fundingSource={FUNDING.PAYPAL} style={PAYPAL_BUTTON_STYLE} />
+      <PayPalButtons {...handlers} fundingSource={FUNDING.VENMO} style={VENMO_BUTTON_STYLE} />
+      {!isStripeConfigured && (
+        <PayPalButtons {...handlers} fundingSource={FUNDING.CARD} style={CARD_BUTTON_STYLE} />
+      )}
+    </>
   );
 }
 

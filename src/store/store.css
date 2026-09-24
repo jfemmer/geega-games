@@ -805,13 +805,95 @@
   border: 1px solid #fde68a;
 }
 
+/* ---- Checkout payment step ----
+   One centered column so the back link, total, PayPal/Venmo buttons and the
+   Stripe card form all share the same width and left edge. */
+.gg-pay {
+  max-width: 480px;
+  margin: 0 auto;
+}
+.gg-pay-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: none;
+  color: var(--gg-purple);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gg-pay-back:hover {
+  text-decoration: underline;
+}
+.gg-pay-back:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.gg-pay-title {
+  margin: 0.5rem 0 1rem;
+  color: var(--gg-ink);
+}
+.gg-pay-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  background: #faf7ff;
+}
+.gg-pay-total span {
+  color: #555;
+}
+.gg-pay-total strong {
+  font-size: 1.35rem;
+  color: var(--gg-ink);
+}
+.gg-pay-note {
+  margin: 0.75rem 0 1.25rem;
+  line-height: 1.45;
+}
+.gg-pay > .gg-alert {
+  margin-bottom: 1rem;
+}
+/* PayPal / Venmo: each button is a 45px-tall iframe PayPal renders at 100%
+   of this column's width. */
+.gg-pay-wallets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+.gg-pay-wallets iframe {
+  display: block;
+}
+.gg-pay-skeleton {
+  height: 45px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f1edf7 25%, #e7e0f2 37%, #f1edf7 63%);
+  background-size: 400% 100%;
+  animation: gg-pay-shimmer 1.4s ease infinite;
+}
+@keyframes gg-pay-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-pay-skeleton { animation: none; }
+}
+.gg-pay-status {
+  margin: 0;
+  text-align: center;
+}
 /* "or pay with card" rule between the PayPal/Venmo buttons and the card form */
 .gg-pay-divider {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  max-width: 480px;
-  margin: 1.25rem 0 0;
+  margin: 1.5rem 0 1.25rem;
   color: #666;
   font-size: 0.85rem;
 }
@@ -820,6 +902,16 @@
   content: "";
   flex: 1;
   border-top: 1px solid var(--gg-line);
+}
+/* Stripe card form inside the column (overrides .gg-form's own centering). */
+.gg-pay-card {
+  max-width: none;
+  margin: 0;
+}
+.gg-pay-card .gg-btn {
+  width: 100%;
+  min-height: 45px;
+  margin-top: 0.25rem;
 }
 
 /* ---- Misc ---- */
