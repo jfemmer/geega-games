@@ -2530,7 +2530,11 @@
 
 
 /* Foil card treatment on the customer storefront.
-   The overlay is decorative only and never blocks interaction. */
+   The overlay is decorative only and never blocks interaction.
+   Two layers sweep diagonally across the art: a rainbow foil band and a
+   narrower white glint. The moving glint is what makes foils noticeable at a
+   glance in a grid; the rainbow band gives it the foil color. Intensity is
+   tuned with opacity only, so desktop, touch and hover share one look. */
 .gg-card-imgwrap--foil {
   isolation: isolate;
   overflow: hidden;
@@ -2545,29 +2549,31 @@
   pointer-events: none;
   border-radius: inherit;
   mix-blend-mode: screen;
-  opacity: .34;
+  opacity: .62;
   background:
     linear-gradient(
       112deg,
-      transparent 0%,
-      rgba(255, 80, 190, .13) 18%,
-      rgba(108, 214, 255, .20) 32%,
-      rgba(255, 245, 150, .24) 46%,
-      rgba(173, 100, 255, .22) 60%,
-      rgba(92, 230, 196, .16) 73%,
-      transparent 88%
+      transparent 42%,
+      rgba(255, 255, 255, .6) 49%,
+      transparent 56%
     ),
     linear-gradient(
-      20deg,
-      rgba(255,255,255,.08),
-      rgba(255,255,255,0) 35%,
-      rgba(255,255,255,.12) 54%,
-      rgba(255,255,255,0) 70%
+      112deg,
+      transparent 0%,
+      rgba(255, 74, 190, .26) 16%,
+      rgba(88, 220, 255, .36) 31%,
+      rgba(255, 247, 145, .40) 46%,
+      rgba(180, 92, 255, .37) 61%,
+      rgba(72, 235, 188, .28) 76%,
+      transparent 91%
     );
-  background-size: 220% 220%, 180% 180%;
-  background-position: 140% 0%, 0% 100%;
-  filter: saturate(1.12) contrast(1.03);
-  animation: gg-foil-shimmer 5.5s ease-in-out infinite;
+  /* 3× the card, and positions kept within 0–100%, so the gradient image
+     always covers the whole card while it slides. Anything else lets an edge
+     of the image cross the card, which shows as a hard seam in the sweep. */
+  background-size: 300% 300%, 300% 300%;
+  background-position: 0% 0%, 10% 10%;
+  filter: saturate(1.15);
+  animation: gg-foil-shimmer 4.2s ease-in-out infinite;
 }
 .gg-card-imgwrap--foil::after {
   content: "";
@@ -2577,59 +2583,38 @@
   pointer-events: none;
   border-radius: inherit;
   background:
-    radial-gradient(circle at 22% 18%, rgba(255,255,255,.22), transparent 22%),
-    radial-gradient(circle at 78% 68%, rgba(188,120,255,.14), transparent 28%);
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.26), transparent 24%),
+    radial-gradient(circle at 78% 68%, rgba(188,120,255,.18), transparent 30%);
   mix-blend-mode: screen;
-  opacity: .28;
+  opacity: .42;
   transition: opacity .18s ease;
 }
 .gg-card:hover .gg-card-foil-shimmer {
-  opacity: .52;
-  animation-duration: 3.4s;
+  opacity: .82;
+  animation-duration: 2.8s;
 }
 .gg-card:hover .gg-card-imgwrap--foil::after {
-  opacity: .42;
+  opacity: .6;
 }
 
 @keyframes gg-foil-shimmer {
-  0% {
-    background-position: 145% 10%, 5% 95%;
+  0%,
+  100% {
+    background-position: 0% 0%, 10% 10%;
   }
   50% {
-    background-position: -45% 88%, 95% 5%;
-  }
-  100% {
-    background-position: 145% 10%, 5% 95%;
+    background-position: 100% 100%, 90% 90%;
   }
 }
 
+/* No hover on touch screens, so the resting state carries a little more. */
 @media (hover: none), (pointer: coarse) {
   .gg-card-foil-shimmer {
-    opacity: .62;
-    animation-duration: 3.2s;
-    background:
-      linear-gradient(
-        112deg,
-        transparent 0%,
-        rgba(255, 74, 190, .24) 16%,
-        rgba(88, 220, 255, .34) 31%,
-        rgba(255, 247, 145, .38) 46%,
-        rgba(180, 92, 255, .35) 61%,
-        rgba(72, 235, 188, .26) 76%,
-        transparent 91%
-      ),
-      linear-gradient(
-        24deg,
-        rgba(255,255,255,.10),
-        rgba(255,255,255,0) 30%,
-        rgba(255,255,255,.28) 50%,
-        rgba(255,255,255,0) 70%
-      );
-    background-size: 230% 230%, 190% 190%;
+    opacity: .72;
+    animation-duration: 3.6s;
   }
-
   .gg-card-imgwrap--foil::after {
-    opacity: .48;
+    opacity: .52;
   }
 }
 
@@ -2637,7 +2622,7 @@
   .gg-card-foil-shimmer {
     animation: none;
     background-position: 50% 50%, 50% 50%;
-    opacity: .38;
+    opacity: .5;
   }
 }
 
