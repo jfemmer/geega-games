@@ -2,7 +2,7 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
-const EFFECTIVE_DATE = "September 24, 2026";
+const EFFECTIVE_DATE = "September 25, 2026";
 
 export function PrivacyPage() {
   useSEO({
@@ -50,6 +50,13 @@ export function PrivacyPage() {
           (optional), city/state/ZIP, preferred contact method, the cards or collection details
           you provide, and any photographs you upload. See Section 6 below for more detail on how
           this information is used and protected.
+        </li>
+        <li>
+          <strong>Pokémon, One Piece and video game selling requests:</strong> when you ask us to
+          connect you with a buyer for these items, we collect your name, email, phone number
+          (optional), general location (optional), preferred contact method, the description you
+          provide, and any photographs you upload. With your consent, given on that form, we share
+          this information with our buying partner so they can contact you about an offer.
         </li>
         <li>
           <strong>Marketing/newsletter information:</strong> if you subscribe to our newsletter or
@@ -112,6 +119,12 @@ export function PrivacyPage() {
           financing, or sale of some or all of our assets, in which case information may be
           transferred as part of that transaction, subject to standard confidentiality
           arrangements; and
+        </li>
+        <li>
+          <strong>Our buying partner,</strong> only when you ask us to connect you with a buyer
+          for Pokémon cards, One Piece cards or video games and consent to it on that form. We share
+          the details and photos you submit there so the partner can contact you about an offer;
+          the partner handles any purchase directly with you.
         </li>
         <li>
           <strong>With your consent</strong> or at your direction.

@@ -35,6 +35,8 @@ import SellCollectionPage from "./store/pages/SellCollectionPage";
 import SellStLouisPage from "./store/pages/SellStLouisPage";
 import SellAreaPage from "./store/pages/SellAreaPage";
 import { GuidePage, GuidesIndexPage } from "./store/pages/GuidePages";
+import SellReferralPage from "./store/pages/SellReferralPage";
+import { REFERRAL_PAGES } from "./seo/referralPages";
 import { ST_LOUIS_PATH } from "./seo/sellAreas";
 import { AccountPage } from "./store/pages/AccountPages";
 import TrackOrderPage from "./store/pages/TrackOrderPage";
@@ -63,6 +65,8 @@ function Routes() {
   if (path === ST_LOUIS_PATH) return <SellStLouisPage />;
   const areaMatch = matchRoute("/sell-magic-cards/:slug", path);
   if (areaMatch) return <SellAreaPage slug={areaMatch.slug} />;
+  const referralPage = REFERRAL_PAGES.find((p) => p.path === path);
+  if (referralPage) return <SellReferralPage category={referralPage.category} />;
   if (path === "/guides") return <GuidesIndexPage />;
   const guideMatch = matchRoute("/guides/:slug", path);
   if (guideMatch) return <GuidePage slug={guideMatch.slug} />;

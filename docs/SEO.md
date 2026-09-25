@@ -72,6 +72,27 @@ Most sellers start here. Guides also earn links, and AI answers (ChatGPT
 search, Perplexity, Google AI Overviews) quote them, which now matters as much
 as the blue links.
 
+### Selling other things (referred to a buying partner)
+| Query shape | Target page |
+|---|---|
+| sell pokemon cards st louis · sell pokemon cards · sell pokemon card collection | `/sell-pokemon-cards` |
+| sell one piece cards · sell one piece tcg collection | `/sell-one-piece-cards` |
+| sell video games st louis · sell retro games · sell video game collection | `/sell-video-games` |
+
+Geega Games doesn't buy these categories itself. Each page says plainly that a
+trusted buying partner makes the offer. The shared form (`ReferralLeadForm` →
+`POST /api/referral-leads`) stores the lead in `referral_leads` and emails
+`SELL_LEADS_NOTIFICATION_EMAIL` a message that can be forwarded to the partner as-is:
+- it includes signed photo links that last 7 days;
+- replying to it reaches the seller.
+
+Sellers must tick a consent box before anything is shared. This is required by
+the privacy policy, which now names the buying partner as a recipient.
+
+Local competitors for these searches: PayMore's St. Louis pages, local game and
+card shops, and Facebook Marketplace. Our angle is meetups instead of a store
+visit, mixed or unsorted collections welcome, and shipping from anywhere.
+
 ### Buying
 | Query shape | Target page |
 |---|---|

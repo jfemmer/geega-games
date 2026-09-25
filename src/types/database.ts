@@ -1841,6 +1841,66 @@ export type Database = {
         }
         Relationships: []
       }
+      referral_leads: {
+        Row: {
+          categories: string[]
+          collection_size: string | null
+          consent_to_share_at: string
+          created_at: string
+          description: string
+          email: string
+          first_name: string
+          handoff: string
+          id: string
+          last_name: string | null
+          location: string | null
+          phone: string | null
+          photo_paths: string[]
+          preferred_contact_method: string
+          reference_number: string
+          source_path: string | null
+          status: string
+        }
+        Insert: {
+          categories: string[]
+          collection_size?: string | null
+          consent_to_share_at: string
+          created_at?: string
+          description: string
+          email: string
+          first_name: string
+          handoff?: string
+          id?: string
+          last_name?: string | null
+          location?: string | null
+          phone?: string | null
+          photo_paths?: string[]
+          preferred_contact_method?: string
+          reference_number?: string
+          source_path?: string | null
+          status?: string
+        }
+        Update: {
+          categories?: string[]
+          collection_size?: string | null
+          consent_to_share_at?: string
+          created_at?: string
+          description?: string
+          email?: string
+          first_name?: string
+          handoff?: string
+          id?: string
+          last_name?: string | null
+          location?: string | null
+          phone?: string | null
+          photo_paths?: string[]
+          preferred_contact_method?: string
+          reference_number?: string
+          source_path?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       scan_sessions: {
         Row: {
           added_cards: number

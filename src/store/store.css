@@ -2528,6 +2528,98 @@
   margin-bottom: 0.45rem;
 }
 
+/* ---- Referral lead form (/sell-pokemon-cards, /sell-one-piece-cards, /sell-video-games) ---- */
+.gg-referral-card {
+  max-width: 720px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+@media (max-width: 480px) {
+  .gg-referral-card {
+    padding: 1rem;
+  }
+}
+.gg-referral-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Same field treatment as the sell form's details/contact steps. */
+.gg-referral-form select,
+.gg-referral-form input:not([type="checkbox"]):not([type="radio"]),
+.gg-referral-form textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 1rem;
+  background: #fff;
+}
+.gg-referral-form textarea {
+  resize: vertical;
+}
+.gg-referral-form select:focus-visible,
+.gg-referral-form textarea:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+.gg-referral-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+.gg-referral-consent {
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  line-height: 1.5;
+  color: #333;
+}
+.gg-referral-consent input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+.gg-referral-form > .gg-btn {
+  align-self: flex-start;
+}
+@media (max-width: 480px) {
+  .gg-referral-form > .gg-btn {
+    align-self: stretch;
+  }
+}
+/* Honeypot: off-screen rather than display:none, which some bots skip. */
+.gg-referral-hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.gg-referral-done {
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+.gg-referral-done h3 {
+  color: var(--gg-ink);
+  margin: 0 0 0.5rem;
+}
+.gg-referral-done p {
+  color: #444;
+  line-height: 1.6;
+  margin: 0 auto 0.75rem;
+  max-width: 520px;
+}
+.gg-referral-done:focus {
+  outline: none;
+}
+
 
 /* Foil card treatment on the customer storefront.
    The overlay is decorative only and never blocks interaction.

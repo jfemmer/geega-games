@@ -11,6 +11,7 @@ import {
   WhatWeBuySection,
 } from "../components/SellLandingSections";
 import { ST_LOUIS_PATH, sellFormPath } from "../../seo/sellAreas";
+import { REFERRAL_PAGES } from "../../seo/referralPages";
 import {
   HUB_CITY,
   MAX_DRIVE_HOURS,
@@ -226,6 +227,21 @@ export default function SellCollectionPage() {
       </div>
 
       <SellerGuidesSection />
+
+      <section className="gg-collect-section">
+        <h2>Selling Pokémon, One Piece or video games too?</h2>
+        <p className="gg-collect-lead">
+          Plenty of Magic collections come with other things. We buy the Magic cards ourselves and
+          can connect you with a trusted buyer we work with for the rest:
+        </p>
+        <ul className="gg-area-links">
+          {REFERRAL_PAGES.map((p) => (
+            <li key={p.path}>
+              <Link to={p.path}>Sell {p.noun}</Link>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <FaqSection items={FAQ_ITEMS} />
       <p className="gg-collect-contact">

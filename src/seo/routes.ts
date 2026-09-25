@@ -12,6 +12,7 @@
 // served by the SPA shell and listed in the sitemap from the database.
 
 import { GUIDES, guidePath } from "./guides.js";
+import { REFERRAL_PAGES } from "./referralPages.js";
 import { SELL_AREAS, ST_LOUIS_PATH, sellAreaPath } from "./sellAreas.js";
 
 export type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
@@ -45,6 +46,12 @@ export function seoRoutes(): SeoRoute[] {
     ...STATIC_ROUTES,
     ...SELL_AREAS.map((area) => ({
       path: sellAreaPath(area.slug),
+      changefreq: "monthly" as const,
+      priority: "0.7",
+      lastmod: "2026-09-25",
+    })),
+    ...REFERRAL_PAGES.map((page) => ({
+      path: page.path,
       changefreq: "monthly" as const,
       priority: "0.7",
       lastmod: "2026-09-25",

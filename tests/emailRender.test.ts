@@ -340,4 +340,54 @@ describe("email templates render to HTML", () => {
     expect(countered).toContain("$420.00");
     expect(countered).toContain("counter-offer");
   });
+
+  it("ReferralLeadAdminNotification has everything the buying partner needs, with escaped seller text", async () => {
+    const { ReferralLeadAdminNotification, referralLeadAdminText } = await import(
+      "../api/_lib/emails/ReferralLeadAdminNotification.js"
+    );
+    const data = {
+      referenceNumber: "GG-R-100001",
+      categoriesLabel: "Pokémon cards and Video games & consoles",
+      sellerName: "Sam Lee",
+      email: "sam@example.com",
+      phone: "314-555-0100",
+      preferredContact: "Text",
+      location: "Kirkwood, MO",
+      sizeLabel: "A small collection",
+      handoffLabel: "Meet up in the St. Louis area",
+      description: "Base Set binder <script>alert(1)</script>",
+      photoUrls: ["https://x.supabase.co/storage/v1/object/sign/sell-photos/a.jpg?token=t"],
+      photoLinkDays: 7,
+      siteUrl: "https://geega-games.com",
+      logoUrl: "https://geega-games.com/logo.png",
+      supportEmail: "support@geega-games.com",
+    };
+    const html = await render(React.createElement(ReferralLeadAdminNotification, data));
+    for (const text of ["GG-R-100001", "Sam Lee", "sam@example.com", "314-555-0100", "Kirkwood, MO", "Meet up in the St. Louis area", "Photo 1", "7 days"]) {
+      expect(html).toContain(text);
+    }
+    expect(html).not.toContain("<script>alert(1)</script>");
+    const text = referralLeadAdminText(data);
+    expect(text).toContain("Base Set binder");
+    expect(text).toContain(data.photoUrls[0]);
+  });
+
+  it("ReferralLeadConfirmation says the offer comes from the buying partner, not Geega Games", async () => {
+    const { ReferralLeadConfirmation } = await import("../api/_lib/emails/ReferralLeadConfirmation.js");
+    const html = await render(
+      React.createElement(ReferralLeadConfirmation, {
+        firstName: "Sam",
+        referenceNumber: "GG-R-100001",
+        categoriesLabel: "One Piece cards",
+        preferredContact: "Email",
+        siteUrl: "https://geega-games.com",
+        logoUrl: "https://geega-games.com/logo.png",
+        supportEmail: "support@geega-games.com",
+      }),
+    );
+    expect(html).toContain("GG-R-100001");
+    expect(html).toContain("buying partner");
+    expect(html).toContain("One Piece cards");
+    expect(html).toContain("https://geega-games.com/sell-my-collection");
+  });
 });
