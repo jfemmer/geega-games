@@ -14,8 +14,8 @@ const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
   },
   {
     icon: "heart",
-    title: "Save a wishlist",
-    body: "Heart any card to keep it on your list, on every device you sign in from.",
+    title: "Wishlist alerts",
+    body: "Heart any card and we'll email you when it's back in stock, drops in price, or goes on sale.",
   },
   {
     icon: "truck",

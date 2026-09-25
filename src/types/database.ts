@@ -1808,6 +1808,7 @@ export type Database = {
           sell_submission_notifications: Json
           shipping_notifications: Json
           updated_at: string
+          wishlist_alerts: boolean
           username: string | null
         }
         Insert: {
@@ -1821,6 +1822,7 @@ export type Database = {
           sell_submission_notifications?: Json
           shipping_notifications?: Json
           updated_at?: string
+          wishlist_alerts?: boolean
           username?: string | null
         }
         Update: {
@@ -1834,6 +1836,7 @@ export type Database = {
           sell_submission_notifications?: Json
           shipping_notifications?: Json
           updated_at?: string
+          wishlist_alerts?: boolean
           username?: string | null
         }
         Relationships: []

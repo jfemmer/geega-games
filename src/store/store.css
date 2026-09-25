@@ -4200,6 +4200,9 @@
 .gg-notify-form {
   margin-top: 1rem;
 }
+.gg-notify-upsell {
+  margin: 0.6rem 0 0;
+}
 .gg-notify-form label {
   display: block;
   font-weight: 600;

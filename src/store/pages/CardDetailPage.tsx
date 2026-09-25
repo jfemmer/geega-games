@@ -8,6 +8,9 @@ import { formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../components/ProductCard";
 import WishlistButton from "../components/WishlistButton";
+import { useAuth } from "../lib/AuthContext";
+import { useWishlist } from "../lib/WishlistContext";
+import { authLinkWithReturn } from "../lib/authRedirect";
 
 // One indexable page per unique card (grouped by oracle_id across every
 // in-stock printing/condition — see public.get_card_detail), distinct from
@@ -81,6 +84,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [notifyError, setNotifyError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     let active = true;
@@ -359,7 +363,9 @@ export default function CardDetailPage({ slug }: { slug: string }) {
             This card is out of stock right now. <Link to="/shop">Browse what&rsquo;s available</Link>{" "}
             or check back soon.
           </p>
-          {notifyState === "done" ? (
+          {user ? (
+            <SavedForAlerts oracleId={detail.oracleId} cardName={detail.cardName} />
+          ) : notifyState === "done" ? (
             <p className="gg-alert gg-alert-ok">
               We&rsquo;ll email you as soon as {detail.cardName} is back in stock.
             </p>
@@ -385,7 +391,57 @@ export default function CardDetailPage({ slug }: { slug: string }) {
               )}
             </form>
           )}
+          {!user && (
+            <p className="gg-card-meta gg-notify-upsell">
+              Want price-drop and sale alerts too?{" "}
+              <Link to={authLinkWithReturn("/signup")}>Create a free account</Link> and save it
+              to your wishlist.
+            </p>
+          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Out-of-stock alert for a signed-in customer: one tap saves the card to their
+ * wishlist, and wishlist alerts (restock / price drop / sale) do the rest —
+ * no separate email form.
+ */
+function SavedForAlerts({ oracleId, cardName }: { oracleId: string; cardName: string }) {
+  const { isWishlisted, pending, toggle } = useWishlist();
+  const [error, setError] = useState(false);
+  const saved = isWishlisted(oracleId);
+  const busy = pending.has(oracleId);
+
+  if (saved) {
+    return (
+      <p className="gg-alert gg-alert-ok">
+        {cardName} is on your wishlist — we&rsquo;ll email you when it&rsquo;s back in stock,
+        drops in price, or goes on sale. <Link to="/account/wishlist">View wishlist</Link>
+      </p>
+    );
+  }
+  return (
+    <div className="gg-notify-form">
+      <p style={{ margin: "0 0 0.5rem" }}>
+        Save it to your wishlist and we&rsquo;ll email you the moment it&rsquo;s back.
+      </p>
+      <button
+        type="button"
+        className="gg-btn gg-btn-sm"
+        disabled={busy}
+        onClick={async () => {
+          setError(false);
+          const result = await toggle(oracleId, cardName);
+          if (result === "error") setError(true);
+        }}
+      >
+        {busy ? "Saving…" : "Save & notify me"}
+      </button>
+      {error && (
+        <p className="gg-alert gg-alert-error">Couldn&rsquo;t save it just now. Please try again.</p>
       )}
     </div>
   );

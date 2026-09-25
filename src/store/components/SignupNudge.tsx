@@ -99,7 +99,7 @@ export default function SignupNudge() {
         <Icon name="close" size={18} />
       </button>
       <h2 id="gg-nudge-title">Make it yours — free account</h2>
-      <p className="gg-nudge-sub">Wishlists, deck restock alerts, order tracking and faster checkout.</p>
+      <p className="gg-nudge-sub">Restock &amp; price-drop alerts, order tracking and faster checkout.</p>
       <AccountPerksList compact />
       <div className="gg-nudge-actions">
         <Link

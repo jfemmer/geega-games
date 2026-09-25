@@ -68,7 +68,7 @@ export default function WishlistButton({
           aria-label="Sign in to save cards"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <p>Sign in to save cards to your wishlist.</p>
+          <p>Save cards and we&rsquo;ll email you when they restock, drop in price, or go on sale.</p>
           <Link to={authLinkWithReturn("/login")} className="gg-btn gg-btn-sm">
             Sign in
           </Link>

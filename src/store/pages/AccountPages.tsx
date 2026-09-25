@@ -916,6 +916,10 @@ function WishlistSection() {
     return (
       <div className="gg-empty">
         <p>You haven&rsquo;t saved any cards yet.</p>
+        <p className="gg-card-meta">
+          Tap the heart on any card and we&rsquo;ll email you when it&rsquo;s back in
+          stock, drops in price, or goes on sale.
+        </p>
         <Link to="/shop" className="gg-btn gg-btn-ghost">
           Browse the shop
         </Link>
@@ -923,6 +927,11 @@ function WishlistSection() {
     );
 
   return (
+    <>
+    <p className="gg-card-meta" style={{ margin: "0 0 1rem" }}>
+      We&rsquo;ll email you when a card here is back in stock, drops in price, or goes on
+      sale. <Link to="/account/notifications">Alert settings</Link>
+    </p>
     <div className="gg-wishlist-grid">
       {rows.map((row) => (
         <div className="gg-wishlist-card" key={row.id}>
@@ -981,6 +990,7 @@ function WishlistSection() {
         </div>
       ))}
     </div>
+    </>
   );
 }
 
@@ -1639,6 +1649,7 @@ function NotificationsSection() {
     byEmail: true,
     byText: false,
   });
+  const [wishlistAlerts, setWishlistAlerts] = useState(true);
   const [deckAlerts, setDeckAlerts] = useState<Array<{
     id: string;
     card_name: string;
@@ -1648,7 +1659,7 @@ function NotificationsSection() {
     read_at: string | null;
   }>>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<"shipping" | "sell" | null>(null);
+  const [saving, setSaving] = useState<"shipping" | "sell" | "wishlist" | null>(null);
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
 
   useEffect(() => {
@@ -1656,7 +1667,7 @@ function NotificationsSection() {
     Promise.all([
       supabase
         .from("profiles")
-        .select("shipping_notifications, sell_submission_notifications")
+        .select("shipping_notifications, sell_submission_notifications, wishlist_alerts")
         .eq("id", user.id)
         .maybeSingle(),
       accountDb.rpc("deck_notification_summary"),
@@ -1664,6 +1675,7 @@ function NotificationsSection() {
       if (profileRes.data) {
         setShipping(toPrefs(profileRes.data.shipping_notifications));
         setSellSubmission(toPrefs(profileRes.data.sell_submission_notifications));
+        setWishlistAlerts(profileRes.data.wishlist_alerts !== false);
       }
       setDeckAlerts((alertsRes.data ?? []) as typeof deckAlerts);
       setLoading(false);
@@ -1696,6 +1708,19 @@ function NotificationsSection() {
     setSaving(null);
     if (error) setStatus({ text: error.message, error: true });
     else setSellSubmission(next);
+  }
+
+  async function updateWishlistAlerts(enabled: boolean) {
+    if (!user) return;
+    setStatus(null);
+    setSaving("wishlist");
+    const { error } = await supabase
+      .from("profiles")
+      .update({ wishlist_alerts: enabled })
+      .eq("id", user.id);
+    setSaving(null);
+    if (error) setStatus({ text: error.message, error: true });
+    else setWishlistAlerts(enabled);
   }
 
   async function markDeckAlertRead(id: string) {
@@ -1731,6 +1756,13 @@ function NotificationsSection() {
           checked={sellSubmission.enabled}
           saving={saving === "sell"}
           onChange={updateSellSubmission}
+        />
+        <NotificationToggle
+          label="Wishlist alerts"
+          description="Email me when a card on my wishlist is back in stock, drops in price, or goes on sale (at most one email every few hours)."
+          checked={wishlistAlerts}
+          saving={saving === "wishlist"}
+          onChange={updateWishlistAlerts}
         />
       </div>
       <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>

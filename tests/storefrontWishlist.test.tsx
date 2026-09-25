@@ -117,7 +117,7 @@ describe("wishlist heart toggle", () => {
     await user.click(heart);
 
     expect(
-      await screen.findByText(/sign in to save cards to your wishlist/i),
+      await screen.findByText(/save cards and we.ll email you when they restock/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
       "href",
