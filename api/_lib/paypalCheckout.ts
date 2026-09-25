@@ -63,10 +63,23 @@ async function loadOrder(orderId: string): Promise<OrderRow | null> {
   return (data as OrderRow | null) ?? null;
 }
 
+/**
+ * Who is paying: a signed-in customer (the order must be theirs), or a guest
+ * who proved with the order's signed guest token that they placed it (the
+ * order must have no account). See api/_lib/guestAccess.ts.
+ */
+export type PayPalBuyer = { userId: string } | { guestOrderId: string };
+
+function ownsOrder(order: OrderRow, buyer: PayPalBuyer): boolean {
+  return "userId" in buyer
+    ? order.user_id === buyer.userId
+    : order.user_id === null && order.id === buyer.guestOrderId;
+}
+
 /** Ownership + payability checks shared by create and capture. */
-function assertPayable(order: OrderRow | null, userId: string): asserts order is OrderRow {
+function assertPayable(order: OrderRow | null, buyer: PayPalBuyer): asserts order is OrderRow {
   // 404 for "not yours" too, so order ids can't be probed.
-  if (!order || order.user_id !== userId) throw new CheckoutError(404, "Order not found.");
+  if (!order || !ownsOrder(order, buyer)) throw new CheckoutError(404, "Order not found.");
   if (order.payment_status === "paid") throw new CheckoutError(409, "This order is already paid.");
   if (order.status === "cancelled") {
     // The checkout hold expired (or was replaced by a newer checkout).
@@ -82,9 +95,9 @@ function assertPayable(order: OrderRow | null, userId: string): asserts order is
 }
 
 /** Creates a PayPal order (PayPal or Venmo) for exactly the server-side amount due. */
-export async function createPayPalCheckout(orderId: string, userId: string): Promise<string> {
+export async function createPayPalCheckout(orderId: string, buyer: PayPalBuyer): Promise<string> {
   const order = await loadOrder(orderId);
-  assertPayable(order, userId);
+  assertPayable(order, buyer);
   const ppOrder = await createPayPalOrder({
     orderId: order.id,
     amountCents: order.amount_due_cents,
@@ -105,13 +118,13 @@ function latestCapture(ppOrder: PayPalOrder): PayPalCapture | undefined {
 /**
  * Captures (if still needed) and finalizes a PayPal order.
  *
- * `userId` is set when called on behalf of a signed-in customer (the order
- * must be theirs); it's null when called from the verified webhook.
+ * `buyer` is set when called on behalf of a customer (the order must be
+ * theirs — see PayPalBuyer); it's null when called from the verified webhook.
  * `expectedOrderId`, when given, must match the PayPal order's custom_id.
  */
 export async function finalizePayPalCheckout(
   paypalOrderId: string,
-  opts: { userId: string | null; expectedOrderId?: string },
+  opts: { buyer: PayPalBuyer | null; expectedOrderId?: string },
 ): Promise<FinalizeResult> {
   const ppOrder = await getPayPalOrder(paypalOrderId);
   const unit = firstUnit(ppOrder);
@@ -123,7 +136,7 @@ export async function finalizePayPalCheckout(
 
   const order = await loadOrder(orderId);
   if (!order) return { outcome: "rejected", orderId, reason: "order not found" };
-  if (opts.userId !== null && order.user_id !== opts.userId) {
+  if (opts.buyer !== null && !ownsOrder(order, opts.buyer)) {
     throw new CheckoutError(404, "Order not found.");
   }
 

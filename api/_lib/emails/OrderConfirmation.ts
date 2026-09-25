@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Column, Heading, Hr, Row, Section, Text } from "@react-email/components";
+import { Column, Heading, Hr, Link, Row, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
 
 // Loosely-typed createElement wrapper: React Email components type `children`
@@ -49,6 +49,10 @@ export type OrderEmailData = {
   siteUrl: string;
   logoUrl: string;
   supportEmail: string;
+  /** Where to follow the order: the account order page, or /track-order for a guest. */
+  trackUrl?: string | null;
+  /** Guest orders only: create an account and attach this order to it. */
+  createAccountUrl?: string | null;
 };
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -192,6 +196,23 @@ export function OrderConfirmation(data: OrderEmailData) {
       { key: "next", style: p },
       "We\u2019ll pack your cards with care and email you tracking as soon as your order ships. You can reply to this email any time with questions.",
     ),
+    data.trackUrl
+      ? h(
+          Text,
+          { key: "track", style: p },
+          h(Link, { href: data.trackUrl, style: ctaLink }, "Track this order \u2192"),
+        )
+      : null,
+    data.createAccountUrl
+      ? h(
+          Text,
+          { key: "join", style: joinBox },
+          h("strong", null, "Save this order to a free account"),
+          h("br", null),
+          "See all your orders in one place, check out faster next time, and get an email when cards on your wishlist restock or drop in price. ",
+          h(Link, { href: data.createAccountUrl, style: ctaLink }, "Create your account \u2192"),
+        )
+      : null,
   ];
 
   return h(
@@ -236,6 +257,10 @@ export function orderConfirmationText(d: OrderEmailData): string {
     `  ${[d.ship.city, d.ship.state, d.ship.postalCode].filter(Boolean).join(", ")}`,
     `  ${d.ship.country ?? ""}`,
     "",
+    d.trackUrl ? `Track this order: ${d.trackUrl}` : "",
+    d.createAccountUrl
+      ? `Save this order to a free account (faster checkout, wishlist restock & price-drop alerts): ${d.createAccountUrl}`
+      : "",
     `Questions? ${d.supportEmail}`,
   ];
   return lines.filter((l) => l !== "").join("\n");
@@ -273,6 +298,16 @@ const metaValue: React.CSSProperties = {
   margin: 0,
 };
 const hr: React.CSSProperties = { borderColor: brand.line, margin: "16px 0" };
+const ctaLink: React.CSSProperties = { color: brand.purple, fontWeight: 600, textDecoration: "underline" };
+const joinBox: React.CSSProperties = {
+  color: brand.ink,
+  fontSize: "14px",
+  lineHeight: "22px",
+  margin: "16px 0 0",
+  padding: "14px 16px",
+  backgroundColor: brand.parchment,
+  borderRadius: "10px",
+};
 const itemRow: React.CSSProperties = { margin: "8px 0" };
 const itemName: React.CSSProperties = {
   color: brand.ink,

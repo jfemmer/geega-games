@@ -70,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const order = resource as unknown as PayPalOrder;
         orderId = order.purchase_units?.[0]?.custom_id ?? null;
         if (order.id) {
-          const result = await finalizePayPalCheckout(order.id, { userId: null });
+          const result = await finalizePayPalCheckout(order.id, { buyer: null });
           orderId = result.orderId ?? orderId;
           if (result.outcome === "rejected") {
             console.warn("[paypal-webhook] approved order not captured", { orderId, reason: result.reason });

@@ -51,18 +51,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Each "Continue to payment" creates a new order (releasing the
       // previous hold), so a customer who came back — and maybe paid — has
       // a newer online order. Only nag about their most recent checkout.
-      if (order.user_id) {
-        const { data: newer } = await db
-          .from("orders")
-          .select("id")
-          .eq("user_id", order.user_id)
-          .eq("channel", "online")
-          .gt("created_at", order.created_at)
-          .limit(1);
-        if (newer && newer.length > 0) {
-          superseded += 1;
-          continue;
-        }
+      // Guest checkouts have no account, so match them by email instead.
+      const newerQuery = db
+        .from("orders")
+        .select("id")
+        .eq("channel", "online")
+        .gt("created_at", order.created_at)
+        .limit(1);
+      const { data: newer } = order.user_id
+        ? await newerQuery.eq("user_id", order.user_id)
+        : await newerQuery.is("user_id", null).eq("email", order.email as string);
+      if (newer && newer.length > 0) {
+        superseded += 1;
+        continue;
       }
 
       let firstName: string | null = null;

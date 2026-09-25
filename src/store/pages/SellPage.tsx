@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
 import { useAuth } from "../lib/AuthContext";
+import { rememberClaim } from "../lib/guestClaims";
 import { useSEO } from "../lib/useSEO";
 import { supabase } from "../../supabase";
 import { SellProgress } from "../components/sell/SellProgress";
@@ -299,6 +300,7 @@ export default function SellPage() {
       }
       clearDraft();
       photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      if (res.claim) rememberClaim({ kind: "sell", id: res.claim.id, token: res.claim.token });
       setResult({ referenceNumber: res.referenceNumber! });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -320,6 +322,21 @@ export default function SellPage() {
           <strong>{result.referenceNumber}</strong>
           <p className="gg-card-meta">Save this for your records.</p>
         </div>
+        {!user && (
+          <div className="gg-sellsuccess__account">
+            <strong>Follow this submission with a free account</strong>
+            <p className="gg-card-meta">
+              See its status and your offer any time, and get store credit worth 20% more than
+              a PayPal payout. We&rsquo;ll link this submission to your account automatically.
+            </p>
+            <Link to="/signup?next=/account/sell-submissions" className="gg-btn gg-btn-ghost gg-btn-sm">
+              Create a free account
+            </Link>{" "}
+            <Link to="/login?next=/account/sell-submissions" className="gg-card-meta">
+              or sign in
+            </Link>
+          </div>
+        )}
         <p>
           <Link to="/shop" className="gg-btn">
             Continue shopping

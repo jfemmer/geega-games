@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/http.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
+import { guestTokensAvailable, signGuestToken } from "../_lib/guestAccess.js";
 import { normalizeEmail } from "../_lib/tokens.js";
 import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
 import {
@@ -427,7 +428,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error("[/api/sell/submit] admin notification email failed:", err, "submission:", submission.id);
     }
 
-    return sendJson(res, 200, { ok: true, referenceNumber: submission.reference_number });
+    return sendJson(res, 200, {
+      ok: true,
+      referenceNumber: submission.reference_number,
+      // Guest submission: lets this browser attach it to an account later
+      // (api/account/claim.ts). Signed-in submissions are already linked.
+      ...(userId || !guestTokensAvailable()
+        ? {}
+        : { submissionId: submission.id, claimToken: signGuestToken("sell", submission.id) }),
+    });
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     const message = err instanceof HttpError ? err.message : "Unexpected server error.";

@@ -13,6 +13,8 @@ import GoogleAddressAutocomplete, {
   type ShippingAddressFields,
 } from "../components/GoogleAddressAutocomplete";
 import { useCart } from "../lib/CartContext";
+import { rememberClaim } from "../lib/guestClaims";
+import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
@@ -48,6 +50,12 @@ import {
 //     captures the PayPal payment and marks the order paid itself — this
 //     page again only reads the result back.
 //
+// Guests can check out without an account (online payment required): the
+// server builds their order from the browser cart's inventory ids and hands
+// back a signed guest token for it (api/_lib/guestAccess.ts). That token is
+// what lets this page pay for, and poll, the guest's own order, and what
+// attaches it to an account if they create one on the confirmation screen.
+//
 // If neither VITE_STRIPE_PUBLISHABLE_KEY nor VITE_PAYPAL_CLIENT_ID is set
 // (e.g. a preview env without payments configured yet), checkout falls back
 // to the legacy path: the order is created pending_payment and the customer
@@ -76,26 +84,75 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** A guest's pending order in this tab: what's needed to pay for / track it. */
+type GuestOrderAccess = { orderId: string; token: string; email: string };
+
+const GUEST_ORDER_KEY = "gg_guest_checkout";
+
+function loadGuestOrder(): GuestOrderAccess | null {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(GUEST_ORDER_KEY) ?? "null");
+    return v && typeof v.orderId === "string" && typeof v.token === "string" && typeof v.email === "string"
+      ? (v as GuestOrderAccess)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveGuestOrder(v: GuestOrderAccess | null): void {
+  try {
+    if (v) sessionStorage.setItem(GUEST_ORDER_KEY, JSON.stringify(v));
+    else sessionStorage.removeItem(GUEST_ORDER_KEY);
+  } catch {
+    /* storage blocked — only affects the rare Stripe redirect return */
+  }
+}
+
+const orderNumberFor = (orderId: string) => `GG-${orderId.slice(0, 8).toUpperCase()}`;
+
+function trackOrderLink(orderId: string, guest: GuestOrderAccess | null): string {
+  return guest
+    ? `/track-order?order=${encodeURIComponent(orderNumberFor(orderId))}&email=${encodeURIComponent(guest.email)}`
+    : `/account/orders/${orderId}`;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** Polls the order's payment_status until it leaves "unpaid" or attempts run out. */
-async function pollPaymentStatus(orderId: string, attempts = 6, intervalMs = 2000): Promise<boolean> {
+async function pollPaymentStatus(
+  orderId: string,
+  guest: GuestOrderAccess | null,
+  attempts = 6,
+  intervalMs = 2000,
+): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
     await sleep(intervalMs);
-    const { data } = await supabase
-      .from("orders")
-      .select("payment_status")
-      .eq("id", orderId)
-      .maybeSingle();
-    if (data && data.payment_status !== "unpaid") {
-      return data.payment_status === "paid";
+    let status: string | null = null;
+    if (guest) {
+      // Guests can't read orders directly (RLS); the guest lookup can.
+      const { data } = await supabase.rpc("guest_order_lookup", {
+        p_order_number: orderId.slice(0, 8),
+        p_email: guest.email,
+      });
+      status = (data as { payment_status?: string } | null)?.payment_status ?? null;
+    } else {
+      const { data } = await supabase
+        .from("orders")
+        .select("payment_status")
+        .eq("id", orderId)
+        .maybeSingle();
+      status = data?.payment_status ?? null;
     }
+    if (status && status !== "unpaid") return status === "paid";
   }
   return false;
 }
 
 export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
-  const { lines, subtotalCents, loading: cartLoading, refresh } = useCart();
-  const { navigate } = useRouter();
+  const { lines, subtotalCents, loading: cartLoading, refresh, clear } = useCart();
+  useRouter();
   const storeStatus = useStoreStatus();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -129,12 +186,10 @@ export default function CheckoutPage() {
   const [paymentProcessing, setPaymentProcessing] = useState(false); // PayPal capture pending review
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [cardPaymentDone, setCardPaymentDone] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/login?next=/checkout", { replace: true });
-    }
-  }, [authLoading, user, navigate]);
+  // Guest checkout: their email, and access to the order they just placed.
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestOrder, setGuestOrder] = useState<GuestOrderAccess | null>(null);
+  const isGuest = !authLoading && !user;
 
   // Handles a return trip to return_url: Stripe appends
   // payment_intent_client_secret when a payment step (rarely, for cards —
@@ -143,7 +198,7 @@ export default function CheckoutPage() {
   // read back from Stripe, is the only thing that decides what happens next.
   const handledReturnRef = useRef(false);
   useEffect(() => {
-    if (handledReturnRef.current || !user) return;
+    if (handledReturnRef.current || authLoading) return;
     const params = new URLSearchParams(window.location.search);
     const returnedSecret = params.get("payment_intent_client_secret");
     const intentId = params.get("payment_intent");
@@ -152,16 +207,23 @@ export default function CheckoutPage() {
     window.history.replaceState({}, "", window.location.pathname);
 
     (async () => {
-      const token = await getAccessToken();
+      const token = user ? await getAccessToken() : null;
+      const guest = user ? null : loadGuestOrder();
       const genericError =
         "We couldn't confirm your payment. Please contact us and reference your order.";
-      if (!token) {
+      if (!token && !guest) {
         setError(genericError);
         return;
       }
+      if (guest) setGuestOrder(guest);
       const res = await fetch(
-        `/api/checkout/payment-intent-status?id=${encodeURIComponent(intentId)}`,
-        { headers: { Authorization: `Bearer ${token}` }, credentials: "same-origin" },
+        token
+          ? `/api/checkout/payment-intent-status?id=${encodeURIComponent(intentId)}`
+          : `/api/checkout/payment-intent-status?id=${encodeURIComponent(intentId)}&orderId=${encodeURIComponent(guest!.orderId)}&guestToken=${encodeURIComponent(guest!.token)}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          credentials: "same-origin",
+        },
       );
       const body = await res.json().catch(() => null);
       if (!res.ok || !body?.ok) {
@@ -174,7 +236,7 @@ export default function CheckoutPage() {
         await refresh();
       }
       if (body.status === "succeeded" || body.status === "processing") {
-        if (orderId) await handlePaid(orderId);
+        if (orderId) await handlePaid(orderId, guest);
         else setCardPaymentDone(true);
       } else if (body.status === "requires_payment_method") {
         setDueCents(body.amountDueCents ?? 0);
@@ -194,7 +256,7 @@ export default function CheckoutPage() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (!user) return;
@@ -243,12 +305,24 @@ export default function CheckoutPage() {
     !!chosenAddress.line1 &&
     !!chosenAddress.city &&
     !!chosenAddress.state &&
-    !!chosenAddress.postal_code;
+    !!chosenAddress.postal_code &&
+    // Guests have no profile to name the package after.
+    (!isGuest || !!chosenAddress.recipient?.trim());
+  const guestEmailValid = EMAIL_RE.test(guestEmail.trim());
+  const canPayOnline = isStripeConfigured || isPayPalConfigured;
 
   const placeOrder = async () => {
     setError(null);
+    if (isGuest && !guestEmailValid) {
+      setError("Please enter your email so we can send your receipt and tracking.");
+      return;
+    }
     if (!addressValid) {
-      setError("Please provide a complete shipping address.");
+      setError(
+        isGuest
+          ? "Please enter the recipient's name and a complete shipping address."
+          : "Please provide a complete shipping address.",
+      );
       return;
     }
     setPlacing(true);
@@ -277,10 +351,12 @@ export default function CheckoutPage() {
       // Any online payment method → the server creates the order (and the
       // Stripe PaymentIntent, when Stripe is configured) and first releases
       // this customer's earlier unpaid checkout holds.
-      if (isStripeConfigured || isPayPalConfigured) {
+      if (canPayOnline) {
         await placeOrderViaServer();
-      } else {
+      } else if (user) {
         await placeOrderLegacy();
+      } else {
+        throw new Error("Please sign in to place this order.");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Checkout failed.");
@@ -295,15 +371,29 @@ export default function CheckoutPage() {
   // holds its cards for a limited time, and the cart is cleared once the
   // order is actually paid (mark_order_paid).
   const placeOrderViaServer = async () => {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Please sign in to check out.");
+    const token = user ? await getAccessToken() : null;
+    if (user && !token) throw new Error("Your session expired. Please sign in again.");
+    const email = guestEmail.trim();
+    const previous = token ? null : loadGuestOrder();
     const res = await fetch("/api/checkout/create-payment-intent", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       credentials: "same-origin",
       body: JSON.stringify({
         shippingMethod: method,
-        storeCreditRequestedCents: useCredit ? creditBalance : 0,
+        storeCreditRequestedCents: token && useCredit ? creditBalance : 0,
+        // Guests: the server re-prices these ids from inventory; only ids
+        // and quantities are sent, never prices.
+        guest: token
+          ? undefined
+          : {
+              email,
+              items: lines.map((l) => ({ inventoryItemId: l.inventoryItemId, quantity: l.quantity })),
+              previousOrder: previous ? { id: previous.orderId, token: previous.token } : undefined,
+            },
         ship: {
           recipient: chosenAddress?.recipient ?? undefined,
           line1: chosenAddress?.line1 ?? undefined,
@@ -316,6 +406,14 @@ export default function CheckoutPage() {
       }),
     });
     const body = await res.json().catch(() => null);
+    // A guest order (even one whose card payment couldn't start) comes with
+    // its access token — keep it for paying, polling, and linking to an account.
+    if (!token && body?.orderId && typeof body.guestToken === "string") {
+      const access = { orderId: body.orderId as string, token: body.guestToken as string, email };
+      setGuestOrder(access);
+      saveGuestOrder(access);
+      rememberClaim({ kind: "order", id: access.orderId, token: access.token });
+    }
     if (!res.ok || !body?.ok) {
       // The order may still have been created (e.g. PaymentIntent creation
       // failed after order creation) — surface that honestly if so.
@@ -383,16 +481,23 @@ export default function CheckoutPage() {
     }
   };
 
-  const handlePaid = async (orderId: string) => {
+  const handlePaid = async (orderId: string, guestOverride?: GuestOrderAccess | null) => {
+    const guest = guestOverride !== undefined ? guestOverride : guestOrder;
     setConfirmingPayment(true);
-    await pollPaymentStatus(orderId);
+    await pollPaymentStatus(orderId, guest);
     // Whether or not the webhook had already landed by the time polling
     // stopped, the payment itself succeeded (Stripe confirmed it to us) —
     // the order page will always show the true DB state either way.
     setConfirmingPayment(false);
     setCardPaymentDone(true);
-    // mark_order_paid removed the purchased cards from the cart.
-    await refresh();
+    if (guest) {
+      // A guest's cart lives only in this browser; the order now has it all.
+      await clear();
+      saveGuestOrder(null);
+    } else {
+      // mark_order_paid removed the purchased cards from the cart.
+      await refresh();
+    }
   };
 
   // Leave the payment step without paying. The order's hold stays until it
@@ -416,12 +521,18 @@ export default function CheckoutPage() {
       <div className="gg-page gg-empty">
         <h1>Order confirmed 🎉</h1>
         <p>
-          Your order is paid and confirmed. Order #
-          {placedOrderId.slice(0, 8).toUpperCase()}.
+          Your order is paid and confirmed. Order {orderNumberFor(placedOrderId)}.
+          {guestOrder && <> We emailed your receipt to <strong>{guestOrder.email}</strong>.</>}
         </p>
-        <Link to={`/account/orders/${placedOrderId}`} className="gg-btn">
-          View order
+        <Link to={trackOrderLink(placedOrderId, guestOrder)} className="gg-btn">
+          {guestOrder ? "Track this order" : "View order"}
         </Link>
+        {guestOrder && !user && (
+          <SaveOrderToAccount
+            guest={guestOrder}
+            recipient={chosenAddress?.recipient ?? ""}
+          />
+        )}
       </div>
     );
   }
@@ -435,7 +546,7 @@ export default function CheckoutPage() {
           {placedOrderId.slice(0, 8).toUpperCase()}. Your cards are reserved, and
           we&rsquo;ll email you as soon as it clears.
         </p>
-        <Link to={`/account/orders/${placedOrderId}`} className="gg-btn">
+        <Link to={trackOrderLink(placedOrderId, guestOrder)} className="gg-btn">
           View order
         </Link>
       </div>
@@ -467,6 +578,7 @@ export default function CheckoutPage() {
           {isPayPalConfigured && (
             <PayPalPaymentButtons
               orderId={placedOrderId}
+              guestToken={guestOrder?.orderId === placedOrderId ? guestOrder.token : null}
               onPaid={() => handlePaid(placedOrderId)}
               onPending={() => setPaymentProcessing(true)}
               onError={setError}
@@ -525,7 +637,7 @@ export default function CheckoutPage() {
             ? "We couldn't start payment just now — please try again shortly, or contact us and reference this order."
             : "The store owner is finishing payment setup. Your order is saved as pending — you can view it in your account."}
         </p>
-        <Link to={`/account/orders/${placedOrderId}`} className="gg-btn">
+        <Link to={trackOrderLink(placedOrderId, guestOrder)} className="gg-btn">
           View order
         </Link>
       </div>
@@ -556,6 +668,28 @@ export default function CheckoutPage() {
 
       <div className="gg-shop">
         <div>
+          {isGuest && (
+            <section className="gg-guest-checkout" aria-labelledby="gg-guest-h">
+              <h2 id="gg-guest-h" style={{ marginTop: 0 }}>Contact</h2>
+              <div className="gg-field">
+                <label htmlFor="co-email">Email for your receipt &amp; tracking</label>
+                <input
+                  id="co-email"
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  required
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                />
+              </div>
+              <p className="gg-card-meta" style={{ margin: "0.25rem 0 0" }}>
+                Checking out as a guest — no account needed.{" "}
+                <Link to={authLinkWithReturn("/login")}>Sign in</Link> to use saved addresses
+                and store credit.
+              </p>
+            </section>
+          )}
           {/* Cart review */}
           <h2>Review</h2>
           {lines.map((l) => (
@@ -715,7 +849,12 @@ export default function CheckoutPage() {
           <button
             className="gg-btn"
             style={{ width: "100%", marginTop: "0.5rem" }}
-            disabled={placing || !addressValid || storeStatus.ordersPaused}
+            disabled={
+              placing ||
+              !addressValid ||
+              (isGuest && (!guestEmailValid || !canPayOnline)) ||
+              storeStatus.ordersPaused
+            }
             onClick={placeOrder}
           >
             {storeStatus.ordersPaused
@@ -728,6 +867,12 @@ export default function CheckoutPage() {
                     ? "Continue to payment"
                     : "Place order"}
           </button>
+          {isGuest && !canPayOnline && (
+            <p className="gg-alert gg-alert-warn" style={{ fontSize: "0.85rem" }}>
+              Online payment isn&rsquo;t live yet, so orders need an account for now.{" "}
+              <Link to={authLinkWithReturn("/login")}>Sign in</Link>
+            </p>
+          )}
           <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>
             Final totals are confirmed by our server; stock is re-checked when you
             place the order.
@@ -735,6 +880,116 @@ export default function CheckoutPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * Post-purchase account creation for a guest: one password field (email and
+ * name are already known from the order). The order was remembered as a
+ * pending claim when it was placed, so AuthContext links it to the account
+ * as soon as there's a session — now, or after email confirmation.
+ */
+function SaveOrderToAccount({ guest, recipient }: { guest: GuestOrderAccess; recipient: string }) {
+  const { user, signUp } = useAuth();
+  const [first, ...rest] = recipient.trim().split(/\s+/);
+  const [firstName, setFirstName] = useState(first ?? "");
+  const [lastName, setLastName] = useState(rest.join(" "));
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [existing, setExisting] = useState(false);
+  const [checkEmail, setCheckEmail] = useState(false);
+
+  if (user) {
+    return (
+      <div className="gg-save-order gg-alert gg-alert-ok" role="status">
+        Your account is ready and this order is saved in it.{" "}
+        <Link to="/account/orders">See your orders</Link>
+      </div>
+    );
+  }
+  if (checkEmail) {
+    return (
+      <div className="gg-save-order gg-alert gg-alert-ok" role="status">
+        Almost done — check {guest.email} for a link to confirm your account. This order
+        will be added as soon as you sign in.
+      </div>
+    );
+  }
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setExisting(false);
+    if (password.length < 6) {
+      setError("Please choose a password with at least 6 characters.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { needsEmailConfirmation } = await signUp({
+        email: guest.email,
+        password,
+        firstName,
+        lastName,
+      });
+      if (needsEmailConfirmation) setCheckEmail(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Couldn’t create your account.";
+      setExisting(/already exists/i.test(message));
+      setError(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="gg-save-order gg-form" onSubmit={submit}>
+      <h2>Save this order to a free account</h2>
+      <p className="gg-card-meta">
+        Track it and every future order in one place, check out faster, and get emailed when
+        cards on your wishlist restock or drop in price.
+      </p>
+      <p className="gg-card-meta" style={{ margin: 0 }}>
+        Account email: <strong>{guest.email}</strong>
+      </p>
+      <div className="gg-form-grid">
+        <div className="gg-field">
+          <label htmlFor="so-first">First name</label>
+          <input id="so-first" autoComplete="given-name" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </div>
+        <div className="gg-field">
+          <label htmlFor="so-last">Last name</label>
+          <input id="so-last" autoComplete="family-name" required value={lastName} onChange={(e) => setLastName(e.target.value)} />
+        </div>
+      </div>
+      <div className="gg-field">
+        <label htmlFor="so-pw">Choose a password</label>
+        <input
+          id="so-pw"
+          type="password"
+          autoComplete="new-password"
+          minLength={6}
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      {error && (
+        <div className="gg-alert gg-alert-error" role="alert">
+          {error}
+          {existing && (
+            <>
+              {" "}
+              <Link to="/login?next=/account/orders">Sign in to add this order to it</Link>
+            </>
+          )}
+        </div>
+      )}
+      <button className="gg-btn" type="submit" disabled={busy}>
+        {busy ? "Creating…" : "Create account"}
+      </button>
+    </form>
   );
 }
 
@@ -840,11 +1095,14 @@ const PAYPAL_DISABLED_FUNDING = ["paylater", "credit", ...(isStripeConfigured ? 
 
 function PayPalPaymentButtons({
   orderId,
+  guestToken,
   onPaid,
   onPending,
   onError,
 }: {
   orderId: string;
+  /** Set for a guest's order: proves this browser placed it (no account token). */
+  guestToken: string | null;
   onPaid: () => void;
   onPending: () => void;
   onError: (message: string | null) => void;
@@ -855,13 +1113,16 @@ function PayPalPaymentButtons({
   const lastErrorRef = useRef<string | null>(null);
 
   const call = async (payload: Record<string, unknown>) => {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Please sign in to check out.");
+    const token = guestToken ? null : await getAccessToken();
+    if (!token && !guestToken) throw new Error("Your session expired. Please sign in again.");
     const res = await fetch("/api/checkout/paypal", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       credentials: "same-origin",
-      body: JSON.stringify({ orderId, ...payload }),
+      body: JSON.stringify({ orderId, ...(guestToken ? { guestToken } : {}), ...payload }),
     });
     const body = await res.json().catch(() => null);
     return { res, body };

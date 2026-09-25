@@ -4,6 +4,7 @@ import type { Database } from "../../src/types/database.js";
 import { ServerEnv } from "../_lib/env.js";
 import { getStripe } from "../_lib/stripe.js";
 import { sendJson } from "../_lib/http.js";
+import { verifyGuestToken } from "../_lib/guestAccess.js";
 
 // GET /api/checkout/payment-intent-status?id=pi_...
 //
@@ -27,7 +28,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const accessToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!accessToken) {
-    return sendJson(res, 401, { ok: false, message: "Not authenticated." });
+    // Guest checkout: ?orderId=&guestToken= prove this browser placed the order.
+    const orderId = typeof req.query.orderId === "string" ? req.query.orderId : "";
+    if (!verifyGuestToken("order", orderId, req.query.guestToken)) {
+      return sendJson(res, 401, { ok: false, message: "Not authenticated." });
+    }
+    try {
+      const intent = await getStripe().paymentIntents.retrieve(id);
+      if (intent.metadata?.order_id !== orderId) {
+        return sendJson(res, 403, { ok: false, message: "Not authorized." });
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        orderId,
+        status: intent.status,
+        amountDueCents: intent.amount,
+      });
+    } catch (err) {
+      console.error("[stripe] paymentIntents.retrieve failed", err);
+      return sendJson(res, 502, { ok: false, message: "Could not look up payment status." });
+    }
   }
 
   const userClient = createClient<Database>(

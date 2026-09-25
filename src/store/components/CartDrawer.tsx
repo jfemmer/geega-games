@@ -209,11 +209,27 @@ export default function CartDrawer({
               disabled={ordersPaused}
               onClick={() => {
                 onClose();
-                navigate(user ? "/checkout" : "/login?next=/checkout");
+                navigate("/checkout");
               }}
             >
-              {ordersPaused ? "Checkout paused" : user ? "Checkout" : "Sign in to check out"}
+              {ordersPaused ? "Checkout paused" : "Checkout"}
             </button>
+            {!user && !ordersPaused && (
+              <p className="gg-card-meta" style={{ textAlign: "center", margin: "0 0 0.5rem" }}>
+                No account needed.{" "}
+                <button
+                  type="button"
+                  className="gg-linklike"
+                  onClick={() => {
+                    onClose();
+                    navigate("/login?next=/checkout");
+                  }}
+                >
+                  Sign in
+                </button>{" "}
+                for saved addresses &amp; store credit.
+              </p>
+            )}
             <button
               className="gg-btn gg-btn-ghost gg-btn-sm"
               style={{ width: "100%" }}

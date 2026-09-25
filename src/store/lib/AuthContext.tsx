@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "../../supabase";
+import { captureClaimFromUrl, flushClaims, hasPendingClaims } from "./guestClaims";
 
 // Customer authentication via Supabase Auth on the Geega_Games project.
 // Signup passes first_name/last_name in options.data so the existing
@@ -80,6 +81,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // Guest orders / sell submissions waiting to join an account (from guest
+  // checkout, or a ?claim= link in a confirmation email): remember any on
+  // this URL, and attach them as soon as someone is signed in.
+  useEffect(() => {
+    captureClaimFromUrl();
+  }, []);
+  const sessionUserId = session?.user.id ?? null;
+  useEffect(() => {
+    if (!sessionUserId || !session?.access_token || !hasPendingClaims()) return;
+    void flushClaims(session.access_token).then((linked) => {
+      if (linked > 0) window.dispatchEvent(new CustomEvent("gg:claims-linked", { detail: { linked } }));
+    });
+    // Only when the signed-in user changes, not on every token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionUserId]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });

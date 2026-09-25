@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "../lib/router";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useRouter } from "../lib/router";
 import { supabase } from "../../supabase";
 import { formatCents } from "../lib/money";
 import { isStripeConfigured } from "../lib/stripeClient";
@@ -67,6 +67,15 @@ type GuestOrder = {
   items: GuestOrderItem[];
 };
 
+/**
+ * Accepts every way an order number is written to customers — "#AB12CD34"
+ * on the site, "GG-AB12CD34" in emails — and returns the 8 characters
+ * guest_order_lookup matches on.
+ */
+export function normalizeOrderNumber(raw: string): string {
+  return raw.trim().replace(/^#/, "").replace(/^gg-/i, "").trim();
+}
+
 export default function TrackOrderPage() {
   useSEO({
     title: "Track Your Order | Geega Games",
@@ -75,26 +84,26 @@ export default function TrackOrderPage() {
     path: "/track-order",
   });
 
-  const [orderNumberInput, setOrderNumberInput] = useState("");
-  const [email, setEmail] = useState("");
+  const { query } = useRouter();
+  const [orderNumberInput, setOrderNumberInput] = useState(() => query.get("order") ?? "");
+  const [email, setEmail] = useState(() => query.get("email") ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<{ orderNumber: string; email: string } | null>(null);
   const [order, setOrder] = useState<GuestOrder | null>(null);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const lookup = async (orderNumber: string, lookupEmail: string) => {
     setError(null);
     setNotFound(null);
     setBusy(true);
     try {
       const { data, error: rpcError } = await supabase.rpc("guest_order_lookup", {
-        p_order_number: orderNumberInput.trim(),
-        p_email: email.trim(),
+        p_order_number: normalizeOrderNumber(orderNumber),
+        p_email: lookupEmail.trim(),
       });
       if (rpcError) throw new Error(rpcError.message);
       if (!data) {
-        setNotFound({ orderNumber: orderNumberInput.trim(), email: email.trim() });
+        setNotFound({ orderNumber: orderNumber.trim(), email: lookupEmail.trim() });
       } else {
         setOrder(data as GuestOrder);
       }
@@ -104,6 +113,25 @@ export default function TrackOrderPage() {
       setBusy(false);
     }
   };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    await lookup(orderNumberInput, email);
+  };
+
+  // Links from the order confirmation email / guest checkout carry
+  // ?order=&email= — look the order up straight away.
+  const autoLookedUp = useRef(false);
+  useEffect(() => {
+    if (autoLookedUp.current) return;
+    const o = query.get("order");
+    const e = query.get("email");
+    if (o && e) {
+      autoLookedUp.current = true;
+      void lookup(o, e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reset = () => {
     setOrder(null);

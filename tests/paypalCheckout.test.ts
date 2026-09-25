@@ -155,7 +155,7 @@ describe("PayPal amount conversion", () => {
 describe("finalizePayPalCheckout", () => {
   it("captures an approved order and marks it paid via PayPal", async () => {
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    const result = await finalizePayPalCheckout("PPORDER123", { userId: "user-1", expectedOrderId: ORDER_ID });
+    const result = await finalizePayPalCheckout("PPORDER123", { buyer: { userId: "user-1" }, expectedOrderId: ORDER_ID });
     expect(result.outcome).toBe("paid");
     expect(state.captureCalls).toBe(1);
     expect(state.markPaidCalls).toEqual([{ orderId: ORDER_ID, provider: "paypal", ref: "CAP-1" }]);
@@ -165,15 +165,32 @@ describe("finalizePayPalCheckout", () => {
   it("refuses another customer's order", async () => {
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
     await expect(
-      finalizePayPalCheckout("PPORDER123", { userId: "someone-else", expectedOrderId: ORDER_ID }),
+      finalizePayPalCheckout("PPORDER123", { buyer: { userId: "someone-else" }, expectedOrderId: ORDER_ID }),
     ).rejects.toMatchObject({ status: 404 });
     expect(state.captureCalls).toBe(0);
+  });
+
+  it("lets a guest (proven by their order token) pay their own account-less order", async () => {
+    state.order!.user_id = null;
+    const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
+    const result = await finalizePayPalCheckout("PPORDER123", {
+      buyer: { guestOrderId: ORDER_ID },
+      expectedOrderId: ORDER_ID,
+    });
+    expect(result.outcome).toBe("paid");
+  });
+
+  it("never lets a guest token pay an order that belongs to an account", async () => {
+    const { createPayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
+    await expect(createPayPalCheckout(ORDER_ID, { guestOrderId: ORDER_ID })).rejects.toMatchObject({
+      status: 404,
+    });
   });
 
   it("never captures when the PayPal amount doesn't match the order", async () => {
     state.paypalOrder = ppOrder("APPROVED", "0.01");
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    const result = await finalizePayPalCheckout("PPORDER123", { userId: "user-1" });
+    const result = await finalizePayPalCheckout("PPORDER123", { buyer: { userId: "user-1" } });
     expect(result.outcome).toBe("rejected");
     expect(state.captureCalls).toBe(0);
     expect(state.markPaidCalls).toHaveLength(0);
@@ -183,7 +200,7 @@ describe("finalizePayPalCheckout", () => {
     state.order!.payment_status = "paid";
     state.order!.status = "paid";
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    const result = await finalizePayPalCheckout("PPORDER123", { userId: "user-1" });
+    const result = await finalizePayPalCheckout("PPORDER123", { buyer: { userId: "user-1" } });
     expect(result.outcome).toBe("already_paid");
     expect(state.captureCalls).toBe(0);
   });
@@ -191,7 +208,7 @@ describe("finalizePayPalCheckout", () => {
   it("never captures a cancelled order", async () => {
     state.order!.status = "cancelled";
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    const result = await finalizePayPalCheckout("PPORDER123", { userId: "user-1" });
+    const result = await finalizePayPalCheckout("PPORDER123", { buyer: { userId: "user-1" } });
     expect(result.outcome).toBe("rejected");
     expect(state.captureCalls).toBe(0);
   });
@@ -208,7 +225,7 @@ describe("finalizePayPalCheckout", () => {
   it("tells the customer an expired checkout can be restarted", async () => {
     state.order!.status = "cancelled";
     const { createPayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    await expect(createPayPalCheckout(ORDER_ID, "user-1")).rejects.toMatchObject({
+    await expect(createPayPalCheckout(ORDER_ID, { userId: "user-1" })).rejects.toMatchObject({
       status: 409,
       message: expect.stringContaining("expired"),
     });
@@ -217,7 +234,7 @@ describe("finalizePayPalCheckout", () => {
   it("marks a pending capture as processing, not paid", async () => {
     state.captureResult = ppOrder("COMPLETED", "12.34", [completedCapture("12.34", "PENDING")]);
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    const result = await finalizePayPalCheckout("PPORDER123", { userId: "user-1" });
+    const result = await finalizePayPalCheckout("PPORDER123", { buyer: { userId: "user-1" } });
     expect(result.outcome).toBe("pending");
     expect(state.markPaidCalls).toHaveLength(0);
     expect(state.updates[0]).toMatchObject({ payment_status: "processing", payment_provider: "paypal" });
@@ -226,8 +243,8 @@ describe("finalizePayPalCheckout", () => {
   it("is idempotent for an order PayPal already completed", async () => {
     state.paypalOrder = ppOrder("COMPLETED", "12.34", [completedCapture()]);
     const { finalizePayPalCheckout } = await import("../api/_lib/paypalCheckout.ts");
-    await finalizePayPalCheckout("PPORDER123", { userId: null });
-    const again = await finalizePayPalCheckout("PPORDER123", { userId: null });
+    await finalizePayPalCheckout("PPORDER123", { buyer: null });
+    const again = await finalizePayPalCheckout("PPORDER123", { buyer: null });
     expect(again.outcome).toBe("already_paid");
     expect(state.captureCalls).toBe(0);
     expect(state.markPaidCalls).toHaveLength(1);

@@ -8,7 +8,9 @@ import {
   CheckoutError,
   createPayPalCheckout,
   finalizePayPalCheckout,
+  type PayPalBuyer,
 } from "../_lib/paypalCheckout.js";
+import { verifyGuestToken } from "../_lib/guestAccess.js";
 
 // POST /api/checkout/paypal
 //
@@ -23,6 +25,9 @@ import {
 //       and marks the order paid (see api/_lib/paypalCheckout.ts). The
 //       PayPal webhook does the same thing independently, so a closed tab
 //       after approval still ends with a paid order.
+//
+// Signed-in buyers send their Supabase access token; guests send the order's
+// signed `guestToken` (from create-payment-intent) instead.
 
 const ID_RE = /^[0-9a-f-]{36}$/i;
 const PAYPAL_ID_RE = /^[A-Z0-9]{8,36}$/;
@@ -43,33 +48,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return sendJson(res, 400, { ok: false, message: "Bad request body." });
   }
 
-  const accessToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!accessToken) {
-    return sendJson(res, 401, { ok: false, message: "Not authenticated." });
-  }
-  const userClient = createClient<Database>(
-    ServerEnv.supabaseUrl(),
-    process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
-    {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    },
-  );
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userData.user) {
-    return sendJson(res, 401, { ok: false, message: "Session expired. Please sign in again." });
-  }
-  const userId = userData.user.id;
-
   const action = body.action;
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
   if (!ID_RE.test(orderId)) {
     return sendJson(res, 400, { ok: false, message: "Invalid order." });
   }
 
+  let buyer: PayPalBuyer;
+  const accessToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (accessToken) {
+    const userClient = createClient<Database>(
+      ServerEnv.supabaseUrl(),
+      process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+      {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      },
+    );
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userData.user) {
+      return sendJson(res, 401, { ok: false, message: "Session expired. Please sign in again." });
+    }
+    buyer = { userId: userData.user.id };
+  } else if (verifyGuestToken("order", orderId, body.guestToken)) {
+    buyer = { guestOrderId: orderId };
+  } else {
+    return sendJson(res, 401, { ok: false, message: "Not authenticated." });
+  }
+
   try {
     if (action === "create") {
-      const paypalOrderId = await createPayPalCheckout(orderId, userId);
+      const paypalOrderId = await createPayPalCheckout(orderId, buyer);
       return sendJson(res, 200, { ok: true, paypalOrderId });
     }
 
@@ -79,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return sendJson(res, 400, { ok: false, message: "Invalid PayPal order." });
       }
       const result = await finalizePayPalCheckout(paypalOrderId, {
-        userId,
+        buyer,
         expectedOrderId: orderId,
       });
       switch (result.outcome) {

@@ -14,6 +14,7 @@ import {
 } from "./emails/OrderAdminNotification.js";
 import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
+import { claimParam } from "./guestAccess.js";
 
 // Sends the order-confirmation email for a given order ID.
 //
@@ -26,6 +27,13 @@ import { logoUrl, siteUrl } from "./assets.js";
 //
 // This function has NO public HTTP endpoint. It is only ever called from a
 // trusted server context (e.g. the future payment webhook handler).
+
+function guestSignupUrl(kind: "order", id: string, email: string): string | null {
+  const claim = claimParam(kind, id);
+  return claim
+    ? `${siteUrl()}/signup?claim=${encodeURIComponent(claim)}&email=${encodeURIComponent(email)}`
+    : null;
+}
 
 export async function sendOrderConfirmation(
   orderId: string,
@@ -103,6 +111,12 @@ export async function sendOrderConfirmation(
     siteUrl: siteUrl(),
     logoUrl: logoUrl(),
     supportEmail: ServerEnv.replyTo(),
+    trackUrl: order.user_id
+      ? `${siteUrl()}/account/orders/${order.id}`
+      : `${siteUrl()}/track-order?order=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(order.email)}`,
+    // Guest order: the signed claim link lets them attach it to a new (or
+    // existing) account — see api/_lib/guestAccess.ts.
+    createAccountUrl: order.user_id ? null : guestSignupUrl("order", order.id, order.email),
   };
 
   return sendTrackedEmail({

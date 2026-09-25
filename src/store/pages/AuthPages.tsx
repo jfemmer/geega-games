@@ -3,6 +3,7 @@ import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
 import { rememberSignupNext, safeNextPath, takeSignupNext } from "../lib/authRedirect";
 import { AccountPerksList } from "../components/AccountPerks";
+import { parseClaimParam } from "../lib/guestClaims";
 
 function AuthShell({
   title,
@@ -106,11 +107,16 @@ export function LoginPage() {
 export function SignupPage() {
   const { signUp } = useAuth();
   const { navigate, query } = useRouter();
-  const rawNext = query.get("next");
+  // Arriving from a guest order / sell submission email: ?claim=… (already
+  // remembered by AuthContext, and linked on sign-in) and ?email=….
+  const claimKind = parseClaimParam(query.get("claim"))?.kind ?? null;
+  const rawNext =
+    query.get("next") ??
+    (claimKind === "order" ? "/account/orders" : claimKind === "sell" ? "/account/sell-submissions" : null);
   const next = safeNextPath(rawNext);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => query.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -152,9 +158,13 @@ export function SignupPage() {
     <AuthShell
       title="Create your free account"
       subtitle={
-        rawNext === "/checkout"
-          ? "You'll need an account to check out — we'll bring you right back to your cart."
-          : "Takes about a minute. Here's what you get:"
+        claimKind === "order"
+          ? "Create your account and we'll save your order to it."
+          : claimKind === "sell"
+            ? "Create your account and we'll add your sell submission to it."
+            : rawNext === "/checkout"
+              ? "Saves your address for next time — we'll bring you right back to your cart."
+              : "Takes about a minute. Here's what you get:"
       }
     >
       <div className="gg-signup-layout">

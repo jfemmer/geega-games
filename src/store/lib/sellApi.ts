@@ -130,6 +130,8 @@ export async function uploadSellPhoto(
 export interface SubmitSellFormResult {
   ok: boolean;
   referenceNumber?: string;
+  /** Guest submissions only: proof this browser made it, for linking to an account. */
+  claim?: { id: string; token: string };
   message?: string;
 }
 
@@ -189,7 +191,14 @@ export async function submitSellForm(payload: {
         "We couldn't submit your collection. Please try again.",
     };
   }
-  return { ok: true, referenceNumber: body.referenceNumber };
+  return {
+    ok: true,
+    referenceNumber: body.referenceNumber,
+    claim:
+      typeof body.submissionId === "string" && typeof body.claimToken === "string"
+        ? { id: body.submissionId, token: body.claimToken }
+        : undefined,
+  };
 }
 
 export interface SellOfferLookup {
