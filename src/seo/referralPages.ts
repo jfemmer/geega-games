@@ -6,7 +6,9 @@
 // Content rules:
 //   * Never say or imply that Geega Games buys these. "Our buying partner"
 //     makes the offer; we pass the details along with the seller's consent.
-//   * No payout, price or turnaround promises — the partner sets those.
+//   * No specific payout, price or turnaround promises — the partner sets
+//     those. The one approved claim (owner, 2026-09-25): the partner "buys
+//     very competitively".
 //   * Keep the tips factual and evergreen (no card prices, nothing that
 //     goes stale with the next set).
 
@@ -36,10 +38,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     noun: "Pokémon cards",
     title: "Sell Pokémon Cards in St. Louis — Meet Up or Ship | Geega Games",
     description:
-      "Selling Pokémon cards in St. Louis? Binders, graded slabs, sealed product or a whole collection — tell us what you have and our trusted buying partner will make you an offer. Meet up or ship.",
+      "Sell your Pokémon cards in St. Louis — binders, graded slabs, sealed product or whole collections. Our trusted buying partner buys very competitively. Meet up or ship.",
     heading: "Sell your Pokémon cards in St. Louis",
     intro:
-      "Old binders, graded slabs, sealed boxes, or a shoebox of cards from when you were a kid — tell us what you have and we'll connect you with the trusted Pokémon buyer we work with. Meet up around St. Louis, or ship from anywhere in the US.",
+      "Old binders, graded slabs, sealed boxes, or a shoebox of cards from when you were a kid — tell us what you have and we'll connect you with the trusted Pokémon buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
     items: [
       {
         title: "Vintage cards",
@@ -108,10 +110,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     noun: "One Piece cards",
     title: "Sell One Piece Cards — St. Louis Meetups or Ship | Geega Games",
     description:
-      "Selling One Piece Card Game cards? Manga rares, alt arts, Leaders, sealed boosters or a whole collection — tell us what you have and our trusted buying partner will make you an offer.",
+      "Sell your One Piece cards — manga rares, alt arts, Leaders, sealed boxes or whole collections. Our trusted buying partner buys very competitively. St. Louis meetups or ship.",
     heading: "Sell your One Piece cards",
     intro:
-      "Alt arts, manga rares, sealed booster boxes or a binder full of playsets — tell us what you have and we'll connect you with the trusted One Piece Card Game buyer we work with. Meet up around St. Louis, or ship from anywhere in the US.",
+      "Alt arts, manga rares, sealed booster boxes or a binder full of playsets — tell us what you have and we'll connect you with the trusted One Piece Card Game buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
     items: [
       {
         title: "Chase rares",
@@ -169,10 +171,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     noun: "video games",
     title: "Sell Video Games in St. Louis — Retro & Modern | Geega Games",
     description:
-      "Selling video games or consoles in St. Louis? Retro cartridges, modern games, complete-in-box, sealed or a whole collection — tell us what you have and our trusted buying partner will make you an offer.",
+      "Sell your video games in St. Louis — retro and modern games, consoles, complete-in-box or whole collections. Our trusted buying partner buys very competitively. Meet up or ship.",
     heading: "Sell your video games in St. Louis",
     intro:
-      "Retro cartridges, a shelf of disc games, consoles and controllers, or a whole collection — tell us what you have and we'll connect you with the trusted video game buyer we work with. Meet up around St. Louis, or ship from anywhere in the US.",
+      "Retro cartridges, a shelf of disc games, consoles and controllers, or a whole collection — tell us what you have and we'll connect you with the trusted video game buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
     items: [
       {
         title: "Retro games & consoles",

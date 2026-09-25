@@ -17,7 +17,7 @@ function sharedFaq(page: ReferralPage): { question: string; answer: string }[] {
   return [
     {
       question: `Does Geega Games buy ${page.noun}?`,
-      answer: `Not directly — our own specialty is Magic: The Gathering. For ${page.noun} we work with a trusted buyer we know personally. You tell us what you have, and with your OK we pass it along; they contact you and make the offer.`,
+      answer: `Not directly — our own specialty is Magic: The Gathering. For ${page.noun} we work with a trusted buyer we know personally, who buys very competitively. You tell us what you have, and with your OK we pass it along; they contact you and make the offer.`,
     },
     {
       question: "Can we meet in person?",
@@ -89,7 +89,8 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         <h2>How it works</h2>
         <p className="gg-collect-lead">
           Geega Games specializes in Magic: The Gathering. For {page.noun}, we work with a trusted
-          buyer we know personally — we handle the introduction, they make the offer.
+          buyer we know personally who buys very competitively — we handle the introduction, they
+          make the offer.
         </p>
         <ol className="gg-collect-steps">
           <li>

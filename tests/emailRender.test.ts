@@ -387,6 +387,7 @@ describe("email templates render to HTML", () => {
     );
     expect(html).toContain("GG-R-100001");
     expect(html).toContain("buying partner");
+    expect(html).toContain("buys very competitively");
     expect(html).toContain("One Piece cards");
     expect(html).toContain("https://geega-games.com/sell-my-collection");
   });

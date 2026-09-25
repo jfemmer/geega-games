@@ -47,7 +47,7 @@ export function ReferralLeadConfirmation(data: ReferralLeadConfirmationData) {
     h(
       Text,
       { key: "p1", style: p },
-      `Thanks, ${data.firstName}! We're passing the details you sent about your ${data.categoriesLabel} to the buying partner we work with. They'll contact you directly (by ${data.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
+      `Thanks, ${data.firstName}! We're passing the details you sent about your ${data.categoriesLabel} to the buying partner we work with, who buys very competitively. They'll contact you directly (by ${data.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
     ),
     h(
       Section,
@@ -75,7 +75,7 @@ export function referralLeadConfirmationText(d: ReferralLeadConfirmationData): s
   return [
     "We got your request! — Geega Games",
     "",
-    `Thanks, ${d.firstName}! We're passing the details you sent about your ${d.categoriesLabel} to the buying partner we work with. They'll contact you directly (by ${d.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
+    `Thanks, ${d.firstName}! We're passing the details you sent about your ${d.categoriesLabel} to the buying partner we work with, who buys very competitively. They'll contact you directly (by ${d.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
     "",
     `Reference number: ${d.referenceNumber}`,
     "",

@@ -29,6 +29,14 @@ describe("build-time prerender", () => {
     }
   });
 
+  it("tells sellers on every referral page that our buying partner buys very competitively", () => {
+    for (const path of ["/sell-pokemon-cards", "/sell-one-piece-cards", "/sell-video-games"]) {
+      const { html, seo } = renderPage(path);
+      expect(html, path).toContain("buys very competitively");
+      expect(seo?.description, path).toContain("buys very competitively");
+    }
+  });
+
   it("keeps the meetup and ship options on every area page", () => {
     const { html } = renderPage("/sell-magic-cards/kansas-city");
     expect(html).toContain('href="/sell?handoff=local"');

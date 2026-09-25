@@ -232,7 +232,8 @@ export default function SellCollectionPage() {
         <h2>Selling Pokémon, One Piece or video games too?</h2>
         <p className="gg-collect-lead">
           Plenty of Magic collections come with other things. We buy the Magic cards ourselves and
-          can connect you with a trusted buyer we work with for the rest:
+          can connect you with a trusted buyer we work with — one who buys very competitively — for
+          the rest:
         </p>
         <ul className="gg-area-links">
           {REFERRAL_PAGES.map((p) => (
