@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link } from "../lib/router";
 import { useAuth } from "../lib/AuthContext";
 import { useWishlist } from "../lib/WishlistContext";
@@ -68,12 +69,12 @@ export default function WishlistButton({
           onMouseDown={(e) => e.stopPropagation()}
         >
           <p>Sign in to save cards to your wishlist.</p>
-          <Link
-            to={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}
-            className="gg-btn gg-btn-sm"
-          >
+          <Link to={authLinkWithReturn("/login")} className="gg-btn gg-btn-sm">
             Sign in
           </Link>
+          <p className="gg-wishlist-prompt-alt">
+            New here? <Link to={authLinkWithReturn("/signup")}>Create a free account</Link>
+          </p>
         </div>
       )}
     </div>

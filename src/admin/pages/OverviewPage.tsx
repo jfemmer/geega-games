@@ -16,7 +16,9 @@ import {
   waitingSince,
 } from "../utils/format";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "../utils/labels";
-import type { DateRangeKey, NamedValue, SiteTraffic } from "../types";
+import { countryLabel, placeLabel, regionLabel } from "../utils/geoLabels";
+import { DataTable, type Column } from "../components/ui/DataTable";
+import type { DateRangeKey, NamedValue, RecentVisitor, SiteTraffic } from "../types";
 
 const RANGE_TABS = [
   { key: "7d", label: "7 days" },
@@ -334,25 +336,113 @@ export function OverviewPage({
 
 /* ------------------------- Website visitors ------------------------- */
 
-const countryNames = (() => {
-  try {
-    return new Intl.DisplayNames(undefined, { type: "region" });
-  } catch {
-    return null;
-  }
-})();
-
-function countryLabel(code: string): string {
-  if (code === "??") return "Unknown";
-  return countryNames?.of(code) ?? code;
-}
-
 function pageLabel(path: string): string {
   return path === "/" ? "Home" : path;
 }
 
 function relabel(rows: NamedValue[], fn: (label: string) => string): NamedValue[] {
   return rows.map((r) => ({ ...r, label: fn(r.label) }));
+}
+
+const DEVICE_LABEL: Record<RecentVisitor["device"], string> = {
+  mobile: "Phone",
+  tablet: "Tablet",
+  desktop: "Computer",
+};
+
+const RECENT_VISITOR_COLUMNS: Column<RecentVisitor>[] = [
+  {
+    key: "location",
+    header: "Location",
+    render: (v) => <strong>{placeLabel(v.city, v.region, v.country)}</strong>,
+  },
+  { key: "when", header: "Last seen", render: (v) => timeAgo(v.lastSeen) },
+  {
+    key: "device",
+    header: "Device",
+    secondary: true,
+    render: (v) => DEVICE_LABEL[v.device] ?? v.device,
+  },
+  {
+    key: "pages",
+    header: "Pages",
+    align: "right",
+    render: (v) => formatNumber(v.pages),
+  },
+  {
+    key: "last",
+    header: "Last page",
+    secondary: true,
+    render: (v) => <code className="gg-muted">{pageLabel(v.lastPage)}</code>,
+  },
+  {
+    key: "from",
+    header: "Arrived from",
+    secondary: true,
+    render: (v) => v.referrer ?? "Direct / unknown",
+  },
+];
+
+function VisitorLocations({ traffic }: { traffic: SiteTraffic }) {
+  const noLocations = traffic.cities.length === 0 && traffic.regions.length === 0;
+  return (
+    <>
+      {noLocations ? (
+        <SectionCard title="Visitor locations">
+          <EmptyState
+            icon="info"
+            title="No locations yet"
+            message="City and state are recorded for visits from now on. Older visits only have a country."
+          />
+        </SectionCard>
+      ) : (
+        <div className="gg-grid-2">
+          <SectionCard title="Top cities">
+            <BarChart
+              data={traffic.cities.map((c) => ({
+                label: placeLabel(c.city, c.region, c.country),
+                value: c.value,
+              }))}
+              summaryLabel="Visitors by city"
+              format={(v) => formatNumber(v)}
+              color="var(--gg-info)"
+            />
+          </SectionCard>
+          <SectionCard title="Top states">
+            <BarChart
+              data={traffic.regions.map((r) => ({
+                label: regionLabel(r.region, r.country),
+                value: r.value,
+              }))}
+              summaryLabel="Visitors by state or region"
+              format={(v) => formatNumber(v)}
+              color="var(--gg-brand-deep)"
+            />
+          </SectionCard>
+        </div>
+      )}
+      <SectionCard title="Recent visitors" className="gg-recent-visitors">
+        <DataTable
+          columns={RECENT_VISITOR_COLUMNS}
+          rows={traffic.recentVisitors}
+          rowKey={(v) => `${v.lastSeen}|${v.lastPage}|${v.pages}`}
+          caption="Most recently active visitors in the last 2 days"
+          emptyContent={
+            <EmptyState
+              icon="info"
+              title="No visitors in the last 2 days"
+              message="Recent visits will show up here as they happen."
+            />
+          }
+        />
+        <p className="gg-muted" style={{ marginTop: 12, fontSize: 13 }}>
+          Locations are approximate — worked out from the visitor&rsquo;s internet connection,
+          which can point to a nearby city or their provider&rsquo;s hub. Visitors aren&rsquo;t
+          identified and the connection address isn&rsquo;t stored.
+        </p>
+      </SectionCard>
+    </>
+  );
 }
 
 function WebsiteVisitors({
@@ -483,6 +573,7 @@ function WebsiteVisitors({
               </div>
             </SectionCard>
           </div>
+          <VisitorLocations traffic={traffic} />
         </>
       )}
     </>

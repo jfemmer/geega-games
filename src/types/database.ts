@@ -1400,29 +1400,35 @@ export type Database = {
       }
       site_page_views: {
         Row: {
+          city: string | null
           country: string | null
           device: string
           id: number
           path: string
           referrer_host: string | null
+          region: string | null
           viewed_at: string
           visitor_hash: string
         }
         Insert: {
+          city?: string | null
           country?: string | null
           device: string
           id?: never
           path: string
           referrer_host?: string | null
+          region?: string | null
           viewed_at?: string
           visitor_hash: string
         }
         Update: {
+          city?: string | null
           country?: string | null
           device?: string
           id?: never
           path?: string
           referrer_host?: string | null
+          region?: string | null
           viewed_at?: string
           visitor_hash?: string
         }

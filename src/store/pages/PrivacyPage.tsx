@@ -2,7 +2,7 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
-const EFFECTIVE_DATE = "September 16, 2026";
+const EFFECTIVE_DATE = "September 24, 2026";
 
 export function PrivacyPage() {
   useSEO({
@@ -65,7 +65,11 @@ export function PrivacyPage() {
           and analytics infrastructure may automatically log standard technical information such
           as IP address, browser type, device information, pages visited, and timestamps, and may
           use cookies or similar technologies necessary for the Service to function (for example,
-          keeping you signed in or remembering your cart).
+          keeping you signed in or remembering your cart). Our own visitor statistics record the
+          pages you view, your device type, the site that referred you, and your approximate
+          location (country, state/region and city, estimated from your IP address) without
+          storing your IP address or identifying you; we don&rsquo;t record them at all if your
+          browser sends a Do Not Track or Global Privacy Control signal.
         </li>
       </ul>
 

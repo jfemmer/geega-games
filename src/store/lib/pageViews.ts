@@ -22,7 +22,7 @@ function optedOut(): boolean {
   return nav.doNotTrack === "1" || nav.globalPrivacyControl === true;
 }
 
-function isStaffDevice(): boolean {
+export function isStaffDevice(): boolean {
   try {
     return localStorage.getItem(STAFF_DEVICE_KEY) === "1";
   } catch {

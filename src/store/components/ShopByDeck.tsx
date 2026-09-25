@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
+import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link } from "../lib/router";
 import { formatCents } from "../lib/money";
+import { OPEN_DECK_SHOP_EVENT } from "../lib/deckShopper";
 import { Icon } from "./Icon";
 
 const db = supabase as any;
@@ -88,6 +90,20 @@ export default function ShopByDeck() {
     }
   }
 
+  // Opened from elsewhere on the page (the home page's deck showcase). Only
+  // ever opens — a second click there shouldn't close it. The header is
+  // sticky, so the popover is on screen wherever the page is scrolled.
+  useEffect(() => {
+    function onOpenRequest() {
+      if (!open) void toggleOpen();
+      containerRef.current?.querySelector<HTMLButtonElement>(".gg-deck-shop-toggle")?.focus();
+    }
+    window.addEventListener(OPEN_DECK_SHOP_EVENT, onOpenRequest);
+    return () => window.removeEventListener(OPEN_DECK_SHOP_EVENT, onOpenRequest);
+    // toggleOpen reads only open/user/decks, so re-subscribing on those keeps it current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, user, decks]);
+
   async function pickDeck(deck: DeckSummary) {
     setSelectedDeck(deck);
     setAddedCount(null);
@@ -122,18 +138,30 @@ export default function ShopByDeck() {
         onClick={() => void toggleOpen()}
         aria-expanded={open}
         aria-haspopup="true"
-        aria-label="Shop for cards from a saved deck"
-        title="Shop by saved deck"
+        aria-label="Shop my deck: add a saved deck's in-stock cards to your cart"
+        title="Shop my deck"
       >
         <Icon name="deck" size={18} />
+        <span className="gg-deck-shop-label gg-deck-shop-label--full">Shop my deck</span>
+        <span className="gg-deck-shop-label gg-deck-shop-label--short">Deck</span>
       </button>
 
       {open && (
         <div className="gg-deck-shop-popover">
           {!user ? (
             <div className="gg-deck-shop-empty">
-              <p>Sign in to shop for cards from your saved decks.</p>
-              <Link to="/login" className="gg-btn gg-btn-sm" onClick={closePopover}>
+              <p>
+                Save your decks to see what&rsquo;s in stock, add it all to your cart in one
+                click, and get restock alerts.
+              </p>
+              <Link
+                to={authLinkWithReturn("/signup", "/account/decks")}
+                className="gg-btn gg-btn-sm"
+                onClick={closePopover}
+              >
+                Create a free account
+              </Link>
+              <Link to={authLinkWithReturn("/login")} onClick={closePopover}>
                 Sign in
               </Link>
             </div>

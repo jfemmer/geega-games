@@ -8,6 +8,7 @@ import { PageViewTracker } from "./store/lib/pageViews";
 import { CartProvider } from "./store/lib/CartContext";
 import { WishlistProvider } from "./store/lib/WishlistContext";
 import Header from "./store/components/Header";
+import SignupNudge from "./store/components/SignupNudge";
 import ShopPage from "./store/pages/ShopPage";
 import ShopSetsPage from "./store/pages/ShopSetsPage";
 import ShopSetPage from "./store/pages/ShopSetPage";
@@ -91,6 +92,7 @@ export default function App() {
                 <Routes />
               </main>
               <Footer />
+              <SignupNudge />
             </div>
           </RouterProvider>
         </WishlistProvider>

@@ -12,8 +12,9 @@ import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
 //     (UTC day, IP, user agent) with a server-only key: stable for one day,
 //     then unlinkable, and not reversible without the key.
 //   * Stores the path WITHOUT its query string (which could carry emails or
-//     tokens), the referring site's hostname only, the visitor's country
-//     (from Vercel's edge header) and a coarse device type.
+//     tokens), the referring site's hostname only, the visitor's approximate
+//     country / state / city (from Vercel's edge geo-IP headers — the IP
+//     itself is never stored) and a coarse device type.
 //   * Bots and /admin pages are dropped here; staff, Do Not Track and Global
 //     Privacy Control are dropped in the browser before anything is sent.
 //
@@ -55,6 +56,30 @@ export function referrerHost(raw: unknown, ownHost: string | undefined): string 
   }
 }
 
+function header(req: VercelRequest, name: string): string | null {
+  const v = req.headers[name];
+  return typeof v === "string" && v ? v : null;
+}
+
+/** Vercel's region code: ISO 3166-2 subdivision without the country, e.g. "MO". */
+export function cleanRegion(raw: string | null): string | null {
+  return raw && /^[A-Z0-9]{1,3}$/.test(raw) ? raw : null;
+}
+
+/** Vercel URL-encodes the city ("S%C3%A3o%20Paulo"); decode and sanity-check it. */
+export function cleanCity(raw: string | null): string | null {
+  if (!raw) return null;
+  let city: string;
+  try {
+    city = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  // eslint-disable-next-line no-control-regex
+  city = city.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  return city && city.length <= 100 ? city : null;
+}
+
 function visitorHash(ip: string, ua: string): string {
   const key = optionalEnv("ANALYTICS_SALT") || ServerEnv.emailTokenSecret();
   const day = new Date().toISOString().slice(0, 10);
@@ -86,14 +111,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const path = cleanPath(body.p);
     if (!path) return res.status(204).end();
 
-    const countryHeader = req.headers["x-vercel-ip-country"];
-    const country = typeof countryHeader === "string" && /^[A-Z]{2}$/.test(countryHeader) ? countryHeader : null;
+    const countryHeader = header(req, "x-vercel-ip-country");
+    const country = countryHeader && /^[A-Z]{2}$/.test(countryHeader) ? countryHeader : null;
 
     const { error } = await getSupabaseAdmin().from("site_page_views").insert({
       visitor_hash: visitorHash(ip, ua),
       path,
       referrer_host: referrerHost(body.r, req.headers.host),
       country,
+      region: cleanRegion(header(req, "x-vercel-ip-country-region")),
+      city: cleanCity(header(req, "x-vercel-ip-city")),
       device: deviceFrom(ua),
     });
     if (error) console.error("[track] insert failed", error.message);
