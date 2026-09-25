@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import {
   FUNDING,
@@ -9,6 +9,9 @@ import {
 } from "@paypal/react-paypal-js";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
+import GoogleAddressAutocomplete, {
+  type ShippingAddressFields,
+} from "../components/GoogleAddressAutocomplete";
 import { useCart } from "../lib/CartContext";
 import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
@@ -98,6 +101,17 @@ export default function CheckoutPage() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | "new">("new");
   const [form, setForm] = useState<Partial<Address>>({ country: "US" });
+  const handleAddressSelect = useCallback((address: ShippingAddressFields) => {
+    setForm((f) => ({
+      ...f,
+      line1: address.line1,
+      line2: address.line2 || f.line2 || "",
+      city: address.city,
+      state: address.state,
+      postal_code: address.postalCode,
+      country: address.country || "US",
+    }));
+  }, []);
   const [method, setMethod] = useState<ShippingMethod>("tracked");
   const [creditBalance, setCreditBalance] = useState(0);
   const [useCredit, setUseCredit] = useState(false);
@@ -254,6 +268,9 @@ export default function CheckoutPage() {
           state: form.state ?? "",
           postal_code: form.postal_code ?? "",
           country: form.country ?? "US",
+          // Signup no longer asks for an address, so the first one saved
+          // here becomes the default for next time.
+          is_default: addresses.length === 0,
         });
       }
 
@@ -586,20 +603,23 @@ export default function CheckoutPage() {
           )}
           {selectedAddr === "new" && (
             <div className="gg-form" style={{ margin: "0.5rem 0 0", maxWidth: "none" }}>
+              <GoogleAddressAutocomplete label="Find your address" onSelect={handleAddressSelect} />
               {(
                 [
-                  ["recipient", "Recipient"],
-                  ["line1", "Address line 1"],
-                  ["line2", "Address line 2 (optional)"],
-                  ["city", "City"],
-                  ["state", "State"],
-                  ["postal_code", "Postal code"],
-                  ["country", "Country"],
+                  ["recipient", "Recipient", "shipping name"],
+                  ["line1", "Address line 1", "shipping address-line1"],
+                  ["line2", "Address line 2 (optional)", "shipping address-line2"],
+                  ["city", "City", "shipping address-level2"],
+                  ["state", "State", "shipping address-level1"],
+                  ["postal_code", "Postal code", "shipping postal-code"],
+                  ["country", "Country", "shipping country"],
                 ] as const
-              ).map(([field, label]) => (
+              ).map(([field, label, autoComplete]) => (
                 <div className="gg-field" key={field}>
-                  <label>{label}</label>
+                  <label htmlFor={`co-${field}`}>{label}</label>
                   <input
+                    id={`co-${field}`}
+                    autoComplete={autoComplete}
                     value={(form[field] as string) ?? ""}
                     onChange={(e) =>
                       setForm((s) => ({ ...s, [field]: e.target.value }))

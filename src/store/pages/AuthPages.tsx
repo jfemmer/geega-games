@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
 import { rememberSignupNext, safeNextPath, takeSignupNext } from "../lib/authRedirect";
 import { AccountPerksList } from "../components/AccountPerks";
-import GoogleAddressAutocomplete, {
-  type ShippingAddressFields,
-} from "../components/GoogleAddressAutocomplete";
 
 function AuthShell({
   title,
@@ -115,26 +112,9 @@ export function SignupPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [notificationsOptIn, setNotificationsOptIn] = useState(false);
-  const [shippingAddress, setShippingAddress] = useState<ShippingAddressFields>({
-    line1: "",
-    line2: "",
-    city: "",
-    state: "",
-    postalCode: "",
-    country: "US",
-  });
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const handleAddressSelect = useCallback((address: ShippingAddressFields) => {
-    setShippingAddress((current) => ({
-      ...address,
-      line2: address.line2 || current.line2,
-      country: address.country || "US",
-    }));
-  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -142,16 +122,6 @@ export function SignupPage() {
     setMsg(null);
     if (password.length < 6) {
       setErr("Please choose a password with at least 6 characters.");
-      return;
-    }
-    if (
-      !shippingAddress.line1.trim() ||
-      !shippingAddress.city.trim() ||
-      !shippingAddress.state.trim() ||
-      !shippingAddress.postalCode.trim() ||
-      !shippingAddress.country.trim()
-    ) {
-      setErr("Please add a complete shipping address before creating your account.");
       return;
     }
     setBusy(true);
@@ -162,8 +132,6 @@ export function SignupPage() {
         password,
         firstName,
         lastName,
-        notificationsOptIn,
-        shippingAddress,
       });
       if (needsEmailConfirmation) {
         setMsg(
@@ -247,99 +215,14 @@ export function SignupPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
-        <div className="gg-field">
-          <label>Shipping address</label>
-          <GoogleAddressAutocomplete onSelect={handleAddressSelect} />
-        </div>
-        <div className="gg-form-grid gg-signup-address-grid">
-          <div className="gg-field gg-field-span2">
-            <label htmlFor="su-address1">Street address</label>
-            <input
-              id="su-address1"
-              autoComplete="shipping address-line1"
-              required
-              value={shippingAddress.line1}
-              onChange={(e) =>
-                setShippingAddress((address) => ({ ...address, line1: e.target.value }))
-              }
-            />
-          </div>
-          <div className="gg-field gg-field-span2">
-            <label htmlFor="su-address2">Apartment, suite, etc. (optional)</label>
-            <input
-              id="su-address2"
-              autoComplete="shipping address-line2"
-              value={shippingAddress.line2}
-              onChange={(e) =>
-                setShippingAddress((address) => ({ ...address, line2: e.target.value }))
-              }
-            />
-          </div>
-          <div className="gg-field">
-            <label htmlFor="su-city">City</label>
-            <input
-              id="su-city"
-              autoComplete="shipping address-level2"
-              required
-              value={shippingAddress.city}
-              onChange={(e) =>
-                setShippingAddress((address) => ({ ...address, city: e.target.value }))
-              }
-            />
-          </div>
-          <div className="gg-field">
-            <label htmlFor="su-state">State</label>
-            <input
-              id="su-state"
-              autoComplete="shipping address-level1"
-              required
-              value={shippingAddress.state}
-              onChange={(e) =>
-                setShippingAddress((address) => ({ ...address, state: e.target.value }))
-              }
-            />
-          </div>
-          <div className="gg-field">
-            <label htmlFor="su-postal">ZIP / postal code</label>
-            <input
-              id="su-postal"
-              autoComplete="shipping postal-code"
-              required
-              value={shippingAddress.postalCode}
-              onChange={(e) =>
-                setShippingAddress((address) => ({ ...address, postalCode: e.target.value }))
-              }
-            />
-          </div>
-          <div className="gg-field">
-            <label htmlFor="su-country">Country</label>
-            <input
-              id="su-country"
-              autoComplete="shipping country"
-              required
-              value={shippingAddress.country}
-              onChange={(e) =>
-                setShippingAddress((address) => ({ ...address, country: e.target.value }))
-              }
-            />
-          </div>
-        </div>
-        <label className="gg-check" style={{ margin: "0.25rem 0 0" }}>
-          <input
-            type="checkbox"
-            checked={notificationsOptIn}
-            onChange={(e) => setNotificationsOptIn(e.target.checked)}
-          />
-          Email me about my order &amp; shipping status and Sell Your Cards submission
-          updates
-        </label>
         <button className="gg-btn" type="submit" disabled={busy}>
           {busy ? "Creating…" : "Create account"}
         </button>
         <p className="gg-card-meta" style={{ textAlign: "center" }}>
-          These notifications are off by default and you can turn them on or off
-          any time from your account. Creating an account does not sign you up
-          for marketing email — you can subscribe separately any time.
+          We&rsquo;ll email you shipping and tracking updates for your orders and
+          any cards you sell us — change that any time under Account &rsaquo;
+          Notifications. No marketing email unless you subscribe separately.
+          Your shipping address is asked for at checkout.
         </p>
         <div style={{ textAlign: "center", fontSize: "0.9rem" }}>
           Already have an account? <Link to={withNext("/login", rawNext)}>Sign in</Link>

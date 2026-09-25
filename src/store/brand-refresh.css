@@ -322,19 +322,16 @@ body {
   display: grid;
   gap: .45rem;
 }
+.gg-address-lookup__label {
+  margin: 0;
+  font-weight: 600;
+  font-size: .9rem;
+}
 .gg-address-lookup__host {
   min-height: 48px;
 }
 .gg-address-lookup__status {
   margin: 0;
-}
-.gg-signup-address-grid {
-  margin-top: -.1rem;
-}
-@media (min-width: 641px) {
-  .gg-signup-address-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 

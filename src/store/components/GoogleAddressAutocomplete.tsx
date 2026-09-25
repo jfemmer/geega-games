@@ -120,12 +120,22 @@ function parsePlace(place: GooglePlace): ShippingAddressFields {
   };
 }
 
+/**
+ * Google Places address search that fills the manual fields below it.
+ * `onSelect` must be referentially stable (useCallback) — the widget is
+ * rebuilt whenever it changes. Renders nothing at all when no Maps API key
+ * is configured, so the plain address fields are the whole form.
+ */
 export default function GoogleAddressAutocomplete({
   onSelect,
+  label,
 }: {
   onSelect: (address: ShippingAddressFields) => void;
+  /** Optional heading shown above the search box. */
+  label?: string;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const hasApiKey = Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
   const [status, setStatus] = useState<"loading" | "ready" | "manual">("loading");
 
   useEffect(() => {
@@ -186,8 +196,11 @@ export default function GoogleAddressAutocomplete({
     };
   }, [onSelect]);
 
+  if (!hasApiKey) return null;
+
   return (
     <div className="gg-address-lookup">
+      {label && <p className="gg-address-lookup__label">{label}</p>}
       <div ref={hostRef} className="gg-address-lookup__host" />
       {status === "loading" && (
         <p className="gg-card-meta gg-address-lookup__status">Loading address suggestions…</p>

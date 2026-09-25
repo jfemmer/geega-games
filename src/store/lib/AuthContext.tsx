@@ -26,15 +26,6 @@ type AuthContextValue = {
     password: string;
     firstName: string;
     lastName: string;
-    notificationsOptIn: boolean;
-    shippingAddress: {
-      line1: string;
-      line2: string;
-      city: string;
-      state: string;
-      postalCode: string;
-      country: string;
-    };
   }) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
@@ -101,36 +92,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string;
       firstName: string;
       lastName: string;
-      notificationsOptIn: boolean;
-      shippingAddress: {
-        line1: string;
-        line2: string;
-        city: string;
-        state: string;
-        postalCode: string;
-        country: string;
-      };
     }) => {
       const { data, error } = await supabase.auth.signUp({
         email: input.email,
         password: input.password,
         options: {
           // Keys consumed by public.handle_new_user() (raw_user_meta_data).
-          // notifications_opt_in seeds profiles.shipping_notifications /
-          // sell_submission_notifications — both default disabled, so this is
-          // the only way a brand-new account starts with them enabled.
+          // Order/sell status emails default ON there when no
+          // notifications_opt_in is sent; the shipping address is collected
+          // (and saved for reuse) at first checkout instead of at signup.
           data: {
             first_name: input.firstName.trim(),
             last_name: input.lastName.trim(),
-            notifications_opt_in: input.notificationsOptIn,
-            shipping_address: {
-              line1: input.shippingAddress.line1.trim(),
-              line2: input.shippingAddress.line2.trim() || null,
-              city: input.shippingAddress.city.trim(),
-              state: input.shippingAddress.state.trim(),
-              postal_code: input.shippingAddress.postalCode.trim(),
-              country: input.shippingAddress.country.trim() || "US",
-            },
           },
           emailRedirectTo: `${window.location.origin}/login`,
         },

@@ -1588,8 +1588,8 @@ function StoreCreditSection() {
 
 /* ------------------------------------------------------------------ *
  * Notifications — order/shipping + sell submission email preferences.
- * Both default OFF at signup (see handle_new_user() / the signup checkbox);
- * this page is where a customer turns them on or off any time after. Only
+ * Both default ON for new accounts (see handle_new_user(), migration
+ * 20260925030000); this page is where a customer turns them off/on. Only
  * the `enabled` flag is exposed — byEmail/byText stay fixed (email-only;
  * there's no SMS provider wired up) so we always write back the same shape.
  * ------------------------------------------------------------------ */
@@ -1734,7 +1734,7 @@ function NotificationsSection() {
         />
       </div>
       <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>
-        These are off by default for new accounts. Turning them off does not affect your
+        These are on by default for new accounts. Turning them off does not affect your
         order confirmation or sell submission confirmation receipts — those always send.
       </p>
 
