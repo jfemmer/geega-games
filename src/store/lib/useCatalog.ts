@@ -15,9 +15,10 @@ export type CatalogSort =
 
 /**
  * Storefront color buckets, matched server-side by
- * public.mtg_matches_color_groups. A single color matches any card containing
- * it (multicolor cards included); Colorless excludes lands; Land means a
- * colorless land.
+ * public.mtg_matches_color_groups. A single color means mono-colored (exactly
+ * that color); Multicolor is any 2+ colors; Colorless excludes lands; Land
+ * means a colorless land. Named combinations use `combo:<letters>` values —
+ * see COLOR_COMBOS / colorComboValue.
  */
 export type ColorGroup =
   | "white"
@@ -39,6 +40,67 @@ export const COLOR_GROUPS: { value: ColorGroup; label: string }[] = [
   { value: "colorless", label: "Colorless" },
   { value: "land", label: "Land" },
 ];
+
+export type ColorLetter = "W" | "U" | "B" | "R" | "G";
+
+/** Filter-dot class suffix for each mana letter (see .gg-color-dot-*). */
+export const COLOR_LETTER_GROUP: Record<ColorLetter, ColorGroup> = {
+  W: "white",
+  U: "blue",
+  B: "black",
+  R: "red",
+  G: "green",
+};
+
+/**
+ * Named multicolor combinations, in the conventional display order: guilds,
+ * then shards, wedges, four-color, five-color. `colors` is in WUBRG order for
+ * display; matching is on the exact color set, order-independent.
+ */
+export const COLOR_COMBOS: { name: string; colors: ColorLetter[] }[] = [
+  // Allied guilds
+  { name: "Azorius", colors: ["W", "U"] },
+  { name: "Dimir", colors: ["U", "B"] },
+  { name: "Rakdos", colors: ["B", "R"] },
+  { name: "Gruul", colors: ["R", "G"] },
+  { name: "Selesnya", colors: ["G", "W"] },
+  // Enemy guilds
+  { name: "Orzhov", colors: ["W", "B"] },
+  { name: "Izzet", colors: ["U", "R"] },
+  { name: "Golgari", colors: ["B", "G"] },
+  { name: "Boros", colors: ["R", "W"] },
+  { name: "Simic", colors: ["G", "U"] },
+  // Shards
+  { name: "Esper", colors: ["W", "U", "B"] },
+  { name: "Grixis", colors: ["U", "B", "R"] },
+  { name: "Jund", colors: ["B", "R", "G"] },
+  { name: "Naya", colors: ["R", "G", "W"] },
+  { name: "Bant", colors: ["G", "W", "U"] },
+  // Wedges
+  { name: "Abzan", colors: ["W", "B", "G"] },
+  { name: "Jeskai", colors: ["U", "R", "W"] },
+  { name: "Sultai", colors: ["B", "G", "U"] },
+  { name: "Mardu", colors: ["R", "W", "B"] },
+  { name: "Temur", colors: ["G", "U", "R"] },
+  // Four-color
+  { name: "Glint-Eye (no White)", colors: ["U", "B", "R", "G"] },
+  { name: "Dune-Brood (no Blue)", colors: ["W", "B", "R", "G"] },
+  { name: "Ink-Treader (no Black)", colors: ["W", "U", "R", "G"] },
+  { name: "Witch-Maw (no Red)", colors: ["W", "U", "B", "G"] },
+  { name: "Yore-Tiller (no Green)", colors: ["W", "U", "B", "R"] },
+  // Five-color
+  { name: "Five-Color", colors: ["W", "U", "B", "R", "G"] },
+];
+
+/** Canonical key for a color set: letters sorted alphabetically ("UB" -> "BU"). */
+export function colorComboKey(colors: readonly string[]): string {
+  return [...colors].map((c) => c.toUpperCase()).sort().join("");
+}
+
+/** Filter value sent in p_color_groups for a named combination. */
+export function colorComboValue(colors: readonly string[]): string {
+  return `combo:${colorComboKey(colors)}`;
+}
 
 export type CatalogFilters = {
   query: string;
@@ -263,6 +325,8 @@ export type Facets = {
   sets: FacetSet[];
   rarities: string[];
   cardTypes: string[];
+  /** Exact multicolor sets in stock, as colorComboKey() strings ("BU", "BRU"). */
+  colorCombos: string[];
   creatureTypes: string[];
   priceMinCents: number | null;
   priceMaxCents: number | null;
@@ -282,6 +346,7 @@ export function useFacets() {
           sets: FacetSet[] | null;
           rarities: string[] | null;
           card_types: string[] | null;
+          color_combos: string[] | null;
           creature_types: string[] | null;
           price_min_cents: number | null;
           price_max_cents: number | null;
@@ -290,6 +355,7 @@ export function useFacets() {
           sets: f.sets ?? [],
           rarities: f.rarities ?? [],
           cardTypes: f.card_types ?? [],
+          colorCombos: f.color_combos ?? [],
           creatureTypes: f.creature_types ?? [],
           priceMinCents: f.price_min_cents,
           priceMaxCents: f.price_max_cents,

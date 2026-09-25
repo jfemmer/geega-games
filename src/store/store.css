@@ -693,6 +693,19 @@
 }
 .gg-color-dot-colorless { background: #b9b4ae; }
 .gg-color-dot-land { background: #a07a4f; }
+/* Named multicolor combinations, nested under "Multicolor". */
+.gg-filter-sublist {
+  margin: 0.1rem 0 0.3rem 1.6rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--gg-line);
+}
+.gg-color-dots {
+  display: inline-flex;
+  flex: none;
+}
+.gg-color-dots .gg-color-dot + .gg-color-dot {
+  margin-left: -4px;
+}
 /* Long option lists (creature types) scroll inside the group. */
 .gg-filter-scroll {
   max-height: 240px;

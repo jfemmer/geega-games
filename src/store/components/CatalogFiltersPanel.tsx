@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
+  COLOR_COMBOS,
   COLOR_GROUPS,
+  COLOR_LETTER_GROUP,
   DEFAULT_FILTERS,
+  colorComboKey,
+  colorComboValue,
   countActiveFilters,
   type CatalogFilters,
   type CatalogListFilterKey,
@@ -11,7 +15,8 @@ import {
 // Shared filter sidebar for the Shop page and the in-store Kiosk (desktop
 // aside + mobile drawer on both). Option lists for Set / Rarity / Card type /
 // Creature type come from inventory_facets (in-stock only); Color and
-// Condition are fixed vocabularies so every option is always offered.
+// Condition are fixed vocabularies so every option is always offered; the
+// named multicolor combinations under Multicolor only list those in stock.
 
 const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
 
@@ -61,6 +66,14 @@ export default function CatalogFiltersPanel({ facets, filters, setFilters }: Pro
       )
     : creatureOptions;
 
+  // Named multicolor combinations (Dimir, Grixis, ...) that are in stock, plus
+  // any already selected, in the conventional guild/shard/wedge order.
+  const stockedComboKeys = new Set(facets?.colorCombos ?? []);
+  const comboOptions = COLOR_COMBOS.filter((combo) => {
+    const value = colorComboValue(combo.colors);
+    return stockedComboKeys.has(colorComboKey(combo.colors)) || filters.colorGroups.includes(value);
+  });
+
   const cardTypeOptions = Array.from(
     new Set([...(facets?.cardTypes ?? []), ...filters.cardTypes]),
   ).sort((a, b) => a.localeCompare(b));
@@ -69,16 +82,36 @@ export default function CatalogFiltersPanel({ facets, filters, setFilters }: Pro
     <>
       <div className="gg-filter-group">
         <h3>Color</h3>
-        {COLOR_GROUPS.map((c) =>
-          checkbox(
-            "colorGroups",
-            c.value,
-            <>
-              <span className={`gg-color-dot gg-color-dot-${c.value}`} aria-hidden="true" />
-              {c.label}
-            </>,
-          ),
-        )}
+        {COLOR_GROUPS.map((c) => (
+          <Fragment key={c.value}>
+            {checkbox(
+              "colorGroups",
+              c.value,
+              <>
+                <span className={`gg-color-dot gg-color-dot-${c.value}`} aria-hidden="true" />
+                {c.label}
+              </>,
+            )}
+            {c.value === "multicolor" && comboOptions.length > 0 && (
+              <div className="gg-filter-sublist" role="group" aria-label="Color combinations">
+                {comboOptions.map((combo) =>
+                  checkbox(
+                    "colorGroups",
+                    colorComboValue(combo.colors),
+                    <>
+                      <span className="gg-color-dots" aria-hidden="true">
+                        {combo.colors.map((l) => (
+                          <span key={l} className={`gg-color-dot gg-color-dot-${COLOR_LETTER_GROUP[l]}`} />
+                        ))}
+                      </span>
+                      {combo.name}
+                    </>,
+                  ),
+                )}
+              </div>
+            )}
+          </Fragment>
+        ))}
       </div>
       {cardTypeOptions.length > 0 && (
         <div className="gg-filter-group">

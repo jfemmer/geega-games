@@ -3148,6 +3148,7 @@ export type Database = {
         Args: never
         Returns: {
           card_types: string[]
+          color_combos: string[]
           creature_types: string[]
           price_max_cents: number
           price_min_cents: number
