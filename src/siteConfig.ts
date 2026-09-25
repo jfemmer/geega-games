@@ -27,9 +27,17 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Shop",
     links: [
-      { label: "Browse catalog", href: "#catalog" },
+      { label: "Browse singles", href: "/shop" },
       { label: "Shop by set", href: "/shop/sets" },
-      { label: "Get the launch notice", href: "#launch" },
+      { label: "New arrivals", href: "/shop?sort=newest" },
+    ],
+  },
+  {
+    title: "Sell",
+    links: [
+      { label: "Sell your collection", href: "/sell-my-collection" },
+      { label: "Sell cards in St. Louis", href: "/sell-magic-cards/st-louis" },
+      { label: "Seller guides", href: "/guides" },
     ],
   },
   {

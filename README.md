@@ -21,7 +21,7 @@ Open the printed localhost URL.
 ### Scripts
 ```bash
 npm run dev          # Vite dev server
-npm run build        # tsc -b (app + api + node projects) then vite build -> dist/
+npm run build        # tsc -b, vite build -> dist/, then prerender SEO pages (see docs/SEO.md)
 npm run preview      # preview the production build
 npm run lint         # oxlint
 npm run test         # vitest (unit/integration tests)
@@ -71,6 +71,9 @@ src/                 React storefront (browser)
   cards.ts           Catalog fetch
   SignupForm.tsx     Newsletter signup -> POST /api/subscribe
   types/database.ts  Generated Supabase types (regenerate on schema change)
+  seo/               SEO route registry, sell-area + guide data, head tags (pure TS)
+  prerender.tsx      SSR entry used only by the build-time prerender
+scripts/prerender.ts Writes static HTML per SEO route (+ spa.html shell); see docs/SEO.md
 api/                 Vercel Functions (server-only)
   subscribe.ts       POST: create/refresh a pending subscriber, send confirm email
   confirm.ts         GET:  validate token, activate subscriber (branded HTML)

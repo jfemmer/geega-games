@@ -1,43 +1,33 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
-import { SITE } from "../../siteConfig";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import {
+  FaqSection,
+  HowYouGetPaidSection,
+  SellCtaSection,
+  SellerGuidesSection,
+  TravelAreasSection,
+  WhatWeBuySection,
+} from "../components/SellLandingSections";
+import { ST_LOUIS_PATH, sellFormPath } from "../../seo/sellAreas";
+import {
+  HUB_CITY,
+  MAX_DRIVE_HOURS,
+  ORGANIZATION_ID,
+  SERVICE_STATES,
+  breadcrumbJsonLd,
+  faqJsonLd,
+  serviceAreaServed,
+} from "../../seo/site";
 
-// Service area for SEO/schema purposes. Geega Games is online-only (no
-// physical storefront), based near St. Louis, MO. Per the business owner,
-// the service area is framed as "about a 6-hour drive from St. Louis"
-// rather than a fixed state list — SERVICE_STATES below is a defensible,
-// clearly-approximate set of states substantially within that radius
-// (Missouri/Illinois/Kentucky/Indiana/Tennessee/Arkansas/Kansas/Iowa sit
-// solidly within ~350 driving miles; Oklahoma is included as a reasonable
-// edge case via Tulsa). This is NOT a precise geometric claim — the
-// visible copy always says "about a 6-hour drive," never a mileage
-// figure, and SERVICE_RADIUS_METERS below is only used in the GeoCircle
-// schema, not shown to readers.
-const HUB_CITY = "St. Louis";
-const SERVICE_STATES = [
-  "Missouri",
-  "Illinois",
-  "Kentucky",
-  "Indiana",
-  "Tennessee",
-  "Arkansas",
-  "Kansas",
-  "Iowa",
-  "Oklahoma",
-];
-// ~350 miles in meters — a rough "6-hour drive at realistic highway speeds
-// including stops" estimate, for the GeoCircle schema's geoRadius only.
-const SERVICE_RADIUS_METERS = 563000;
-const HUB_COORDINATES = { latitude: 38.627, longitude: -90.1994 };
-
-// SEO landing page for people sitting on a large, unsorted Magic collection
-// (estate, "found it in the attic," quit-playing-years-ago, etc.). Deliberately
-// separate from /sell: that page is the intake FORM (works fine on its own for
-// a guest with a handful of cards); this page is the CONTENT/authority page
-// search traffic lands on, and every CTA here funnels into /sell rather than
-// duplicating its logic.
+// The main "sell your Magic collection" landing page — the national hub for
+// searches like "sell mtg collection", "sell magic cards", "we buy magic
+// cards". Deliberately separate from /sell: that page is the intake FORM;
+// this is the content page search traffic lands on, and every CTA funnels
+// into /sell rather than duplicating its logic. Local and regional searches
+// have their own pages (/sell-magic-cards/st-louis and /sell-magic-cards/:area),
+// all linked from here.
 //
 // Content rule from the business owner: no payout-percentage or fixed-
 // turnaround claims anywhere on this page — those aren't finalized, and
@@ -54,7 +44,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Does my collection need to be sorted first?",
     answer:
-      "No. Bring it or ship it exactly as it is — in binders, boxes, bags, or a mix of all three. Sorting it yourself doesn't get you a better offer, and for a large collection it usually just delays things.",
+      "No. Ship it or meet up with it exactly as it is — in binders, boxes, bags, or a mix of all three. Sorting it yourself doesn't get you a better offer, and for a large collection it usually just delays things.",
   },
   {
     question: "I have no idea what any of this is worth. Is that a problem?",
@@ -62,9 +52,18 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
       "Not at all. Most people selling a large collection haven't priced it and don't need to. We go through everything and make an offer based on what's actually there.",
   },
   {
-    question: "Do I have to bring it in, or can I ship it?",
+    question: "Can we meet in person, or do I have to ship it?",
+    answer: `Either works. In the ${HUB_CITY} area we're glad to meet up in person. For collections, we'll also drive to you anywhere within about a ${MAX_DRIVE_HOURS}-hour drive of ${HUB_CITY} — Kansas City, Chicago, Indianapolis, Louisville, Nashville, Memphis and everywhere in between. From anywhere else in the US, ship it to us. Tell us your preference in the form.`,
+  },
+  {
+    question: "Will you really drive a few hours for my collection?",
     answer:
-      "Either works. Plenty of sellers bring a collection in and wait while it's looked over; just as many prefer to ship it and get an offer back. Tell us your preference in the form and we'll go from there — whichever is easier for you.",
+      "For a collection, yes — that's the point. For longer trips we'll ask for a few photos and a rough idea of what's there first, so we can plan the day and make sure the trip makes sense for both of us. A handful of singles is usually easier to ship.",
+  },
+  {
+    question: "Where do we meet?",
+    answer:
+      "Somewhere public that you're comfortable with. Coffee shops, libraries and game stores work well, and many police departments have designated safe-exchange spots. For a very large collection that's hard to move, tell us in the form and we'll work out the easiest option.",
   },
   {
     question: "Is there a minimum size to sell a collection this way?",
@@ -82,66 +81,34 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
       "That's the normal case, not an edge case. Most real collections are a mix — a few cards worth looking at closely and a lot that aren't. Send it all; we sort out what's what.",
   },
   {
-    question: "How do I actually start?",
-    answer:
-      "Use the form below. It asks a few quick questions about the collection (size, what's in it, whether you'd rather ship or bring it in) — nothing about individual card values or condition grading is required up front.",
-  },
-  {
     question: "Do I have to live near you to sell my collection?",
-    answer:
-      `No — shipping in works from anywhere. That said, we're based near ${HUB_CITY} and are a go-to option for sellers within about a 6-hour drive, including ${SERVICE_STATES.join(", ")}.`,
+    answer: `No — shipping in works from anywhere in the US. We're based in ${HUB_CITY}, and for sellers within about a ${MAX_DRIVE_HOURS}-hour drive — including ${SERVICE_STATES.join(", ")} — meeting in person is an option too.`,
   },
 ];
 
-const FAQ_JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: FAQ_ITEMS.map((item) => ({
-    "@type": "Question",
-    name: item.question,
-    acceptedAnswer: {
-      "@type": "Answer",
-      text: item.answer,
-    },
-  })),
-};
-
-// No physical storefront (mail-in/drop-off by arrangement only), so this is
-// Service + areaServed rather than LocalBusiness — LocalBusiness schema
-// implies a visitable address, which would be inaccurate here. areaServed
-// mixes a GeoCircle (the actual "~6-hour drive" radius, for anything that
-// can use precise geo data) with named State/City entities (for keyword-
-// style relevance — "sell cards Kentucky" is a real query shape a bare
-// radius can't match on its own).
-const SERVICE_JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "Service",
-  serviceType: "Magic: The Gathering card and collection buying",
-  provider: {
-    "@type": "Organization",
-    name: SITE.name,
-    url: SITE.url,
+// No walk-in storefront (meetups and mail-in only), so this is Service +
+// areaServed rather than LocalBusiness — LocalBusiness implies a visitable
+// address, which would be inaccurate here.
+const JSON_LD = [
+  breadcrumbJsonLd([{ name: "Sell your collection", path: "/sell-my-collection" }]),
+  {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    serviceType: "Magic: The Gathering card and collection buying",
+    name: "Sell your Magic: The Gathering collection",
+    provider: { "@id": ORGANIZATION_ID },
+    areaServed: [...serviceAreaServed(), { "@type": "Country", name: "United States" }],
+    description: `Geega Games buys Magic: The Gathering collections and singles: by mail from anywhere in the US, in person around ${HUB_CITY}, and by travelling to sellers within about a ${MAX_DRIVE_HOURS}-hour drive of ${HUB_CITY}, MO.`,
   },
-  areaServed: [
-    {
-      "@type": "GeoCircle",
-      geoMidpoint: { "@type": "GeoCoordinates", ...HUB_COORDINATES },
-      geoRadius: SERVICE_RADIUS_METERS,
-    },
-    { "@type": "City", name: HUB_CITY, containedInPlace: { "@type": "State", name: "Missouri" } },
-    ...SERVICE_STATES.map((name) => ({ "@type": "State", name })),
-  ],
-  description:
-    `Buying Magic: The Gathering collections and singles from sellers within about a 6-hour drive of ${HUB_CITY}, MO — including ${SERVICE_STATES.join(", ")} — by mail-in shipment or drop-off by arrangement.`,
-};
+  faqJsonLd(FAQ_ITEMS),
+];
 
 export default function SellCollectionPage() {
   useSEO({
-    title: "Sell Your Magic: The Gathering Collection — St. Louis & the Midwest | Geega Games",
-    description:
-      "Based near St. Louis, MO, we buy Magic: The Gathering collections from sellers within about a 6-hour drive — Missouri, Illinois, Kentucky, Indiana, Tennessee, Arkansas, Kansas, Iowa, and Oklahoma. Unsorted, mixed, or inherited — no problem.",
+    title: "Sell Your MTG Collection — We Buy Magic Cards | Geega Games",
+    description: `Sell your Magic: The Gathering cards or whole collection. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (up to about ${MAX_DRIVE_HOURS} hours away). Unsorted is fine.`,
     path: "/sell-my-collection",
-    jsonLd: [FAQ_JSON_LD, SERVICE_JSON_LD],
+    jsonLd: JSON_LD,
   });
 
   return (
@@ -150,14 +117,41 @@ export default function SellCollectionPage() {
         <h1>Sell your Magic: The Gathering collection — unsorted is totally fine</h1>
         <p className="gg-collect-hero-sub">
           Binders you haven&rsquo;t opened in years. Boxes from a basement or a closet. A
-          collection you inherited and don&rsquo;t know where to start with. Bring it in or
-          ship it to us exactly as it is — no sorting, no pricing spreadsheet, no cleanup
-          required on your end.
+          collection you inherited and don&rsquo;t know where to start with. Ship it to us from
+          anywhere in the US, meet up with us in {HUB_CITY}, or we&rsquo;ll drive to you — no
+          sorting, no pricing spreadsheet, no cleanup required on your end.
         </p>
         <div className="gg-collect-hero-actions">
           <Link to="/sell" className="gg-btn">
             Start selling your collection
           </Link>
+        </div>
+      </section>
+
+      <section className="gg-collect-section">
+        <h2>Three ways to sell</h2>
+        <div className="gg-collect-grid">
+          <div className="gg-collect-card">
+            <h3>Ship it from anywhere</h3>
+            <p>
+              Anywhere in the US: tell us what you have, pack it up, and get an offer on the whole
+              thing. <Link to={sellFormPath("ship")}>Ship your cards</Link>
+            </p>
+          </div>
+          <div className="gg-collect-card">
+            <h3>Meet up in {HUB_CITY}</h3>
+            <p>
+              We&rsquo;re local. Meet anywhere in the metro, Missouri or Illinois side — even for a
+              few good cards. <Link to={ST_LOUIS_PATH}>Selling in St. Louis</Link>
+            </p>
+          </div>
+          <div className="gg-collect-card">
+            <h3>We come to you</h3>
+            <p>
+              For collections, we drive up to about {MAX_DRIVE_HOURS} hours from {HUB_CITY} — from
+              Kansas City to Chicago, Nashville and beyond. <a href="#areas">See where we travel</a>
+            </p>
+          </div>
         </div>
       </section>
 
@@ -168,7 +162,7 @@ export default function SellCollectionPage() {
             <h3>Inherited or estate collections</h3>
             <p>
               Sorting through someone else&rsquo;s cards is hard enough without also having
-              to learn what any of it is worth. Send it as-is and we&rsquo;ll take it from
+              to learn what any of it is worth. Hand it over as-is and we&rsquo;ll take it from
               there.
             </p>
           </div>
@@ -198,9 +192,9 @@ export default function SellCollectionPage() {
             is a fine answer to any of them.
           </li>
           <li>
-            <strong>Choose ship or bring it in.</strong> Prefer to drop it off and have it
-            looked over in person? Prefer to box it up and ship it to us? Either is fine —
-            let us know which works better for you.
+            <strong>Choose ship or meet up.</strong> Prefer to box it up and ship it to us? Prefer to
+            meet in person — in {HUB_CITY}, or with us driving to you? Either is fine; let us know
+            which works better for you.
           </li>
           <li>
             <strong>We go through everything.</strong> Every card gets looked at, not just the
@@ -213,50 +207,37 @@ export default function SellCollectionPage() {
         </ol>
       </section>
 
+      <WhatWeBuySection />
+
       <section className="gg-collect-section gg-collect-trust">
         <h2>Why sell a large collection to Geega Games</h2>
         <ul className="gg-collect-trustlist">
           <li>We buy collections of all sizes, sorted or not — this is what we do regularly, not a side offer.</li>
           <li>No sorting, pricing, or condition-grading homework required before you reach out.</li>
-          <li>Ship it or bring it in — your call, not a one-size-fits-all process.</li>
+          <li>Ship it, meet up, or have us come to you — your call, not a one-size-fits-all process.</li>
           <li>Real people looking through real cards, not an automated bulk-buy calculator.</li>
         </ul>
       </section>
 
-      <section className="gg-collect-section">
-        <h2>Buying Magic: The Gathering collections within about a 6-hour drive of St. Louis</h2>
-        <p>
-          Based near {HUB_CITY}, we&rsquo;re a go-to option for sellers turning a collection
-          into cash from anywhere within about a six-hour drive — {SERVICE_STATES.join(", ")},
-          and everywhere in between. Farther out? Shipping in works from anywhere, so distance
-          doesn&rsquo;t rule you out either.
-        </p>
-      </section>
+      <HowYouGetPaidSection />
 
-      <section className="gg-collect-section">
-        <h2>Frequently asked questions</h2>
-        <div className="gg-faq">
-          {FAQ_ITEMS.map((item) => (
-            <details className="gg-faq-item" key={item.question}>
-              <summary>{item.question}</summary>
-              <p>{item.answer}</p>
-            </details>
-          ))}
-        </div>
-        <p className="gg-collect-contact">
-          Still have a question first? Email{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> and describe what you have —
-          no need to sort or count anything before you write in.
-        </p>
-      </section>
+      <div id="areas">
+        <TravelAreasSection />
+      </div>
 
-      <section className="gg-collect-cta">
-        <h2>Ready to sell your collection?</h2>
-        <p>Unsorted, mixed, inherited, or just a lot of cards you never got around to — start here.</p>
-        <Link to="/sell" className="gg-btn">
-          Start selling your collection
-        </Link>
-      </section>
+      <SellerGuidesSection />
+
+      <FaqSection items={FAQ_ITEMS} />
+      <p className="gg-collect-contact">
+        Still have a question first? Email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>{" "}
+        and describe what you have — no need to sort or count anything before you write in.
+      </p>
+
+      <SellCtaSection
+        heading="Ready to sell your collection?"
+        text="Unsorted, mixed, inherited, or just a lot of cards you never got around to — start here."
+        buttonLabel="Start selling your collection"
+      />
     </div>
   );
 }

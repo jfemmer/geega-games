@@ -1,38 +1,34 @@
 import { useEffect } from "react";
 import { SITE } from "../../siteConfig";
+import { DEFAULT_SEO } from "../../seo/site";
+import { PAGE_JSON_LD_ATTR, type PageSEO } from "../../seo/head";
 
-// Per-page SEO metadata. This is a client-rendered SPA with ONE static
-// index.html, so every route inherits the same <title>/description/OG tags
-// unless a page opts into overriding them here — nothing did, before this.
+// Per-page SEO metadata: <title>, description, canonical, Open Graph/Twitter
+// tags, robots and page-level JSON-LD.
 //
-// Rather than assume a hardcoded "site default" to restore, this captures
-// whatever was actually in the DOM the moment the page mounts (which is
-// correct whether that's index.html's real defaults, or another page's
-// values if navigation happened client-side without a full reload) and
-// restores exactly that on unmount. That makes pages composable in any
-// navigation order without needing a single shared "default" constant that
-// could drift out of sync with index.html.
+// Two places apply these tags, from the same PageSEO values:
+//   * At build time, scripts/prerender.ts renders each route in
+//     src/seo/routes.ts to static HTML. useSEO reports the page's metadata to
+//     the prerender during that render (see collectSEO), and the script
+//     writes the matching tags into that page's HTML.
+//   * In the browser, the effect below applies them, so client-side
+//     navigation keeps the head in sync with the page on screen.
+//
+// On unmount the head goes back to the site defaults (not to whatever was
+// in the DOM on mount — on a prerendered page that's the page's own values),
+// and the canonical/og:url are removed: a page that doesn't call useSEO
+// (login, checkout, account…) shouldn't claim another page's canonical URL.
 
-interface SEOOptions {
-  /** Full <title> text (include the "Geega Games" suffix yourself). */
-  title: string;
-  description: string;
-  /** Path only, e.g. "/sell-my-collection" — combined with SITE.url for canonical/OG. */
-  path: string;
-  /**
-   * Optional JSON-LD structured data (e.g. FAQPage) to inject while this
-   * page is mounted. Pass an array to emit multiple entities in one script
-   * tag (e.g. [FAQPage, Service]) — Google supports a top-level JSON array
-   * the same as a single object.
-   */
-  jsonLd?: object | object[];
-  /**
-   * Set true for a page that resolved but shouldn't be indexed (e.g. a
-   * card detail page with zero in-stock listings right now). Omit/false
-   * for the normal indexable case — index.html's default robots tag
-   * already covers that.
-   */
-  noIndex?: boolean;
+export type { PageSEO };
+
+let collector: ((seo: PageSEO) => void) | null = null;
+
+/**
+ * Build-time prerender only: receive the useSEO options of the page being
+ * rendered. Pass null to stop collecting. Never used in the browser.
+ */
+export function collectSEO(fn: ((seo: PageSEO) => void) | null): void {
+  collector = fn;
 }
 
 function upsertMeta(attr: "name" | "property", key: string, content: string): void {
@@ -45,56 +41,67 @@ function upsertMeta(attr: "name" | "property", key: string, content: string): vo
   el.setAttribute("content", content);
 }
 
-function readMeta(attr: "name" | "property", key: string): string {
-  return document.querySelector(`meta[${attr}="${key}"]`)?.getAttribute("content") ?? "";
+function removeMeta(attr: "name" | "property", key: string): void {
+  document.querySelector(`meta[${attr}="${key}"]`)?.remove();
 }
 
-export function useSEO({ title, description, path, jsonLd, noIndex }: SEOOptions): void {
-  const jsonLdKey = jsonLd ? JSON.stringify(jsonLd) : "";
+function setCanonical(url: string | null): void {
+  let el = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+  if (!url) {
+    el?.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement("link");
+    el.rel = "canonical";
+    document.head.appendChild(el);
+  }
+  el.href = url;
+}
+
+function removePageJsonLd(): void {
+  document.querySelectorAll(`script[${PAGE_JSON_LD_ATTR}]`).forEach((el) => el.remove());
+}
+
+function applyHead(title: string, description: string, url: string | null, noIndex: boolean): void {
+  document.title = title;
+  upsertMeta("name", "description", description);
+  upsertMeta("property", "og:title", title);
+  upsertMeta("property", "og:description", description);
+  upsertMeta("name", "twitter:title", title);
+  upsertMeta("name", "twitter:description", description);
+  upsertMeta("name", "robots", noIndex ? "noindex, follow" : "index, follow");
+  if (url) upsertMeta("property", "og:url", url);
+  else removeMeta("property", "og:url");
+  setCanonical(url);
+}
+
+export function useSEO(seo: PageSEO): void {
+  // Render-phase on purpose, and only during the build-time prerender (the
+  // collector is always null in the browser): effects never run there.
+  if (collector) collector(seo);
+
+  const { title, description, path, jsonLd, noIndex } = seo;
+  const jsonLdText = jsonLd ? JSON.stringify(jsonLd) : "";
 
   useEffect(() => {
-    const prevTitle = document.title;
-    const prevDescription = readMeta("name", "description");
-    const prevOgTitle = readMeta("property", "og:title");
-    const prevOgDescription = readMeta("property", "og:description");
-    const prevOgUrl = readMeta("property", "og:url");
-    const prevTwitterTitle = readMeta("name", "twitter:title");
-    const prevTwitterDescription = readMeta("name", "twitter:description");
-    const canonicalEl = document.querySelector('link[rel="canonical"]');
-    const prevCanonical = canonicalEl?.getAttribute("href") ?? "";
-    const prevRobots = readMeta("name", "robots");
-
     const url = `${SITE.url.replace(/\/+$/, "")}${path}`;
+    applyHead(title, description, url, Boolean(noIndex));
 
-    document.title = title;
-    upsertMeta("name", "description", description);
-    upsertMeta("property", "og:title", title);
-    upsertMeta("property", "og:description", description);
-    upsertMeta("property", "og:url", url);
-    upsertMeta("name", "twitter:title", title);
-    upsertMeta("name", "twitter:description", description);
-    if (canonicalEl) canonicalEl.setAttribute("href", url);
-    if (noIndex) upsertMeta("name", "robots", "noindex, follow");
-
-    let jsonLdEl: HTMLScriptElement | null = null;
-    if (jsonLdKey) {
-      jsonLdEl = document.createElement("script");
-      jsonLdEl.type = "application/ld+json";
-      jsonLdEl.text = jsonLdKey;
-      document.head.appendChild(jsonLdEl);
+    // Replace (never duplicate) the page JSON-LD the prerender put in the
+    // HTML — two identical FAQPage blocks is a Search Console error.
+    removePageJsonLd();
+    if (jsonLdText) {
+      const el = document.createElement("script");
+      el.type = "application/ld+json";
+      el.setAttribute(PAGE_JSON_LD_ATTR, "");
+      el.text = jsonLdText;
+      document.head.appendChild(el);
     }
 
     return () => {
-      document.title = prevTitle;
-      upsertMeta("name", "description", prevDescription);
-      upsertMeta("property", "og:title", prevOgTitle);
-      upsertMeta("property", "og:description", prevOgDescription);
-      upsertMeta("property", "og:url", prevOgUrl);
-      upsertMeta("name", "twitter:title", prevTwitterTitle);
-      upsertMeta("name", "twitter:description", prevTwitterDescription);
-      if (canonicalEl) canonicalEl.setAttribute("href", prevCanonical);
-      if (noIndex) upsertMeta("name", "robots", prevRobots || "index, follow");
-      jsonLdEl?.remove();
+      applyHead(DEFAULT_SEO.title, DEFAULT_SEO.description, null, false);
+      removePageJsonLd();
     };
-  }, [title, description, path, jsonLdKey, noIndex]);
+  }, [title, description, path, jsonLdText, noIndex]);
 }

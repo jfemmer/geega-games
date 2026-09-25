@@ -278,7 +278,7 @@ describe("storefront search", () => {
     // the homepage, not just that the path string changed.
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { name: /carefully curated/i }),
+        screen.getByRole("heading", { name: /buy & sell magic: the gathering cards/i }),
       ).toBeInTheDocument(),
     );
     expect(screen.getByLabelText(/search cards/i)).toHaveValue("");

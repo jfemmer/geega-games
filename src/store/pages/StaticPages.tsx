@@ -3,25 +3,38 @@ import { useSEO } from "../lib/useSEO";
 import SignupForm from "../../SignupForm";
 import { JoinSection } from "../components/AccountPerks";
 import DeckShowcase from "../components/DeckShowcase";
+import { AreaLinks } from "../components/SellLandingSections";
+import { DEFAULT_SEO, MAX_DRIVE_HOURS, WEBSITE_JSON_LD } from "../../seo/site";
+import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
   "support@geega-games.com";
 
 export function HomePage() {
+  useSEO({
+    title: DEFAULT_SEO.title,
+    description: DEFAULT_SEO.description,
+    path: "/",
+    jsonLd: WEBSITE_JSON_LD,
+  });
+
   return (
     <div className="gg-page">
       <section style={{ textAlign: "center", padding: "2rem 0 1rem" }}>
         <h1 style={{ color: "var(--gg-ink)", fontSize: "2rem", marginBottom: "0.5rem" }}>
-          Magic: The Gathering singles, carefully curated
+          Buy &amp; sell Magic: The Gathering cards
         </h1>
         <p className="gg-prose" style={{ color: "#555" }}>
-          Real inventory, honest condition grading, and fast shipping from Geega
-          Games. Browse current singles and build your deck.
+          Hand-graded MTG singles from real inventory, shipped nationwide from St. Louis — and
+          when you&rsquo;re ready to sell, we buy single cards and whole collections.
         </p>
-        <div style={{ marginTop: "1.25rem" }}>
+        <div className="gg-home-actions">
           <Link to="/shop" className="gg-btn">
             Shop singles
+          </Link>
+          <Link to="/sell-my-collection" className="gg-btn gg-btn-ghost">
+            Sell your cards
           </Link>
         </div>
       </section>
@@ -34,11 +47,14 @@ export function HomePage() {
         <h2>Looking to sell your collection?</h2>
         <p>
           From a few valuable singles to an entire Magic collection, Geega Games is always
-          interested in seeing what you have.
+          interested in seeing what you have. Ship it from anywhere in the US,{" "}
+          <Link to={ST_LOUIS_PATH}>meet up with us in St. Louis</Link>, or — for a collection —
+          we&rsquo;ll drive to you, up to about {MAX_DRIVE_HOURS} hours away.
         </p>
         <Link to="/sell-my-collection" className="gg-btn">
           Sell Your Cards
         </Link>
+        <AreaLinks />
       </section>
 
       <section style={{ marginTop: "2rem" }}>

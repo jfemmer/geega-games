@@ -1,8 +1,10 @@
 User-agent: *
 Allow: /
 Disallow: /account
+Disallow: /admin
 Disallow: /checkout
 Disallow: /kiosk
 Disallow: /reset-password
+Disallow: /sell/offer
 
 Sitemap: https://geega-games.com/sitemap.xml

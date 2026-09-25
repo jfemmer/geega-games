@@ -11,72 +11,24 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#663399" />
 
-    <title>Geega Games — Buy & Sell Magic: The Gathering Singles Online</title>
-    <meta
-      name="description"
-      content="Geega Games is an online Magic: The Gathering card shop. Browse hand-picked singles by card or set, check out securely, and track your order — based near St. Louis, MO and shipping nationwide."
-    />
+    <!-- Per-page SEO tags. scripts/prerender.ts replaces everything between
+         these markers at build time with each page's own title, description,
+         canonical, robots, Open Graph/Twitter text and JSON-LD (from the
+         page's useSEO call and src/seo/site.ts). What's here is only the dev
+         server's fallback — edit src/seo/, not this block. -->
+    <!--seo-head-->
+    <title>Geega Games | Buy & Sell Magic: The Gathering Cards — St. Louis</title>
+    <meta name="description" content="Buy Magic: The Gathering singles online and sell your MTG cards or collection to Geega Games." />
+    <!--/seo-head-->
 
-    <!-- Canonical + robots -->
-    <link rel="canonical" href="https://geega-games.com/" />
-    <meta name="robots" content="index, follow" />
-
-    <!-- Open Graph -->
+    <!-- Site-wide social tags (same on every page) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Geega Games" />
-    <meta property="og:title" content="Geega Games — Buy & Sell Magic: The Gathering Singles Online" />
-    <meta
-      property="og:description"
-      content="Browse hand-picked Magic: The Gathering singles and check out securely — based near St. Louis, MO and shipping nationwide."
-    />
-    <meta property="og:url" content="https://geega-games.com/" />
     <meta property="og:image" content="https://geega-games.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Geega Games — Buy & Sell Magic: The Gathering Singles Online" />
-    <meta
-      name="twitter:description"
-      content="Browse hand-picked Magic: The Gathering singles and check out securely — shipping nationwide."
-    />
     <meta name="twitter:image" content="https://geega-games.com/og-image.png" />
-
-    <!-- Structured data: uses only verified business info. Update the URL and
-         add contactPoint/address only once those details are confirmed.
-         areaServed reflects the confirmed online-only (no storefront)
-         service area: about a 6-hour drive of St. Louis, MO. Keep the state
-         list in sync with SellCollectionPage.tsx's SERVICE_STATES if that
-         region changes. -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "OnlineStore",
-        "name": "Geega Games",
-        "description": "Magic: The Gathering singles — buy, sell, and trade.",
-        "url": "https://geega-games.com/",
-        "logo": "https://geega-games.com/logo.png",
-        "image": "https://geega-games.com/og-image.png",
-        "areaServed": [
-          {
-            "@type": "GeoCircle",
-            "geoMidpoint": { "@type": "GeoCoordinates", "latitude": 38.627, "longitude": -90.1994 },
-            "geoRadius": 563000
-          },
-          { "@type": "City", "name": "St. Louis", "containedInPlace": { "@type": "State", "name": "Missouri" } },
-          { "@type": "State", "name": "Missouri" },
-          { "@type": "State", "name": "Illinois" },
-          { "@type": "State", "name": "Kentucky" },
-          { "@type": "State", "name": "Indiana" },
-          { "@type": "State", "name": "Tennessee" },
-          { "@type": "State", "name": "Arkansas" },
-          { "@type": "State", "name": "Kansas" },
-          { "@type": "State", "name": "Iowa" },
-          { "@type": "State", "name": "Oklahoma" }
-        ]
-      }
-    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -86,7 +38,7 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!--app-html--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

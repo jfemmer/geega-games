@@ -32,6 +32,10 @@ import { TermsPage } from "./store/pages/TermsPage";
 import CheckoutPage from "./store/pages/CheckoutPage";
 import SellPage from "./store/pages/SellPage";
 import SellCollectionPage from "./store/pages/SellCollectionPage";
+import SellStLouisPage from "./store/pages/SellStLouisPage";
+import SellAreaPage from "./store/pages/SellAreaPage";
+import { GuidePage, GuidesIndexPage } from "./store/pages/GuidePages";
+import { ST_LOUIS_PATH } from "./seo/sellAreas";
 import { AccountPage } from "./store/pages/AccountPages";
 import TrackOrderPage from "./store/pages/TrackOrderPage";
 import RespondToOfferPage from "./store/pages/RespondToOfferPage";
@@ -56,6 +60,12 @@ function Routes() {
   if (path === "/sell/offer") return <RespondToOfferPage />;
   if (path === "/sell") return <SellPage />;
   if (path === "/sell-my-collection") return <SellCollectionPage />;
+  if (path === ST_LOUIS_PATH) return <SellStLouisPage />;
+  const areaMatch = matchRoute("/sell-magic-cards/:slug", path);
+  if (areaMatch) return <SellAreaPage slug={areaMatch.slug} />;
+  if (path === "/guides") return <GuidesIndexPage />;
+  const guideMatch = matchRoute("/guides/:slug", path);
+  if (guideMatch) return <GuidePage slug={guideMatch.slug} />;
   if (path === "/condition-guide") return <ConditionGuidePage />;
   if (path === "/shipping") return <ShippingPage />;
   if (path === "/returns") return <ReturnsPage />;
@@ -77,11 +87,20 @@ export default function App() {
     return <KioskPage />;
   }
 
+  return <Storefront />;
+}
+
+/**
+ * The storefront with all of its chrome. `initialPath` is only passed by the
+ * build-time prerender (src/prerender.tsx), which renders this exact tree to
+ * static HTML so crawlers get real markup; the browser reads the location.
+ */
+export function Storefront({ initialPath }: { initialPath?: string }) {
   return (
     <AuthProvider>
       <CartProvider>
         <WishlistProvider>
-          <RouterProvider>
+          <RouterProvider initialPath={initialPath}>
             <PageViewTracker />
             <div className="app">
               <a className="skip-link" href="#main">

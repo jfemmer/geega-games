@@ -1,11 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
 import { slugifyCardName } from "../src/store/lib/cardSlug.js";
+import { seoRoutes } from "../src/seo/routes.js";
+import { PRODUCTION_ORIGIN } from "../src/seo/site.js";
 
 // GET /sitemap.xml — rewritten here from the site root by vercel.json, which
 // must route this path to this function BEFORE its catch-all SPA rewrite.
 //
-// Static marketing pages (previously a hand-maintained public/sitemap.xml)
+// Every prerendered content page (src/seo/routes.ts — the same registry the
+// build-time prerender and vercel.json rewrites use, so they can't drift)
 // plus one URL per distinct card currently in stock, so individual Magic:
 // The Gathering singles are discoverable/indexable instead of living only
 // behind the /shop browse grid. See src/store/pages/CardDetailPage.tsx for
@@ -16,22 +19,8 @@ import { slugifyCardName } from "../src/store/lib/cardSlug.js";
 // the request: an incomplete sitemap is far less harmful to crawlability
 // than an unreachable one.
 
-const SITE_URL = "https://geega-games.com";
+const SITE_URL = PRODUCTION_ORIGIN;
 const MAX_CARD_URLS = 5000;
-
-const STATIC_PAGES: { path: string; changefreq: string; priority: string; lastmod?: string }[] = [
-  { path: "/", changefreq: "daily", priority: "1.0" },
-  { path: "/shop", changefreq: "daily", priority: "0.9" },
-  { path: "/shop/sets", changefreq: "weekly", priority: "0.7" },
-  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9" },
-  { path: "/sell", changefreq: "weekly", priority: "0.7" },
-  { path: "/condition-guide", changefreq: "monthly", priority: "0.4" },
-  { path: "/shipping", changefreq: "monthly", priority: "0.4" },
-  { path: "/returns", changefreq: "monthly", priority: "0.3" },
-  { path: "/contact", changefreq: "monthly", priority: "0.3" },
-  { path: "/privacy", changefreq: "yearly", priority: "0.1" },
-  { path: "/terms", changefreq: "yearly", priority: "0.1" },
-];
 
 function xmlEscape(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -57,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const entries = STATIC_PAGES.map((p) => urlEntry(`${SITE_URL}${p.path}`, p.changefreq, p.priority, p.lastmod));
+  const entries = seoRoutes().map((p) => urlEntry(`${SITE_URL}${p.path}`, p.changefreq, p.priority, p.lastmod));
 
   try {
     const supabase = getSupabaseAdmin();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "../lib/router";
+import { Link, useRouter } from "../lib/router";
 import { useAuth } from "../lib/AuthContext";
 import { rememberClaim } from "../lib/guestClaims";
 import { useSEO } from "../lib/useSEO";
@@ -59,9 +59,9 @@ function isValidEmail(email: string): boolean {
 
 export default function SellPage() {
   useSEO({
-    title: "Sell Your Magic: The Gathering Cards Online — St. Louis & the Midwest | Geega Games",
+    title: "Sell MTG Cards Online — Get an Offer | Geega Games",
     description:
-      "Get an offer for your Magic: The Gathering cards or collection. Based near St. Louis, MO, we buy from sellers within about a 6-hour drive — Missouri, Illinois, Kentucky, Indiana, Tennessee, Arkansas, Kansas, Iowa, and Oklahoma.",
+      "List your Magic: The Gathering cards or describe your collection and get an offer. Ship from anywhere in the US, or meet up — we're based in St. Louis and travel about 6 hours for collections.",
     path: "/sell",
   });
 
@@ -78,6 +78,19 @@ export default function SellPage() {
   useEffect(() => {
     saveDraft(draft);
   }, [draft]);
+
+  // "Set up a meetup" / "Ship instead" links on the sell landing pages pass
+  // ?handoff=local|ship. Preselect it, but only while the seller hasn't
+  // picked one themselves — a saved draft's own choice always wins.
+  const handoff = useRouter().query.get("handoff");
+  useEffect(() => {
+    if (handoff !== "local" && handoff !== "ship") return;
+    setDraft((d) =>
+      d.contact.transactionPreference === "not_sure"
+        ? { ...d, contact: { ...d.contact, transactionPreference: handoff } }
+        : d,
+    );
+  }, [handoff]);
 
   // Prefill from the signed-in user's profile — never overwrites something
   // already typed. Guests never see this; they aren't required to sign in.

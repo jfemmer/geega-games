@@ -3,14 +3,30 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "redirects": [
+    { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true }
+  ],
   "rewrites": [
     {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },
+    { "source": "/shop", "destination": "/shop/index.html" },
+    { "source": "/shop/sets", "destination": "/shop/sets/index.html" },
+    { "source": "/sell", "destination": "/sell/index.html" },
+    { "source": "/sell-my-collection", "destination": "/sell-my-collection/index.html" },
+    { "source": "/sell-magic-cards/:area", "destination": "/sell-magic-cards/:area/index.html" },
+    { "source": "/guides", "destination": "/guides/index.html" },
+    { "source": "/guides/:slug", "destination": "/guides/:slug/index.html" },
+    { "source": "/condition-guide", "destination": "/condition-guide/index.html" },
+    { "source": "/shipping", "destination": "/shipping/index.html" },
+    { "source": "/returns", "destination": "/returns/index.html" },
+    { "source": "/contact", "destination": "/contact/index.html" },
+    { "source": "/privacy", "destination": "/privacy/index.html" },
+    { "source": "/terms", "destination": "/terms/index.html" },
     {
       "source": "/((?!api/).*)",
-      "destination": "/index.html"
+      "destination": "/spa.html"
     }
   ],
   "functions": {

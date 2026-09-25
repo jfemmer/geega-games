@@ -103,6 +103,9 @@ export default function ShopPage() {
 
   return (
     <div className="gg-page">
+      {/* The deals view has its own visible heading; the main grid needs one
+          too for screen readers and search engines, without changing the layout. */}
+      {!filters.dealsOnly && <h1 className="visually-hidden">Magic: The Gathering singles</h1>}
       {filters.dealsOnly && (
         <section className="gg-deals-hero" aria-labelledby="gg-deals-title">
           <div>

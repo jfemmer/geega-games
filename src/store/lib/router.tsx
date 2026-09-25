@@ -21,9 +21,19 @@ type RouterContextValue = {
 
 const RouterContext = createContext<RouterContextValue | null>(null);
 
-export function RouterProvider({ children }: { children: ReactNode }) {
-  const [path, setPath] = useState(() => window.location.pathname || "/");
-  const [search, setSearch] = useState(() => window.location.search);
+export function RouterProvider({
+  children,
+  initialPath,
+}: {
+  children: ReactNode;
+  /**
+   * Build-time prerendering only (scripts/prerender.ts), where there is no
+   * window to read the location from. The browser always omits this.
+   */
+  initialPath?: string;
+}) {
+  const [path, setPath] = useState(() => initialPath ?? (window.location.pathname || "/"));
+  const [search, setSearch] = useState(() => (initialPath !== undefined ? "" : window.location.search));
 
   useEffect(() => {
     const onPop = () => {
