@@ -8,7 +8,9 @@ import {
   sendSellSubmissionOfferResponseConfirmation,
   sendSellSubmissionStatusUpdate,
 } from "../_lib/sellSubmissionEmails.js";
-import { LARGE_SELL_COLLECTION_SIZES } from "../../src/store/lib/sellTypes.js";
+import { LARGE_SELL_COLLECTION_SIZES, STORE_CREDIT_BONUS_PERCENT } from "../../src/store/lib/sellTypes.js";
+import { createClient } from "@supabase/supabase-js";
+import { ServerEnv } from "../_lib/env.js";
 import type { Database } from "../../src/types/database.js";
 
 type SellSubmissionUpdate = Database["public"]["Tables"]["sell_submissions"]["Update"];
@@ -38,6 +40,12 @@ type SellSubmissionUpdate = Database["public"]["Tables"]["sell_submissions"]["Up
 //     eligibility.
 //   - counterOfferCents is bounds-checked server-side; a non-"countered"
 //     response never stores one.
+//   - payoutMethod (accepted only): "paypal" (default) or "store_credit".
+//     Store credit needs an account to hold it, so it requires the seller's
+//     Supabase access token; the submission is linked to that account (or
+//     must already belong to it). The bonus percent is snapshotted now, and
+//     the credit itself is issued by the DB when staff mark it completed
+//     (sell_submission_issue_store_credit).
 
 const RATE_LIMIT_PER_WINDOW = 10;
 const RATE_WINDOW_MS = 10 * 60_000;
@@ -49,6 +57,7 @@ interface RespondBody {
   email?: unknown;
   response?: unknown;
   counterOfferCents?: unknown;
+  payoutMethod?: unknown;
 }
 
 function cleanString(v: unknown, maxLen: number): string | null {
@@ -81,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: submission, error } = await admin
       .from("sell_submissions")
       .select(
-        "id, email, reference_number, offer_value_cents, offer_sent_at, offer_responded_at, total_cards, collection_size",
+        "id, email, user_id, reference_number, offer_value_cents, offer_sent_at, offer_responded_at, total_cards, collection_size",
       )
       // reference_number is always generated as GG-S-<seq> (uppercase, see
       // the sell_submissions migration) and email is normalized lowercase at
@@ -133,6 +142,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // comment in its migration).
     if (response === "accepted") {
       update.status = "accepted";
+      const payoutMethod = body.payoutMethod === "store_credit" ? "store_credit" : "paypal";
+      update.payout_method = payoutMethod;
+      if (payoutMethod === "store_credit") {
+        const accessToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+        const userId = accessToken ? await userIdFromToken(accessToken) : null;
+        if (!userId) {
+          throw new HttpError(401, "Please sign in (or create a free account) to take store credit.");
+        }
+        if (submission.user_id && submission.user_id !== userId) {
+          throw new HttpError(403, "This submission is linked to a different account. Sign in to that account to take store credit.");
+        }
+        update.user_id = userId;
+        update.store_credit_bonus_percent = STORE_CREDIT_BONUS_PERCENT;
+      }
     }
 
     const { error: updateError } = await admin
@@ -175,4 +198,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!(err instanceof HttpError)) console.error("[/api/sell/respond-to-offer] error:", err);
     return sendJson(res, status, { ok: false, message });
   }
+}
+
+async function userIdFromToken(accessToken: string): Promise<string | null> {
+  const client = createClient(
+    ServerEnv.supabaseUrl(),
+    process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+    {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    },
+  );
+  const { data, error } = await client.auth.getUser();
+  return error || !data.user ? null : data.user.id;
 }

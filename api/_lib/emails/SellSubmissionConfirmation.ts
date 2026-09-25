@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Heading, Hr, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
+import { STORE_CREDIT_BONUS_PERCENT } from "../../../src/store/lib/sellTypes.js";
 
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
@@ -80,7 +81,7 @@ export function SellSubmissionConfirmation(data: SellSubmissionEmailData) {
     h(
       Text,
       { key: "p3", style: p },
-      "If we agree on a purchase and you're shipping to us, pack cards in sleeves/toploaders and a sturdy box or reinforced mailer with no empty space — never a plain envelope. We pay via PayPal Goods & Services only (never Friends & Family), and for some collections we may ask you to ship first so we can verify condition and authenticity before payment goes out.",
+      `If we agree on a purchase and you're shipping to us, pack cards in sleeves/toploaders and a sturdy box or reinforced mailer with no empty space — never a plain envelope. We pay via PayPal Goods & Services (never Friends & Family) or, if you prefer, in store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more. For some collections we may ask you to ship first so we can verify condition and authenticity before payment goes out.`,
     ),
   );
 }
@@ -98,7 +99,7 @@ export function sellSubmissionConfirmationText(d: SellSubmissionEmailData): stri
     "",
     "Submitting this form does not guarantee an offer or purchase. We review every submission individually.",
     "",
-    "If we agree on a purchase and you're shipping to us, pack cards in sleeves/toploaders and a sturdy box or reinforced mailer with no empty space -- never a plain envelope. We pay via PayPal Goods & Services only (never Friends & Family), and for some collections we may ask you to ship first so we can verify condition and authenticity before payment goes out.",
+    `If we agree on a purchase and you're shipping to us, pack cards in sleeves/toploaders and a sturdy box or reinforced mailer with no empty space -- never a plain envelope. We pay via PayPal Goods & Services (never Friends & Family) or, if you prefer, in store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more. For some collections we may ask you to ship first so we can verify condition and authenticity before payment goes out.`,
     "",
     `Questions? ${d.supportEmail}`,
   ].join("\n");

@@ -17,6 +17,7 @@ beforeAll(() => {
 interface FakeSubmission {
   id: string;
   email: string;
+  user_id?: string | null;
   reference_number: string;
   offer_value_cents: number | null;
   offer_sent_at: string | null;
@@ -92,6 +93,18 @@ vi.mock("../api/_lib/sellSubmissionEmails.js", () => ({
   sendSellSubmissionOfferResponseAdminNotification: vi.fn(async (...args: unknown[]) => {
     emailCalls.adminNotification.push(args);
     return { status: "sent" };
+  }),
+}));
+
+// Store credit identifies the seller from their Supabase access token.
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: (_url: string, _key: string, opts: { global: { headers: Record<string, string> } }) => ({
+    auth: {
+      getUser: async () =>
+        opts.global.headers.Authorization === "Bearer good-token"
+          ? { data: { user: { id: "user-9" } }, error: null }
+          : { data: { user: null }, error: { message: "invalid" } },
+    },
   }),
 }));
 
@@ -333,5 +346,48 @@ describe("POST /api/sell/respond-to-offer", () => {
     });
     expect(res.statusCode).toBe(200);
     expect((res.body as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+describe("store-credit payout", () => {
+  async function invokeWithToken(body: Record<string, unknown>, token?: string) {
+    const { req, res } = makeReqRes(body);
+    if (token) (req.headers as Record<string, string>).authorization = `Bearer ${token}`;
+    await handler(req as never, res as never);
+    return res;
+  }
+  const accept = { referenceNumber: "GG-S-100042", email: "jordan@example.com", response: "accepted" };
+
+  it("defaults an acceptance to PayPal, with no account needed", async () => {
+    const res = await invokeWithToken(accept);
+    expect(res.statusCode).toBe(200);
+    expect(state.lastUpdate).toMatchObject({ status: "accepted", payout_method: "paypal" });
+    expect(state.lastUpdate).not.toHaveProperty("user_id");
+  });
+
+  it("refuses store credit without a signed-in seller, and saves nothing", async () => {
+    const res = await invokeWithToken({ ...accept, payoutMethod: "store_credit" });
+    expect(res.statusCode).toBe(401);
+    expect(state.lastUpdate).toBeNull();
+    const bad = await invokeWithToken({ ...accept, payoutMethod: "store_credit" }, "forged");
+    expect(bad.statusCode).toBe(401);
+  });
+
+  it("links the submission to the signed-in seller and snapshots the 20% bonus", async () => {
+    const res = await invokeWithToken({ ...accept, payoutMethod: "store_credit" }, "good-token");
+    expect(res.statusCode).toBe(200);
+    expect(state.lastUpdate).toMatchObject({
+      status: "accepted",
+      payout_method: "store_credit",
+      user_id: "user-9",
+      store_credit_bonus_percent: 20,
+    });
+  });
+
+  it("won't move a submission that already belongs to a different account", async () => {
+    state.submission = { ...BASE_SUBMISSION, user_id: "someone-else" };
+    const res = await invokeWithToken({ ...accept, payoutMethod: "store_credit" }, "good-token");
+    expect(res.statusCode).toBe(403);
+    expect(state.lastUpdate).toBeNull();
   });
 });

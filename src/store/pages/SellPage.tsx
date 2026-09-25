@@ -19,6 +19,7 @@ import {
   conditionNeedsPhotos,
   defaultConditionForReleaseDate,
   newLocalId,
+  STORE_CREDIT_BONUS_PERCENT,
   type SellCardLine,
   type SellDraft,
   type SellPhoto,
@@ -326,8 +327,8 @@ export default function SellPage() {
           <div className="gg-sellsuccess__account">
             <strong>Follow this submission with a free account</strong>
             <p className="gg-card-meta">
-              See its status and your offer any time, and get store credit worth 20% more than
-              a PayPal payout. We&rsquo;ll link this submission to your account automatically.
+              See its status and your offer any time, and take store credit worth{" "}
+              {STORE_CREDIT_BONUS_PERCENT}% more than a PayPal payout. We&rsquo;ll link this submission to your account automatically.
             </p>
             <Link to="/signup?next=/account/sell-submissions" className="gg-btn gg-btn-ghost gg-btn-sm">
               Create a free account
@@ -364,6 +365,11 @@ export default function SellPage() {
             <p className="gg-card-meta">
               Based near St. Louis and buying from sellers within about a 6-hour drive — but
               shipping in works from anywhere, near or far.
+            </p>
+            <p className="gg-sell-credit-callout">
+              <strong>Take store credit, get {STORE_CREDIT_BONUS_PERCENT}% more.</strong> When you
+              accept our offer, choose PayPal or Geega Games store credit worth{" "}
+              {STORE_CREDIT_BONUS_PERCENT}% more.
             </p>
           </section>
 

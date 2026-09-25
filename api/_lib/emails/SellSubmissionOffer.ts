@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Button, Heading, Hr, Link, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
+import { STORE_CREDIT_BONUS_PERCENT, storeCreditValueCents } from "../../../src/store/lib/sellTypes.js";
 
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
@@ -72,7 +73,7 @@ export function SellSubmissionOffer(data: SellSubmissionOfferEmailData) {
     h(
       Text,
       { key: "body3", style: p },
-      "If you accept, we'll follow up with next steps; payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.",
+      `When you accept, choose how you're paid: ${money(data.offerValueCents)} via PayPal Goods & Services, or ${money(storeCreditValueCents(data.offerValueCents))} in Geega Games store credit — ${STORE_CREDIT_BONUS_PERCENT}% more. Some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.`,
     ),
     h(
       Section,
@@ -108,7 +109,7 @@ export function sellSubmissionOfferText(d: SellSubmissionOfferEmailData): string
     "You can accept, decline, or respond right on our site — no rush, and no obligation either way:",
     d.responseUrl,
     "",
-    "If you accept, we'll follow up with next steps; payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.",
+    `When you accept, choose how you're paid: ${money(d.offerValueCents)} via PayPal Goods & Services, or ${money(storeCreditValueCents(d.offerValueCents))} in Geega Games store credit — ${STORE_CREDIT_BONUS_PERCENT}% more. Some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.`,
     "",
     `Reference number: ${d.referenceNumber}`,
     "",

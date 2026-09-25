@@ -170,6 +170,11 @@ export const buyingLeadsRepository = {
       offerResponse: row.offer_response,
       counterOfferCents: row.counter_offer_cents,
       offerRespondedAt: row.offer_responded_at,
+      payoutMethod:
+        row.payout_method === "paypal" || row.payout_method === "store_credit" ? row.payout_method : null,
+      storeCreditBonusPercent: row.store_credit_bonus_percent,
+      storeCreditCents: row.store_credit_cents,
+      storeCreditIssuedAt: row.store_credit_issued_at,
       purchaseAmountCents: row.purchase_amount_cents,
       contactedAt: row.contacted_at,
       closedAt: row.closed_at,

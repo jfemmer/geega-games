@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useRouter } from "../lib/router";
+import { Link, useRouter } from "../lib/router";
+import { useAuth } from "../lib/AuthContext";
+import { STORE_CREDIT_BONUS_PERCENT, storeCreditValueCents } from "../lib/sellTypes";
 import { formatCents } from "../lib/money";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { useSEO } from "../lib/useSEO";
@@ -18,6 +20,12 @@ type ActionStep = null | "accept" | "decline" | "counter";
 
 const money = (cents: number) => formatCents(cents);
 
+/** Sign-in/sign-up link that returns to this offer, pre-filled. */
+function respondReturnLink(base: "/login" | "/signup", ref: string, email: string): string {
+  const back = `/sell/offer?ref=${encodeURIComponent(ref)}&email=${encodeURIComponent(email)}`;
+  return `${base}?next=${encodeURIComponent(back)}${base === "/signup" ? `&email=${encodeURIComponent(email)}` : ""}`;
+}
+
 export default function RespondToOfferPage() {
   useSEO({
     title: "Respond to Your Offer | Geega Games",
@@ -26,6 +34,8 @@ export default function RespondToOfferPage() {
   });
 
   const { query } = useRouter();
+  const { user } = useAuth();
+  const [payoutMethod, setPayoutMethod] = useState<"paypal" | "store_credit">("store_credit");
 
   const [referenceNumberInput, setReferenceNumberInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
@@ -97,6 +107,7 @@ export default function RespondToOfferPage() {
   const submitResponse = async (
     response: "accepted" | "declined" | "countered",
     counterOfferCents?: number,
+    payout?: "paypal" | "store_credit",
   ) => {
     if (!offer) return;
     setSubmitError(null);
@@ -107,6 +118,7 @@ export default function RespondToOfferPage() {
         email: matchedEmail,
         response,
         counterOfferCents,
+        payoutMethod: response === "accepted" ? payout : undefined,
       });
       if (!result.ok) {
         setSubmitError(result.message ?? "We couldn't submit your response. Please try again.");
@@ -117,6 +129,11 @@ export default function RespondToOfferPage() {
         offer_response: response,
         counter_offer_cents: counterOfferCents ?? null,
         offer_responded_at: new Date().toISOString(),
+        payout_method: response === "accepted" ? payout ?? "paypal" : offer.payout_method,
+        store_credit_bonus_percent:
+          response === "accepted" && payout === "store_credit"
+            ? STORE_CREDIT_BONUS_PERCENT
+            : offer.store_credit_bonus_percent,
       });
       setActionStep(null);
     } catch (err) {
@@ -140,9 +157,15 @@ export default function RespondToOfferPage() {
     const greeting = offer.first_name ? `Hi ${offer.first_name},` : "Hi there,";
 
     if (offer.offer_response) {
+      const creditCents = storeCreditValueCents(
+        offer.offer_value_cents,
+        offer.store_credit_bonus_percent ?? STORE_CREDIT_BONUS_PERCENT,
+      );
       const respondedCopy: Record<"accepted" | "declined" | "countered", string> = {
         accepted:
-          "You accepted our offer. We'll be in touch with next steps — payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out.",
+          offer.payout_method === "store_credit"
+            ? `You accepted our offer as ${money(creditCents)} in store credit. We'll be in touch with next steps — the credit is added to your account as soon as your purchase is completed (some collections ship to us for inspection first).`
+            : "You accepted our offer. We'll be in touch with next steps — payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out.",
         declined:
           "You declined our offer. Thanks for considering Geega Games — we're happy to take a look at future collections anytime.",
         countered: `You countered our offer of ${money(offer.offer_value_cents)} with ${
@@ -244,29 +267,79 @@ export default function RespondToOfferPage() {
 
         {actionStep === "accept" && (
           <div className="gg-form" style={{ marginTop: "0.5rem" }}>
-            <p style={{ color: "var(--gg-ink)" }}>
-              Accept this offer of {money(offer.offer_value_cents)}? We'll follow up with next
-              steps — payment is via PayPal Goods &amp; Services only, and some collections ship
-              to us for inspection first.
+            <p style={{ color: "var(--gg-ink)", margin: 0 }}>How would you like to be paid?</p>
+            <label className="gg-payout-option">
+              <input
+                type="radio"
+                name="payout"
+                checked={payoutMethod === "store_credit"}
+                onChange={() => setPayoutMethod("store_credit")}
+              />
+              <span>
+                <strong>
+                  {money(storeCreditValueCents(offer.offer_value_cents))} in store credit
+                </strong>{" "}
+                <span className="gg-badge">+{STORE_CREDIT_BONUS_PERCENT}%</span>
+                <span className="gg-card-meta" style={{ display: "block" }}>
+                  Spend it on any singles in our shop. Added to your Geega Games account when
+                  the purchase is completed.
+                </span>
+              </span>
+            </label>
+            <label className="gg-payout-option">
+              <input
+                type="radio"
+                name="payout"
+                checked={payoutMethod === "paypal"}
+                onChange={() => setPayoutMethod("paypal")}
+              />
+              <span>
+                <strong>{money(offer.offer_value_cents)} via PayPal</strong>
+                <span className="gg-card-meta" style={{ display: "block" }}>
+                  PayPal Goods &amp; Services only.
+                </span>
+              </span>
+            </label>
+            <p className="gg-card-meta" style={{ margin: 0 }}>
+              We&rsquo;ll follow up with next steps — some collections ship to us for inspection
+              first.
             </p>
-            <div style={{ display: "flex", gap: "0.6rem" }}>
-              <button
-                type="button"
-                className="gg-btn"
-                onClick={() => void submitResponse("accepted")}
-                disabled={submitting}
-              >
-                {submitting ? "Submitting…" : "Yes, accept"}
-              </button>
-              <button
-                type="button"
-                className="gg-btn gg-btn-ghost"
-                onClick={() => setActionStep(null)}
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-            </div>
+            {payoutMethod === "store_credit" && !user ? (
+              <div className="gg-alert gg-alert-warn" role="status">
+                Store credit is saved to an account.{" "}
+                <Link to={respondReturnLink("/signup", offer.reference_number, matchedEmail)}>
+                  Create a free account
+                </Link>{" "}
+                or{" "}
+                <Link to={respondReturnLink("/login", offer.reference_number, matchedEmail)}>
+                  sign in
+                </Link>
+                , and you&rsquo;ll come right back here to accept.
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: "0.6rem" }}>
+                <button
+                  type="button"
+                  className="gg-btn"
+                  onClick={() => void submitResponse("accepted", undefined, payoutMethod)}
+                  disabled={submitting}
+                >
+                  {submitting
+                    ? "Submitting…"
+                    : payoutMethod === "store_credit"
+                      ? "Accept as store credit"
+                      : "Accept via PayPal"}
+                </button>
+                <button
+                  type="button"
+                  className="gg-btn gg-btn-ghost"
+                  onClick={() => setActionStep(null)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         )}
 

@@ -125,7 +125,8 @@ describe("/sell/offer route", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /accept offer/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /yes, accept/i }));
+    fireEvent.click(await screen.findByRole("radio", { name: /via paypal/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /accept via paypal/i }));
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([url]) =>
@@ -138,9 +139,29 @@ describe("/sell/offer route", () => {
         referenceNumber: "GG-S-100042",
         email: "jordan@example.com",
         response: "accepted",
+        payoutMethod: "paypal",
       });
     });
     expect(await screen.findByText(/you accepted our offer/i)).toBeInTheDocument();
+  });
+
+  it("offers store credit worth 20% more, asking a signed-out seller to use an account", async () => {
+    offerLookupResponse = { data: OFFER_NOT_COUNTERABLE, error: null };
+    goTo("/sell/offer?ref=GG-S-100042&email=jordan%40example.com");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /accept offer/i }));
+    const credit = await screen.findByRole("radio", { name: /in store credit/i });
+    expect(credit).toBeChecked();
+    expect(screen.getByText(/\+20%/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /create a free account/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/signup?next="),
+    );
+    // No way to submit store credit without an account to hold it.
+    expect(screen.queryByRole("button", { name: /accept as store credit/i })).toBeNull();
+    const posted = fetchMock.mock.calls.some(([url]) => String(url).includes("/api/sell/respond-to-offer"));
+    expect(posted).toBe(false);
   });
 
   it("lets an eligible seller submit a counter-offer, converting dollars to cents", async () => {

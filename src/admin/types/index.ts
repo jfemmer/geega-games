@@ -1151,6 +1151,12 @@ export interface BuyingLeadDetail extends BuyingLeadSummary {
   /** The seller's counter amount — set only when offerResponse === "countered". */
   counterOfferCents: number | null;
   offerRespondedAt: string | null;
+  /** Seller's payout choice at acceptance. store_credit = offer + bonus, issued automatically on "completed". */
+  payoutMethod: "paypal" | "store_credit" | null;
+  storeCreditBonusPercent: number | null;
+  /** Store credit actually issued (set when the lead is marked completed). */
+  storeCreditCents: number | null;
+  storeCreditIssuedAt: string | null;
   purchaseAmountCents: number | null;
   contactedAt: string | null;
   closedAt: string | null;

@@ -145,6 +145,18 @@ export const SELL_COLLECTION_SIZE_OPTIONS: { value: string; label: string }[] = 
 // Counter is only ever offered for a large, unsorted (no card list)
 // collection. Both consumers import this rather than each keeping their own
 // copy of the threshold.
+/**
+ * Sellers who take store credit instead of PayPal get this much more. One
+ * source of truth for the storefront copy and /api/sell/respond-to-offer,
+ * which snapshots it onto the submission when the offer is accepted (so a
+ * later change never alters what a seller was promised).
+ */
+export const STORE_CREDIT_BONUS_PERCENT = 20;
+
+export function storeCreditValueCents(payoutCents: number, bonusPercent = STORE_CREDIT_BONUS_PERCENT): number {
+  return Math.round((payoutCents * (100 + bonusPercent)) / 100);
+}
+
 export const LARGE_SELL_COLLECTION_SIZES: ReadonlySet<string> = new Set([
   "5000_to_10000",
   "10000_plus",

@@ -9,6 +9,7 @@ import { SUPPORT_EMAIL } from "./StaticPages";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { MyDecksSection } from "./MyDecksPage";
+import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import {
   ORDER_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -1591,6 +1592,11 @@ function StoreCreditSection() {
       <p className="gg-dash-stat">{balance == null ? "…" : formatCents(balance)}</p>
       <p className="gg-card-meta">
         Store credit is applied at checkout. Balances are managed by Geega Games.
+      </p>
+      <p className="gg-card-meta" style={{ marginTop: "0.75rem" }}>
+        <strong>Earn more:</strong> sell us your cards and take store credit instead of PayPal
+        — you get {STORE_CREDIT_BONUS_PERCENT}% more.{" "}
+        <Link to="/sell">Sell your cards</Link>
       </p>
     </div>
   );

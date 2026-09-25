@@ -2403,6 +2403,10 @@ export type Database = {
             | null
           offer_sent_at: string | null
           offer_value_cents: number | null
+          payout_method: string | null
+          store_credit_bonus_percent: number | null
+          store_credit_cents: number | null
+          store_credit_issued_at: string | null
           phone: string | null
           photo_count: number
           preferred_contact_method: Database["public"]["Enums"]["sell_preferred_contact_method"]
@@ -2447,6 +2451,10 @@ export type Database = {
             | null
           offer_sent_at?: string | null
           offer_value_cents?: number | null
+          payout_method?: string | null
+          store_credit_bonus_percent?: number | null
+          store_credit_cents?: number | null
+          store_credit_issued_at?: string | null
           phone?: string | null
           photo_count?: number
           preferred_contact_method?: Database["public"]["Enums"]["sell_preferred_contact_method"]
@@ -2491,6 +2499,10 @@ export type Database = {
             | null
           offer_sent_at?: string | null
           offer_value_cents?: number | null
+          payout_method?: string | null
+          store_credit_bonus_percent?: number | null
+          store_credit_cents?: number | null
+          store_credit_issued_at?: string | null
           phone?: string | null
           photo_count?: number
           preferred_contact_method?: Database["public"]["Enums"]["sell_preferred_contact_method"]

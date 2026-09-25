@@ -1,11 +1,13 @@
 import { useAuth } from "../lib/AuthContext";
 import { Link } from "../lib/router";
 import { Icon, type StoreIconName } from "./Icon";
+import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 
 // What a free account actually unlocks. Every line here must describe a
 // feature that exists today (checkout, /account/*, the deck builder's
-// restock watch, the wishlist) — this is a promise to the customer, so no
-// perks we haven't built (discounts, points, early access).
+// restock watch, the wishlist, the store-credit sell bonus) — this is a
+// promise to the customer, so no perks we haven't built (discounts, points,
+// early access).
 const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
   {
     icon: "deck",
@@ -24,8 +26,8 @@ const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
   },
   {
     icon: "tag",
-    title: "Sell your cards with less hassle",
-    body: "Follow every sell submission and see your store credit balance in one place.",
+    title: `Sell cards for ${STORE_CREDIT_BONUS_PERCENT}% more in credit`,
+    body: `Follow every sell submission, and take store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than a PayPal payout.`,
   },
 ];
 

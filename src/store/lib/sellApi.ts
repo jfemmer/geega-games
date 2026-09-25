@@ -211,6 +211,8 @@ export interface SellOfferLookup {
   counter_offer_cents: number | null;
   offer_responded_at: string | null;
   allow_counter: boolean;
+  payout_method?: "paypal" | "store_credit" | null;
+  store_credit_bonus_percent?: number | null;
 }
 
 /**
@@ -244,10 +246,18 @@ export async function respondToSellOffer(payload: {
   email: string;
   response: "accepted" | "declined" | "countered";
   counterOfferCents?: number;
+  payoutMethod?: "paypal" | "store_credit";
 }): Promise<RespondToSellOfferResult> {
+  // Store credit is held on an account, so the server needs to know who's
+  // signed in (it links the submission to them).
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
   const res = await fetch("/api/sell/respond-to-offer", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);

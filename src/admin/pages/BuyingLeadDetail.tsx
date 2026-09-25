@@ -430,7 +430,10 @@ export function BuyingLeadDetailDrawer({
                 size={16}
               />
               <div>
-                {lead.offerResponse === "accepted" && "Seller accepted this offer."}
+                {lead.offerResponse === "accepted" &&
+                  (lead.payoutMethod === "store_credit"
+                    ? `Seller accepted — paid as store credit (+${lead.storeCreditBonusPercent ?? 20}%).`
+                    : "Seller accepted — paid via PayPal.")}
                 {lead.offerResponse === "declined" && "Seller declined this offer."}
                 {lead.offerResponse === "countered" &&
                   `Seller countered with ${formatCents(lead.counterOfferCents ?? 0)}.`}
@@ -438,6 +441,35 @@ export function BuyingLeadDetailDrawer({
                   <>
                     <br />
                     <span className="gg-card-meta">{formatDateTime(lead.offerRespondedAt)}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          {lead.payoutMethod === "store_credit" && (
+            <div className="gg-inline-note gg-inline-note--info">
+              <Icon name="dollar" size={16} />
+              <div>
+                {lead.storeCreditIssuedAt ? (
+                  <>
+                    {formatCents(lead.storeCreditCents ?? 0)} store credit issued to the seller&rsquo;s
+                    account.
+                    <br />
+                    <span className="gg-card-meta">{formatDateTime(lead.storeCreditIssuedAt)}</span>
+                  </>
+                ) : (
+                  <>
+                    Marking this lead <strong>Completed</strong> adds{" "}
+                    {formatCents(
+                      Math.round(
+                        ((lead.purchaseAmountCents ?? lead.offerValueCents ?? 0) *
+                          (100 + (lead.storeCreditBonusPercent ?? 20))) /
+                          100,
+                      ),
+                    )}{" "}
+                    store credit to the seller&rsquo;s account automatically (the purchase amount, or
+                    the offer if none is set, +{lead.storeCreditBonusPercent ?? 20}%). No PayPal
+                    payment is needed.
                   </>
                 )}
               </div>

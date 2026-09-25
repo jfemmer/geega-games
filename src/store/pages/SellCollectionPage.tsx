@@ -2,6 +2,7 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SITE } from "../../siteConfig";
 import { SUPPORT_EMAIL } from "./StaticPages";
+import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 
 // Service area for SEO/schema purposes. Geega Games is online-only (no
 // physical storefront), based near St. Louis, MO. Per the business owner,
@@ -41,8 +42,15 @@ const HUB_COORDINATES = { latitude: 38.627, longitude: -90.1994 };
 // Content rule from the business owner: no payout-percentage or fixed-
 // turnaround claims anywhere on this page — those aren't finalized, and
 // promising a number here would be a claim we can't back up at checkout time.
+// One approved exception (2026-09-25): the store-credit BONUS relative to
+// the PayPal offer (STORE_CREDIT_BONUS_PERCENT), which the offer page and
+// /api/sell/respond-to-offer actually honor.
 
 const FAQ_ITEMS: { question: string; answer: string }[] = [
+  {
+    question: "How do you pay?",
+    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount. Store credit is saved to a free account and works on any singles in our shop.`,
+  },
   {
     question: "Does my collection need to be sorted first?",
     answer:

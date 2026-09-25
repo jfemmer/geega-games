@@ -4223,6 +4223,43 @@
   font-size: 1.1rem;
   margin: 0 0 0.25rem;
 }
+.gg-sell-credit-callout {
+  margin: 0.75rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  background: #f3f0fa;
+  border: 1px solid var(--gg-line);
+  color: var(--gg-ink);
+}
+.gg-sellsuccess__account {
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.gg-sellsuccess__account p {
+  margin: 0.35rem 0 0.75rem;
+}
+.gg-payout-option {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--gg-ink);
+}
+.gg-payout-option:has(input:checked) {
+  border-color: var(--gg-purple);
+  background: #f7f4fd;
+}
+.gg-payout-option input {
+  margin-top: 0.25rem;
+  accent-color: var(--gg-purple);
+  flex: none;
+}
 .gg-notify-upsell {
   margin: 0.6rem 0 0;
 }

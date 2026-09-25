@@ -61,7 +61,7 @@ const COPY: Record<
   accepted: {
     subject: (ref) => `Offer accepted — ${ref}`,
     heading: "Offer accepted — thank you!",
-    body: "We'll be in touch with next steps to complete the purchase. As a reminder, payment is made via PayPal Goods & Services only, and some collections ship to us for inspection before payment goes out.",
+    body: "We'll be in touch with next steps to complete the purchase. If you chose store credit, it's added to your Geega Games account as soon as the purchase is completed; PayPal payouts are sent via PayPal Goods & Services only. Some collections ship to us for inspection before payment goes out.",
   },
   declined: {
     subject: (ref) => `Update on your submission — ${ref}`,
