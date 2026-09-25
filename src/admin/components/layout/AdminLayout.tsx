@@ -5,6 +5,7 @@ import { GlobalSearch } from "./GlobalSearch";
 import { SECTION_TITLES } from "./nav";
 import { orderRepository } from "../../repositories";
 import { buyingLeadsRepository } from "../../repositories/buyingLeads.supabase";
+import { referralLeadsRepository } from "../../repositories/referralLeads.supabase";
 import { useToast } from "../../hooks/useToast";
 import { supabase } from "../../../supabase";
 
@@ -34,6 +35,12 @@ export function AdminLayout({
       .counts()
       .then((c) => {
         if (active) setCounts((prev) => ({ ...prev, new_leads: c.new ?? 0 }));
+      })
+      .catch(() => undefined);
+    referralLeadsRepository
+      .counts()
+      .then((c) => {
+        if (active) setCounts((prev) => ({ ...prev, new_partner_leads: c.new ?? 0 }));
       })
       .catch(() => undefined);
     return () => {

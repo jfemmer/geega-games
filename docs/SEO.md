@@ -67,6 +67,15 @@ are the same text with the city swapped.
 | how much is my mtg collection worth · how to tell if magic cards are valuable · are old magic cards worth anything | `/guides/how-much-is-my-mtg-collection-worth` |
 | inherited magic cards · what to do with old magic card collection · sell estate mtg collection | `/guides/inherited-magic-card-collection` |
 | sell mtg bulk · how to sell bulk magic cards · mtg bulk buylist | `/guides/how-to-sell-bulk-magic-cards` |
+| where to sell magic cards · best place to sell mtg cards · tcgplayer vs ebay vs buylist | `/guides/where-to-sell-magic-cards` |
+| are my old pokemon cards worth anything · how to tell if pokemon cards are valuable | `/guides/are-my-old-pokemon-cards-worth-anything` |
+| are my old video games worth money · what old games are worth money | `/guides/are-my-old-video-games-worth-money` |
+
+The guides index (`/guides`) is grouped by topic (`GuideMeta.topic`), and each
+sell page links to its own topic's guides (`SellerGuidesSection topic=…`). The
+Pokémon and video game guides end with the buying-partner pitch, never "we buy".
+Dated facts (marketplace fees, grading prices and waits) say when they were
+true, and should be rechecked when the guide's `updated` date is bumped.
 
 Most sellers start here. Guides also earn links, and AI answers (ChatGPT
 search, Perplexity, Google AI Overviews) quote them, which now matters as much
@@ -88,6 +97,13 @@ trusted buying partner makes the offer. The shared form (`ReferralLeadForm` →
 
 Sellers must tick a consent box before anything is shared. This is required by
 the privacy policy, which now names the buying partner as a recipient.
+
+Each page also has one research section for what most worries that seller
+(`insight` in `src/seo/referralPages.ts`): grading for Pokémon, reprint price
+swings for One Piece, lowball big-box trade-in offers for video games. Leads are
+tracked in the admin **Partner Leads** page (New → Sent to partner → Closed),
+which can also copy a lead's details, with 7-day photo links, to text to the
+partner.
 
 Local competitors for these searches: PayMore's St. Louis pages, local game and
 card shops, and Facebook Marketplace. Our angle is meetups instead of a store
@@ -230,11 +246,37 @@ for "st louis" and "near me" searches.
   The inventory `card_name` for those rows looks like "Name // Name". Fix the
   rows so each card has one clean URL.
 
+### What makes sellers convert (seller research, 2026-09-25)
+
+What the Magic sell pages now do about the things sellers worry about most:
+- **Easy first step:** a one-screen quick photo quote (`QuickPhotoQuote`,
+  `#quick-quote`) creates a normal Buying Leads submission tagged
+  `source = 'quick_quote'`. Sellers who want to list cards one by one still
+  use `/sell`.
+- **Trust:** a "What you can count on" box (`TrustSection`) covers protected
+  payment (PayPal Goods & Services or store credit), no obligation, a real
+  person looking at every card, and the published condition guide.
+- **Store credit:** the +20% store credit badge (`STORE_CREDIT_BONUS_PERCENT`)
+  sits in each Magic page's hero.
+- **Meetup safety:** real police and campus safe-exchange spots, with source
+  links, on St. Louis, Kansas City and Springfield (`safeSpots` in
+  `src/seo/sellAreas.ts`), plus anti-scam payment tips.
+  - The St. Louis meetup list names Washington, MO at the owner's request.
+  - Washington has no official exchange zone, so the nearby Union Police
+    Department lobby is the listed spot.
+  - `tests/prerender.test.tsx` fails if Washington, MO is dropped.
+- **Urgency without pressure:** a "Why a current offer matters" section
+  covers reprint risk.
+- **Phones:** a sticky "Get an offer" bar (`StickySellCta`) hides while the
+  form is on screen.
+
+Before adding claims, remember the content rule: no payout percentages, and no
+turnaround or reply-time promises, until the owner confirms them (section 6).
+
 ## 5. Content backlog (one new guide every 2–4 weeks)
 
 - How to ship Magic cards safely (by value tier)
 - Sell cards one by one vs. as a collection: which gets you more
-- Local store vs. buylist vs. collection buyer: where to sell MTG
 - The Reserved List, explained for non-players
 - How to identify Alpha, Beta, Unlimited and Revised cards
 - Selling sealed MTG product (booster boxes, old packs, precons)

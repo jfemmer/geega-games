@@ -52,6 +52,22 @@ export function optionLabel(
   return options.find((o) => o.value === value)?.label ?? value;
 }
 
+/**
+ * Staff workflow for a referral lead (admin Partner Leads page). Mirrors the
+ * referral_leads.status check constraint.
+ */
+export const REFERRAL_LEAD_STATUSES = [
+  { value: "new", label: "New" },
+  { value: "sent_to_partner", label: "Sent to partner" },
+  { value: "closed", label: "Closed" },
+] as const;
+
+export type ReferralLeadStatus = (typeof REFERRAL_LEAD_STATUSES)[number]["value"];
+
+export function isReferralLeadStatus(value: unknown): value is ReferralLeadStatus {
+  return REFERRAL_LEAD_STATUSES.some((s) => s.value === value);
+}
+
 /** Hard server limits, mirrored in the form so a seller never loses input silently. */
 export const REFERRAL_MAX_DESCRIPTION = 4000;
 /** Matches CollectionPhotoUpload's MAX_PHOTOS, which the referral form reuses. */

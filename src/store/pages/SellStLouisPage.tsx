@@ -1,28 +1,36 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import {
+  CreditBonusBadge,
   FaqSection,
-  HowYouGetPaidSection,
   MeetupHowItWorks,
+  MeetupSafetySection,
   SellCtaSection,
   SellerGuidesSection,
+  StickySellCta,
   TravelAreasSection,
+  TrustSection,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
+import QuickPhotoQuote from "../components/QuickPhotoQuote";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import {
   ST_LOUIS_DAY_TRIPS,
+  ST_LOUIS_MEETUP_AREAS,
   ST_LOUIS_METRO,
   ST_LOUIS_PATH,
+  ST_LOUIS_SAFE_SPOTS,
   joinList,
   sellFormPath,
 } from "../../seo/sellAreas";
 import { ORGANIZATION_ID, breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 
 // /sell-magic-cards/st-louis — the local page: people in the St. Louis metro
-// searching "sell magic cards st louis", "mtg buyer st louis", etc. Local
-// sellers get the one thing no mail-in buylist can offer: meet in person,
-// even for a handful of cards.
+// searching "sell magic cards st louis" / "saint louis" / "stl", "mtg buyer
+// st louis", etc. Local sellers get the one thing no mail-in buylist can
+// offer: meet in person, even for a handful of cards. "Saint Louis" and "STL"
+// appear once or twice in the copy and as schema alternate names — never
+// stuffed into the title or heading.
 
 const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
@@ -33,7 +41,12 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Where do we meet?",
     answer:
-      "Somewhere public and convenient for you, anywhere in the metro. Coffee shops, libraries and game stores work well, and many police departments have designated safe-exchange spots. For a large collection that's hard to move, tell us in the form and we'll work out the easiest option.",
+      "Somewhere public and convenient for you — anywhere in St. Louis City and County, St. Charles and Jefferson counties, Washington, MO, Union or the Metro East. Chesterfield and Lake Saint Louis police both have designated safe exchange spots, and the Union Police Department's lobby is open for exchanges. Coffee shops, libraries and bank lobbies work well too. For a large collection that's hard to move, tell us in the form and we'll work out the easiest option.",
+  },
+  {
+    question: "Do you meet in Washington, MO?",
+    answer:
+      "Yes. Washington and the rest of Franklin County are part of our meetup area. The closest police-designated exchange spot is the Union Police Department's lobby, a short drive away — or we can meet anywhere public in Washington that suits you.",
   },
   {
     question: "Do you buy on the Illinois side of the river?",
@@ -68,10 +81,17 @@ const JSON_LD = [
     name: "Sell Magic: The Gathering cards in St. Louis",
     provider: { "@id": ORGANIZATION_ID },
     areaServed: [
-      { "@type": "City", name: "St. Louis", containedInPlace: { "@type": "State", name: "Missouri" } },
+      {
+        "@type": "City",
+        name: "St. Louis",
+        alternateName: ["Saint Louis", "STL"],
+        containedInPlace: { "@type": "State", name: "Missouri" },
+      },
+      { "@type": "City", name: "Washington", containedInPlace: { "@type": "State", name: "Missouri" } },
       { "@type": "AdministrativeArea", name: "St. Louis County, Missouri" },
       { "@type": "AdministrativeArea", name: "St. Charles County, Missouri" },
       { "@type": "AdministrativeArea", name: "Jefferson County, Missouri" },
+      { "@type": "AdministrativeArea", name: "Franklin County, Missouri" },
       { "@type": "AdministrativeArea", name: "St. Clair County, Illinois" },
       { "@type": "AdministrativeArea", name: "Madison County, Illinois" },
     ],
@@ -100,22 +120,23 @@ export default function SellStLouisPage() {
       <section className="gg-collect-hero">
         <h1>Sell Magic: The Gathering cards in St. Louis</h1>
         <p className="gg-collect-hero-sub">
-          Geega Games is based right here in St. Louis. Meet up with us anywhere in the metro — on
-          the Missouri or Illinois side — to sell a few valuable singles or an entire collection.
-          Rather not meet? Ship your cards or list them online instead.
+          Geega Games is based right here in Saint Louis. Meet up with us anywhere in the metro — on
+          the Missouri or Illinois side, and out to Washington, MO — to sell a few valuable singles
+          or an entire collection. Rather not meet? Ship your cards or list them online instead.
         </p>
+        <CreditBonusBadge />
         <div className="gg-collect-hero-actions">
-          <Link to={sellFormPath("local")} className="gg-btn">
+          <a href="#quick-quote" className="gg-btn">
+            Get a quick photo quote
+          </a>
+          <Link to={sellFormPath("local")} className="gg-btn gg-btn-ghost">
             Set up a meetup
-          </Link>
-          <Link to="/sell" className="gg-btn gg-btn-ghost">
-            Get an offer online
           </Link>
         </div>
       </section>
 
       <section className="gg-collect-section">
-        <h2>Local to the whole St. Louis area</h2>
+        <h2>Local to the whole STL area</h2>
         <div className="gg-collect-grid gg-collect-grid--2">
           <div className="gg-collect-card">
             <h3>Missouri side</h3>
@@ -154,14 +175,27 @@ export default function SellStLouisPage() {
         </ul>
       </section>
 
+      <section className="gg-collect-section" id="quick-quote">
+        <h2>Get a quick photo quote</h2>
+        <p className="gg-collect-lead">
+          Send a few photos and your contact details and we&rsquo;ll come back with an offer — then we
+          can meet up to finish the sale, or you can ship if that&rsquo;s easier.
+        </p>
+        <div className="gg-referral-card">
+          <QuickPhotoQuote defaultHandoff="local" />
+        </div>
+      </section>
+
       <section className="gg-collect-section">
         <h2>How a St. Louis meetup works</h2>
         <MeetupHowItWorks place="St. Louis" />
       </section>
 
+      <MeetupSafetySection place="St. Louis" areas={ST_LOUIS_MEETUP_AREAS} spots={ST_LOUIS_SAFE_SPOTS} />
+
       <WhatWeBuySection />
 
-      <HowYouGetPaidSection />
+      <TrustSection />
 
       <TravelAreasSection heading="Outside St. Louis? We travel about 6 hours for collections" exclude="st-louis" />
 
@@ -175,6 +209,8 @@ export default function SellStLouisPage() {
         handoff="local"
         buttonLabel="Set up a meetup"
       />
+
+      <StickySellCta label="Get a quick photo quote" to="#quick-quote" targetId="quick-quote" />
     </div>
   );
 }

@@ -8,6 +8,8 @@
 // Enum unions below are copied from the DB enums so a mismatch is a compile
 // error rather than a runtime surprise.
 
+import type { ReferralLeadStatus } from "../../store/lib/referralTypes.js";
+
 /* ------------------------------------------------------------------ *
  * Shared enums (kept in sync with public.Enums in database.ts)
  * ------------------------------------------------------------------ */
@@ -1170,4 +1172,30 @@ export interface BuyingLeadsQuery {
   hasPhotos?: boolean;
   hasCardList?: boolean;
   largeCollection?: boolean;
+}
+/* ------------------------------------------------------------------ *
+ * Partner Leads — Pokémon / One Piece / video game sellers referred to
+ * the buying partner (referral_leads)
+ * ------------------------------------------------------------------ */
+
+export type { ReferralLeadStatus };
+
+export interface ReferralLead {
+  id: string;
+  referenceNumber: string;
+  createdAt: string;
+  categories: string[];
+  description: string;
+  collectionSize: string | null;
+  handoff: string;
+  firstName: string;
+  lastName: string | null;
+  email: string;
+  phone: string | null;
+  preferredContactMethod: string;
+  location: string | null;
+  photoPaths: string[];
+  sourcePath: string | null;
+  consentToShareAt: string;
+  status: ReferralLeadStatus;
 }

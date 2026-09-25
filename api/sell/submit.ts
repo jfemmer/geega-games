@@ -151,7 +151,13 @@ interface SubmitBody {
   cards?: CardInput[];
   photos?: PhotoInput[];
   agreedToTerms?: unknown;
+  /** Which storefront form sent this: the full /sell flow or the one-screen quick photo quote. */
+  source?: unknown;
 }
+
+// sell_submissions.source values the storefront may set (column default:
+// 'sell_page'). Anything else is ignored rather than stored.
+const SUBMISSION_SOURCES = new Set(["sell_page", "quick_quote"]);
 
 type SellSubmissionInsert = Database["public"]["Tables"]["sell_submissions"]["Insert"];
 type SellSubmissionCardInsert =
@@ -375,6 +381,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       valuable_cards_notes: valuableCardsNotes,
       notes,
       referral_source: referralSource,
+      ...(typeof body.source === "string" && SUBMISSION_SOURCES.has(body.source)
+        ? { source: body.source }
+        : {}),
       total_cards: totalCards,
       photo_count: photoRows.length,
       estimated_value_cents: hasPriceData ? matchedValueCents : null,

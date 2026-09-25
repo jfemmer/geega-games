@@ -43,4 +43,53 @@ describe("build-time prerender", () => {
     expect(html).toContain('href="/sell?handoff=ship"');
     expect(html).toContain("Kansas City, MO");
   });
+
+  it("lists Washington, MO as a St. Louis meetup location, with the nearby safe exchange spot", () => {
+    const { html, seo } = renderPage("/sell-magic-cards/st-louis");
+    const meetup = html.slice(html.indexOf("Where we meet"));
+    expect(meetup).toContain("Washington, MO");
+    expect(meetup).toContain("Union (near Washington, MO)");
+    expect(meetup).toContain("Chesterfield");
+    expect(html).toContain("Do you meet in Washington, MO?");
+    expect(JSON.stringify(seo?.jsonLd)).toContain('"name":"Washington"');
+  });
+
+  it("offers the quick photo quote and the store-credit bonus on the Magic sell pages", () => {
+    for (const path of ["/sell-my-collection", "/sell-magic-cards/st-louis"]) {
+      const { html } = renderPage(path);
+      expect(html, path).toContain('id="quick-quote"');
+      expect(html, path).toContain('class="gg-credit-badge"');
+      expect(html, path).toContain("gg-sticky-cta");
+      expect(html, path).toContain("What you can count on");
+    }
+  });
+
+  it("gives each referral page its research section and a phone call-to-action", () => {
+    const expected: Record<string, string> = {
+      "/sell-pokemon-cards": "Should you get your cards graded before selling?",
+      "/sell-one-piece-cards": "One Piece prices move fast",
+      "/sell-video-games": "Big-box trade-in vs. a specialist buyer",
+    };
+    for (const [path, heading] of Object.entries(expected)) {
+      const { html } = renderPage(path);
+      expect(html, path).toContain(heading);
+      expect(html, path).toContain('href="#tell-us"');
+    }
+  });
+
+  it("groups the guides index by topic and cross-links guides from their topic's sell page", () => {
+    const index = renderPage("/guides").html;
+    const order = ["Magic: The Gathering", "Pokémon", "Video games"].map((h) =>
+      index.indexOf(`<h2>${h}</h2>`),
+    );
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+
+    expect(renderPage("/sell-pokemon-cards").html).toContain(
+      'href="/guides/are-my-old-pokemon-cards-worth-anything"',
+    );
+    expect(renderPage("/sell-video-games").html).toContain(
+      'href="/guides/are-my-old-video-games-worth-money"',
+    );
+  });
 });

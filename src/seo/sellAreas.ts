@@ -12,6 +12,19 @@
 //     Louis; keep them rounded and always shown with "about".
 //   * No payout-percentage or turnaround promises (owner's content rule).
 
+/**
+ * A police- or campus-designated spot for meeting strangers to buy/sell.
+ * Only list places with an official page or a local news report behind them.
+ */
+export interface SafeExchangeSpot {
+  /** Town it's in, e.g. "Chesterfield". */
+  town: string;
+  /** What and where it is, in plain words. */
+  name: string;
+  /** Official page (or local news report) describing it. */
+  sourceUrl: string;
+}
+
 export interface SellArea {
   slug: string;
   /** Display name, e.g. "Kansas City". */
@@ -34,6 +47,8 @@ export interface SellArea {
   alsoServing: string[];
   /** Slugs of 2–3 nearby areas, for "other areas we travel to" links. */
   neighbors: string[];
+  /** Official safe-exchange spots in the area, when there are any. */
+  safeSpots?: SafeExchangeSpot[];
 }
 
 export const SELL_AREAS: SellArea[] = [
@@ -72,6 +87,14 @@ export const SELL_AREAS: SellArea[] = [
       "Lawrence, KS",
     ],
     neighbors: ["columbia-mo", "springfield-mo", "des-moines"],
+    safeSpots: [
+      {
+        town: "Kansas City, MO",
+        name: "Every Kansas City, Missouri police patrol division station has marked exchange spots in its parking lot",
+        sourceUrl:
+          "https://kcpolice.org/media/news-releases/police-station-parking-lots-designated-internet-exchange-areas/",
+      },
+    ],
   },
   {
     slug: "springfield-mo",
@@ -85,6 +108,13 @@ export const SELL_AREAS: SellArea[] = [
       "Springfield is about three hours down I-44, with Rolla and Lebanon along the way, which makes the whole southwest Missouri corridor easy to cover in one trip. From Springfield we also meet sellers in Nixa, Ozark and Republic, and down toward Branson and the lakes. Joplin is roughly another hour west.",
     alsoServing: ["Rolla", "Lebanon", "Nixa", "Ozark", "Republic", "Branson", "Joplin"],
     neighbors: ["tulsa", "columbia-mo", "little-rock"],
+    safeSpots: [
+      {
+        town: "Springfield, MO",
+        name: "Safe Exchange Zone on the Missouri State University campus",
+        sourceUrl: "https://www.missouristate.edu/Safety/safe-exchange-zone.htm",
+      },
+    ],
   },
   {
     slug: "springfield-il",
@@ -356,6 +386,7 @@ export const ST_LOUIS_METRO = {
     "Arnold",
     "Festus",
     "Washington",
+    "Union",
   ],
   illinois: [
     "Belleville",
@@ -368,6 +399,40 @@ export const ST_LOUIS_METRO = {
     "Swansea",
   ],
 };
+
+// Where we meet sellers around St. Louis — always somewhere public.
+// Washington, MO is listed by name at the owner's request (2026-09-25).
+export const ST_LOUIS_MEETUP_AREAS = [
+  "St. Louis City",
+  "St. Louis County",
+  "St. Charles County",
+  "Jefferson County",
+  "Washington, MO",
+  "Union, MO",
+  "the Metro East in Illinois",
+];
+
+// Official safe-exchange spots in the St. Louis area. Washington, MO has no
+// designated spot of its own (as of 2026-09-25 — the Franklin County
+// sheriff points people to Union's), so Union's covers Franklin County.
+export const ST_LOUIS_SAFE_SPOTS: SafeExchangeSpot[] = [
+  {
+    town: "Chesterfield",
+    name: "Safe Exchange Zone at the Chesterfield Police Department",
+    sourceUrl: "https://www.chesterfield.mo.us/388/Safe-Exchange-Zone",
+  },
+  {
+    town: "Lake Saint Louis",
+    name: "Internet Exchange Area at the Lake Saint Louis Police Department",
+    sourceUrl: "https://cityofls.net/police-department/programs-and-services/internet-exchange-area",
+  },
+  {
+    town: "Union (near Washington, MO)",
+    name: "the Union Police Department lobby and parking lot, open for exchanges",
+    sourceUrl:
+      "https://www.missourian.com/local_news/union/police-station-lobby-open-for-safe-exchanges/article_d2d61efd-c7dd-59c4-8621-46d1a2c22d19.html",
+  },
+];
 
 // Towns roughly two hours or less from St. Louis — easy day trips that don't
 // have their own page.

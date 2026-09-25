@@ -13,6 +13,7 @@ import { ScanSessionsPage } from "./pages/scan/ScanSessionsPage";
 import { ScanReviewPage } from "./pages/scan/ScanReviewPage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { BuyingLeadsPage } from "./pages/BuyingLeadsPage";
+import { ReferralLeadsPage } from "./pages/ReferralLeadsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { TrendsPage } from "./pages/TrendsPage";
 import { MarketInsightsPage } from "./pages/MarketInsightsPage";
@@ -80,6 +81,8 @@ function AdminDashboard() {
         return <AnnouncementsPage />;
       case "buying-leads":
         return <BuyingLeadsPage query={query} />;
+      case "partner-leads":
+        return <ReferralLeadsPage query={query} />;
       case "users":
         return <UsersPage query={query} />;
       case "trends":

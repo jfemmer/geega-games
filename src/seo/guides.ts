@@ -1,12 +1,16 @@
 // Seller guides at /guides/:slug. Metadata lives here (pure data, shared
 // with the sitemap and prerender); the article bodies are React components
-// in src/store/pages/guides/GuidePages.tsx, keyed by the same slug.
+// in src/store/pages/GuidePages.tsx, keyed by the same slug.
 //
 // Bump `updated` whenever a guide's content materially changes — it feeds
 // the sitemap's <lastmod> and the Article structured data.
 
+/** Which sell page a guide leads to: Magic (we buy) or a partner-referral category. */
+export type GuideTopic = "mtg" | "pokemon" | "video_games";
+
 export interface GuideMeta {
   slug: string;
+  topic: GuideTopic;
   /** On-page H1. */
   heading: string;
   /** <title>, kept under ~60 characters where possible. */
@@ -22,6 +26,7 @@ export interface GuideMeta {
 export const GUIDES: GuideMeta[] = [
   {
     slug: "how-much-is-my-mtg-collection-worth",
+    topic: "mtg",
     heading: "How much is my Magic: The Gathering collection worth?",
     title: "How Much Is My MTG Collection Worth? | Geega Games",
     description:
@@ -33,6 +38,7 @@ export const GUIDES: GuideMeta[] = [
   },
   {
     slug: "inherited-magic-card-collection",
+    topic: "mtg",
     heading: "Inherited a Magic: The Gathering collection? Start here",
     title: "Inherited a Magic: The Gathering Collection? | Geega Games",
     description:
@@ -44,6 +50,7 @@ export const GUIDES: GuideMeta[] = [
   },
   {
     slug: "how-to-sell-bulk-magic-cards",
+    topic: "mtg",
     heading: "How to sell bulk Magic: The Gathering cards",
     title: "How to Sell Bulk Magic Cards (MTG Bulk Guide) | Geega Games",
     description:
@@ -53,7 +60,47 @@ export const GUIDES: GuideMeta[] = [
     published: "2026-09-25",
     updated: "2026-09-25",
   },
+  {
+    slug: "where-to-sell-magic-cards",
+    topic: "mtg",
+    heading: "Where to sell Magic: The Gathering cards",
+    title: "Where to Sell Magic Cards: Every Option Compared | Geega Games",
+    description:
+      "TCGplayer, eBay, buylists, local game stores or a collection buyer? The real 2026 fees, how much work each takes, and which fits what you're selling.",
+    summary:
+      "TCGplayer vs. eBay vs. buylists vs. a local store vs. a collection buyer — the actual fees, the work involved, and which option fits what you have.",
+    published: "2026-09-25",
+    updated: "2026-09-25",
+  },
+  {
+    slug: "are-my-old-pokemon-cards-worth-anything",
+    topic: "pokemon",
+    heading: "Are my old Pokémon cards worth anything?",
+    title: "Are My Old Pokémon Cards Worth Anything? | Geega Games",
+    description:
+      "How to tell if old Pokémon cards are valuable: 1st Edition stamps, shadowless Base Set, holos, secret rares, Japanese cards, condition, spotting fakes and checking prices.",
+    summary:
+      "Found a stack of Pokémon cards from years ago? What to look for — 1st Edition, shadowless, holos, secret rares — how to spot fakes, and how to check real prices.",
+    published: "2026-09-25",
+    updated: "2026-09-25",
+  },
+  {
+    slug: "are-my-old-video-games-worth-money",
+    topic: "video_games",
+    heading: "Are my old video games worth money?",
+    title: "Are My Old Video Games Worth Money? | Geega Games",
+    description:
+      "What makes old video games valuable: loose vs. complete-in-box vs. sealed, rare late releases, label and box condition, reproductions, and how to check real prices.",
+    summary:
+      "Boxes of old games and consoles? What actually makes them valuable — complete-in-box, sealed, rare late releases — and how to check what they're worth.",
+    published: "2026-09-25",
+    updated: "2026-09-25",
+  },
 ];
+
+export function guidesFor(topic: GuideTopic): GuideMeta[] {
+  return GUIDES.filter((g) => g.topic === topic);
+}
 
 export function findGuide(slug: string): GuideMeta | undefined {
   return GUIDES.find((g) => g.slug === slug);

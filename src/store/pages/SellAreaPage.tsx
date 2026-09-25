@@ -3,7 +3,10 @@ import { useSEO } from "../lib/useSEO";
 import { NotFoundPage } from "./StaticPages";
 import {
   AreaLinks,
-  HowYouGetPaidSection,
+  CreditBonusBadge,
+  MeetupSafetySection,
+  StickySellCta,
+  TrustSection,
   MeetupHowItWorks,
   SellCtaSection,
   SellerGuidesSection,
@@ -85,6 +88,7 @@ function SellArea({ area }: { area: SellArea }) {
           person — no need to sort, price or ship anything. Rather mail it? You can ship your cards
           to us from anywhere.
         </p>
+        <CreditBonusBadge />
         <div className="gg-collect-hero-actions">
           <Link to={sellFormPath("local")} className="gg-btn">
             Set up a meetup
@@ -137,7 +141,9 @@ function SellArea({ area }: { area: SellArea }) {
         </p>
       </section>
 
-      <HowYouGetPaidSection />
+      <MeetupSafetySection place={city} spots={area.safeSpots} />
+
+      <TrustSection />
 
       <section className="gg-collect-section">
         <h2>Other areas we travel to</h2>
@@ -168,6 +174,8 @@ function SellArea({ area }: { area: SellArea }) {
         Drive times and distances are approximate, measured from St. Louis, and depend on traffic
         and where in the area we meet.
       </p>
+
+      <StickySellCta label="Set up a meetup" to={sellFormPath("local")} />
     </div>
   );
 }

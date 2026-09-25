@@ -1,7 +1,7 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import ReferralLeadForm from "../components/ReferralLeadForm";
-import { FaqSection } from "../components/SellLandingSections";
+import { FaqSection, SellerGuidesSection, StickySellCta } from "../components/SellLandingSections";
 import type { ReferralCategory } from "../lib/referralTypes";
 import { REFERRAL_PAGES, referralPageFor, type ReferralPage } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
@@ -123,6 +123,15 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         <p className="gg-area-note">Our buying partner decides what they can make an offer on.</p>
       </section>
 
+      <section className="gg-collect-section">
+        <h2>{page.insight.heading}</h2>
+        {page.insight.paragraphs.map((text) => (
+          <p className="gg-collect-lead" key={text.slice(0, 40)}>
+            {text}
+          </p>
+        ))}
+      </section>
+
       <section className="gg-collect-section gg-collect-trust">
         <h2>{page.tipsHeading}</h2>
         <ul className="gg-collect-trustlist">
@@ -145,6 +154,8 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         </div>
       </section>
 
+      {page.category !== "one_piece" && <SellerGuidesSection topic={page.category} />}
+
       <FaqSection items={faq} />
 
       <section className="gg-collect-section">
@@ -163,6 +174,8 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
           </li>
         </ul>
       </section>
+
+      <StickySellCta label="Tell us what you have" to="#tell-us" targetId="tell-us" />
     </div>
   );
 }

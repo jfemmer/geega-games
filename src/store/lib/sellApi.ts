@@ -148,6 +148,8 @@ export async function submitSellForm(payload: {
     side?: "front" | "back" | null;
   }[];
   agreedToTerms: boolean;
+  /** "quick_quote" from the one-screen photo form; omitted by the full /sell flow. */
+  source?: "quick_quote";
 }): Promise<SubmitSellFormResult> {
   const { data } = await supabase.auth.getSession();
   const accessToken = data.session?.access_token;
@@ -181,6 +183,7 @@ export async function submitSellForm(payload: {
       })),
       photos: payload.photos,
       agreedToTerms: payload.agreedToTerms,
+      source: payload.source,
     }),
   });
   const body = await res.json().catch(() => null);

@@ -239,6 +239,29 @@ describe("POST /api/sell/submit", () => {
     expect(state.insertedSubmission).not.toBeNull();
   });
 
+  it("tags a quick photo quote with its source, and ignores an unknown source", async () => {
+    const quick = await invoke({
+      contact: validContact,
+      collection: { ...validCollection, notes: "Two binders and a box of bulk" },
+      cards: [],
+      agreedToTerms: true,
+      source: "quick_quote",
+    });
+    expect(quick.statusCode).toBe(200);
+    expect(state.insertedSubmission).toMatchObject({ source: "quick_quote" });
+
+    const bogus = await invoke({
+      contact: validContact,
+      collection: { ...validCollection, notes: "Two binders and a box of bulk" },
+      cards: [],
+      agreedToTerms: true,
+      source: "admin_override",
+    });
+    expect(bogus.statusCode).toBe(200);
+    // Left to the column default ('sell_page') rather than storing junk.
+    expect(state.insertedSubmission).not.toHaveProperty("source");
+  });
+
   it("creates a submission and its cards, and returns the reference number", async () => {
     const res = await invoke({
       contact: validContact,

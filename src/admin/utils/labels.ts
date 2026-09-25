@@ -12,6 +12,7 @@ import type {
   OrderStatus,
   PaymentStatus,
   PrintingTreatment,
+  ReferralLeadStatus,
   ScanRecognitionMode,
   StaffRole,
   SubscriberStatus,
@@ -355,4 +356,9 @@ export const TRANSACTION_PREFERENCE_LABELS: Record<string, string> = {
   ship: "Ship the collection",
   either: "Either is fine",
   not_sure: "Not sure yet",
+};
+export const REFERRAL_LEAD_STATUS_TONE: Record<ReferralLeadStatus, BadgeTone> = {
+  new: "gold",
+  sent_to_partner: "purple",
+  closed: "neutral",
 };

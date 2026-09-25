@@ -26,6 +26,12 @@ export interface ReferralPage {
   items: { title: string; text: string }[];
   tipsHeading: string;
   tips: { title: string; text: string }[];
+  /**
+   * One research-backed section for what most worries sellers in this
+   * market (2026-09-25): grading for Pokémon, reprint swings for One Piece,
+   * lowball trade-in offers for video games. Dated facts say when.
+   */
+  insight: { heading: string; paragraphs: string[] };
   /** Category-specific FAQ entries; shared ones are added by the page. */
   faq: { question: string; answer: string }[];
   descriptionPlaceholder: string;
@@ -89,6 +95,14 @@ export const REFERRAL_PAGES: ReferralPage[] = [
         text: "Unopened booster boxes, Elite Trainer Boxes and packs are often worth more unopened than the cards inside.",
       },
     ],
+    insight: {
+      heading: "Should you get your cards graded before selling?",
+      paragraphs: [
+        "Grading (PSA, BGS or CGC) can raise the price of a high-value card in top condition, but it's slow and costly: in mid-2026, PSA's cheapest regular service ran about $80 a card, with a wait of roughly 40–60 days.",
+        "It usually only makes sense for cards worth a few hundred dollars raw and in excellent shape. For most cards, selling raw now is simpler and nets about the same — without the wait or the risk of a disappointing grade.",
+        "Already graded? Just list the grading company, the grade and the certification number in the form.",
+      ],
+    },
     faq: [
       {
         question: "What about Japanese Pokémon cards?",
@@ -155,6 +169,13 @@ export const REFERRAL_PAGES: ReferralPage[] = [
         text: "Sleeve anything that looks valuable. Edge wear and scratches on alt arts lower their value quickly.",
       },
     ],
+    insight: {
+      heading: "One Piece prices move fast",
+      paragraphs: [
+        "Bandai reprints cards and whole sets when they sell out, and reprinted cards have fallen sharply on the secondary market — in some cases by around 40% during 2026. Prices can shift week to week, so an offer based on today's market is worth more than a guess from last month.",
+        "For the most accurate offer, include each notable card's set code (like OP05), whether it's English or Japanese, and whether it's an alt art or manga rare.",
+      ],
+    },
     faq: [
       {
         question: "Do you buy starter decks and bulk One Piece cards?",
@@ -222,6 +243,13 @@ export const REFERRAL_PAGES: ReferralPage[] = [
         text: "A photo of the game spines on a shelf, or of cartridge labels, is often all a buyer needs to get started.",
       },
     ],
+    insight: {
+      heading: "Big-box trade-in vs. a specialist buyer",
+      paragraphs: [
+        "Chain-store trade-in programs price games by barcode for resale, so their cash offers on retro and collectible games are usually a small fraction of what collectors pay — especially for complete-in-box copies.",
+        "A specialist buyer prices by collector demand instead. Before you trade in a box of old games, it's worth getting an offer from someone who knows what they're worth.",
+      ],
+    },
     faq: [
       {
         question: "Do you buy consoles or games that don't work?",

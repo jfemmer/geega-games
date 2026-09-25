@@ -3,13 +3,17 @@ import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import {
+  CreditBonusBadge,
   FaqSection,
-  HowYouGetPaidSection,
+  PricesMoveSection,
   SellCtaSection,
   SellerGuidesSection,
+  StickySellCta,
   TravelAreasSection,
+  TrustSection,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
+import QuickPhotoQuote from "../components/QuickPhotoQuote";
 import { ST_LOUIS_PATH, sellFormPath } from "../../seo/sellAreas";
 import { REFERRAL_PAGES } from "../../seo/referralPages";
 import {
@@ -22,11 +26,11 @@ import {
   serviceAreaServed,
 } from "../../seo/site";
 
-// The main "sell your Magic collection" landing page — the national hub for
-// searches like "sell mtg collection", "sell magic cards", "we buy magic
-// cards". Deliberately separate from /sell: that page is the intake FORM;
-// this is the content page search traffic lands on, and every CTA funnels
-// into /sell rather than duplicating its logic. Local and regional searches
+// The main "sell your Magic cards" landing page — the national hub for
+// searches like "sell magic cards", "sell my magic cards", "sell mtg
+// collection", "we buy magic cards". The full intake form is /sell (card-by-
+// card lists); this page carries the content plus the one-screen quick photo
+// quote (QuickPhotoQuote), which feeds the same /api/sell/submit pipeline. Local and regional searches
 // have their own pages (/sell-magic-cards/st-louis and /sell-magic-cards/:area),
 // all linked from here.
 //
@@ -38,6 +42,11 @@ import {
 // /api/sell/respond-to-offer actually honor.
 
 const FAQ_ITEMS: { question: string; answer: string }[] = [
+  {
+    question: "Where can I sell my Magic cards?",
+    answer:
+      "You have five main options. List them yourself on TCGplayer or eBay (the most money per card, but roughly 13% or more in fees plus all the listing and shipping work). Sell to an online buylist (quick, but you look up and ship every card yourself). Sell to a local game store (fast, but many only buy what they need). Or sell everything at once to a collection buyer like us — one offer for the whole lot, sorted or not, by mail or in person. Our Where to sell Magic cards guide compares them in detail.",
+  },
   {
     question: "How do you pay?",
     answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount. Store credit is saved to a free account and works on any singles in our shop.`,
@@ -67,14 +76,14 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
       "Somewhere public that you're comfortable with. Coffee shops, libraries and game stores work well, and many police departments have designated safe-exchange spots. For a very large collection that's hard to move, tell us in the form and we'll work out the easiest option.",
   },
   {
-    question: "Is there a minimum size to sell a collection this way?",
+    question: "Is there a minimum?",
     answer:
-      "This path is built for larger, mixed, and unsorted collections in particular — think binders and boxes rather than a handful of cards. If you're not sure whether yours qualifies, submit it anyway and describe what you have; we'll tell you the best way to handle it.",
+      "No. A few good singles or a few thousand cards are both fine. For a handful of cards, our Sell page lets you add each card individually; for binders, boxes or anything unsorted, the quick photo quote on this page is the fastest way in.",
   },
   {
-    question: "I just want to sell a few Magic cards, not a whole collection — is this the right page?",
+    question: "I just want to sell a few Magic cards, not a whole collection. Can I?",
     answer:
-      "Not quite — this page is built for larger, mixed collections. To sell your Magic cards one at a time, use our main Sell page instead: search for and add individual cards there in a couple of clicks, no collection required.",
+      "Yes. Use our Sell page to search for and add your cards one at a time in a couple of clicks, or send a few photos through the quick photo quote on this page — whichever is easier.",
   },
   {
     question: "What if it's a mix of valuable cards and bulk commons?",
@@ -96,7 +105,7 @@ const JSON_LD = [
     "@context": "https://schema.org",
     "@type": "Service",
     serviceType: "Magic: The Gathering card and collection buying",
-    name: "Sell your Magic: The Gathering collection",
+    name: "Sell your Magic: The Gathering cards",
     provider: { "@id": ORGANIZATION_ID },
     areaServed: [...serviceAreaServed(), { "@type": "Country", name: "United States" }],
     description: `Geega Games buys Magic: The Gathering collections and singles: by mail from anywhere in the US, in person around ${HUB_CITY}, and by travelling to sellers within about a ${MAX_DRIVE_HOURS}-hour drive of ${HUB_CITY}, MO.`,
@@ -106,8 +115,8 @@ const JSON_LD = [
 
 export default function SellCollectionPage() {
   useSEO({
-    title: "Sell Your MTG Collection — We Buy Magic Cards | Geega Games",
-    description: `Sell your Magic: The Gathering cards or whole collection. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (up to about ${MAX_DRIVE_HOURS} hours away). Unsorted is fine.`,
+    title: "Sell Magic Cards & MTG Collections | Geega Games",
+    description: `Sell your Magic: The Gathering cards — one card or a whole collection. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (about ${MAX_DRIVE_HOURS} hours). Unsorted is fine.`,
     path: "/sell-my-collection",
     jsonLd: JSON_LD,
   });
@@ -115,16 +124,20 @@ export default function SellCollectionPage() {
   return (
     <div className="gg-page">
       <section className="gg-collect-hero">
-        <h1>Sell your Magic: The Gathering collection — unsorted is totally fine</h1>
+        <h1>Sell your Magic cards — one card or a whole collection</h1>
         <p className="gg-collect-hero-sub">
-          Binders you haven&rsquo;t opened in years. Boxes from a basement or a closet. A
-          collection you inherited and don&rsquo;t know where to start with. Ship it to us from
-          anywhere in the US, meet up with us in {HUB_CITY}, or we&rsquo;ll drive to you — no
-          sorting, no pricing spreadsheet, no cleanup required on your end.
+          A few valuable singles, binders you haven&rsquo;t opened in years, or boxes of Magic: The
+          Gathering trading cards from a basement or an estate. Ship them to us from anywhere in the
+          US, meet up with us in {HUB_CITY}, or we&rsquo;ll drive to you — no sorting, no pricing
+          spreadsheet, no cleanup required on your end.
         </p>
+        <CreditBonusBadge />
         <div className="gg-collect-hero-actions">
-          <Link to="/sell" className="gg-btn">
-            Start selling your collection
+          <a href="#quick-quote" className="gg-btn">
+            Get a quick photo quote
+          </a>
+          <Link to="/sell" className="gg-btn gg-btn-ghost">
+            List cards one by one
           </Link>
         </div>
       </section>
@@ -153,6 +166,17 @@ export default function SellCollectionPage() {
               Kansas City to Chicago, Nashville and beyond. <a href="#areas">See where we travel</a>
             </p>
           </div>
+        </div>
+      </section>
+
+      <section className="gg-collect-section" id="quick-quote">
+        <h2>Get a quick photo quote</h2>
+        <p className="gg-collect-lead">
+          Snap a few photos — binder pages, box tops, anything that looks valuable — add your contact
+          details, and we&rsquo;ll come back with an offer. No card-by-card list needed.
+        </p>
+        <div className="gg-referral-card">
+          <QuickPhotoQuote />
         </div>
       </section>
 
@@ -210,17 +234,9 @@ export default function SellCollectionPage() {
 
       <WhatWeBuySection />
 
-      <section className="gg-collect-section gg-collect-trust">
-        <h2>Why sell a large collection to Geega Games</h2>
-        <ul className="gg-collect-trustlist">
-          <li>We buy collections of all sizes, sorted or not — this is what we do regularly, not a side offer.</li>
-          <li>No sorting, pricing, or condition-grading homework required before you reach out.</li>
-          <li>Ship it, meet up, or have us come to you — your call, not a one-size-fits-all process.</li>
-          <li>Real people looking through real cards, not an automated bulk-buy calculator.</li>
-        </ul>
-      </section>
+      <TrustSection />
 
-      <HowYouGetPaidSection />
+      <PricesMoveSection />
 
       <div id="areas">
         <TravelAreasSection />
@@ -251,10 +267,12 @@ export default function SellCollectionPage() {
       </p>
 
       <SellCtaSection
-        heading="Ready to sell your collection?"
-        text="Unsorted, mixed, inherited, or just a lot of cards you never got around to — start here."
-        buttonLabel="Start selling your collection"
+        heading="Ready to sell your Magic cards?"
+        text="A few singles or a whole collection — unsorted, mixed or inherited is fine. List your cards one by one, or use the quick photo quote above."
+        buttonLabel="List cards one by one"
       />
+
+      <StickySellCta label="Get a quick photo quote" to="#quick-quote" targetId="quick-quote" />
     </div>
   );
 }

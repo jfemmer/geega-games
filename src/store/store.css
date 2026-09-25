@@ -2486,6 +2486,92 @@
   max-width: 640px;
 }
 
+/* Store-credit bonus pill in the Magic sell page heroes. */
+.gg-credit-badge {
+  display: table; /* shrink-wrap and center without a wrapper */
+  margin: 1rem auto 0;
+  padding: 0.4rem 0.95rem;
+  border: 1px solid #e3b400;
+  border-radius: 999px;
+  background: #fff8d6;
+  color: #5c4300;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+.gg-credit-badge strong {
+  color: #3d2c00;
+}
+
+/* Police/campus safe exchange spots on the meetup pages. */
+.gg-safe-spots {
+  list-style: none;
+  max-width: 720px;
+  margin: 0 auto 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.gg-safe-spots li {
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-left: 4px solid var(--gg-gold);
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  line-height: 1.5;
+  color: #333;
+}
+.gg-safe-spots a {
+  color: var(--gg-purple);
+  white-space: nowrap;
+}
+
+/* Phone-only "Get an offer" bar. position: sticky inside .gg-page keeps it at
+   the bottom of the screen while the page scrolls, and it stops above the
+   footer instead of covering it. Sits below the sign-up nudge (44). */
+.gg-sticky-cta {
+  display: none;
+}
+@media (max-width: 640px) {
+  .gg-sticky-cta {
+    display: block;
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    margin: 1.5rem -1rem -3rem; /* bleed to the .gg-page edges */
+    padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid var(--gg-line);
+    box-shadow: 0 -6px 18px rgba(25, 0, 42, 0.08);
+    transition:
+      opacity 0.2s ease,
+      transform 0.2s ease,
+      visibility 0.2s;
+  }
+  .gg-sticky-cta .gg-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    text-decoration: none;
+  }
+  .gg-sticky-cta--hidden {
+    opacity: 0;
+    transform: translateY(100%);
+    visibility: hidden; /* also out of the tab order while hidden */
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-sticky-cta {
+    transition: none;
+  }
+}
+@media print {
+  .gg-sticky-cta {
+    display: none;
+  }
+}
+
 .gg-guide-links {
   list-style: none;
   max-width: 720px;
