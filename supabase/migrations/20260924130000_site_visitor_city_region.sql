@@ -180,3 +180,7 @@ $function$;
 
 revoke all on function public.admin_site_traffic(text) from public;
 grant execute on function public.admin_site_traffic(text) to authenticated, service_role;
+-- Supabase's default privileges grant EXECUTE on new public functions to
+-- anon directly, so "revoke ... from public" alone doesn't remove it. The
+-- function already refuses non-staff (is_staff()), this just closes the door.
+revoke execute on function public.admin_site_traffic(text) from anon;
