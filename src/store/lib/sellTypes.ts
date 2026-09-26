@@ -221,24 +221,68 @@ export const SELL_CONDITION_OPTIONS: { value: SellCondition; label: string }[] =
 export type SellDefaultCondition = Exclude<SellCondition, null>;
 
 // Older cards are far more likely to show real wear even when a seller
-// remembers them as being in great shape, so a manually-added card (one
-// found via search, not pasted/CSV — see SellCardLine.rawInput) starts at a
-// condition appropriate for its age rather than defaulting everyone to Near
-// Mint. Boundaries are non-overlapping: 2005 or older, 2006–2015, 2016+.
-export function defaultConditionForReleaseDate(releasedAt: string | null): SellDefaultCondition {
+// remembers them as being in great shape, so a card starts at a condition
+// appropriate for its age (owner's rule, updated 2026-09-26):
+//   2005 or older          → Heavily Played
+//   2006–2015              → Moderately Played
+//   2016 – three years ago → Lightly Played
+//   the last ~2 years      → Near Mint (brand-new cards)
+// The Near Mint cutoff rolls forward each January (NM_RECENT_YEARS), so it
+// never goes stale. Every tier is only a starting point: we check each card
+// when it arrives, and the offer can go up or down to match.
+
+/** Cards released this year or in the previous NM_RECENT_YEARS years start at Near Mint. */
+export const NM_RECENT_YEARS = 2;
+
+export interface AgeConditionTier {
+  condition: SellDefaultCondition;
+  /** Plain-English year range, e.g. "2005 or earlier". */
+  years: string;
+}
+
+/** The first release year that starts at Near Mint, as of `now`. */
+export function nearMintFromYear(now: Date = new Date()): number {
+  return now.getFullYear() - NM_RECENT_YEARS;
+}
+
+/** The tiers in display order (oldest first), for explaining them on the site. */
+export function ageConditionTiers(now: Date = new Date()): AgeConditionTier[] {
+  const nmFrom = nearMintFromYear(now);
+  return [
+    { condition: "HP", years: "2005 or earlier" },
+    { condition: "MP", years: "2006–2015" },
+    { condition: "LP", years: `2016–${nmFrom - 1}` },
+    { condition: "NM", years: `${nmFrom} and newer` },
+  ];
+}
+
+export function defaultConditionForReleaseDate(
+  releasedAt: string | null,
+  now: Date = new Date(),
+): SellDefaultCondition {
   const year = releasedAt ? Number.parseInt(releasedAt.slice(0, 4), 10) : NaN;
   if (!Number.isFinite(year)) return "LP";
   if (year <= 2005) return "HP";
   if (year <= 2015) return "MP";
-  return "LP";
+  if (year < nearMintFromYear(now)) return "LP";
+  return "NM";
 }
 
-export function conditionDefaultExplanation(defaultCondition: SellDefaultCondition): string | null {
+const OFFER_CAN_MOVE =
+  "We check every card when it arrives — if its condition turns out better or worse than listed, the offer goes up or down to match.";
+
+export function conditionDefaultExplanation(
+  defaultCondition: SellDefaultCondition,
+  now: Date = new Date(),
+): string | null {
   if (defaultCondition === "HP") {
-    return "Cards printed in 2005 or earlier almost always show real wear after 20+ years, even when well cared for, so we start these at Heavily Played. If yours is actually in better shape, just add a front and back photo below so we can confirm it.";
+    return `Cards printed in 2005 or earlier almost always show real wear after 20+ years, even when well cared for, so we start these at Heavily Played. If yours is actually in better shape, just add a front and back photo below so we can confirm it. ${OFFER_CAN_MOVE}`;
   }
   if (defaultCondition === "MP") {
-    return "Cards from 2006–2015 typically show some age-related wear, so we start these at Moderately Played. If yours is in better shape, just add a front and back photo below so we can confirm it.";
+    return `Cards from 2006–2015 typically show some age-related wear, so we start these at Moderately Played. If yours is in better shape, just add a front and back photo below so we can confirm it. ${OFFER_CAN_MOVE}`;
+  }
+  if (defaultCondition === "LP") {
+    return `Cards from 2016–${nearMintFromYear(now) - 1} often have light wear from play, so we start these at Lightly Played. If yours is Near Mint, add a front and back photo below so we can confirm it. ${OFFER_CAN_MOVE}`;
   }
   return null;
 }
@@ -253,15 +297,16 @@ const CONDITION_RANK: Record<SellDefaultCondition, number> = {
 
 /**
  * Whether a manually-entered card's chosen condition needs photo proof:
- * always true for Near Mint (regardless of age), and true whenever the
- * seller claims a condition better than the age-based default.
+ * true whenever the seller claims a condition better than the age-based
+ * default. Near Mint always needs photos EXCEPT on brand-new cards, where
+ * Near Mint is itself the default (we still check every card on arrival).
  */
 export function conditionNeedsPhotos(
   condition: SellCondition,
   defaultCondition: SellDefaultCondition,
 ): boolean {
   if (condition == null) return false;
-  if (condition === "NM") return true;
+  if (condition === "NM") return defaultCondition !== "NM";
   return CONDITION_RANK[condition] < CONDITION_RANK[defaultCondition];
 }
 

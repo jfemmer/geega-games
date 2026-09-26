@@ -150,7 +150,9 @@ export function SellerContactForm({
         &amp; Family, since Goods &amp; Services includes protections for both of us.
         For some collections, especially larger or higher-value ones, we may ask you to ship the
         collection to us for inspection and authentication before payment is sent, rather than
-        paying first.
+        paying first. We check every card when it arrives, so your offer can go up or down if the condition is
+        different than listed. If you decline after shipping, we send your cards back and you cover
+        the return shipping.
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import DeckShowcase from "../components/DeckShowcase";
 import { AreaLinks } from "../components/SellLandingSections";
 import { DEFAULT_SEO, MAX_DRIVE_HOURS, WEBSITE_JSON_LD } from "../../seo/site";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
+import { SHIPPING, formatCents } from "../lib/money";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -73,11 +74,20 @@ export function HomePage() {
   );
 }
 
+// Store policies (owner-approved 2026-09-26): 14-day window to report a
+// problem; Geega pays return shipping when a card's condition was listed
+// wrong; orders ship within 2 business days (Mon–Sat — no Sunday post);
+// email replies within 24 hours; photos of the actual card on request.
+// Change these constants, not the page copy, if a policy changes.
+export const RETURN_WINDOW_DAYS = 14;
+export const SHIPS_WITHIN_BUSINESS_DAYS = 2;
+export const REPLY_WITHIN_HOURS = 24;
+
 export function ConditionGuidePage() {
   useSEO({
     title: "MTG Card Condition Guide — NM, LP, MP, HP, DMG Explained | Geega Games",
     description:
-      "How Geega Games grades every Magic: The Gathering single before listing it — Near Mint through Damaged, explained in plain language.",
+      "How Geega Games grades every Magic: The Gathering single before listing it — Near Mint through Damaged, what we check on every card, and our condition promise.",
     path: "/condition-guide",
   });
 
@@ -112,10 +122,40 @@ export function ConditionGuidePage() {
         Major flaws such as tears, water damage, heavy creasing, or writing.
         Priced accordingly.
       </p>
+
+      <h2>What we check on every card</h2>
+      <ul>
+        <li>
+          <strong>Corners</strong> — rounding, dings and bends.
+        </li>
+        <li>
+          <strong>Edges</strong> — whitening and chipping, front and back.
+        </li>
+        <li>
+          <strong>Surface</strong> — scratches, scuffs, print lines and clouding on foils, checked
+          under light.
+        </li>
+        <li>
+          <strong>Structure</strong> — creases, dents, warping and curling.
+        </li>
+        <li>
+          <strong>Markings</strong> — writing, stamps, stains or water damage.
+        </li>
+      </ul>
+
+      <h2>Our condition promise</h2>
       <p>
-        Questions about a specific card&rsquo;s condition? Email{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> before ordering
-        and we&rsquo;ll be glad to help.
+        If a card arrives in worse condition than we listed it, tell us within{" "}
+        {RETURN_WINDOW_DAYS} days of delivery. We&rsquo;ll send you a prepaid return label and
+        refund you — you never pay to fix our mistake. See{" "}
+        <Link to="/returns">Returns &amp; refunds</Link>.
+      </p>
+
+      <h2>Want to see the actual card?</h2>
+      <p>
+        Product pages show a stock image of each card. If you&rsquo;d like a photo of the exact copy
+        you&rsquo;d be buying, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with
+        the card name and we&rsquo;ll send one — we reply within {REPLY_WITHIN_HOURS} hours.
       </p>
     </div>
   );
@@ -124,33 +164,54 @@ export function ConditionGuidePage() {
 export function ShippingPage() {
   useSEO({
     title: "Shipping Options & Rates | Geega Games",
-    description:
-      "Plain white envelope and tracked shipping options for Magic: The Gathering card orders — costs shown before you pay, with free tracked shipping on qualifying orders.",
+    description: `Every Geega Games order ships within ${SHIPS_WITHIN_BUSINESS_DAYS} business days, sleeved, top-loaded and packed tight. Plain white envelope or tracked shipping, with free tracked shipping over ${formatCents(SHIPPING.freeTrackedThresholdCents)}.`,
     path: "/shipping",
   });
 
   return (
     <div className="gg-page gg-prose">
       <h1>Shipping</h1>
-      <p>We offer two shipping options at checkout:</p>
-      <h2>Plain White Envelope (PWE)</h2>
       <p>
-        A low-cost option for smaller orders. Cards ship protected in a sleeve
-        and top-loader inside a plain envelope. PWE is not tracked.
+        We want every order to be the best shipping experience you&rsquo;ve had buying cards online:
+        fast, tight and protected. Your cards should arrive in exactly the condition they left us.
       </p>
-      <h2>Tracked shipping</h2>
+
+      <h2>Ships within {SHIPS_WITHIN_BUSINESS_DAYS} business days</h2>
       <p>
-        Fully tracked and better protected, recommended for higher-value orders.
-        Tracked shipping is <strong>free</strong> on qualifying orders — the
-        threshold is shown in your cart and at checkout.
+        Every order ships no more than {SHIPS_WITHIN_BUSINESS_DAYS} business days after you place
+        it. We ship Monday through Saturday — the post office is closed on Sundays. You&rsquo;ll get
+        an email when your order ships, and you can check on it any time on{" "}
+        <Link to="/track-order">Track your order</Link>.
       </p>
+
+      <h2>How we pack your cards</h2>
+      <ul>
+        <li>Every card goes into a sleeve and a rigid top-loader.</li>
+        <li>
+          Cards are packed snugly so nothing slides around in transit — no loose cards, ever.
+        </li>
+        <li>Tracked orders ship in a protective mailer built for higher-value cards.</li>
+      </ul>
+
+      <h2>Your options at checkout</h2>
+      <h3>Plain White Envelope (PWE) — {formatCents(SHIPPING.pweCents)}</h3>
       <p>
-        Exact shipping costs are always calculated and shown before you pay.
+        A low-cost option for smaller orders: sleeved and top-loaded inside a plain envelope. PWE is{" "}
+        <strong>not tracked</strong>, so a lost envelope can&rsquo;t be traced — for anything
+        you&rsquo;d hate to lose, choose tracked shipping.
       </p>
-      <p className="gg-alert gg-alert-warn">
-        Delivery time estimates and carrier details are configured by the store
-        owner. If you have a shipping question, contact{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+      <h3>Tracked shipping — {formatCents(SHIPPING.trackedCents)}</h3>
+      <p>
+        Fully tracked and better protected, recommended for higher-value orders.{" "}
+        <strong>Free on orders of {formatCents(SHIPPING.freeTrackedThresholdCents)} or more.</strong>
+      </p>
+      <p>Your exact shipping cost is always shown in your cart before you pay — no surprises.</p>
+
+      <h2>Something wrong with your delivery?</h2>
+      <p>
+        If an order arrives damaged, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>{" "}
+        within {RETURN_WINDOW_DAYS} days with your order number and a photo, and we&rsquo;ll make it
+        right. We reply within {REPLY_WITHIN_HOURS} hours.
       </p>
     </div>
   );
@@ -159,8 +220,7 @@ export function ShippingPage() {
 export function ReturnsPage() {
   useSEO({
     title: "Returns & Refunds | Geega Games",
-    description:
-      "How to start a return or report an issue with your Magic: The Gathering card order from Geega Games.",
+    description: `Report a problem with your Geega Games order within ${RETURN_WINDOW_DAYS} days of delivery. If we listed a card's condition wrong, we pay return shipping.`,
     path: "/returns",
   });
 
@@ -168,17 +228,39 @@ export function ReturnsPage() {
     <div className="gg-page gg-prose">
       <h1>Returns &amp; refunds</h1>
       <p>
-        If an item arrives not as described or damaged in transit, contact us
-        within a reasonable window of delivery and we&rsquo;ll make it right.
+        We grade every card by hand and pack every order carefully — but if something isn&rsquo;t
+        right, we want to fix it.
       </p>
+
+      <h2>{RETURN_WINDOW_DAYS} days to let us know</h2>
       <p>
-        To start a return or report a problem, email{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with your order
-        number and a description (photos help for damage claims).
+        You have {RETURN_WINDOW_DAYS} days from delivery to report a problem with your order.
       </p>
-      <p className="gg-alert gg-alert-warn">
-        The full return window, restocking policy, and who pays return shipping
-        are business decisions the store owner should finalize before launch.
+
+      <h2>Card not in the condition we listed?</h2>
+      <p>
+        We pay return shipping. We&rsquo;ll email you a prepaid return label, and once the card is
+        back with us we refund it to your original payment method. You never pay to fix our mistake.
+      </p>
+
+      <h2>Wrong card, missing card or damaged in transit</h2>
+      <p>
+        Email us with your order number and a photo and we&rsquo;ll make it right — by sending the
+        correct card if we have it in stock, or with a refund.
+      </p>
+
+      <h2>How to start a return</h2>
+      <ol>
+        <li>
+          Email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> within {RETURN_WINDOW_DAYS}{" "}
+          days of delivery.
+        </li>
+        <li>Include your order number, which card(s), and what&rsquo;s wrong — photos help a lot.</li>
+        <li>We reply within {REPLY_WITHIN_HOURS} hours with next steps.</li>
+      </ol>
+      <p>
+        Please don&rsquo;t send anything back before you hear from us — we&rsquo;ll send the label
+        and the return address.
       </p>
     </div>
   );
@@ -187,8 +269,7 @@ export function ReturnsPage() {
 export function ContactPage() {
   useSEO({
     title: "Contact Us | Geega Games",
-    description:
-      "Questions about an order, a card, or your Magic: The Gathering collection? Get in touch with Geega Games.",
+    description: `Questions about an order, a card, or your Magic: The Gathering collection? Email Geega Games — we reply within ${REPLY_WITHIN_HOURS} hours.`,
     path: "/contact",
   });
 
@@ -196,10 +277,36 @@ export function ContactPage() {
     <div className="gg-page gg-prose">
       <h1>Contact</h1>
       <p>
-        Questions about an order, a card, or anything else? Email{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> and we&rsquo;ll
-        get back to you.
+        Questions about an order, a card, or selling your collection? Email{" "}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. A real person reads every message,
+        and we reply <strong>within {REPLY_WITHIN_HOURS} hours or less</strong>.
       </p>
+      <p>
+        Want a photo of the actual card before you buy? Just ask — include the card name and
+        we&rsquo;ll send one.
+      </p>
+
+      <aside className="gg-alert gg-scam-box" aria-labelledby="gg-scam-heading">
+        <h2 id="gg-scam-heading">Is this really Geega Games?</h2>
+        <ul>
+          <li>
+            Our only website is <strong>geega-games.com</strong>, and our emails come only from{" "}
+            <strong>@geega-games.com</strong> addresses.
+          </li>
+          <li>
+            We will <strong>never</strong> ask you to pay or be paid by PayPal Friends &amp; Family,
+            gift cards, wire transfer or crypto.
+          </li>
+          <li>
+            We&rsquo;ll never ask for your password or send you a &ldquo;test&rdquo; payment or
+            overpayment to refund.
+          </li>
+        </ul>
+        <p>
+          Got a message that doesn&rsquo;t fit? Forward it to{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> before you reply.
+        </p>
+      </aside>
     </div>
   );
 }

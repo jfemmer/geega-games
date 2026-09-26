@@ -6,6 +6,7 @@ import {
   CreditBonusBadge,
   MeetupSafetySection,
   StickySellCta,
+  NoSurprisesSection,
   TrustSection,
   MeetupHowItWorks,
   SellCtaSection,
@@ -144,6 +145,8 @@ function SellArea({ area }: { area: SellArea }) {
       <MeetupSafetySection place={city} spots={area.safeSpots} />
 
       <TrustSection />
+
+      <NoSurprisesSection />
 
       <section className="gg-collect-section">
         <h2>Other areas we travel to</h2>

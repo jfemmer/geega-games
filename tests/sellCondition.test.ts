@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cardPhotoRequirementMet,
   conditionDefaultExplanation,
+  ageConditionTiers,
   conditionNeedsPhotos,
   defaultConditionForReleaseDate,
   type SellPhoto,
@@ -20,6 +21,10 @@ function photo(overrides: Partial<SellPhoto>): SellPhoto {
   };
 }
 
+// Pin "now" so the rolling Near Mint cutoff is deterministic: in 2026,
+// 2024 and newer start at Near Mint.
+const NOW = new Date("2026-09-26T12:00:00Z");
+
 describe("defaultConditionForReleaseDate", () => {
   it("defaults cards from 2005 or earlier to Heavily Played", () => {
     expect(defaultConditionForReleaseDate("2005-10-01")).toBe("HP");
@@ -31,9 +36,20 @@ describe("defaultConditionForReleaseDate", () => {
     expect(defaultConditionForReleaseDate("2015-12-31")).toBe("MP");
   });
 
-  it("defaults everything from 2016 onward to Lightly Played", () => {
-    expect(defaultConditionForReleaseDate("2016-01-01")).toBe("LP");
-    expect(defaultConditionForReleaseDate("2024-06-14")).toBe("LP");
+  it("defaults cards from 2016 up to three years ago to Lightly Played", () => {
+    expect(defaultConditionForReleaseDate("2016-01-01", NOW)).toBe("LP");
+    expect(defaultConditionForReleaseDate("2023-12-31", NOW)).toBe("LP");
+  });
+
+  it("defaults brand-new cards (the last ~2 years) to Near Mint", () => {
+    expect(defaultConditionForReleaseDate("2024-01-01", NOW)).toBe("NM");
+    expect(defaultConditionForReleaseDate("2026-09-01", NOW)).toBe("NM");
+  });
+
+  it("rolls the Near Mint cutoff forward each year", () => {
+    const next = new Date("2027-03-01T12:00:00Z");
+    expect(defaultConditionForReleaseDate("2024-06-14", next)).toBe("LP");
+    expect(defaultConditionForReleaseDate("2025-06-14", next)).toBe("NM");
   });
 
   it("defaults an unknown release date to Lightly Played", () => {
@@ -42,20 +58,43 @@ describe("defaultConditionForReleaseDate", () => {
 });
 
 describe("conditionDefaultExplanation", () => {
-  it("explains the Heavily Played and Moderately Played defaults", () => {
-    expect(conditionDefaultExplanation("HP")).toMatch(/2005 or earlier/);
-    expect(conditionDefaultExplanation("MP")).toMatch(/2006–2015/);
+  it("explains the Heavily, Moderately and Lightly Played defaults", () => {
+    expect(conditionDefaultExplanation("HP", NOW)).toMatch(/2005 or earlier/);
+    expect(conditionDefaultExplanation("MP", NOW)).toMatch(/2006–2015/);
+    expect(conditionDefaultExplanation("LP", NOW)).toMatch(/2016–2023/);
   });
 
-  it("has no explanation for the Lightly Played default", () => {
-    expect(conditionDefaultExplanation("LP")).toBeNull();
+  it("tells sellers the offer can go up or down after inspection", () => {
+    for (const c of ["HP", "MP", "LP"] as const) {
+      expect(conditionDefaultExplanation(c, NOW)).toMatch(/up or down/);
+    }
+  });
+
+  it("has no explanation for the Near Mint default", () => {
+    expect(conditionDefaultExplanation("NM", NOW)).toBeNull();
+  });
+});
+
+describe("ageConditionTiers", () => {
+  it("lists all four tiers oldest first, with matching year ranges", () => {
+    expect(ageConditionTiers(NOW)).toEqual([
+      { condition: "HP", years: "2005 or earlier" },
+      { condition: "MP", years: "2006–2015" },
+      { condition: "LP", years: "2016–2023" },
+      { condition: "NM", years: "2024 and newer" },
+    ]);
   });
 });
 
 describe("conditionNeedsPhotos", () => {
-  it("always requires photos for Near Mint, regardless of the default", () => {
+  it("requires photos for Near Mint on any card that doesn't start at Near Mint", () => {
     expect(conditionNeedsPhotos("NM", "HP")).toBe(true);
     expect(conditionNeedsPhotos("NM", "LP")).toBe(true);
+  });
+
+  it("does not require photos for Near Mint on brand-new cards (NM is the default)", () => {
+    expect(conditionNeedsPhotos("NM", "NM")).toBe(false);
+    expect(conditionNeedsPhotos("LP", "NM")).toBe(false);
   });
 
   it("requires photos when the claimed condition is better than the default", () => {

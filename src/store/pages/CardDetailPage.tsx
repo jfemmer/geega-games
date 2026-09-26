@@ -4,6 +4,7 @@ import { useSEO } from "../lib/useSEO";
 import { useCart } from "../lib/CartContext";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import { storefrontImageUrl, scryfallSrcSet } from "../../cards";
+import { SUPPORT_EMAIL } from "./StaticPages";
 import { formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../components/ProductCard";
@@ -250,6 +251,16 @@ export default function CardDetailPage({ slug }: { slug: string }) {
               No image
             </div>
           )}
+          <p className="gg-card-detail__photo-note">
+            Stock image — your card matches the condition listed (
+            <Link to="/condition-guide">how we grade</Link>). Want a photo of the actual card?{" "}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Photo request: ${detail.cardName}`)}`}
+            >
+              Ask us
+            </a>
+            .
+          </p>
         </div>
 
         <div className="gg-card-detail__info">

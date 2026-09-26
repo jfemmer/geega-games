@@ -9,6 +9,7 @@ import {
   SellerGuidesSection,
   StickySellCta,
   TravelAreasSection,
+  NoSurprisesSection,
   TrustSection,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
@@ -196,6 +197,8 @@ export default function SellStLouisPage() {
       <WhatWeBuySection />
 
       <TrustSection />
+
+      <NoSurprisesSection />
 
       <TravelAreasSection heading="Outside St. Louis? We travel about 6 hours for collections" exclude="st-louis" />
 

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import {
+  STORE_CREDIT_BONUS_PERCENT,
+  ageConditionTiers,
+  type SellDefaultCondition,
+} from "../lib/sellTypes";
 import { MAX_DRIVE_HOURS } from "../../seo/site";
 import {
   SELL_AREAS,
@@ -208,6 +212,65 @@ function formatReviewDate(iso: string): string {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+const CONDITION_NAMES: Record<SellDefaultCondition, string> = {
+  NM: "Near Mint",
+  LP: "Lightly Played",
+  MP: "Moderately Played",
+  HP: "Heavily Played",
+  DMG: "Damaged",
+};
+
+/**
+ * "No surprises" — the offer rules sellers most often complain buyers hide
+ * (research, 2026-09-26: offers cut after cards arrive, unclear returns).
+ * Owner-approved: age-based starting conditions (the same tiers the sell
+ * form uses, from ageConditionTiers), offers can go up or down after we
+ * check the cards, and a seller who declines after shipping pays return
+ * shipping.
+ */
+export function NoSurprisesSection() {
+  const tiers = ageConditionTiers();
+  return (
+    <section className="gg-collect-section">
+      <h2>No surprises: how we set your offer</h2>
+      <p className="gg-collect-lead">
+        Until we see your cards in person, each one starts at a condition based on its age, because
+        older cards almost always show more wear — even ones that were well looked after:
+      </p>
+      <ul className="gg-age-tiers">
+        {tiers
+          .slice()
+          .reverse()
+          .map((tier) => (
+            <li key={tier.condition}>
+              <strong>{tier.years}</strong>
+              <span>starts at {CONDITION_NAMES[tier.condition]}</span>
+            </li>
+          ))}
+      </ul>
+      <ul className="gg-collect-trustlist">
+        <li>
+          <strong>Your offer can go up or down.</strong> We check every card when it arrives. If a
+          card is in better shape than its starting condition, your offer goes up; if it&rsquo;s in
+          worse shape, it goes down.
+        </li>
+        <li>
+          <strong>We tell you exactly what changed.</strong> If your offer moves, we&rsquo;ll tell you
+          which cards and why — and you still decide whether to accept.
+        </li>
+        <li>
+          <strong>Think a card is in better shape?</strong> Add a front and back photo when you list
+          it, and we&rsquo;ll take that into account.
+        </li>
+        <li>
+          <strong>You can still say no.</strong> If you decline after shipping your cards to us, we
+          send them back — you just cover the return shipping.
+        </li>
+      </ul>
+    </section>
+  );
 }
 
 /** Store-credit bonus, surfaced near the top of the Magic sell pages. */

@@ -11,6 +11,7 @@ import {
   SellerReviewsSection,
   StickySellCta,
   TravelAreasSection,
+  NoSurprisesSection,
   TrustSection,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
@@ -51,6 +52,16 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "How do you pay?",
     answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount. Store credit is saved to a free account and works on any singles in our shop.`,
+  },
+  {
+    question: "What if my cards are in better or worse condition than I thought?",
+    answer:
+      "Until we see them, each card starts at a condition based on its age: 2005 or earlier at Heavily Played, 2006–2015 at Moderately Played, newer cards at Lightly Played, and brand-new cards at Near Mint. We check every card when it arrives, and your offer goes up or down to match what's really there — we'll tell you which cards changed and why.",
+  },
+  {
+    question: "What if I ship my cards and then decline the offer?",
+    answer:
+      "That's fine — there's no obligation. We send your cards back, and you cover the return shipping.",
   },
   {
     question: "Does my collection need to be sorted first?",
@@ -253,6 +264,8 @@ export default function SellCollectionPage() {
       <WhatWeBuySection />
 
       <TrustSection />
+
+      <NoSurprisesSection />
 
       <SellerReviewsSection />
 

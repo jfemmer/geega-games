@@ -5279,3 +5279,56 @@
 .gg-partner-callout .gg-collect-lead strong {
   color: #3d2c00;
 }
+
+/* Contact page: "Is this really Geega Games?" anti-scam box. */
+.gg-scam-box {
+  margin-top: 1.5rem;
+  background: #f5f0ff;
+  border: 1px solid #c4b5fd;
+  color: var(--gg-ink);
+}
+.gg-scam-box h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+.gg-scam-box ul {
+  padding-left: 1.2rem;
+}
+
+/* Sell pages: age-based starting conditions (NoSurprisesSection). */
+.gg-age-tiers {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  max-width: 720px;
+  margin: 0 auto 1.25rem;
+  padding: 0;
+}
+.gg-age-tiers li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  text-align: center;
+}
+.gg-age-tiers strong {
+  color: var(--gg-ink);
+}
+.gg-age-tiers span {
+  color: #5b5470;
+  font-size: 0.92rem;
+}
+
+/* Card detail: stock-image note under the card picture. */
+.gg-card-detail__photo-note {
+  margin: 0.6rem auto 0;
+  max-width: 360px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #5b5470;
+  text-align: center;
+}
