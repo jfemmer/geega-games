@@ -93,6 +93,11 @@ export const referralLeadsRepository = {
     await adminFetch(`/api/admin/referral-leads/${id}`, { method: "PATCH", body: { status } });
   },
 
+  /** Permanently deletes the lead and its photos. Owner-only; see the DELETE handler. */
+  async remove(id: string): Promise<void> {
+    await adminFetch(`/api/admin/referral-leads/${id}`, { method: "DELETE" });
+  },
+
   /** Signed URLs for a lead's photos, in the same order. Missing ones are dropped. */
   async photoUrls(paths: string[], ttlSeconds: number = VIEW_LINK_TTL_SECONDS): Promise<string[]> {
     if (paths.length === 0) return [];

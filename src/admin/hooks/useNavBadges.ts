@@ -22,6 +22,10 @@ type BadgeNavigator = Navigator & {
   clearAppBadge?: () => Promise<void>;
 };
 
+function sameCounts(a: NavBadgeCounts, b: NavBadgeCounts): boolean {
+  return (Object.keys(a) as (keyof NavBadgeCounts)[]).every((key) => a[key] === b[key]);
+}
+
 /** Sets or clears the number on the installed app's icon. Never throws. */
 export async function setAppIconBadge(count: number): Promise<void> {
   if (typeof navigator === "undefined") return;
@@ -50,7 +54,9 @@ export function useNavBadges(activeKey: string): NavBadgeCounts {
       do {
         runAgain.current = false;
         try {
-          setCounts(await navBadgesRepository.counts());
+          const next = await navBadgesRepository.counts();
+          // Same numbers: keep the old object so nothing re-renders.
+          setCounts((prev) => (sameCounts(prev, next) ? prev : next));
           setLoaded(true);
         } catch {
           // Keep the last counts; the next refresh will try again.

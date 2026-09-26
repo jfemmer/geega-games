@@ -72,7 +72,7 @@ beforeEach(() => {
 
 describe("PATCH /api/admin/referral-leads/:id", () => {
   it("rejects other methods", async () => {
-    const { req, res } = makeReqRes({}, STAFF, "DELETE");
+    const { req, res } = makeReqRes({}, STAFF, "POST");
     await handler(req as never, res as never);
     expect(res.statusCode).toBe(405);
   });

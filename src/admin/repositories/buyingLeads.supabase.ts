@@ -219,6 +219,10 @@ export const buyingLeadsRepository = {
       body: { purchaseAmountCents },
     });
   },
+  /** Permanently deletes the lead and its photos. Owner-only; see the DELETE handler. */
+  async remove(id: string): Promise<void> {
+    await adminFetch(`/api/admin/sell-submissions/${id}`, { method: "DELETE" });
+  },
 
   /** Counts per status, for the filter tab badges. */
   async counts(): Promise<Record<string, number>> {

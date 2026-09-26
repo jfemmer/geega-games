@@ -6,6 +6,7 @@ import { Icon } from "../components/ui/Icon";
 import { TextField, SelectField, TextArea } from "../components/ui/Field";
 import { useToast } from "../hooks/useToast";
 import { buyingLeadsRepository } from "../repositories/buyingLeads.supabase";
+import { DeleteLeadSection } from "../components/leads/DeleteLeadSection";
 import { formatCents, formatDateTime } from "../utils/format";
 import {
   BUYING_LEAD_PRIORITY_LABELS,
@@ -52,11 +53,14 @@ export function BuyingLeadDetailDrawer({
   open,
   onClose,
   onChanged,
+  onDeleted,
 }: {
   lead: BuyingLeadDetail | null;
   open: boolean;
   onClose: () => void;
   onChanged: () => void;
+  /** The lead was deleted: close the drawer and refresh the list. */
+  onDeleted: () => void;
 }) {
   const toast = useToast();
   const [savingField, setSavingField] = useState<string | null>(null);
@@ -494,6 +498,29 @@ export function BuyingLeadDetailDrawer({
             Save internal notes
           </Button>
         </section>
+
+        <DeleteLeadSection
+          referenceNumber={lead.referenceNumber}
+          blockedReason={
+            lead.storeCreditIssuedAt
+              ? "Store credit was issued for this lead, so it's kept as the record of that credit. Set it to Closed when you're done with it."
+              : null
+          }
+          warning={
+            lead.status === "completed"
+              ? "It's marked Completed, so it's your record of buying these cards."
+              : null
+          }
+          onDelete={async () => {
+            try {
+              await buyingLeadsRepository.remove(lead.id);
+              toast.success(`Lead ${lead.referenceNumber} deleted.`);
+              onDeleted();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Could not delete the lead.");
+            }
+          }}
+        />
       </div>
     </Modal>
   );

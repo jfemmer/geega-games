@@ -7,6 +7,8 @@ import {
 } from "../../_lib/http.js";
 import { requireStaff } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
+import { logAdminAction } from "../../_lib/auditLog.js";
+import { forgetLeadNotifications, removeLeadPhotos } from "../../_lib/leadCleanup.js";
 import {
   isNotifiableSellStatus,
   sendSellSubmissionStatusUpdate,
@@ -21,6 +23,14 @@ import type { Database } from "../../../src/types/database.js";
 // amounts) can never be touched by anything other than a verified staff
 // session, and status transitions can set contacted_at/closed_at
 // consistently in one place.
+//
+// DELETE /api/admin/sell-submissions/:id
+//
+// Owner-only (app role "admin"). Permanently deletes a buying lead: the
+// submission, its card list and photo records (both cascade) and the
+// seller's photos in Storage. Refused once store credit has been issued for
+// it, since the credit in the seller's account points back at this lead.
+// Recorded in the audit log without the seller's personal details.
 
 type Status = Database["public"]["Enums"]["sell_submission_status"];
 type Priority = Database["public"]["Enums"]["sell_priority"];
@@ -49,8 +59,11 @@ interface Body {
   purchaseAmountCents?: unknown;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "PATCH") return methodNotAllowed(res, ["PATCH"]);
+  if (req.method === "DELETE") return handleDelete(req, res);
+  if (req.method !== "PATCH") return methodNotAllowed(res, ["PATCH", "DELETE"]);
   try {
     await requireStaff(req);
     const id = String(req.query.id ?? "");
@@ -125,6 +138,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return sendJson(res, 200, { ok: true });
+  } catch (err) {
+    const status = err instanceof HttpError ? err.status : 500;
+    const message = err instanceof HttpError ? err.message : "Unexpected server error.";
+    return sendJson(res, status, { ok: false, message });
+  }
+}
+
+async function handleDelete(req: VercelRequest, res: VercelResponse) {
+  try {
+    const staff = await requireStaff(req);
+    if (staff.role !== "admin") throw new HttpError(403, "Only the store owner can delete leads.");
+    const id = String(req.query.id ?? "");
+    if (!UUID_RE.test(id)) throw new HttpError(400, "Submission id is required.");
+
+    const admin = getSupabaseAdmin();
+    const { data: lead, error: readErr } = await admin
+      .from("sell_submissions")
+      .select(
+        "id, reference_number, status, created_at, total_cards, offer_value_cents, purchase_amount_cents, payout_method, store_credit_issued_at",
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (readErr) throw new HttpError(500, readErr.message);
+    if (!lead) throw new HttpError(404, "Lead not found.");
+    if (lead.store_credit_issued_at) {
+      throw new HttpError(
+        409,
+        "Store credit was issued for this lead, so it's kept as the record of that credit. Set it to Closed instead.",
+      );
+    }
+
+    // Read the photo paths before the rows cascade away with the submission.
+    const { data: photos, error: photosErr } = await admin
+      .from("sell_submission_photos")
+      .select("storage_path")
+      .eq("submission_id", id);
+    if (photosErr) throw new HttpError(500, photosErr.message);
+
+    const { error: deleteErr } = await admin.from("sell_submissions").delete().eq("id", id);
+    if (deleteErr) throw new HttpError(500, "Could not delete the lead. Please try again.");
+
+    await removeLeadPhotos((photos ?? []).map((p) => p.storage_path), lead.reference_number);
+    await forgetLeadNotifications("buying_lead", id);
+    await logAdminAction(admin, staff, {
+      action: "buying_lead.delete",
+      resourceType: "sell_submission",
+      resourceId: id,
+      before: {
+        reference_number: lead.reference_number,
+        status: lead.status,
+        created_at: lead.created_at,
+        total_cards: lead.total_cards,
+        offer_value_cents: lead.offer_value_cents,
+        purchase_amount_cents: lead.purchase_amount_cents,
+        payout_method: lead.payout_method,
+        photo_count: photos?.length ?? 0,
+      },
+      after: null,
+    });
+
+    res.status(204).end();
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     const message = err instanceof HttpError ? err.message : "Unexpected server error.";

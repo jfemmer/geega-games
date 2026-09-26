@@ -211,6 +211,11 @@ export function BuyingLeadsPage({ query }: { query: URLSearchParams }) {
           if (selectedId) openLead(selectedId);
           leads.reload();
         }}
+        onDeleted={() => {
+          setSelectedId(null);
+          setDetail(null);
+          leads.reload();
+        }}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { PARTNER_LINK_DAYS, referralLeadsRepository } from "../repositories/referralLeads.supabase";
+import { DeleteLeadSection } from "../components/leads/DeleteLeadSection";
 import { formatDateTime } from "../utils/format";
 import { REFERRAL_LEAD_STATUS_TONE } from "../utils/labels";
 import type { ReferralLead, ReferralLeadStatus } from "../types";
@@ -199,6 +200,11 @@ export function ReferralLeadsPage({ query }: { query: URLSearchParams }) {
           if (openLead) setSelected({ ...openLead, status });
           leads.reload();
         }}
+        onDeleted={() => {
+          setSelected(null);
+          setDeepLinkId(null);
+          leads.reload();
+        }}
       />
     </div>
   );
@@ -208,10 +214,13 @@ function ReferralLeadDrawer({
   lead,
   onClose,
   onStatusChanged,
+  onDeleted,
 }: {
   lead: ReferralLead | null;
   onClose: () => void;
   onStatusChanged: (status: ReferralLeadStatus) => void;
+  /** The lead was deleted: close the drawer and refresh the list. */
+  onDeleted: () => void;
 }) {
   const toast = useToast();
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -392,6 +401,24 @@ function ReferralLeadDrawer({
             Photo links in the copied text work for {PARTNER_LINK_DAYS} days.
           </p>
         </section>
+
+        <DeleteLeadSection
+          referenceNumber={lead.referenceNumber}
+          warning={
+            lead.status === "sent_to_partner"
+              ? "If you already sent it to our buying partner, their copy isn't affected."
+              : null
+          }
+          onDelete={async () => {
+            try {
+              await referralLeadsRepository.remove(lead.id);
+              toast.success(`Lead ${lead.referenceNumber} deleted.`);
+              onDeleted();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Could not delete the lead.");
+            }
+          }}
+        />
       </div>
     </Modal>
   );

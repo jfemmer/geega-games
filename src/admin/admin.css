@@ -1459,6 +1459,10 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-leaddetail__contactlinks { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .gg-leaddetail__internal { padding-top: 16px; border-top: 1px solid var(--gg-line); }
 .gg-leaddetail__internal .gg-drawer-actions__buttons { margin: 8px 0 16px; }
+/* Delete lead: last in the drawer, set apart so it isn't hit by accident. */
+.gg-leaddetail__danger { padding-top: 16px; border-top: 1px solid var(--gg-line); }
+.gg-leaddetail__danger h3 { color: var(--gg-danger); }
+.gg-leaddetail__danger .gg-btn { margin-top: 8px; }
 
 .gg-leaddetail__cards { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .gg-leaddetail__cards li { display: flex; gap: 12px; padding: 8px; border-radius: 8px; background: var(--gg-surface-2); }
