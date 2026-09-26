@@ -206,6 +206,35 @@ downloads the current live rows. Analytics/Trends run real aggregation over
 campaign email remains intentionally not enabled — `send()` throws rather
 than fabricating delivery stats.
 
+### Installable app + push notifications ("Geega Admin")
+
+The dashboard installs as its own app (Add to Home Screen on iPhone, Install
+app on Android/desktop) and sends push notifications to staff devices.
+
+- **Shell:** `/admin` and `/admin_dashboard/*` are served `dist/admin.html`
+  (vercel.json). The prerender writes it from `scripts/adminShell.ts`: it's the
+  normal app shell plus the manifest (`public/admin.webmanifest`), the iOS
+  home-screen tags and the admin icons. The storefront never gets these.
+- **Service worker:** `public/admin-sw.js`, scope `/admin_dashboard`. It only
+  handles `push` and `notificationclick` — no fetch handler, no caching, so
+  every deploy is live immediately. A tap on a notification focuses the open
+  app and routes in place (`gg-admin-navigate` message), or opens it.
+- **Devices:** `staff_push_subscriptions` (service_role only), managed by
+  `/api/admin/push` from the Notifications panel (profile menu → Push
+  notifications, or the bell → "Notifications on this device"). Each device
+  picks which events it gets (`src/admin/utils/pushKinds.ts`). Signing out
+  turns notifications off for that device.
+- **Sending:** `notifyStaff()` in `api/_lib/staffPush.ts`, called next to each
+  staff email: new online order, new buying lead / photo quote, seller offer
+  response, new partner lead, kiosk pickup request. It pushes each event once
+  (`staff_push_log`), only to current staff, and drops expired devices. It
+  never throws.
+- **Config:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (optional
+  `VAPID_SUBJECT`) in Vercel. Without them the panel says push isn't set up
+  and nothing else changes. Don't rotate the pair once devices have subscribed.
+- **iPhone:** iOS 16.4+ only, and only from the home-screen app — a Safari tab
+  can't receive push. The panel walks through Add to Home Screen.
+
 ---
 
 ## 9. Files changed / added

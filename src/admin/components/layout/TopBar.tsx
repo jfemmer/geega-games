@@ -15,7 +15,7 @@ function adminInitials(name: string, email: string | null): string {
 
 interface Notification {
   key: string;
-  kind: "order" | "pickup" | "buying_lead" | "scan" | "inventory";
+  kind: "order" | "pickup" | "buying_lead" | "partner_lead" | "scan" | "inventory";
   tone: "info" | "warning" | "danger" | "success";
   title: string;
   detail: string;
@@ -34,6 +34,7 @@ const NOTIFICATION_ICON: Record<Notification["kind"], Parameters<typeof Icon>[0]
   order: "orders",
   pickup: "package",
   buying_lead: "dollar",
+  partner_lead: "users",
   scan: "scan",
   inventory: "inventory",
 };
@@ -43,12 +44,14 @@ export function TopBar({
   onOpenSearch,
   onToggleSidebar,
   onNavigate,
+  onOpenNotificationSettings,
   onSignOut,
 }: {
   breadcrumb: string[];
   onOpenSearch: () => void;
   onToggleSidebar: () => void;
   onNavigate: (path: string) => void;
+  onOpenNotificationSettings: () => void;
   onSignOut: () => void;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
@@ -256,6 +259,16 @@ export function TopBar({
                   </ul>
                 </>
               )}
+              <button
+                type="button"
+                className="gg-notif-footer"
+                onClick={() => {
+                  setNotifOpen(false);
+                  onOpenNotificationSettings();
+                }}
+              >
+                <Icon name="settings" size={14} /> Notifications on this device
+              </button>
             </div>
           )}
         </div>
@@ -287,6 +300,16 @@ export function TopBar({
               </button>
               <button className="gg-popover__item" role="menuitem">
                 <Icon name="settings" size={16} /> Settings
+              </button>
+              <button
+                className="gg-popover__item"
+                role="menuitem"
+                onClick={() => {
+                  setProfileOpen(false);
+                  onOpenNotificationSettings();
+                }}
+              >
+                <Icon name="bell" size={16} /> Push notifications
               </button>
               <button
                 className="gg-popover__item gg-popover__item--danger"

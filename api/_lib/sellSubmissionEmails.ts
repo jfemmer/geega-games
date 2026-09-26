@@ -1,5 +1,6 @@
 import * as React from "react";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
+import { notifyStaff, shortName, usd } from "./staffPush.js";
 import { sendTrackedEmail, type SendEmailResult } from "./emailService.js";
 import {
   SellSubmissionConfirmation,
@@ -76,6 +77,13 @@ const COLLECTION_SIZE_LABELS: Record<string, string> = {
   not_sure: "Not sure",
 };
 
+/** Short "how do they want to hand it off" labels for push notifications. */
+const HANDOFF_PUSH_LABELS: Record<string, string> = {
+  local: "Meet up",
+  ship: "Ship",
+  either: "Meet or ship",
+};
+
 export async function sendSellSubmissionConfirmation(
   submissionId: string,
 ): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
@@ -132,7 +140,7 @@ export async function sendSellSubmissionAdminNotification(
   const { data: submission, error } = await db
     .from("sell_submissions")
     .select(
-      "id, first_name, last_name, city, state, collection_size, estimated_value_cents, reference_number",
+      "id, first_name, last_name, city, state, collection_size, estimated_value_cents, reference_number, source, transaction_preference",
     )
     .eq("id", submissionId)
     .single();
@@ -168,6 +176,23 @@ export async function sendSellSubmissionAdminNotification(
     logoUrl: logoUrl(),
     supportEmail: ServerEnv.replyTo(),
   };
+
+  await notifyStaff({
+    key: `buying_lead:${submission.id}`,
+    kind: "buying_lead",
+    title: `${submission.source === "quick_quote" ? "New photo quote" : "New buying lead"} · ${submission.reference_number}`,
+    body: [
+      shortName(submission.first_name, submission.last_name),
+      cardCount ? `${cardCount} card${cardCount === 1 ? "" : "s"}` : null,
+      photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : null,
+      HANDOFF_PUSH_LABELS[submission.transaction_preference] ?? null,
+      location,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    url: `/admin_dashboard/buying-leads?submission=${submission.id}`,
+    tag: `buying_lead:${submission.id}`,
+  });
 
   return sendTrackedEmail({
     emailType: "sell_submission_admin_notification",
@@ -380,6 +405,26 @@ export async function sendSellSubmissionOfferResponseAdminNotification(
   };
 
   const amountSuffix = response === "countered" ? `-${counterOfferCents}` : "";
+  const seller = shortName(submission.first_name, submission.last_name);
+  await notifyStaff({
+    key: `offer_response:${submission.id}:${response}:${offerValueCents}${amountSuffix}`,
+    kind: "offer_response",
+    title:
+      response === "accepted"
+        ? `Offer accepted · ${submission.reference_number}`
+        : response === "declined"
+          ? `Offer declined · ${submission.reference_number}`
+          : `Counteroffer ${usd(counterOfferCents ?? 0)} · ${submission.reference_number}`,
+    body:
+      response === "accepted"
+        ? `${seller} accepted your ${usd(offerValueCents)} offer.`
+        : response === "declined"
+          ? `${seller} declined your ${usd(offerValueCents)} offer.`
+          : `${seller} countered your ${usd(offerValueCents)} offer with ${usd(counterOfferCents ?? 0)}.`,
+    url: `/admin_dashboard/buying-leads?submission=${submission.id}`,
+    tag: `buying_lead:${submission.id}`,
+  });
+
   return sendTrackedEmail({
     emailType: `sell_submission_offer_${response}_admin_notification`,
     idempotencyKey: `sell-submission-offer-${response}-admin-${submission.id}-${offerValueCents}${amountSuffix}`,

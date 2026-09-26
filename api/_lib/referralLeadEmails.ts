@@ -1,5 +1,6 @@
 import * as React from "react";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
+import { notifyStaff, shortName } from "./staffPush.js";
 import { sendTrackedEmail, type SendEmailResult } from "./emailService.js";
 import { SELL_PHOTOS_BUCKET } from "./sell.js";
 import { ServerEnv } from "./env.js";
@@ -81,6 +82,23 @@ export async function sendReferralLeadAdminNotification(leadId: string): Promise
     logoUrl: logoUrl(),
     supportEmail: ServerEnv.replyTo(),
   };
+
+  const photoCount = lead.photo_paths.length;
+  await notifyStaff({
+    key: `partner_lead:${lead.id}`,
+    kind: "partner_lead",
+    title: `New partner lead · ${data.categoriesLabel}`,
+    body: [
+      shortName(lead.first_name, lead.last_name),
+      data.handoffLabel,
+      photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : null,
+      lead.location,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    url: `/admin_dashboard/partner-leads?lead=${lead.id}`,
+    tag: `partner_lead:${lead.id}`,
+  });
 
   return sendTrackedEmail({
     emailType: "referral_lead_admin_notification",

@@ -8,6 +8,9 @@ import { buyingLeadsRepository } from "../../repositories/buyingLeads.supabase";
 import { referralLeadsRepository } from "../../repositories/referralLeads.supabase";
 import { useToast } from "../../hooks/useToast";
 import { supabase } from "../../../supabase";
+import { disablePushForSignOut, syncPushOnOpen } from "../../services/push";
+import { NotificationSettingsModal } from "./NotificationSettingsModal";
+import { PushPromptBanner } from "./PushPromptBanner";
 
 export function AdminLayout({
   activeKey,
@@ -25,6 +28,13 @@ export function AdminLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+
+  // Register the admin service worker, and re-sync this device's push
+  // subscription if notifications were on. Never prompts.
+  useEffect(() => {
+    void syncPushOnOpen();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -87,12 +97,16 @@ export function AdminLayout({
           onOpenSearch={() => setSearchOpen(true)}
           onToggleSidebar={() => setMobileOpen((v) => !v)}
           onNavigate={onNavigate}
+          onOpenNotificationSettings={() => setPushSettingsOpen(true)}
           onSignOut={async () => {
+            // Signed out = this device stops getting store alerts.
+            await disablePushForSignOut();
             const { error } = await supabase.auth.signOut();
             if (error) toast.error(error.message);
           }}
         />
         <main className="gg-content" id="gg-content" tabIndex={-1}>
+          <PushPromptBanner onOpenSettings={() => setPushSettingsOpen(true)} />
           {children}
         </main>
       </div>
@@ -101,6 +115,7 @@ export function AdminLayout({
         onClose={() => setSearchOpen(false)}
         onNavigate={onNavigate}
       />
+      <NotificationSettingsModal open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} />
     </div>
   );
 }

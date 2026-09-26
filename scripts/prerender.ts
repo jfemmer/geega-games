@@ -14,6 +14,8 @@
 //                         account, checkout, admin… No canonical, so the one
 //                         useSEO sets is the only one Google sees.
 //   404.html              a missing /sell-magic-cards/:area or /guides/:slug
+//   admin.html            the admin dashboard's shell: spa.html plus the
+//                         installable-app tags (see scripts/adminShell.ts)
 //
 // Fails the build (non-zero exit) rather than ship a partial or broken site.
 
@@ -22,6 +24,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { seoRoutes } from "../src/seo/routes.js";
 import { renderSeoHead, type PageSEO } from "../src/seo/head.js";
+import { ADMIN_APP_HEAD, toAdminShell } from "./adminShell.js";
 
 interface PrerenderModule {
   siteUrl: string;
@@ -82,6 +85,7 @@ async function main(): Promise<void> {
   // The neutral shell first: vercel.json's catch-all serves it for every
   // path that isn't prerendered, so it must exist even if a route fails.
   await writePage(join(DIST, "spa.html"), fillTemplate(template, renderSeoHead(null), ""));
+  await writePage(join(DIST, "admin.html"), toAdminShell(fillTemplate(template, ADMIN_APP_HEAD, "")));
 
   const notFound = renderPage("/__not-found__");
   await writePage(join(DIST, "404.html"), fillTemplate(template, renderSeoHead(null, { noIndex: true }), notFound.html));
@@ -107,7 +111,7 @@ async function main(): Promise<void> {
   if (failures.length) {
     throw new Error(`Prerender failed for ${failures.length} route(s):\n  ${failures.join("\n  ")}`);
   }
-  console.log(`[prerender] wrote ${seoRoutes().length} pages + spa.html + 404.html`);
+  console.log(`[prerender] wrote ${seoRoutes().length} pages + spa.html + admin.html + 404.html`);
 }
 
 main().then(

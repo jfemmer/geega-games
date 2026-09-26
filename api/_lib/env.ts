@@ -58,4 +58,14 @@ export const ServerEnv = {
   // with a clear "not connected yet" error — every other admin action keeps
   // working.
   easypostApiKey: () => optionalEnv("EASYPOST_API_KEY"),
+  // Optional: push notifications for the installable admin app (see
+  // api/_lib/staffPush.ts). A VAPID key pair identifies this server to the
+  // browsers' push services; generate one with `npx web-push
+  // generate-vapid-keys`. Without both keys, push fails closed: the admin
+  // app says notifications aren't set up yet, and emails still go out.
+  vapidPublicKey: () => optionalEnv("VAPID_PUBLIC_KEY"),
+  vapidPrivateKey: () => optionalEnv("VAPID_PRIVATE_KEY"),
+  // Contact for the push services if something goes wrong (mailto: or https:).
+  vapidSubject: () =>
+    optionalEnv("VAPID_SUBJECT", `mailto:${optionalEnv("RESEND_REPLY_TO", "support@geega-games.com")}`),
 } as const;

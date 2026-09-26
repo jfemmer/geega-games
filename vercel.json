@@ -27,6 +27,9 @@
     { "source": "/contact", "destination": "/contact/index.html" },
     { "source": "/privacy", "destination": "/privacy/index.html" },
     { "source": "/terms", "destination": "/terms/index.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/admin_dashboard", "destination": "/admin.html" },
+    { "source": "/admin_dashboard/:path*", "destination": "/admin.html" },
     {
       "source": "/((?!api/).*)",
       "destination": "/spa.html"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { AdminLayout } from "./components/layout/AdminLayout";
 import { AdminAuthGate } from "./components/auth/AdminAuthGate";
@@ -44,6 +44,23 @@ function AdminDashboard() {
       navigate(ADMIN_BASE + window.location.search, { replace: true });
     }
   }, [path, navigate]);
+
+  // Tapping a push notification while the app is open: the service worker
+  // asks us to route in place (public/admin-sw.js). Bumping `openNonce`
+  // remounts the page so it reads its ?lead= / ?submission= / ?order= again.
+  const [openNonce, setOpenNonce] = useState(0);
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: unknown; path?: unknown } | null;
+      if (data?.type !== "gg-admin-navigate" || typeof data.path !== "string") return;
+      if (!data.path.startsWith(ADMIN_BASE)) return;
+      navigate(data.path);
+      setOpenNonce((n) => n + 1);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [navigate]);
 
   const section = adminSection(path);
   const query = useMemo(() => {
@@ -108,7 +125,7 @@ function AdminDashboard() {
         breadcrumb={breadcrumb}
         onNavigate={navigate}
       >
-        {renderPage()}
+        <Fragment key={`${section}:${openNonce}`}>{renderPage()}</Fragment>
       </AdminLayout>
     </ToastProvider>
   );

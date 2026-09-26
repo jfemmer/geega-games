@@ -3,6 +3,7 @@ import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/htt
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
 import { normalizeEmail } from "../_lib/tokens.js";
+import { notifyStaff } from "../_lib/staffPush.js";
 
 // POST /api/kiosk/submit
 //
@@ -103,7 +104,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new HttpError(500, "We couldn't save your pickup list. Please ask staff for help.");
     }
 
-    return sendJson(res, 200, { ok: true, requestId: data as string });
+    const requestId = data as string;
+    const cardCount = items.reduce((sum, item) => sum + item.quantity, 0);
+    // Staff may be in the back — buzz their phones. Best-effort, never fails the request.
+    await notifyStaff({
+      key: `pickup:${requestId}`,
+      kind: "pickup",
+      title: "New pickup request",
+      body: `${customerName} · ${cardCount} card${cardCount === 1 ? "" : "s"} to pull`,
+      url: "/admin_dashboard/pickup",
+      tag: `pickup:${requestId}`,
+    });
+
+    return sendJson(res, 200, { ok: true, requestId });
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     const message = err instanceof HttpError ? err.message : "Unexpected server error.";

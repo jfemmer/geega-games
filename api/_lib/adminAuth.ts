@@ -30,6 +30,11 @@ function roleFromUser(appMetadata: Record<string, unknown> | undefined): string 
   return typeof raw === "string" ? raw : "customer";
 }
 
+/** True when a user's app_metadata grants staff or admin access. */
+export function hasStaffRole(appMetadata: Record<string, unknown> | undefined): boolean {
+  return ALLOWED_ROLES.has(roleFromUser(appMetadata));
+}
+
 /**
  * Verify the request carries a valid Supabase session for a staff/admin user.
  * Throws HttpError(401) when unauthenticated, HttpError(403) when not staff.

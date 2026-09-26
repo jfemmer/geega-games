@@ -16,12 +16,12 @@ const vercel = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url
   redirects?: { source: string; destination: string }[];
 };
 
-/** Minimal path-to-regexp for the ":param" and "(regex)" forms vercel.json uses. */
+/** Minimal path-to-regexp for the ":param", ":param*" and "(regex)" forms vercel.json uses. */
 function matchSource(source: string, path: string): Record<string, string> | null {
   const names: string[] = [];
-  const pattern = source.replace(/:(\w+)/g, (_, name: string) => {
+  const pattern = source.replace(/:(\w+)(\*)?/g, (_, name: string, star?: string) => {
     names.push(name);
-    return "([^/]+)";
+    return star ? "(.*)" : "([^/]+)";
   });
   const m = new RegExp(`^${pattern}$`).exec(path);
   if (!m) return null;
@@ -53,8 +53,14 @@ describe("SEO route registry ↔ vercel.json", () => {
   });
 
   it("sends every other storefront path to the neutral SPA shell", () => {
-    for (const path of ["/shop/card/force-of-will", "/shop/set/mh2", "/account/orders", "/checkout", "/admin", "/sell/offer"]) {
+    for (const path of ["/shop/card/force-of-will", "/shop/set/mh2", "/account/orders", "/checkout", "/sell/offer"]) {
       expect(resolveRewrite(path), path).toBe("/spa.html");
+    }
+  });
+
+  it("sends the admin dashboard to its own installable-app shell", () => {
+    for (const path of ["/admin", "/admin_dashboard", "/admin_dashboard/orders", "/admin_dashboard/scanning/abc"]) {
+      expect(resolveRewrite(path), path).toBe("/admin.html");
     }
   });
 

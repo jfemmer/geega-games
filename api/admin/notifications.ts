@@ -2,11 +2,13 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/http.js";
 import { requireStaff } from "../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
+import { referralCategoryLabel } from "../../src/store/lib/referralTypes.js";
 
 type NotificationKind =
   | "order"
   | "pickup"
   | "buying_lead"
+  | "partner_lead"
   | "scan"
   | "inventory";
 
@@ -49,7 +51,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 async function buildCandidates(): Promise<NotificationCandidate[]> {
   const admin = getSupabaseAdmin();
 
-  const [ordersRes, pickupsRes, leadsRes, scansRes, inventoryRes] = await Promise.all([
+  const [ordersRes, pickupsRes, leadsRes, scansRes, inventoryRes, partnerLeadsRes] = await Promise.all([
     admin
       .from("orders")
       .select("id, status, paid_at, ready_at, updated_at, created_at, email, ship_recipient")
@@ -92,6 +94,13 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
       .order("quantity", { ascending: true })
       .order("updated_at", { ascending: false })
       .limit(12),
+    // Pokémon / One Piece / video game sellers still waiting to be passed on.
+    admin
+      .from("referral_leads")
+      .select("id, reference_number, categories, first_name, last_name, created_at")
+      .eq("status", "new")
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   const firstError =
@@ -99,7 +108,8 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
     pickupsRes.error ??
     leadsRes.error ??
     scansRes.error ??
-    inventoryRes.error;
+    inventoryRes.error ??
+    partnerLeadsRes.error;
   if (firstError) {
     throw new HttpError(500, "Could not load live notification data.");
   }
@@ -216,6 +226,20 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
         href: `/admin_dashboard/buying-leads?submission=${lead.id}`,
       });
     }
+  }
+
+  for (const lead of partnerLeadsRes.data ?? []) {
+    notifications.push({
+      key: `partner_lead:new:${lead.id}`,
+      kind: "partner_lead",
+      tone: "info",
+      title: `New partner lead · ${lead.reference_number}`,
+      detail: `${safeName(lead.first_name, lead.last_name)} is selling ${lead.categories
+        .map(referralCategoryLabel)
+        .join(", ")}. Pass it on to the buying partner.`,
+      at: lead.created_at,
+      href: `/admin_dashboard/partner-leads?lead=${lead.id}`,
+    });
   }
 
   for (const scan of scansRes.data ?? []) {

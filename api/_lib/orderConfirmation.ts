@@ -1,5 +1,6 @@
 import * as React from "react";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
+import { notifyStaff, usd } from "./staffPush.js";
 import { sendTrackedEmail, type SendEmailResult } from "./emailService.js";
 import {
   OrderConfirmation,
@@ -187,6 +188,16 @@ export async function sendOrderAdminNotification(
     logoUrl: logoUrl(),
     supportEmail: ServerEnv.replyTo(),
   };
+
+  const items = itemCount ?? 0;
+  await notifyStaff({
+    key: `order:${order.id}`,
+    kind: "order",
+    title: `New order ${orderNumber} · ${usd(order.total_cents)}`,
+    body: `${customerName} · ${items} item${items === 1 ? "" : "s"} — ready to pack.`,
+    url: `/admin_dashboard/orders?order=${order.id}`,
+    tag: `order:${order.id}`,
+  });
 
   return sendTrackedEmail({
     emailType: "order_admin_notification",
