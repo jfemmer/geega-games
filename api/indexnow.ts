@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { allowCronRequest } from "./_lib/cronAuth.js";
 import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
 import { seoRoutes } from "../src/seo/routes.js";
 import { PRODUCTION_ORIGIN } from "../src/seo/site.js";
@@ -18,10 +19,8 @@ import {
 //   * card pages for singles listed in the last few days.
 // Google doesn't use IndexNow; it reads /sitemap.xml.
 //
-// Only Vercel's scheduler can trigger it: Vercel sends
-// "Authorization: Bearer <CRON_SECRET>" on cron requests when the CRON_SECRET
-// environment variable is set, and this refuses anything else. Without
-// CRON_SECRET it does nothing (fails closed).
+// Only Vercel's scheduler can trigger it, and only on the production
+// deployment (see allowCronRequest in _lib/cronAuth.ts).
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -48,20 +47,7 @@ async function recentCardPaths(since: Date): Promise<string[]> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return res.status(405).json({ ok: false, message: "Method not allowed." });
-  }
-
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return res.status(503).json({ ok: false, message: "CRON_SECRET is not configured." });
-  if (req.headers.authorization !== `Bearer ${secret}`) {
-    return res.status(401).json({ ok: false, message: "Unauthorized." });
-  }
-  // Only the live site should announce URLs; previews would point at the same host.
-  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
-    return res.status(200).json({ ok: true, skipped: "not production" });
-  }
+  if (!allowCronRequest(req, res)) return;
 
   const now = new Date();
   const since = new Date(now.getTime() - INDEXNOW_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);

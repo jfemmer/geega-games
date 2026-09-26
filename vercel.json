@@ -3,7 +3,10 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "crons": [{ "path": "/api/indexnow", "schedule": "17 14 * * *" }],
+  "crons": [
+    { "path": "/api/indexnow", "schedule": "17 14 * * *" },
+    { "path": "/api/review-requests/process", "schedule": "41 15 * * *" }
+  ],
   "redirects": [
     { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true },
     { "source": "/cards", "destination": "/shop", "permanent": true },

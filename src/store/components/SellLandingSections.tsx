@@ -5,7 +5,7 @@ import {
   ageConditionTiers,
   type SellDefaultCondition,
 } from "../lib/sellTypes";
-import { MAX_DRIVE_HOURS } from "../../seo/site";
+import { GOOGLE_REVIEW_URL, MAX_DRIVE_HOURS } from "../../seo/site";
 import {
   SELL_AREAS,
   ST_LOUIS_PATH,
@@ -223,6 +223,9 @@ export function SellerReviewsSection() {
         )}
         <a href={TCGPLAYER_SELLER_URL} target="_blank" rel="noopener noreferrer">
           See all our buyer feedback on TCGplayer
+        </a>
+        <a href={GOOGLE_REVIEW_URL} target="_blank" rel="noopener noreferrer" className="gg-reviews-google">
+          Bought or sold with us? Leave a Google review
         </a>
       </p>
     </section>

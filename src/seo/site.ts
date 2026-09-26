@@ -73,12 +73,25 @@ export const DISAMBIGUATING_DESCRIPTION =
   'Geega Games is an independently owned trading card business in St. Louis, Missouri (Geega Games LLC). It is not affiliated with, operated by or endorsed by any streamer, content creator or influencer, including anyone using the name "Geega" or "GEEGA".';
 
 /**
- * Other places the business verifiably exists, for entity matching. Only real,
- * public profiles the business controls — add the Google Business Profile
- * (Maps) link and any social pages here once confirmed.
+ * Other places the business verifiably exists, for entity matching (SAME_AS
+ * below). Only real, public profiles the business controls — add social pages
+ * here once they're confirmed.
  */
 export const TCGPLAYER_SELLER_URL = "https://www.tcgplayer.com/sellers/Geega-Games/2a2a200d";
-export const SAME_AS: string[] = [TCGPLAYER_SELLER_URL];
+
+/**
+ * The Google Business Profile, from the owner (2026-09-26). The Maps URL uses
+ * the profile's CID, decoded from the review link below (g.page/r/<id>
+ * encodes it), so it's a stable link to the listing rather than a share link.
+ */
+export const GOOGLE_MAPS_URL = "https://www.google.com/maps?cid=18163581768949483792";
+/**
+ * Opens Google's "write a review" box for the profile. Linked from the reviews
+ * section and the review-request emails (api/_lib/reviewRequests.ts).
+ */
+export const GOOGLE_REVIEW_URL = "https://g.page/r/CRDJ_lJiARL8EBM/review";
+
+export const SAME_AS: string[] = [GOOGLE_MAPS_URL, TCGPLAYER_SELLER_URL];
 
 export const PUBLIC_EMAIL = "support@geega-games.com";
 
