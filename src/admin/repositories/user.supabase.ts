@@ -36,6 +36,7 @@ export function mapCustomerRow(row: CustomerListRow): Customer {
     lastOrderAt: row.last_order_at ?? null,
     accountStatus: row.status,
     subscriberStatus: row.subscriber_status ?? null,
+    source: row.source,
   };
 }
 

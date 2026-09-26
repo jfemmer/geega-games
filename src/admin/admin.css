@@ -391,6 +391,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 .gg-ordercell { display: flex; flex-direction: column; gap: 1px; }
 .gg-ordercell__num { font-weight: 600; }
+/* "New" tag on customers who signed up since your last visit to Users. */
+.gg-users-new { display: inline-flex; margin-left: 6px; vertical-align: middle; }
 .gg-ordercell__cust { font-size: 0.8rem; color: var(--gg-text-soft); }
 
 .gg-qty { font-variant-numeric: tabular-nums; font-weight: 600; }

@@ -6,7 +6,9 @@
 // the app is opened, and there's no stale-cache state to debug.
 //
 // Payloads come from api/_lib/staffPush.ts:
-//   { title, body, url, tag, at }
+//   { title, body, url, tag, at, badge? }
+// `badge` is everything waiting for this staff member (the same total as the
+// admin's menu button), shown on the app icon where the device supports it.
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -36,9 +38,36 @@ self.addEventListener("push", (event) => {
     timestamp: typeof data.at === "string" ? Date.parse(data.at) || Date.now() : Date.now(),
     data: { url: typeof data.url === "string" ? data.url : "/admin_dashboard" },
   };
+  const badge = Number.isInteger(data.badge) && data.badge >= 0 ? data.badge : null;
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([self.registration.showNotification(title, options), setIconBadge(badge), tellOpenApps()]),
+  );
 });
+
+// The number on the app icon. Supported on iPhone/iPad home-screen apps with
+// notifications on, Android and desktop installs; elsewhere it's a no-op.
+async function setIconBadge(count) {
+  if (count === null) return;
+  try {
+    if (count > 0 && self.navigator.setAppBadge) await self.navigator.setAppBadge(count);
+    else if (count === 0 && self.navigator.clearAppBadge) await self.navigator.clearAppBadge();
+  } catch {
+    /* not permitted or not supported */
+  }
+}
+
+// An open admin window refreshes its number badges straight away.
+async function tellOpenApps() {
+  try {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).pathname.startsWith("/admin_dashboard")) client.postMessage({ type: "gg-admin-push" });
+    }
+  } catch {
+    /* a closed window can't be told; it refreshes when opened */
+  }
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();

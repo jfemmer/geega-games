@@ -3,10 +3,8 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { GlobalSearch } from "./GlobalSearch";
 import { SECTION_TITLES } from "./nav";
-import { orderRepository } from "../../repositories";
-import { buyingLeadsRepository } from "../../repositories/buyingLeads.supabase";
-import { referralLeadsRepository } from "../../repositories/referralLeads.supabase";
-import { photoRequestsRepository } from "../../repositories/photoRequests.supabase";
+import { useNavBadges } from "../../hooks/useNavBadges";
+import { navBadgeTotal } from "../../utils/navBadges";
 import { useToast } from "../../hooks/useToast";
 import { supabase } from "../../../supabase";
 import { disablePushForSignOut, syncPushOnOpen } from "../../services/push";
@@ -28,42 +26,15 @@ export function AdminLayout({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [counts, setCounts] = useState<Record<string, number>>({});
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  // Number badges: sidebar, phone menu button and app icon (see useNavBadges).
+  const counts = useNavBadges(activeKey);
 
   // Register the admin service worker, and re-sync this device's push
   // subscription if notifications were on. Never prompts.
   useEffect(() => {
     void syncPushOnOpen();
   }, []);
-
-  useEffect(() => {
-    let active = true;
-    orderRepository.counts().then((c) => {
-      if (active) setCounts((prev) => ({ ...prev, ...c }));
-    });
-    buyingLeadsRepository
-      .counts()
-      .then((c) => {
-        if (active) setCounts((prev) => ({ ...prev, new_leads: c.new ?? 0 }));
-      })
-      .catch(() => undefined);
-    referralLeadsRepository
-      .counts()
-      .then((c) => {
-        if (active) setCounts((prev) => ({ ...prev, new_partner_leads: c.new ?? 0 }));
-      })
-      .catch(() => undefined);
-    photoRequestsRepository
-      .openCount()
-      .then((n) => {
-        if (active) setCounts((prev) => ({ ...prev, open_photo_requests: n }));
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [activeKey]);
 
   // "/" opens global search (unless typing in a field).
   useEffect(() => {
@@ -103,6 +74,7 @@ export function AdminLayout({
           breadcrumb={fullBreadcrumb}
           onOpenSearch={() => setSearchOpen(true)}
           onToggleSidebar={() => setMobileOpen((v) => !v)}
+          menuBadge={navBadgeTotal(counts)}
           onNavigate={onNavigate}
           onOpenNotificationSettings={() => setPushSettingsOpen(true)}
           onSignOut={async () => {

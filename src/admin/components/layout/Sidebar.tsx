@@ -1,13 +1,6 @@
 import { Icon } from "../ui/Icon";
 import { NAV_ITEMS } from "./nav";
-
-/** Which `counts` key, if any, badges each nav item. */
-const NAV_BADGE_COUNT_KEY: Partial<Record<(typeof NAV_ITEMS)[number]["key"], string>> = {
-  orders: "needs_packing",
-  "buying-leads": "new_leads",
-  "partner-leads": "new_partner_leads",
-  inventory: "open_photo_requests",
-};
+import { NAV_BADGES, badgeText, type NavBadgeCounts } from "../../utils/navBadges";
 
 export function Sidebar({
   activeKey,
@@ -21,7 +14,7 @@ export function Sidebar({
   activeKey: string;
   collapsed: boolean;
   mobileOpen: boolean;
-  counts: Record<string, number>;
+  counts: NavBadgeCounts;
   onNavigate: (path: string) => void;
   onToggleCollapse: () => void;
   onCloseMobile: () => void;
@@ -62,8 +55,8 @@ export function Sidebar({
 
         <nav className="gg-sidebar__nav">
           {NAV_ITEMS.map((item) => {
-            const badgeKey = NAV_BADGE_COUNT_KEY[item.key];
-            const badge = badgeKey ? counts[badgeKey] : undefined;
+            const badgeDef = NAV_BADGES[item.key];
+            const badge = badgeDef ? counts[badgeDef.count] : 0;
             const active = activeKey === item.key;
             return (
               <button
@@ -74,7 +67,7 @@ export function Sidebar({
                   onCloseMobile();
                 }}
                 aria-current={active ? "page" : undefined}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? (badgeDef && badge > 0 ? `${item.label}: ${badgeDef.describe(badge)}` : item.label) : undefined}
               >
                 <span className="gg-navlink__icon">
                   <Icon name={item.icon} size={20} />
@@ -82,14 +75,18 @@ export function Sidebar({
                 {!collapsed && (
                   <span className="gg-navlink__label">{item.label}</span>
                 )}
-                {badge !== undefined && badge > 0 && (
-                  <span
-                    className={`gg-navlink__badge ${
-                      collapsed ? "gg-navlink__badge--dot" : ""
-                    }`}
-                  >
-                    {collapsed ? "" : badge}
-                  </span>
+                {badgeDef && badge > 0 && (
+                  <>
+                    <span
+                      className={`gg-navlink__badge ${
+                        collapsed ? "gg-navlink__badge--dot" : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {collapsed ? "" : badgeText(badge)}
+                    </span>
+                    <span className="gg-visually-hidden">, {badgeDef.describe(badge)}</span>
+                  </>
                 )}
               </button>
             );

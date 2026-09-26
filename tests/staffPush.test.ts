@@ -15,6 +15,8 @@ const state: {
   users: Record<string, { app_metadata: Record<string, unknown> } | null>;
   sendResults: Record<string, number>; // endpoint → status code to throw (0 = ok)
   sent: { endpoint: string; payload: string }[];
+  badges: Record<string, Record<string, number>>; // user → admin_nav_badges() result
+  badgeError: boolean;
 } = {
   subs: [],
   subsError: null,
@@ -26,10 +28,17 @@ const state: {
   users: {},
   sendResults: {},
   sent: [],
+  badges: {},
+  badgeError: false,
 };
 
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({
   getSupabaseAdmin: () => ({
+    rpc: async (fn: string, args: { p_user_id: string }) => {
+      if (fn !== "admin_nav_badges") throw new Error(`unexpected rpc ${fn}`);
+      if (state.badgeError) throw new Error("statement timeout");
+      return { data: state.badges[args.p_user_id] ?? null, error: null };
+    },
     auth: {
       admin: {
         getUserById: async (id: string) => {
@@ -129,6 +138,8 @@ beforeEach(() => {
   state.users = {};
   state.sendResults = {};
   state.sent = [];
+  state.badges = {};
+  state.badgeError = false;
 });
 
 afterEach(() => {
@@ -196,6 +207,28 @@ describe("notifyStaff", () => {
     expect(state.sent.map((s) => s.endpoint)).toEqual([sub("s2", "current").endpoint]);
     expect(state.deleted).toEqual([["s1"]]);
     expect(result).toMatchObject({ delivered: 1, removed: 1 });
+  });
+
+  it("tells each person's devices how many things are waiting for them (the app icon number)", async () => {
+    state.subs = [sub("s1", "u1"), sub("s2", "u2", "web.push.apple.com")];
+    state.users = { u1: { app_metadata: { role: "staff" } }, u2: { app_metadata: { role: "admin" } } };
+    state.badges = {
+      u1: { new_leads: 2, new_users: 1 },
+      u2: { needs_packing: 1 },
+    };
+    await notifyStaff(EVENT);
+    const badgeAt = (endpoint: string) => JSON.parse(state.sent.find((s) => s.endpoint === endpoint)!.payload).badge;
+    expect(badgeAt(sub("s1", "u1").endpoint)).toBe(3);
+    expect(badgeAt(sub("s2", "u2", "web.push.apple.com").endpoint)).toBe(1);
+  });
+
+  it("still pushes when the waiting count can't be read, just without a number", async () => {
+    state.subs = [sub("s1", "u1")];
+    state.users = { u1: { app_metadata: { role: "staff" } } };
+    state.badgeError = true;
+    const result = await notifyStaff(EVENT);
+    expect(result).toMatchObject({ status: "sent", delivered: 1 });
+    expect(JSON.parse(state.sent[0].payload)).not.toHaveProperty("badge");
   });
 
   it("never throws, even when the database fails", async () => {

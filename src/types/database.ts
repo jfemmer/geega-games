@@ -2962,6 +2962,14 @@ export type Database = {
           set_name: string
         }[]
       }
+      admin_mark_section_seen: {
+        Args: { p_section: string }
+        Returns: string
+      }
+      admin_nav_badges: {
+        Args: { p_user_id?: string }
+        Returns: Json
+      }
       admin_order_geography: {
         Args: never
         Returns: {

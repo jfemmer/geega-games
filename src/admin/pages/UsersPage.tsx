@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -12,6 +12,8 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { userRepository } from "../repositories";
+import { navBadgesRepository } from "../repositories/navBadges.supabase";
+import { isNewSignup } from "../utils/navBadges";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import {
   formatCents,
@@ -88,6 +90,20 @@ function CustomersView({ query }: { query: URLSearchParams }) {
 
   const customers = useAsync(() => userRepository.listCustomers(q), [q]);
 
+  // Opening Users clears the Users badge (on every device). Whoever signed up
+  // since the previous visit gets a "New" tag. Once per visit: the ref stops
+  // React's development double-run from marking it seen twice.
+  const [newSince, setNewSince] = useState<string | null>(null);
+  const markedSeen = useRef(false);
+  useEffect(() => {
+    if (markedSeen.current) return;
+    markedSeen.current = true;
+    navBadgesRepository
+      .markUsersSeen()
+      .then(setNewSince)
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     const id = query.get("customer");
     if (id) {
@@ -105,6 +121,11 @@ function CustomersView({ query }: { query: URLSearchParams }) {
         <div className="gg-ordercell">
           <span className="gg-ordercell__num">
             {fullName(c.firstName, c.lastName)}
+            {isNewSignup(c, newSince) && (
+              <span className="gg-users-new">
+                <Badge tone="purple">New</Badge>
+              </span>
+            )}
           </span>
           <span className="gg-ordercell__cust">{c.email}</span>
         </div>

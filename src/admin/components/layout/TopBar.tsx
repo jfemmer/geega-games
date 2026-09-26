@@ -4,6 +4,7 @@ import { useClickOutside } from "../../hooks/useClickOutside";
 import { timeAgo } from "../../utils/format";
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import { adminFetch } from "../../repositories/apiClient";
+import { badgeText } from "../../utils/navBadges";
 
 /** Up-to-two-letter initials from a display name or email. */
 function adminInitials(name: string, email: string | null): string {
@@ -44,6 +45,7 @@ export function TopBar({
   breadcrumb,
   onOpenSearch,
   onToggleSidebar,
+  menuBadge = 0,
   onNavigate,
   onOpenNotificationSettings,
   onSignOut,
@@ -51,6 +53,8 @@ export function TopBar({
   breadcrumb: string[];
   onOpenSearch: () => void;
   onToggleSidebar: () => void;
+  /** Everything waiting across the sidebar, shown on the phone menu button. */
+  menuBadge?: number;
   onNavigate: (path: string) => void;
   onOpenNotificationSettings: () => void;
   onSignOut: () => void;
@@ -136,9 +140,14 @@ export function TopBar({
         <button
           className="gg-icon-btn gg-topbar__menu"
           onClick={onToggleSidebar}
-          aria-label="Toggle navigation"
+          aria-label={menuBadge > 0 ? `Toggle navigation, ${menuBadge} waiting` : "Toggle navigation"}
         >
           <Icon name="menu" size={20} />
+          {menuBadge > 0 && (
+            <span className="gg-badge-count" aria-hidden="true">
+              {badgeText(menuBadge)}
+            </span>
+          )}
         </button>
         <nav className="gg-breadcrumb" aria-label="Breadcrumb">
           {breadcrumb.map((crumb, i) => (

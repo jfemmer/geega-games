@@ -8,6 +8,18 @@
 
 import { supabase } from "../../supabase";
 
+/**
+ * Fired on `window` after any admin change succeeds (every non-GET adminFetch,
+ * plus a few direct calls), so things like the sidebar number badges can
+ * refresh right away instead of on the next page change.
+ */
+export const ADMIN_DATA_CHANGED_EVENT = "gg-admin-data-changed";
+
+export function notifyAdminDataChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(ADMIN_DATA_CHANGED_EVENT));
+}
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const { data } = await supabase.auth.getSession();
@@ -60,6 +72,7 @@ export async function adminFetch<T>(
     }
     throw new Error(message);
   }
+  if (init.method.toUpperCase() !== "GET") notifyAdminDataChanged();
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

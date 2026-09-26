@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "./supabaseAdmin.js";
 import { ServerEnv } from "./env.js";
 import { hasStaffRole } from "./adminAuth.js";
 import type { StaffPushKind } from "../../src/admin/utils/pushKinds.js";
+import { navBadgeTotal, parseNavBadges } from "../../src/admin/utils/navBadges.js";
 import type { Database } from "../../src/types/database.js";
 
 // Push notifications to staff devices that installed the admin app and
@@ -69,14 +70,39 @@ function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-export function pushPayload(event: Pick<StaffPushEvent, "title" | "body" | "url" | "tag">): string {
+/**
+ * What the service worker (public/admin-sw.js) receives. `badge`, when known,
+ * is everything waiting for that staff member, for the number on the app icon.
+ */
+export function pushPayload(event: Pick<StaffPushEvent, "title" | "body" | "url" | "tag">, badge?: number): string {
   return JSON.stringify({
     title: clip(event.title, 120),
     body: clip(event.body, 240),
     url: event.url,
     tag: event.tag,
     at: new Date().toISOString(),
+    ...(typeof badge === "number" ? { badge } : {}),
   });
+}
+
+/**
+ * Each staff member's app icon number (the admin_nav_badges total, which
+ * includes their own "new users since you last looked"). Best-effort: anyone
+ * whose count can't be read just gets a push without a badge.
+ */
+async function badgeTotals(userIds: string[]): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  await Promise.all(
+    userIds.map(async (id) => {
+      try {
+        const { data, error } = await getSupabaseAdmin().rpc("admin_nav_badges", { p_user_id: id });
+        if (!error) totals.set(id, navBadgeTotal(parseNavBadges(data)));
+      } catch {
+        /* leave this person's badge out */
+      }
+    }),
+  );
+  return totals;
 }
 
 type SendOutcome = "delivered" | "gone" | "failed";
@@ -153,9 +179,11 @@ export async function notifyStaff(event: StaffPushEvent): Promise<StaffPushResul
     }
 
     const { staff, revoked } = await checkStaff([...new Set(subs.map((s) => s.user_id))]);
-    const payload = pushPayload(event);
     const targets = subs.filter((s) => staff.has(s.user_id));
-    const outcomes = await Promise.all(targets.map((s) => sendToSubscription(s, payload)));
+    const badges = await badgeTotals([...new Set(targets.map((s) => s.user_id))]);
+    const outcomes = await Promise.all(
+      targets.map((s) => sendToSubscription(s, pushPayload(event, badges.get(s.user_id)))),
+    );
 
     const deliveredIds = targets.filter((_, i) => outcomes[i] === "delivered").map((s) => s.id);
     const goneIds = targets.filter((_, i) => outcomes[i] === "gone").map((s) => s.id);

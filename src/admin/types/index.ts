@@ -730,6 +730,8 @@ export interface Customer {
   lastOrderAt: string | null;
   accountStatus: AccountStatus;
   subscriberStatus: SubscriberStatus | null;
+  /** How they became a customer: signed up, checked out, newsletter, or added/imported by staff. */
+  source?: "manual" | "newsletter" | "account_signup" | "checkout" | "import";
 }
 
 /* ------------------------------------------------------------------ *
