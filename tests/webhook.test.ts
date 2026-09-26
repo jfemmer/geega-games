@@ -19,17 +19,27 @@ vi.mock("../api/_lib/supabaseAdmin.js", () => ({
     from: (table: string) => {
       if (table === "email_deliveries") {
         return {
-          update: (_patch: Record<string, unknown>) => ({
-            eq: (_col: string, val: string) => ({
-              select: () => ({
-                maybeSingle: async () => {
-                  const row = db.deliveries.find(
-                    (d) => d.resend_email_id === val,
-                  );
-                  return { data: row ?? null };
+          update: (patch: Record<string, unknown>) => ({
+            eq: (col: string, val: string) => {
+              const rows = () => db.deliveries.filter((d) => d[col] === val);
+              return {
+                // Step 1: stamp the event's timestamp, return the row.
+                select: () => ({
+                  maybeSingle: async () => {
+                    const row = rows()[0];
+                    if (row) Object.assign(row, patch);
+                    return { data: row ?? null, error: null };
+                  },
+                }),
+                // Step 2: move the status, only from the allowed statuses.
+                in: async (inCol: string, allowed: string[]) => {
+                  for (const row of rows()) {
+                    if (allowed.includes(String(row[inCol]))) Object.assign(row, patch);
+                  }
+                  return { error: null };
                 },
-              }),
-            }),
+              };
+            },
           }),
         };
       }
@@ -202,5 +212,64 @@ describe("resend webhook", () => {
     await handler(makeReq("POST", "{}") as any, res as any);
     expect(res.statusCode).toBe(200);
     expect(db.subscriberUpdates).toHaveLength(0);
+  });
+});
+
+// Resend doesn't send webhooks in order; a late event must never move an
+// email's status backwards (a late "email.sent" used to hide bounces).
+describe("resend webhook: out-of-order events", () => {
+  async function deliver(type: string, emailId: string, data: Record<string, unknown> = {}) {
+    verifyMock.mockReturnValue({ type, data: { email_id: emailId, ...data } });
+    const res = makeRes();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await handler(makeReq("POST", "{}") as any, res as any);
+    expect(res.statusCode).toBe(200);
+  }
+
+  function row(status: string) {
+    const r: Record<string, unknown> = {
+      id: "d-order",
+      email_type: "sell_submission_admin_notification",
+      subscriber_id: null,
+      resend_email_id: "re_seq",
+      status,
+      error_detail: null,
+    };
+    db.deliveries.push(r);
+    return r;
+  }
+
+  it("keeps a bounce when a late 'sent' arrives, and keeps its reason", async () => {
+    const r = row("sent");
+    await deliver("email.bounced", "re_seq", { bounce: { message: "550 No such user" } });
+    await deliver("email.sent", "re_seq");
+    expect(r.status).toBe("bounced");
+    expect(r.error_detail).toBe("550 No such user");
+    expect(typeof r.bounced_at).toBe("string");
+    expect(typeof r.sent_at).toBe("string");
+  });
+
+  it("moves forward to delivered, and a late 'delivery_delayed' doesn't undo it", async () => {
+    const r = row("queued");
+    await deliver("email.delivered", "re_seq");
+    await deliver("email.delivery_delayed", "re_seq");
+    await deliver("email.sent", "re_seq");
+    expect(r.status).toBe("delivered");
+    expect(typeof r.delivered_at).toBe("string");
+  });
+
+  it("records a bounce that comes after delivery (a forwarding inbox that can't pass it on)", async () => {
+    const r = row("delivered");
+    await deliver("email.bounced", "re_seq", { bounce: { message: "forward failed" } });
+    expect(r.status).toBe("bounced");
+  });
+
+  it("ranks statuses so only later ones can replace earlier ones", async () => {
+    const { statusesBefore } = await import("../api/webhooks/resend.js");
+    expect(statusesBefore("sent")).toEqual(["queued"]);
+    expect(statusesBefore("delivered").sort()).toEqual(["delivery_delayed", "queued", "sent"]);
+    expect(statusesBefore("bounced")).toContain("delivered");
+    expect(statusesBefore("bounced")).not.toContain("complained");
+    expect(statusesBefore("complained")).toContain("bounced");
   });
 });

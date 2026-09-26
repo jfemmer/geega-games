@@ -75,6 +75,34 @@ type SubscriberStatus = Database["public"]["Enums"]["subscriber_status"];
 
 const nowIso = () => new Date().toISOString();
 
+/**
+ * Where each status sits in an email's life. Resend doesn't deliver webhooks
+ * in order: "email.sent" can arrive after "email.delivered", or even after
+ * "email.bounced". So a status only ever moves forward. A late, earlier event
+ * still records its timestamp but never overwrites a later status. (Before
+ * this, a late "sent" was hiding bounces.) A bounce can follow "delivered"
+ * when a forwarding inbox accepts a message and then fails to pass it on, and
+ * a complaint always comes after delivery.
+ */
+const STATUS_RANK: Record<DeliveryStatus, number> = {
+  queued: 0,
+  sent: 1,
+  delivery_delayed: 2,
+  delivered: 3,
+  bounced: 4,
+  failed: 4,
+  suppressed: 4,
+  canceled: 4,
+  complained: 5,
+};
+
+/** Statuses an email may move to `status` from. */
+export function statusesBefore(status: DeliveryStatus): DeliveryStatus[] {
+  return (Object.keys(STATUS_RANK) as DeliveryStatus[]).filter(
+    (s) => STATUS_RANK[s] < STATUS_RANK[status],
+  );
+}
+
 async function applyEvent(event: ResendWebhookEvent): Promise<void> {
   const db = getSupabaseAdmin();
   const emailId = event.data?.email_id;
@@ -102,23 +130,33 @@ async function applyEvent(event: ResendWebhookEvent): Promise<void> {
   const entry = map[event.type];
   if (!entry) return; // ignore unrelated events
 
-  // Update the delivery row keyed by Resend email id. Idempotent: setting the
-  // same status/timestamp again is harmless.
-  const patch: Database["public"]["Tables"]["email_deliveries"]["Update"] = {
-    status: entry.status,
-    error_detail: event.data?.bounce?.message ?? event.data?.reason ?? null,
-  };
-  // Set the appropriate timestamp column for this event type.
-  (patch as Record<string, string>)[entry.column] = nowIso();
+  // 1) Record when this event happened, whatever order it arrived in, keyed
+  //    by the Resend email id. Only a bounce or failure carries a reason, and
+  //    a later event without one must not erase it.
+  const stamp: Database["public"]["Tables"]["email_deliveries"]["Update"] = {};
+  (stamp as Record<string, string>)[entry.column] = nowIso();
+  const detail = event.data?.bounce?.message ?? event.data?.reason;
+  if (detail) stamp.error_detail = detail;
 
-  const { data: delivery } = await db
+  const { data: delivery, error: stampError } = await db
     .from("email_deliveries")
-    .update(patch)
+    .update(stamp)
     .eq("resend_email_id", emailId)
     .select("id, email_type, subscriber_id")
     .maybeSingle();
+  if (stampError) throw new Error(stampError.message); // 500, so Resend retries
+  if (!delivery) return;
 
-  if (!delivery || !entry.marketingEffect) return;
+  // 2) Move the status forward only (see STATUS_RANK). Idempotent: replaying
+  //    an event changes nothing.
+  const { error: statusError } = await db
+    .from("email_deliveries")
+    .update({ status: entry.status })
+    .eq("id", delivery.id)
+    .in("status", statusesBefore(entry.status));
+  if (statusError) throw new Error(statusError.message);
+
+  if (!entry.marketingEffect) return;
 
   // Only marketing emails may flip subscriber status. Transactional order
   // emails must never unsubscribe anyone.
