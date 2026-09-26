@@ -1029,36 +1029,72 @@
   border-bottom: 1px solid #f3d38a;
   color: #5c3d00;
 }
-.gg-paused-banner__inner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.gg-paused-banner__details {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0.6rem 1rem;
+}
+.gg-paused-banner__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 1rem;
+  min-height: 36px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.gg-paused-banner__summary::-webkit-details-marker {
+  display: none;
+}
+.gg-paused-banner__summary:focus-visible {
+  outline: 2px solid #5c3d00;
+  outline-offset: -2px;
 }
 .gg-paused-banner__badge {
   flex: none;
-  padding: 0.2rem 0.55rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   background: #5c3d00;
   color: #fff7e6;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.gg-paused-banner__short {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gg-paused-banner__toggle {
+  flex: none;
+  margin-left: auto;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.gg-paused-banner__toggle::after {
+  content: " \25BE";
+  display: inline-block;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+}
+.gg-paused-banner__details[open] .gg-paused-banner__toggle::after {
+  transform: rotate(180deg);
+}
+.gg-paused-banner__less,
+.gg-paused-banner__details[open] .gg-paused-banner__more {
+  display: none;
+}
+.gg-paused-banner__details[open] .gg-paused-banner__less {
+  display: inline;
+}
 .gg-paused-banner__message {
   margin: 0;
+  padding: 0 1rem 0.6rem;
   font-size: 0.9rem;
-  line-height: 1.4;
-}
-@media (max-width: 560px) {
-  .gg-paused-banner__inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.35rem;
-  }
+  line-height: 1.45;
 }
 /* Checkout / cart notice while paused */
 .gg-paused-note {
