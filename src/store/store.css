@@ -5332,3 +5332,59 @@
   color: #5b5470;
   text-align: center;
 }
+
+/* Card page: "Request a photo" per listing (PhotoRequestForm). */
+.gg-card-detail__photoreq {
+  flex-basis: 100%;
+  width: 100%;
+}
+.gg-photoreq-trigger {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--gg-purple);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  min-height: 32px;
+}
+.gg-photoreq-trigger:hover {
+  color: var(--gg-ink);
+}
+.gg-photoreq-form {
+  margin-top: 0.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 10px;
+  background: #f5f0ff;
+  display: grid;
+  gap: 0.6rem;
+}
+.gg-photoreq-form__intro {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--gg-ink);
+}
+.gg-photoreq-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+.gg-photoreq-form .gg-field {
+  margin: 0;
+}
+.gg-photoreq-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gg-photoreq-form--done p {
+  margin: 0;
+}
+.gg-photoreq-form--done:focus {
+  outline: 2px solid var(--gg-purple);
+  outline-offset: 2px;
+}

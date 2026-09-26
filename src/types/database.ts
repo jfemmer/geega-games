@@ -1722,6 +1722,89 @@ export type Database = {
           },
         ]
       }
+      photo_requests: {
+        Row: {
+          card_name: string
+          card_path: string | null
+          closed_at: string | null
+          collector_number: string | null
+          condition: string | null
+          created_at: string
+          email: string
+          finish: string | null
+          first_name: string
+          id: string
+          inventory_item_id: string | null
+          note: string | null
+          photo_paths: string[]
+          reference_number: string
+          send_count: number
+          sent_at: string | null
+          sent_by: string | null
+          set_code: string | null
+          set_name: string | null
+          staff_message: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          card_name: string
+          card_path?: string | null
+          closed_at?: string | null
+          collector_number?: string | null
+          condition?: string | null
+          created_at?: string
+          email: string
+          finish?: string | null
+          first_name: string
+          id?: string
+          inventory_item_id?: string | null
+          note?: string | null
+          photo_paths?: string[]
+          reference_number?: string
+          send_count?: number
+          sent_at?: string | null
+          sent_by?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          staff_message?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          card_name?: string
+          card_path?: string | null
+          closed_at?: string | null
+          collector_number?: string | null
+          condition?: string | null
+          created_at?: string
+          email?: string
+          finish?: string | null
+          first_name?: string
+          id?: string
+          inventory_item_id?: string | null
+          note?: string | null
+          photo_paths?: string[]
+          reference_number?: string
+          send_count?: number
+          sent_at?: string | null
+          sent_by?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          staff_message?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photo_requests_inventory_item_id_fkey"
+            columns: ["inventory_item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pickup_requests: {
         Row: {
           cancelled_at: string | null

@@ -154,8 +154,8 @@ export function ConditionGuidePage() {
       <h2>Want to see the actual card?</h2>
       <p>
         Product pages show a stock image of each card. If you&rsquo;d like a photo of the exact copy
-        you&rsquo;d be buying, email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with
-        the card name and we&rsquo;ll send one — we reply within {REPLY_WITHIN_HOURS} hours.
+        you&rsquo;d be buying, tap <strong>Request a photo</strong> under any listing on the card&rsquo;s
+        page, and we&rsquo;ll email you one within {REPLY_WITHIN_HOURS} hours.
       </p>
     </div>
   );
@@ -282,8 +282,8 @@ export function ContactPage() {
         and we reply <strong>within {REPLY_WITHIN_HOURS} hours or less</strong>.
       </p>
       <p>
-        Want a photo of the actual card before you buy? Just ask — include the card name and
-        we&rsquo;ll send one.
+        Want a photo of the actual card before you buy? Tap <strong>Request a photo</strong> under
+        any listing on the card&rsquo;s page, and we&rsquo;ll email you one.
       </p>
 
       <aside className="gg-alert gg-scam-box" aria-labelledby="gg-scam-heading">

@@ -15,7 +15,7 @@ function adminInitials(name: string, email: string | null): string {
 
 interface Notification {
   key: string;
-  kind: "order" | "pickup" | "buying_lead" | "partner_lead" | "scan" | "inventory";
+  kind: "order" | "pickup" | "buying_lead" | "partner_lead" | "scan" | "inventory" | "photo_request";
   tone: "info" | "warning" | "danger" | "success";
   title: string;
   detail: string;
@@ -37,6 +37,7 @@ const NOTIFICATION_ICON: Record<Notification["kind"], Parameters<typeof Icon>[0]
   partner_lead: "users",
   scan: "scan",
   inventory: "inventory",
+  photo_request: "camera",
 };
 
 export function TopBar({

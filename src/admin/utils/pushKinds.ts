@@ -9,6 +9,7 @@ export const STAFF_PUSH_KINDS = [
   { value: "offer_response", label: "Offer responses", hint: "A seller accepts, declines or counters your offer." },
   { value: "partner_lead", label: "Partner leads", hint: "Pokémon, One Piece and video game sellers." },
   { value: "pickup", label: "Pickup requests", hint: "Kiosk requests to pull cards for pickup." },
+  { value: "photo_request", label: "Photo requests", hint: "A shopper wants a photo of a card before buying." },
 ] as const;
 
 export type StaffPushKind = (typeof STAFF_PUSH_KINDS)[number]["value"];

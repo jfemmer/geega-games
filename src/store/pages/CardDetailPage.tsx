@@ -9,6 +9,7 @@ import { formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../components/ProductCard";
 import WishlistButton from "../components/WishlistButton";
+import PhotoRequestForm from "../components/PhotoRequestForm";
 import { useAuth } from "../lib/AuthContext";
 import { useWishlist } from "../lib/WishlistContext";
 import { authLinkWithReturn } from "../lib/authRedirect";
@@ -85,6 +86,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [notifyError, setNotifyError] = useState<string | null>(null);
+  const [photoRequestFor, setPhotoRequestFor] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -253,13 +255,15 @@ export default function CardDetailPage({ slug }: { slug: string }) {
           )}
           <p className="gg-card-detail__photo-note">
             Stock image — your card matches the condition listed (
-            <Link to="/condition-guide">how we grade</Link>). Want a photo of the actual card?{" "}
-            <a
-              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Photo request: ${detail.cardName}`)}`}
-            >
-              Ask us
-            </a>
-            .
+            <Link to="/condition-guide">how we grade</Link>).
+            {detail.listings.length > 0 ? (
+              <> Want to see the actual card? Tap &ldquo;Request a photo&rdquo; on any listing below.</>
+            ) : (
+              <>
+                {" "}
+                Questions? <a href={`mailto:${SUPPORT_EMAIL}`}>Email us</a>.
+              </>
+            )}
           </p>
         </div>
 
@@ -363,6 +367,32 @@ export default function CardDetailPage({ slug }: { slug: string }) {
                   >
                     {addedId === l.id ? "Added ✓" : addingId === l.id ? "Adding…" : "Add to cart"}
                   </button>
+                </span>
+                <span className="gg-card-detail__photoreq">
+                  {photoRequestFor === l.id ? (
+                    <PhotoRequestForm
+                      inventoryItemId={l.id}
+                      listingLabel={[
+                        l.setName ?? l.setCode?.toUpperCase(),
+                        l.collectorNumber ? `#${l.collectorNumber}` : null,
+                        CONDITION_LABELS[l.condition] ?? l.condition,
+                        l.finish !== "nonfoil" ? l.finish : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      cardPath={`/shop/card/${slug}`}
+                      defaultEmail={user?.email ?? null}
+                      onClose={() => setPhotoRequestFor(null)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="gg-linkbtn gg-photoreq-trigger"
+                      onClick={() => setPhotoRequestFor(l.id)}
+                    >
+                      Request a photo of this copy
+                    </button>
+                  )}
                 </span>
               </li>
             ))}

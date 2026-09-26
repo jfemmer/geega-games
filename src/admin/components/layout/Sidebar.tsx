@@ -6,6 +6,7 @@ const NAV_BADGE_COUNT_KEY: Partial<Record<(typeof NAV_ITEMS)[number]["key"], str
   orders: "needs_packing",
   "buying-leads": "new_leads",
   "partner-leads": "new_partner_leads",
+  inventory: "open_photo_requests",
 };
 
 export function Sidebar({

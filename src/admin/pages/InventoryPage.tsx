@@ -15,6 +15,8 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { AddInventoryDrawer } from "./AddInventoryDrawer";
 import { EditInventoryDrawer } from "./EditInventoryDrawer";
 import { ImportInventoryModal } from "./ImportInventoryModal";
+import { PhotoRequestsView } from "./PhotoRequestsView";
+import { photoRequestsRepository } from "../repositories/photoRequests.supabase";
 import { useAsync } from "../hooks/useAsync";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
@@ -58,8 +60,10 @@ const PAGE_SIZE = 10;
  *                  NOT an inventory_items query — reservations are a separate,
  *                  quantity-aware model layered on top of physical stock)
  *   archived     → status archived               (reversible, history kept)
+ *   photo_requests → shoppers waiting on a photo of a listing (own
+ *                  component, photo_requests table — see PhotoRequestsView)
  */
-type InventoryTab = "in_stock" | "out_of_stock" | "reserved" | "archived";
+type InventoryTab = "in_stock" | "out_of_stock" | "reserved" | "archived" | "photo_requests";
 
 interface TabDef {
   key: InventoryTab;
@@ -73,6 +77,7 @@ const TABS: TabDef[] = [
   { key: "out_of_stock", label: "Out of Stock", status: "active", stock: "out" },
   { key: "reserved", label: "Reserved", status: "active", stock: "all" },
   { key: "archived", label: "Archived", status: "archived", stock: "all" },
+  { key: "photo_requests", label: "Photo requests", status: "active", stock: "all" },
 ];
 
 export function InventoryPage({
@@ -84,9 +89,20 @@ export function InventoryPage({
 }) {
   const toast = useToast();
 
-  // Deep-link ?stock=low still lands on In Stock with the low-stock sub-filter.
-  const initialTab: InventoryTab = "in_stock";
+  // Deep-link ?stock=low still lands on In Stock with the low-stock sub-filter;
+  // ?tab=photo-requests(&request=<id>) opens Photo requests (notifications link here).
+  const initialTab: InventoryTab = query.get("tab") === "photo-requests" ? "photo_requests" : "in_stock";
   const [tab, setTab] = useState<InventoryTab>(initialTab);
+  const [openPhotoRequests, setOpenPhotoRequests] = useState<number | null>(null);
+  useEffect(() => {
+    photoRequestsRepository.openCount().then(setOpenPhotoRequests).catch(() => undefined);
+  }, []);
+  // A notification tapped while already on Inventory changes the query, not the page.
+  const tabParam = query.get("tab");
+  const requestParam = query.get("request");
+  useEffect(() => {
+    if (tabParam === "photo-requests") setTab("photo_requests");
+  }, [tabParam, requestParam]);
 
   const [search, setSearch] = useState("");
   // Sub-filter within the In-Stock tab: all in-stock vs. low stock only.
@@ -369,6 +385,10 @@ export function InventoryPage({
       title: "No archived cards",
       message: "Archived cards are hidden from the storefront but kept here.",
     },
+    photo_requests: {
+      title: "No photo requests",
+      message: "Shoppers' photo requests appear here.",
+    },
   };
 
   return (
@@ -418,11 +438,21 @@ export function InventoryPage({
             }}
           >
             {t.label}
+            {t.key === "photo_requests" && openPhotoRequests ? (
+              <span className="gg-tab__count gg-tab__count--alert" aria-label={`${openPhotoRequests} waiting`}>
+                {openPhotoRequests}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
 
-      {tab === "reserved" ? (
+      {tab === "photo_requests" ? (
+        <PhotoRequestsView
+          deepLinkId={query.get("request")}
+          onOpenCountChange={setOpenPhotoRequests}
+        />
+      ) : tab === "reserved" ? (
         <ReservedView onNavigate={onNavigate} />
       ) : (
       <SectionCard title="">

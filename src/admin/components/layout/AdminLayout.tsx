@@ -6,6 +6,7 @@ import { SECTION_TITLES } from "./nav";
 import { orderRepository } from "../../repositories";
 import { buyingLeadsRepository } from "../../repositories/buyingLeads.supabase";
 import { referralLeadsRepository } from "../../repositories/referralLeads.supabase";
+import { photoRequestsRepository } from "../../repositories/photoRequests.supabase";
 import { useToast } from "../../hooks/useToast";
 import { supabase } from "../../../supabase";
 import { disablePushForSignOut, syncPushOnOpen } from "../../services/push";
@@ -51,6 +52,12 @@ export function AdminLayout({
       .counts()
       .then((c) => {
         if (active) setCounts((prev) => ({ ...prev, new_partner_leads: c.new ?? 0 }));
+      })
+      .catch(() => undefined);
+    photoRequestsRepository
+      .openCount()
+      .then((n) => {
+        if (active) setCounts((prev) => ({ ...prev, open_photo_requests: n }));
       })
       .catch(() => undefined);
     return () => {

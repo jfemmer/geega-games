@@ -20,6 +20,8 @@ export type SendEmailArgs = {
   headers?: Record<string, string>;
   subscriberId?: string | null;
   orderId?: string | null;
+  /** Files to attach (e.g. photos). Resend caps a whole email at 40 MB. */
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
 };
 
 export type SendEmailResult =
@@ -65,6 +67,7 @@ export async function sendTrackedEmail(
       html,
       text: args.text,
       headers: args.headers,
+      attachments: args.attachments,
     },
     { idempotencyKey: args.idempotencyKey },
   );

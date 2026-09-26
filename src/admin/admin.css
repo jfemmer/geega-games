@@ -2839,3 +2839,50 @@ body.gg-printing-label .gg-labelprint-overlay {
 .gg-pushsettings__install { padding-top: 14px; border-top: 1px solid var(--gg-line); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .gg-pushsettings__install h3 { margin: 0; font-size: 0.95rem; }
 .gg-pushsettings code { font-size: 0.82em; background: var(--gg-surface-2); padding: 1px 4px; border-radius: 4px; }
+
+/* ------------------------------------------------------------------ *
+ * Inventory → Photo requests (PhotoRequestsView)
+ * ------------------------------------------------------------------ */
+.gg-tab__count--alert { background: var(--gg-warning); color: #fff; }
+.gg-tab--active .gg-tab__count--alert { background: var(--gg-warning); }
+.gg-photoreq-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.gg-photoreq-promise { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 0.85rem; color: var(--gg-text-soft); }
+.gg-photoreq-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.gg-photoreq-row {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--gg-surface); border: 1px solid var(--gg-line); border-radius: var(--gg-radius);
+  padding: 10px 12px; cursor: pointer; color: var(--gg-text); font: inherit;
+}
+.gg-photoreq-row:hover { border-color: var(--gg-line-strong); box-shadow: var(--gg-shadow-sm); }
+.gg-photoreq-row:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-photoreq-row--overdue { border-color: var(--gg-danger); }
+.gg-photoreq-thumb { width: 44px; height: 62px; object-fit: cover; border-radius: 4px; flex: 0 0 auto; background: var(--gg-surface-2); }
+.gg-photoreq-thumb--empty { display: inline-flex; align-items: center; justify-content: center; color: var(--gg-text-faint); }
+.gg-photoreq-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.gg-photoreq-card { font-weight: 600; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-photoreq-meta { font-size: 0.83rem; color: var(--gg-text-soft); overflow-wrap: anywhere; }
+.gg-photoreq-status { flex: 0 0 auto; }
+.gg-photoreq-detail { display: grid; gap: 18px; }
+.gg-photoreq-cardhead { display: flex; gap: 14px; align-items: flex-start; }
+.gg-photoreq-cardhead h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.gg-photoreq-cardimg { width: 92px; border-radius: 6px; flex: 0 0 auto; }
+.gg-photoreq-location { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 8px 0 0; font-size: 0.9rem; }
+.gg-alert-inline { margin: 8px 0 0; font-size: 0.85rem; color: var(--gg-danger); }
+.gg-photoreq-facts { display: grid; gap: 8px; margin: 0; }
+.gg-photoreq-facts div { display: grid; grid-template-columns: 90px 1fr; gap: 8px; }
+.gg-photoreq-facts dt { color: var(--gg-text-soft); font-size: 0.85rem; }
+.gg-photoreq-facts dd { margin: 0; overflow-wrap: anywhere; }
+.gg-photoreq-subhead { margin: 0 0 6px; font-size: 0.95rem; }
+.gg-photoreq-hint { margin: 0 0 10px; font-size: 0.85rem; color: var(--gg-text-soft); }
+.gg-photoreq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.gg-photoreq-grid img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 6px; border: 1px solid var(--gg-line); display: block; }
+.gg-photoreq-pending { position: relative; }
+.gg-photoreq-remove {
+  position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 999px;
+  border: none; background: rgba(0, 0, 0, 0.6); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.gg-photoreq-footer { justify-content: space-between; width: 100%; flex-wrap: wrap; }
+@media (max-width: 520px) {
+  .gg-photoreq-facts div { grid-template-columns: 1fr; gap: 2px; }
+  .gg-photoreq-cardimg { width: 72px; }
+}

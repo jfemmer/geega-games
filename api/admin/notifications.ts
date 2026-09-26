@@ -3,6 +3,7 @@ import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/htt
 import { requireStaff } from "../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { referralCategoryLabel } from "../../src/store/lib/referralTypes.js";
+import { isPhotoRequestOverdue } from "../../src/store/lib/photoRequestTypes.js";
 
 type NotificationKind =
   | "order"
@@ -10,7 +11,8 @@ type NotificationKind =
   | "buying_lead"
   | "partner_lead"
   | "scan"
-  | "inventory";
+  | "inventory"
+  | "photo_request";
 
 type NotificationTone = "info" | "warning" | "danger" | "success";
 
@@ -51,7 +53,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 async function buildCandidates(): Promise<NotificationCandidate[]> {
   const admin = getSupabaseAdmin();
 
-  const [ordersRes, pickupsRes, leadsRes, scansRes, inventoryRes, partnerLeadsRes] = await Promise.all([
+  const [ordersRes, pickupsRes, leadsRes, scansRes, inventoryRes, partnerLeadsRes, photoRequestsRes] = await Promise.all([
     admin
       .from("orders")
       .select("id, status, paid_at, ready_at, updated_at, created_at, email, ship_recipient")
@@ -101,6 +103,13 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
       .eq("status", "new")
       .order("created_at", { ascending: false })
       .limit(20),
+    // Shoppers waiting on a photo of a card (promised within 24 hours).
+    admin
+      .from("photo_requests")
+      .select("id, reference_number, card_name, set_code, collector_number, condition, first_name, created_at")
+      .eq("status", "new")
+      .order("created_at", { ascending: true })
+      .limit(20),
   ]);
 
   const firstError =
@@ -109,7 +118,8 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
     leadsRes.error ??
     scansRes.error ??
     inventoryRes.error ??
-    partnerLeadsRes.error;
+    partnerLeadsRes.error ??
+    photoRequestsRes.error;
   if (firstError) {
     throw new HttpError(500, "Could not load live notification data.");
   }
@@ -239,6 +249,22 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
         .join(", ")}. Pass it on to the buying partner.`,
       at: lead.created_at,
       href: `/admin_dashboard/partner-leads?lead=${lead.id}`,
+    });
+  }
+
+  for (const pr of photoRequestsRes.data ?? []) {
+    const overdue = isPhotoRequestOverdue(pr.created_at);
+    const printing = [pr.set_code?.toUpperCase(), pr.collector_number ? `#${pr.collector_number}` : null, pr.condition]
+      .filter(Boolean)
+      .join(" · ");
+    notifications.push({
+      key: `photo_request:new:${pr.id}`,
+      kind: "photo_request",
+      tone: overdue ? "danger" : "warning",
+      title: overdue ? `Photo request overdue · ${pr.card_name}` : `Photo request · ${pr.card_name}`,
+      detail: `${pr.first_name} wants a photo${printing ? ` of ${printing}` : ""}${overdue ? " — past the 24-hour promise." : "."}`,
+      at: pr.created_at,
+      href: `/admin_dashboard/inventory?tab=photo-requests&request=${pr.id}`,
     });
   }
 

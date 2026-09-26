@@ -1199,3 +1199,39 @@ export interface ReferralLead {
   consentToShareAt: string;
   status: ReferralLeadStatus;
 }
+
+/* ------------------------------------------------------------------ *
+ * Photo requests — a shopper wants a photo of the actual copy of a
+ * listing (photo_requests); answered from Inventory → Photo requests
+ * ------------------------------------------------------------------ */
+
+export interface PhotoRequest {
+  id: string;
+  referenceNumber: string;
+  createdAt: string;
+  updatedAt: string;
+  inventoryItemId: string | null;
+  cardName: string;
+  setCode: string | null;
+  setName: string | null;
+  collectorNumber: string | null;
+  condition: string | null;
+  finish: string | null;
+  cardPath: string | null;
+  firstName: string;
+  email: string;
+  note: string | null;
+  status: "new" | "sent" | "closed";
+  photoPaths: string[];
+  staffMessage: string | null;
+  sentAt: string | null;
+  sendCount: number;
+  closedAt: string | null;
+  /** From the live listing (null if it was deleted). */
+  listing: {
+    imageUrl: string | null;
+    storageLocation: string | null;
+    quantity: number;
+    status: string;
+  } | null;
+}
