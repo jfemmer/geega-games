@@ -5475,3 +5475,46 @@
 .gg-review .gg-review-meta {
   margin-top: auto;
 }
+
+/* Guides: short-answer box, comparison table, multi-link CTA. */
+.gg-guide-summary {
+  margin: 1rem 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid var(--gg-purple);
+  background: #f5f0ff;
+  border-radius: 0 10px 10px 0;
+}
+.gg-guide-summary p {
+  margin: 0;
+}
+.gg-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0 1.25rem;
+  -webkit-overflow-scrolling: touch;
+}
+.gg-guide-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.gg-guide-table th,
+.gg-guide-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-guide-table thead th {
+  background: #faf9fd;
+  font-weight: 700;
+}
+.gg-guide-table tbody th {
+  font-weight: 600;
+}
+.gg-guide-cta-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}

@@ -14,7 +14,7 @@
 // Source: screenshots of the TCGplayer seller feedback page supplied by the
 // owner, 2026-09-26.
 
-export const TCGPLAYER_SELLER_URL = "https://www.tcgplayer.com/sellers/Geega-Games/2a2a200d";
+export { TCGPLAYER_SELLER_URL } from "./site.js";
 
 export interface SellerReview {
   /** As shown on TCGplayer, e.g. "v****1". */

@@ -3,8 +3,11 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "crons": [{ "path": "/api/indexnow", "schedule": "17 14 * * *" }],
   "redirects": [
-    { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true }
+    { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true },
+    { "source": "/cards", "destination": "/shop", "permanent": true },
+    { "source": "/cards/:id", "destination": "/shop", "permanent": true }
   ],
   "rewrites": [
     {
@@ -25,6 +28,7 @@
     { "source": "/shipping", "destination": "/shipping/index.html" },
     { "source": "/returns", "destination": "/returns/index.html" },
     { "source": "/contact", "destination": "/contact/index.html" },
+    { "source": "/about", "destination": "/about/index.html" },
     { "source": "/privacy", "destination": "/privacy/index.html" },
     { "source": "/terms", "destination": "/terms/index.html" },
     { "source": "/admin", "destination": "/admin.html" },

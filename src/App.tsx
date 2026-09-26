@@ -25,6 +25,7 @@ import {
   ShippingPage,
   ReturnsPage,
   ContactPage,
+  AboutPage,
   NotFoundPage,
 } from "./store/pages/StaticPages";
 import { PrivacyPage } from "./store/pages/PrivacyPage";
@@ -74,6 +75,7 @@ function Routes() {
   if (path === "/shipping") return <ShippingPage />;
   if (path === "/returns") return <ReturnsPage />;
   if (path === "/contact") return <ContactPage />;
+  if (path === "/about") return <AboutPage />;
   if (path === "/privacy") return <PrivacyPage />;
   if (path === "/terms") return <TermsPage />;
   if (path === "/account" || path.startsWith("/account/")) {

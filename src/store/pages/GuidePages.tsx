@@ -4,7 +4,7 @@ import { useSEO } from "../lib/useSEO";
 import { NotFoundPage } from "./StaticPages";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import { GUIDES, findGuide, guidePath, type GuideMeta, type GuideTopic } from "../../seo/guides";
-import { ST_LOUIS_PATH, sellFormPath } from "../../seo/sellAreas";
+import { ST_LOUIS_PATH, ST_LOUIS_SAFE_SPOTS, sellFormPath } from "../../seo/sellAreas";
 import { MAX_DRIVE_HOURS, ORGANIZATION_ID, absoluteUrl, breadcrumbJsonLd } from "../../seo/site";
 
 // Seller guides: /guides and /guides/:slug. These answer the questions people
@@ -18,6 +18,7 @@ import { MAX_DRIVE_HOURS, ORGANIZATION_ID, absoluteUrl, breadcrumbJsonLd } from 
 // grading costs) is dated in the text — re-check it when you bump `updated`.
 
 const TOPIC_HEADINGS: Record<GuideTopic, string> = {
+  st_louis: "Selling in St. Louis",
   mtg: "Magic: The Gathering",
   pokemon: "Pokémon",
   one_piece: "One Piece",
@@ -26,6 +27,29 @@ const TOPIC_HEADINGS: Record<GuideTopic, string> = {
 
 /** The end-of-article pitch, matched to who actually buys that category. */
 function GuideCta({ topic }: { topic: GuideTopic }) {
+  if (topic === "st_louis") {
+    return (
+      <aside className="gg-collect-cta">
+        <h2>Selling cards in St. Louis?</h2>
+        <p>
+          We buy Magic cards at meetups across the metro, Missouri or Illinois side. For Pokémon, One
+          Piece and video games, we&rsquo;ll connect you with a trusted buyer who pays very
+          competitively.
+        </p>
+        <div className="gg-guide-cta-links">
+          <Link to={ST_LOUIS_PATH} className="gg-btn">
+            Sell Magic cards in St. Louis
+          </Link>
+          <Link to="/sell-pokemon-cards" className="gg-btn gg-btn-ghost">
+            Sell Pokémon cards
+          </Link>
+          <Link to="/sell-one-piece-cards" className="gg-btn gg-btn-ghost">
+            Sell One Piece cards
+          </Link>
+        </div>
+      </aside>
+    );
+  }
   if (topic === "pokemon") {
     return (
       <aside className="gg-collect-cta">
@@ -986,7 +1010,172 @@ function OnePieceValueGuide() {
   );
 }
 
+function StLouisWhereToSellGuide() {
+  return (
+    <>
+      <p>
+        St. Louis has more ways to sell trading cards than most people realize — and they trade off
+        speed, price and effort in very different ways. Here&rsquo;s how each option works here, what
+        it costs, and how to pick, whether you have a few valuable Magic cards, a binder of Pokémon
+        or a box of One Piece.
+      </p>
+
+      <div className="gg-guide-summary">
+        <p>
+          <strong>Short answer:</strong> selling cards yourself online pays the most but takes the
+          most work. A local game store is fastest but pays the least in cash. A collection buyer who
+          meets you gives one offer for everything, with no sorting or shipping. For a few valuable
+          cards, Facebook groups can work — meet at a police safe exchange spot.
+        </p>
+      </div>
+
+      <h2>Your options at a glance</h2>
+      <div className="gg-table-wrap">
+        <table className="gg-guide-table">
+          <thead>
+            <tr>
+              <th scope="col">Option</th>
+              <th scope="col">Best for</th>
+              <th scope="col">Speed</th>
+              <th scope="col">Your effort</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Sell online yourself (TCGplayer, eBay)</th>
+              <td>Valuable singles, if you have time</td>
+              <td>Weeks, card by card</td>
+              <td>High: list, pack, ship, handle buyers</td>
+            </tr>
+            <tr>
+              <th scope="row">Local game store</th>
+              <td>Cards the store needs right now</td>
+              <td>Same day</td>
+              <td>Low, but you drive to them</td>
+            </tr>
+            <tr>
+              <th scope="row">Facebook Marketplace &amp; local groups</th>
+              <td>A few popular cards</td>
+              <td>Days</td>
+              <td>Medium: messages, no-shows, meetups</td>
+            </tr>
+            <tr>
+              <th scope="row">A buyer who meets you</th>
+              <td>Collections, mixed or unsorted lots</td>
+              <td>Days</td>
+              <td>Low: one offer on everything</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>1. Sell online yourself</h2>
+      <p>
+        Listing cards on TCGplayer or eBay usually gets the highest price per card, because you sell
+        straight to players. The catch is fees and time. As of 2026, TCGplayer&rsquo;s standard
+        sellers pay a 10.75% commission plus a 2.5% + $0.30 payment fee per order, and eBay charges
+        most trading card sellers a 13.25% final value fee — so plan on giving up roughly 13% or more,
+        plus shipping supplies. It&rsquo;s worth it for valuable singles; for bulk and mixed binders,
+        the listing work rarely pays off. Our{" "}
+        <Link to={guidePath("where-to-sell-magic-cards")}>where to sell Magic cards</Link> guide
+        breaks the fees down.
+      </p>
+
+      <h2>2. Local game stores</h2>
+      <p>
+        Many game stores around St. Louis buy singles and collections, for cash or store credit —
+        and store credit is usually worth more. Stores buy what they can resell quickly, so offers
+        vary a lot between stores and even week to week. Call ahead and ask whether they&rsquo;re
+        buying the game you have (Magic, Pokémon or One Piece), when their buyer is in, and whether
+        they take bulk. It&rsquo;s the fastest route when a store needs what you have.
+      </p>
+
+      <h2>3. Facebook Marketplace and local groups</h2>
+      <p>
+        St. Louis has active local buy, sell and trade groups for Magic and One Piece, and plenty of
+        Pokémon on Marketplace. You can do well on a few popular cards, but expect lowball offers and
+        no-shows, and be careful with payment and meetups:
+      </p>
+      <ul>
+        <li>
+          Meet in daylight somewhere busy. Police-designated safe exchange spots in the area include{" "}
+          {ST_LOUIS_SAFE_SPOTS.map((spot, i) => (
+            <span key={spot.sourceUrl}>
+              {i > 0 ? (i === ST_LOUIS_SAFE_SPOTS.length - 1 ? " and " : ", ") : ""}
+              <a href={spot.sourceUrl} target="_blank" rel="noopener noreferrer">
+                {spot.town}
+              </a>
+            </span>
+          ))}
+          .
+        </li>
+        <li>
+          Take cash or PayPal Goods &amp; Services. Never accept Friends &amp; Family from a
+          stranger, a &ldquo;test&rdquo; payment, or an overpayment you&rsquo;re asked to refund.
+        </li>
+        <li>Bring someone along, and check any valuable card&rsquo;s price right before you meet.</li>
+      </ul>
+
+      <h2>4. A buyer who meets you</h2>
+      <p>
+        If you have a whole collection — or you just don&rsquo;t want to sort, price and list
+        anything — a buyer who comes to you makes one offer on the lot. That&rsquo;s what we do for
+        Magic: The Gathering: we meet anywhere in St. Louis City and County, St. Charles and
+        Jefferson counties, Washington and Union, and the Metro East, even for a handful of good
+        cards. <Link to={ST_LOUIS_PATH}>Sell Magic cards in St. Louis</Link>.
+      </p>
+      <p>
+        For <Link to="/sell-pokemon-cards">Pokémon cards</Link>,{" "}
+        <Link to="/sell-one-piece-cards">One Piece cards</Link> and{" "}
+        <Link to="/sell-video-games">video games</Link>, we connect you with a trusted buyer we work
+        with, who pays very competitively and meets up around St. Louis or buys by mail.
+      </p>
+
+      <h2>By game</h2>
+      <ul>
+        <li>
+          <strong>Magic: The Gathering</strong> — older cards and Reserved List cards are where most
+          value hides; bulk commons sell by the thousand. See{" "}
+          <Link to={guidePath("how-much-is-my-mtg-collection-worth")}>
+            how much is my Magic collection worth
+          </Link>{" "}
+          and <Link to={guidePath("how-to-sell-bulk-magic-cards")}>how to sell bulk</Link>.
+        </li>
+        <li>
+          <strong>Pokémon</strong> — check for 1st Edition, shadowless and secret rares, and
+          don&rsquo;t pay to grade unless a card is clearly worth it. See{" "}
+          <Link to={guidePath("are-my-old-pokemon-cards-worth-anything")}>
+            are my old Pokémon cards worth anything
+          </Link>{" "}
+          and <Link to={guidePath("should-i-grade-pokemon-cards-before-selling")}>should I grade</Link>.
+        </li>
+        <li>
+          <strong>One Piece</strong> — parallels, manga rares and SP cards carry most of the value,
+          and reprints can drop prices fast, so a current offer matters. See{" "}
+          <Link to={guidePath("what-are-my-one-piece-cards-worth")}>
+            what are my One Piece cards worth
+          </Link>
+          .
+        </li>
+      </ul>
+
+      <h2>Before you sell, anywhere</h2>
+      <ol>
+        <li>Pull out anything that looks valuable and put it in a sleeve.</li>
+        <li>
+          Check recent <em>sold</em> prices — TCGplayer&rsquo;s market price or eBay&rsquo;s sold
+          listings — not asking prices.
+        </li>
+        <li>Price cards for their real condition, not Near Mint.</li>
+        <li>Keep sealed product sealed.</li>
+        <li>Take a few clear photos: they get you faster, firmer offers from any buyer.</li>
+      </ol>
+    </>
+  );
+}
+
 const GUIDE_BODIES: Record<string, () => ReactNode> = {
+  "where-to-sell-cards-in-st-louis": StLouisWhereToSellGuide,
   "how-much-is-my-mtg-collection-worth": CollectionWorthGuide,
   "inherited-magic-card-collection": InheritedCollectionGuide,
   "how-to-sell-bulk-magic-cards": BulkGuide,

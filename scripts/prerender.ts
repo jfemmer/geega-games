@@ -105,7 +105,19 @@ async function main(): Promise<void> {
       failures.push(`${route.path}: marked noIndex — remove it from src/seo/routes.ts or drop noIndex`);
       continue;
     }
-    await writePage(outputFile(route.path), fillTemplate(template, renderSeoHead(seo, { origin: siteUrl }), html));
+    // Search Console / Bing Webmaster Tools ownership codes, from Vercel env
+    // vars, on the homepage only (that's where both tools look).
+    const verification =
+      route.path === "/"
+        ? {
+            google: process.env.SEO_GOOGLE_SITE_VERIFICATION,
+            bing: process.env.SEO_BING_SITE_VERIFICATION,
+          }
+        : undefined;
+    await writePage(
+      outputFile(route.path),
+      fillTemplate(template, renderSeoHead(seo, { origin: siteUrl, verification }), html),
+    );
   }
 
   if (failures.length) {

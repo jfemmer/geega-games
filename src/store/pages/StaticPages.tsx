@@ -3,8 +3,22 @@ import { useSEO } from "../lib/useSEO";
 import SignupForm from "../../SignupForm";
 import { JoinSection } from "../components/AccountPerks";
 import DeckShowcase from "../components/DeckShowcase";
-import { AreaLinks, SellerReviewsSection } from "../components/SellLandingSections";
-import { DEFAULT_SEO, MAX_DRIVE_HOURS, WEBSITE_JSON_LD } from "../../seo/site";
+import {
+  AreaLinks,
+  PartnerCategoriesSection,
+  SellerReviewsSection,
+} from "../components/SellLandingSections";
+import {
+  DEFAULT_SEO,
+  DISAMBIGUATING_DESCRIPTION,
+  LEGAL_NAME,
+  MAX_DRIVE_HOURS,
+  ORGANIZATION_ID,
+  WEBSITE_JSON_LD,
+  absoluteUrl,
+  breadcrumbJsonLd,
+} from "../../seo/site";
+import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { SHIPPING, formatCents } from "../lib/money";
 
@@ -58,6 +72,17 @@ export function HomePage() {
           Sell Your Cards
         </Link>
         <AreaLinks />
+      </section>
+
+      <PartnerCategoriesSection />
+
+      <section className="gg-collect-section gg-home-guides">
+        <h2>Not sure what your cards are worth?</h2>
+        <p className="gg-collect-lead">
+          Free, plain-English <Link to="/guides">seller guides</Link> for Magic, Pokémon, One Piece
+          and video games — plus{" "}
+          <Link to="/guides/where-to-sell-cards-in-st-louis">where to sell cards in St. Louis</Link>.
+        </p>
       </section>
 
       <section style={{ marginTop: "2rem" }}>
@@ -264,6 +289,111 @@ export function ReturnsPage() {
         Please don&rsquo;t send anything back before you hear from us — we&rsquo;ll send the label
         and the return address.
       </p>
+    </div>
+  );
+}
+
+// /about — who runs Geega Games, what it does, and (because Google's AI
+// Overview has confused the two) that it has nothing to do with the
+// streamer "GEEGA". The same facts are in the site-wide JSON-LD
+// (legalName, disambiguatingDescription) in src/seo/site.ts. Only verified
+// facts: the legal entity is from the Terms of Service; how the business
+// buys and sells is from the sell pages and the owner (2026-09-26: meetups,
+// mail, and a booth or table at events).
+const ABOUT_JSON_LD = [
+  breadcrumbJsonLd([{ name: "About", path: "/about" }]),
+  {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    name: "About Geega Games",
+    url: absoluteUrl("/about"),
+    mainEntity: { "@id": ORGANIZATION_ID },
+    description: DISAMBIGUATING_DESCRIPTION,
+  },
+];
+
+export function AboutPage() {
+  useSEO({
+    title: "About Geega Games — St. Louis Magic: The Gathering Shop & Card Buyer",
+    description:
+      "Geega Games is an independently owned St. Louis card business: hand-graded Magic singles online and at local events, and a buyer of Magic collections by mail or in person. Not affiliated with the streamer GEEGA.",
+    path: "/about",
+    jsonLd: ABOUT_JSON_LD,
+  });
+
+  return (
+    <div className="gg-page">
+      <div className="gg-prose">
+        <h1>About Geega Games</h1>
+        <p>
+          Geega Games is a small, independently owned trading card business based in St. Louis,
+          Missouri, run by {LEGAL_NAME}, a Missouri limited liability company. We sell Magic: The
+          Gathering singles and buy Magic cards and whole collections.
+        </p>
+
+        <h2>What we do</h2>
+        <ul>
+          <li>
+            <strong>Sell Magic singles.</strong> Every card is graded by hand before it&rsquo;s listed
+            (see our <Link to="/condition-guide">condition guide</Link>), shipped from St. Louis — and
+            you&rsquo;ll also find us with a booth or table at local events.{" "}
+            <Link to="/shop">Shop singles</Link>
+          </li>
+          <li>
+            <strong>Buy Magic cards and collections.</strong> We meet up anywhere around St. Louis,
+            drive up to about {MAX_DRIVE_HOURS} hours for collections, and buy by mail from anywhere
+            in the US. <Link to="/sell-my-collection">Sell your cards</Link> ·{" "}
+            <Link to="/sell-magic-cards/st-louis">Selling in St. Louis</Link>
+          </li>
+          <li>
+            <strong>Help with everything else.</strong> For Pokémon, One Piece and video games, we
+            connect sellers with a trusted buyer we work with, who pays very competitively:{" "}
+            {REFERRAL_PAGES.map((p, i) => (
+              <span key={p.path}>
+                {i > 0 ? " · " : ""}
+                <Link to={p.path}>Sell {p.noun}</Link>
+              </span>
+            ))}
+          </li>
+        </ul>
+
+        <h2>How we work</h2>
+        <ul>
+          <li>
+            Honest grading, and a <Link to="/returns">condition promise</Link>: if a card isn&rsquo;t
+            what we listed, we pay the return shipping.
+          </li>
+          <li>
+            Cards are sleeved, top-loaded and packed tight — see <Link to="/shipping">shipping</Link>.
+          </li>
+          <li>
+            Sellers get one clear, no-obligation offer, paid by PayPal Goods &amp; Services or store
+            credit — never Friends &amp; Family.
+          </li>
+          <li>
+            A real person answers every email within {REPLY_WITHIN_HOURS} hours:{" "}
+            <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+          </li>
+        </ul>
+      </div>
+
+      <SellerReviewsSection />
+
+      <div className="gg-prose">
+        <h2>Not affiliated with any streamer or content creator</h2>
+        <p>
+          Geega Games is <strong>not affiliated with, operated by, sponsored by or endorsed by any
+          streamer, YouTuber, content creator or influencer</strong> — including anyone using the name
+          &ldquo;Geega&rdquo; or &ldquo;GEEGA.&rdquo; The similar name is a coincidence.
+        </p>
+
+        <h2>Trademarks</h2>
+        <p>
+          Magic: The Gathering is a trademark of Wizards of the Coast LLC. Geega Games is not
+          affiliated with or endorsed by Wizards of the Coast. Card names and images are shown for
+          identification; card data comes in part from Scryfall.
+        </p>
+      </div>
     </div>
   );
 }

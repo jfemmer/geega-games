@@ -105,6 +105,11 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     },
     faq: [
       {
+        question: "Where can I sell Pokémon cards in St. Louis?",
+        answer:
+          "You can sell to a local game store, list cards yourself on TCGplayer or eBay, or use Facebook Marketplace. For a binder or a whole collection, the easiest route is to tell us what you have here: we'll connect you with our buying partner, who pays very competitively and meets up around St. Louis. Our guide to where to sell cards in St. Louis compares every option.",
+      },
+      {
         question: "What about Japanese Pokémon cards?",
         answer:
           "Include them, and mention in the form which cards are Japanese — they're priced separately from English cards. Our buying partner will let you know what they can make an offer on.",
@@ -177,6 +182,11 @@ export const REFERRAL_PAGES: ReferralPage[] = [
       ],
     },
     faq: [
+      {
+        question: "Where can I sell One Piece cards in St. Louis?",
+        answer:
+          "Some local game stores buy One Piece cards, St. Louis has local buy/sell/trade groups, and you can list cards yourself online. For alt arts, manga rares or a whole collection, tell us what you have here and we'll connect you with our buying partner, who pays very competitively and meets up around St. Louis or buys by mail.",
+      },
       {
         question: "Do you buy starter decks and bulk One Piece cards?",
         answer:
@@ -251,6 +261,11 @@ export const REFERRAL_PAGES: ReferralPage[] = [
       ],
     },
     faq: [
+      {
+        question: "Where can I sell video games in St. Louis?",
+        answer:
+          "Chain stores will take games for trade-in, but they price by barcode, so retro and complete-in-box games usually get low offers. For a collection, tell us what you have here and we'll connect you with our buying partner, who prices by what collectors pay, pays very competitively and meets up around St. Louis.",
+      },
       {
         question: "Do you buy consoles or games that don't work?",
         answer:

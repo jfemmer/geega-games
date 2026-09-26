@@ -15,6 +15,7 @@ import {
   type SafeExchangeSpot,
 } from "../../seo/sellAreas";
 import { guidePath, guidesFor, type GuideTopic } from "../../seo/guides";
+import { REFERRAL_PAGES } from "../../seo/referralPages";
 import {
   SELLER_REVIEWS,
   SELLER_REVIEW_SUMMARY,
@@ -495,8 +496,44 @@ export function TravelAreasSection({ heading, exclude }: { heading?: string; exc
   );
 }
 
-export function SellerGuidesSection({ topic = "mtg" }: { topic?: GuideTopic }) {
-  const guides = guidesFor(topic);
+/**
+ * Cross-links from the Magic sell pages to the partner-referral pages
+ * (Pokémon, One Piece, video games). The partner meets up around St. Louis
+ * and buys by mail from anywhere in the US, so pages outside St. Louis say
+ * "ship" rather than implying the partner travels there.
+ */
+export function PartnerCategoriesSection({ local = true }: { local?: boolean }) {
+  return (
+    <section className="gg-collect-section gg-partner-callout">
+      <h2>Selling Pokémon, One Piece or video games too?</h2>
+      <p className="gg-collect-lead">
+        Plenty of Magic collections come with other things. We buy the Magic cards ourselves, and
+        for the rest we connect you with a trusted buyer we work with — one who{" "}
+        <strong>pays very competitively</strong>.{" "}
+        {local
+          ? "Same easy process: tell us what you have, then meet up around St. Louis or ship."
+          : "Same easy process: tell us what you have and ship it from anywhere in the US."}
+      </p>
+      <ul className="gg-area-links">
+        {REFERRAL_PAGES.map((p) => (
+          <li key={p.path}>
+            <Link to={p.path}>Sell {p.noun}</Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function SellerGuidesSection({
+  topic = "mtg",
+  alsoTopics = [],
+}: {
+  topic?: GuideTopic;
+  /** Extra topics to list after the main one, e.g. ["st_louis"] on local pages. */
+  alsoTopics?: GuideTopic[];
+}) {
+  const guides = [topic, ...alsoTopics].flatMap((t) => guidesFor(t));
   if (guides.length === 0) return null;
   return (
     <section className="gg-collect-section">

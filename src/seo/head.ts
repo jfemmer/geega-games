@@ -47,17 +47,34 @@ export function jsonForScript(value: unknown): string {
  * runs — Google's guidance is to leave the canonical out of the raw HTML
  * rather than ship one that JavaScript later changes.
  */
+/** Site-ownership codes for Google Search Console / Bing Webmaster Tools (homepage only). */
+export interface SiteVerification {
+  google?: string;
+  bing?: string;
+}
+
+/** Verification codes are short tokens; anything else is ignored rather than injected. */
+function safeToken(value: string | undefined): string | null {
+  const v = value?.trim();
+  return v && /^[A-Za-z0-9_-]{8,100}$/.test(v) ? v : null;
+}
+
 export function renderSeoHead(
   seo: PageSEO | null,
-  opts: { origin?: string; noIndex?: boolean } = {},
+  opts: { origin?: string; noIndex?: boolean; verification?: SiteVerification } = {},
 ): string {
   const title = seo?.title ?? DEFAULT_SEO.title;
   const description = seo?.description ?? DEFAULT_SEO.description;
   const url = seo ? absoluteUrl(seo.path, opts.origin) : null;
   const noIndex = Boolean(seo?.noIndex || opts.noIndex);
 
+  const google = safeToken(opts.verification?.google);
+  const bing = safeToken(opts.verification?.bing);
+
   const tags = [
     `<title>${escapeHtml(title)}</title>`,
+    google ? `<meta name="google-site-verification" content="${google}" />` : "",
+    bing ? `<meta name="msvalidate.01" content="${bing}" />` : "",
     `<meta name="description" content="${escapeHtml(description)}" />`,
     `<meta name="robots" content="${noIndex ? "noindex, follow" : "index, follow"}" />`,
     url ? `<link rel="canonical" href="${escapeHtml(url)}" />` : "",

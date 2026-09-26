@@ -7,6 +7,8 @@ import {
   MeetupSafetySection,
   StickySellCta,
   NoSurprisesSection,
+  PartnerCategoriesSection,
+  SellerReviewsSection,
   TrustSection,
   MeetupHowItWorks,
   SellCtaSection,
@@ -146,7 +148,11 @@ function SellArea({ area }: { area: SellArea }) {
 
       <TrustSection />
 
+      <SellerReviewsSection />
+
       <NoSurprisesSection />
+
+      <PartnerCategoriesSection local={false} />
 
       <section className="gg-collect-section">
         <h2>Other areas we travel to</h2>

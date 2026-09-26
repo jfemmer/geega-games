@@ -167,7 +167,7 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
 
       <SellerReviewsSection />
 
-      <SellerGuidesSection topic={page.category} />
+      <SellerGuidesSection topic={page.category} alsoTopics={["st_louis"]} />
 
       <FaqSection items={faq} />
 

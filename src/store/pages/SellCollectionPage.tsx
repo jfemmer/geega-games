@@ -5,6 +5,7 @@ import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import {
   CreditBonusBadge,
   FaqSection,
+  PartnerCategoriesSection,
   PricesMoveSection,
   SellCtaSection,
   SellerGuidesSection,
@@ -17,7 +18,6 @@ import {
 } from "../components/SellLandingSections";
 import QuickPhotoQuote from "../components/QuickPhotoQuote";
 import { ST_LOUIS_PATH, sellFormPath } from "../../seo/sellAreas";
-import { REFERRAL_PAGES } from "../../seo/referralPages";
 import {
   HUB_CITY,
   MAX_DRIVE_HOURS,
@@ -127,7 +127,7 @@ const JSON_LD = [
 
 export default function SellCollectionPage() {
   useSEO({
-    title: "Sell Magic Cards & MTG Collections | Geega Games",
+    title: "Sell Magic Cards & MTG Collections — We Buy by Mail or In Person | Geega Games",
     description: `Sell your Magic: The Gathering cards — one card or a whole collection. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (about ${MAX_DRIVE_HOURS} hours). Unsorted is fine.`,
     path: "/sell-my-collection",
     jsonLd: JSON_LD,
@@ -192,22 +192,7 @@ export default function SellCollectionPage() {
         </div>
       </section>
 
-      <section className="gg-collect-section gg-partner-callout">
-        <h2>Selling Pokémon, One Piece or video games too?</h2>
-        <p className="gg-collect-lead">
-          Plenty of Magic collections come with other things. We buy the Magic cards ourselves, and
-          for the rest we connect you with a trusted buyer we work with — one who{" "}
-          <strong>pays very competitively</strong>. Same easy process: tell us what you have, meet up
-          around {HUB_CITY} or ship.
-        </p>
-        <ul className="gg-area-links">
-          {REFERRAL_PAGES.map((p) => (
-            <li key={p.path}>
-              <Link to={p.path}>Sell {p.noun}</Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <PartnerCategoriesSection />
 
       <section className="gg-collect-section">
         <h2>Built for collections that haven&rsquo;t been touched in years</h2>

@@ -10,6 +10,8 @@ import {
   StickySellCta,
   TravelAreasSection,
   NoSurprisesSection,
+  PartnerCategoriesSection,
+  SellerReviewsSection,
   TrustSection,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
@@ -34,6 +36,11 @@ import { ORGANIZATION_ID, breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 // stuffed into the title or heading.
 
 const FAQ_ITEMS: { question: string; answer: string }[] = [
+  {
+    question: "Where can I sell Magic cards in St. Louis?",
+    answer:
+      "Local game stores buy some cards, you can list them yourself on TCGplayer or eBay (roughly 13% or more in fees), or use local buy/sell/trade groups. Or sell to us: we're based in St. Louis and meet up anywhere in the metro — even for a few good cards — with one offer on everything, sorted or not. Our guide to where to sell cards in St. Louis compares every option.",
+  },
   {
     question: "Can I sell just a few cards, or does it have to be a whole collection?",
     answer:
@@ -198,11 +205,15 @@ export default function SellStLouisPage() {
 
       <TrustSection />
 
+      <SellerReviewsSection />
+
       <NoSurprisesSection />
+
+      <PartnerCategoriesSection />
 
       <TravelAreasSection heading="Outside St. Louis? We travel about 6 hours for collections" exclude="st-louis" />
 
-      <SellerGuidesSection />
+      <SellerGuidesSection alsoTopics={["st_louis"]} />
 
       <FaqSection items={FAQ_ITEMS} />
 

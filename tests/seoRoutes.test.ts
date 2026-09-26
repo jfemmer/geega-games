@@ -136,3 +136,12 @@ describe("renderSeoHead", () => {
     expect(JSON.parse(json)).toEqual({ text: "</script><script>alert(1)</script>" });
   });
 });
+
+describe("legacy site redirects", () => {
+  it("sends the old /cards URLs to the shop", () => {
+    const redirects = vercel.redirects ?? [];
+    for (const [path, dest] of [["/cards", "/shop"], ["/cards/:id", "/shop"]]) {
+      expect(redirects.find((r) => r.source === path)?.destination, path).toBe(dest);
+    }
+  });
+});

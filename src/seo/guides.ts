@@ -5,8 +5,11 @@
 // Bump `updated` whenever a guide's content materially changes — it feeds
 // the sitemap's <lastmod> and the Article structured data.
 
-/** Which sell page a guide leads to: Magic (we buy) or a partner-referral category. */
-export type GuideTopic = "mtg" | "pokemon" | "one_piece" | "video_games";
+/**
+ * Which sell page a guide leads to: Magic (we buy), a partner-referral
+ * category, or "st_louis" for local guides that cover several games.
+ */
+export type GuideTopic = "mtg" | "pokemon" | "one_piece" | "video_games" | "st_louis";
 
 export interface GuideMeta {
   slug: string;
@@ -24,6 +27,18 @@ export interface GuideMeta {
 }
 
 export const GUIDES: GuideMeta[] = [
+  {
+    slug: "where-to-sell-cards-in-st-louis",
+    topic: "st_louis",
+    heading: "Where to sell trading cards in St. Louis",
+    title: "Where to Sell Cards in St. Louis: Magic, Pokémon & One Piece | Geega Games",
+    description:
+      "Every way to sell Magic, Pokémon and One Piece cards in St. Louis — local game stores, Facebook groups, selling online yourself, or a buyer who meets you — with 2026 fees, safe meetup spots and what each option pays.",
+    summary:
+      "Local stores, Facebook groups, selling online yourself, or a buyer who meets you: how each option works in St. Louis, what it costs, and how to meet safely.",
+    published: "2026-09-26",
+    updated: "2026-09-26",
+  },
   {
     slug: "how-much-is-my-mtg-collection-worth",
     topic: "mtg",

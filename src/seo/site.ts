@@ -59,21 +59,48 @@ export function serviceAreaServed(): object[] {
 /** Referenced by every page's structured data as the business entity. */
 export const ORGANIZATION_ID = `${PRODUCTION_ORIGIN}/#organization`;
 
+/** The business's legal entity, as stated in the Terms of Service. */
+export const LEGAL_NAME = "Geega Games LLC";
+
+/**
+ * Tells search engines (and the AI answers built on them) that Geega Games is
+ * not the similarly-named streamer "GEEGA" — Google's AI Overview has
+ * summarized the site as "operated by the content creator GEEGA" before.
+ * schema.org's disambiguatingDescription exists for exactly this. Mirrored in
+ * visible text on /about.
+ */
+export const DISAMBIGUATING_DESCRIPTION =
+  'Geega Games is an independently owned trading card business in St. Louis, Missouri (Geega Games LLC). It is not affiliated with, operated by or endorsed by any streamer, content creator or influencer, including anyone using the name "Geega" or "GEEGA".';
+
+/**
+ * Other places the business verifiably exists, for entity matching. Only real,
+ * public profiles the business controls — add the Google Business Profile
+ * (Maps) link and any social pages here once confirmed.
+ */
+export const TCGPLAYER_SELLER_URL = "https://www.tcgplayer.com/sellers/Geega-Games/2a2a200d";
+export const SAME_AS: string[] = [TCGPLAYER_SELLER_URL];
+
+export const PUBLIC_EMAIL = "support@geega-games.com";
+
 /**
  * Site-wide business entity, emitted on every prerendered page and the SPA
- * shell. Only verified business facts: add sameAs (social profiles),
- * telephone or a contactPoint here once they're real and public.
+ * shell. Only verified business facts: add telephone once it's real and
+ * public.
  */
 export const SITE_JSON_LD: object = {
   "@context": "https://schema.org",
   "@type": "OnlineStore",
   "@id": ORGANIZATION_ID,
   name: "Geega Games",
+  legalName: LEGAL_NAME,
   description:
-    "Magic: The Gathering singles shop and card buyer based in St. Louis, Missouri. Buys MTG cards and collections in person within about a 6-hour drive of St. Louis and by mail nationwide.",
+    "Magic: The Gathering singles shop and card buyer based in St. Louis, Missouri. Sells singles online and at local events, and buys MTG cards and collections at meetups around St. Louis, within about a 6-hour drive, and by mail nationwide.",
+  disambiguatingDescription: DISAMBIGUATING_DESCRIPTION,
   url: `${PRODUCTION_ORIGIN}/`,
   logo: `${PRODUCTION_ORIGIN}/logo.png`,
   image: `${PRODUCTION_ORIGIN}/og-image.png`,
+  email: PUBLIC_EMAIL,
+  sameAs: SAME_AS,
   areaServed: serviceAreaServed(),
   knowsAbout: [
     "Magic: The Gathering",
