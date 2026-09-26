@@ -163,29 +163,46 @@ export function PartnerTrustSection({ noun }: { noun: string }) {
  * With no reviews loaded it still links to the live page, so visitors can
  * check our record there — never placeholder or invented testimonials.
  */
+/** Reviews shown before "Show all" — enough to read at a glance on a phone. */
+const REVIEWS_PREVIEW_COUNT = 6;
+
 export function SellerReviewsSection() {
+  const [showAll, setShowAll] = useState(false);
   const { positivePercent, sales } = SELLER_REVIEW_SUMMARY;
+  const withText = SELLER_REVIEWS.filter((r): r is typeof r & { text: string } => Boolean(r.text));
+  const shown = showAll ? withText : withText.slice(0, REVIEWS_PREVIEW_COUNT);
+  const total = SELLER_REVIEWS.length;
+  const average = total ? SELLER_REVIEWS.reduce((sum, r) => sum + r.rating, 0) / total : 0;
+  const averageLabel = Number.isInteger(average) ? String(average) : average.toFixed(1);
   const stats = [
     positivePercent ? `${positivePercent} positive feedback` : null,
     sales ? `${sales} sales` : null,
   ].filter(Boolean);
+
   return (
     <section className="gg-collect-section" aria-labelledby="gg-reviews-heading">
-      <h2 id="gg-reviews-heading">
-        {SELLER_REVIEWS.length > 0 ? "What our customers say" : "Check our track record"}
-      </h2>
+      <h2 id="gg-reviews-heading">{total > 0 ? "What our customers say" : "Check our track record"}</h2>
+      {total > 0 && (
+        <p className="gg-reviews-summary">
+          <Stars rating={Math.round(average)} />
+          <span>
+            <strong>{averageLabel} out of 5</strong> from {total} TCGplayer reviews
+          </span>
+        </p>
+      )}
       <p className="gg-collect-lead">
         Geega Games also sells on TCGplayer
         {stats.length > 0 ? <> — {stats.join(" across ")}</> : null}, where buyers leave feedback on
         their orders.{" "}
-        {SELLER_REVIEWS.length > 0
-          ? "Here are the most recent, and you can check the full record yourself."
+        {total > 0
+          ? "These are copied word for word, and you can check the full record yourself."
           : "You can check our full record there yourself."}
       </p>
-      {SELLER_REVIEWS.length > 0 && (
+      {shown.length > 0 && (
         <ul className="gg-reviews">
-          {SELLER_REVIEWS.map((review) => (
-            <li className="gg-review" key={`${review.buyer}-${review.date}-${review.text.slice(0, 20)}`}>
+          {shown.map((review) => (
+            <li className="gg-review" key={`${review.buyer}-${review.date}`}>
+              <Stars rating={review.rating} />
               <blockquote>
                 <p>&ldquo;{review.text}&rdquo;</p>
               </blockquote>
@@ -197,7 +214,12 @@ export function SellerReviewsSection() {
           ))}
         </ul>
       )}
-      <p className="gg-area-note">
+      <p className="gg-area-note gg-reviews-actions">
+        {withText.length > REVIEWS_PREVIEW_COUNT && (
+          <button type="button" className="gg-reviews-more" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? "Show fewer reviews" : `Show all ${withText.length} reviews`}
+          </button>
+        )}
         <a href={TCGPLAYER_SELLER_URL} target="_blank" rel="noopener noreferrer">
           See all our buyer feedback on TCGplayer
         </a>
@@ -206,10 +228,21 @@ export function SellerReviewsSection() {
   );
 }
 
+function Stars({ rating }: { rating: number }) {
+  const clamped = Math.max(0, Math.min(5, Math.round(rating)));
+  return (
+    <span className="gg-stars" role="img" aria-label={`${clamped} out of 5 stars`}>
+      {"★★★★★".slice(0, clamped)}
+      <span className="gg-stars__off">{"★★★★★".slice(clamped)}</span>
+    </span>
+  );
+}
+
 function formatReviewDate(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
+    day: "numeric",
     timeZone: "UTC",
   });
 }

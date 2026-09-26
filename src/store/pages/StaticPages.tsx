@@ -3,7 +3,7 @@ import { useSEO } from "../lib/useSEO";
 import SignupForm from "../../SignupForm";
 import { JoinSection } from "../components/AccountPerks";
 import DeckShowcase from "../components/DeckShowcase";
-import { AreaLinks } from "../components/SellLandingSections";
+import { AreaLinks, SellerReviewsSection } from "../components/SellLandingSections";
 import { DEFAULT_SEO, MAX_DRIVE_HOURS, WEBSITE_JSON_LD } from "../../seo/site";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { SHIPPING, formatCents } from "../lib/money";
@@ -41,6 +41,8 @@ export function HomePage() {
       </section>
 
       <DeckShowcase />
+
+      <SellerReviewsSection />
 
       <JoinSection />
 
