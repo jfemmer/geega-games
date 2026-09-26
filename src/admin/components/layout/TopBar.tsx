@@ -100,6 +100,13 @@ export function TopBar({
     if (notifOpen) void loadNotifications(true);
   }, [notifOpen, loadNotifications]);
 
+  // A push just arrived while the app is open: refresh the bell right away.
+  useEffect(() => {
+    const onPush = () => void loadNotifications(true);
+    window.addEventListener("gg-admin-push", onPush);
+    return () => window.removeEventListener("gg-admin-push", onPush);
+  }, [loadNotifications]);
+
   async function applyNotificationAction(
     action: "mark_read" | "dismiss" | "mark_all_read",
     key?: string,

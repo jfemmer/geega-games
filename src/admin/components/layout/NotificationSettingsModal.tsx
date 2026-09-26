@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useToast } from "../../hooks/useToast";
 import { usePushSettings } from "../../hooks/usePushSettings";
 import { Modal } from "../ui/Modal";
@@ -5,12 +6,69 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { STAFF_PUSH_KINDS, type StaffPushKind } from "../../utils/pushKinds";
 import { isIosDevice } from "../../services/push";
+import { playNotificationSound, setSoundsEnabled, soundsEnabled, unlockSounds } from "../../services/sounds";
 
 // "Notifications on this device": turn admin push notifications on or off,
 // pick which events buzz this device, send a test, and install the app.
 // Every state a phone can be in gets a plain-English next step — the most
 // common one being an iPhone in Safari, which has to add Geega Admin to the
 // home screen before iOS allows notifications at all.
+
+const SOUND_PREVIEWS = [
+  { kind: "order", label: "New order" },
+  { kind: "buying_lead", label: "New buying lead" },
+  { kind: "partner_lead", label: "New partner lead" },
+  { kind: "signup", label: "New sign-up" },
+  { kind: "default", label: "Everything else" },
+] as const;
+
+/** Per-type sounds, played by the open app (see services/sounds.ts for why). */
+function SoundSettings() {
+  const [on, setOn] = useState(soundsEnabled);
+  return (
+    <section className="gg-pushsettings__sounds">
+      <h3>Sounds</h3>
+      <label className="gg-pushsettings__kind">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => {
+            setSoundsEnabled(e.target.checked);
+            setOn(e.target.checked);
+            if (e.target.checked) unlockSounds();
+          }}
+        />
+        <span>
+          <strong>A different sound for each type</strong>
+          <span className="gg-card-meta">Plays while Geega Admin is open on this device.</span>
+        </span>
+      </label>
+      <ul className="gg-pushsettings__soundlist">
+        {SOUND_PREVIEWS.map((s) => (
+          <li key={s.kind}>
+            <span>{s.label}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Play the ${s.label.toLowerCase()} sound`}
+              onClick={() => {
+                unlockSounds();
+                void playNotificationSound(s.kind);
+              }}
+            >
+              Play
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <p className="gg-card-meta">
+        When Geega Admin is closed, notifications use your phone&rsquo;s standard sound — phones
+        don&rsquo;t let web apps pick a sound per notification. On Android you can choose one sound
+        for Geega Admin in Settings → Notifications.
+      </p>
+    </section>
+  );
+}
 
 export function NotificationSettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
@@ -144,6 +202,7 @@ export function NotificationSettingsModal({ open, onClose }: { open: boolean; on
             Turn off on this device
           </Button>
         </div>
+        <SoundSettings />
       </>
     );
   }

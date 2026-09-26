@@ -10,6 +10,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import { captureClaimFromUrl, flushClaims, hasPendingClaims } from "./guestClaims";
+import { reportNewAccount } from "./newAccountPing";
 
 // Customer authentication via Supabase Auth on the Geega_Games project.
 // Signup passes first_name/last_name in options.data so the existing
@@ -94,6 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void flushClaims(session.access_token).then((linked) => {
       if (linked > 0) window.dispatchEvent(new CustomEvent("gg:claims-linked", { detail: { linked } }));
     });
+    // Only when the signed-in user changes, not on every token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionUserId]);
+
+  // A brand-new account's first session: let staff know someone signed up.
+  useEffect(() => {
+    if (session?.user && session.access_token) reportNewAccount(session.user, session.access_token);
     // Only when the signed-in user changes, not on every token refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId]);

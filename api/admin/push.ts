@@ -179,6 +179,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: "This is how Geega Admin will let you know about new orders and leads.",
             url: "/admin_dashboard",
             tag: "test",
+            kind: "test",
           }),
         );
         if (outcome === "gone") {

@@ -229,6 +229,18 @@ app on Android/desktop) and sends push notifications to staff devices.
   response, new partner lead, kiosk pickup request. It pushes each event once
   (`staff_push_log`), only to current staff, and drops expired devices. It
   never throws.
+- **Sign-ups:** the storefront reports a brand-new account's first signed-in
+  session (after email confirmation) to `/api/account/new-account`
+  (`src/store/lib/newAccountPing.ts`). The server verifies the session, that
+  the account is under 48 hours old and not staff, and pushes once per user.
+- **Sounds:** web push can't choose a notification sound on any platform. So
+  when a push arrives and Geega Admin is open and visible, the service worker
+  asks the app to play that type's own sound (`src/admin/services/sounds.ts`,
+  synthesized with Web Audio: order, buying lead, partner lead and sign-up each
+  have one; everything else shares a chime) and shows the notification
+  silently. If the app can't play (not tapped since it opened, or sounds
+  turned off), the notification uses the device's normal sound. When the app
+  is closed, phones play their standard notification sound.
 - **Config:** `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (optional
   `VAPID_SUBJECT`) in Vercel. Without them the panel says push isn't set up
   and nothing else changes. Don't rotate the pair once devices have subscribed.

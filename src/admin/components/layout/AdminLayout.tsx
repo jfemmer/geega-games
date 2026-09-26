@@ -9,6 +9,7 @@ import { referralLeadsRepository } from "../../repositories/referralLeads.supaba
 import { useToast } from "../../hooks/useToast";
 import { supabase } from "../../../supabase";
 import { disablePushForSignOut, syncPushOnOpen } from "../../services/push";
+import { handlePushMessage, installSoundUnlock } from "../../services/sounds";
 import { NotificationSettingsModal } from "./NotificationSettingsModal";
 import { PushPromptBanner } from "./PushPromptBanner";
 
@@ -34,6 +35,20 @@ export function AdminLayout({
   // subscription if notifications were on. Never prompts.
   useEffect(() => {
     void syncPushOnOpen();
+  }, []);
+
+  // A push arrived while this window is open and visible: the service worker
+  // asks us to play that event's own sound (and stays silent itself if we
+  // did — see public/admin-sw.js). Audio needs one tap first, so prime it.
+  useEffect(() => {
+    const cleanupUnlock = installSoundUnlock();
+    if (!("serviceWorker" in navigator)) return cleanupUnlock;
+    navigator.serviceWorker.addEventListener("message", handlePushMessage);
+    navigator.serviceWorker.startMessages();
+    return () => {
+      cleanupUnlock();
+      navigator.serviceWorker.removeEventListener("message", handlePushMessage);
+    };
   }, []);
 
   useEffect(() => {

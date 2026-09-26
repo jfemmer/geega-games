@@ -138,7 +138,7 @@ describe("/api/admin/push", () => {
     expect(state.inserted).toMatchObject({
       user_id: "staff-1",
       endpoint: ENDPOINT,
-      kinds: ["order", "buying_lead", "offer_response", "partner_lead", "pickup"],
+      kinds: ["order", "buying_lead", "partner_lead", "signup", "offer_response", "pickup"],
     });
   });
 

@@ -162,6 +162,7 @@ describe("notifyStaff", () => {
       body: EVENT.body,
       url: EVENT.url,
       tag: EVENT.tag,
+      kind: "order", // lets an open admin app play the order sound
     });
     expect(state.touched).toEqual([["s1", "s2"]]);
   });

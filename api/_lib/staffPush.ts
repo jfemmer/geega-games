@@ -69,12 +69,16 @@ function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-export function pushPayload(event: Pick<StaffPushEvent, "title" | "body" | "url" | "tag">): string {
+/** `kind` lets an open admin app play that event's own sound (src/admin/services/sounds.ts). */
+export function pushPayload(
+  event: Pick<StaffPushEvent, "title" | "body" | "url" | "tag"> & { kind?: StaffPushKind | "test" },
+): string {
   return JSON.stringify({
     title: clip(event.title, 120),
     body: clip(event.body, 240),
     url: event.url,
     tag: event.tag,
+    kind: event.kind,
     at: new Date().toISOString(),
   });
 }

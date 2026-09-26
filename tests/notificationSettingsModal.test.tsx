@@ -27,7 +27,7 @@ vi.mock("../src/admin/services/push", () => ({
   deviceState: async () => push.device,
   enablePush: async (key: string) => {
     push.enable(key);
-    return { subscribed: true, kinds: ["order", "buying_lead", "offer_response", "partner_lead", "pickup"] };
+    return { subscribed: true, kinds: ["order", "buying_lead", "partner_lead", "signup", "offer_response", "pickup"] };
   },
   disablePush: async () => push.disable(),
   updatePushKinds: async (kinds: string[]) => {
@@ -92,6 +92,15 @@ describe("NotificationSettingsModal", () => {
     // Both the confirmation toast and the panel say so.
     expect(await screen.findAllByText(/notifications are on for this device/i)).toHaveLength(2);
     expect(screen.getByRole("checkbox", { name: /new online orders/i })).toBeChecked();
+  });
+
+  it("offers a preview of each type's sound once notifications are on", async () => {
+    push.device = { subscribed: true, kinds: ["order"] };
+    renderModal();
+    for (const label of ["new order", "new buying lead", "new partner lead", "new sign-up"]) {
+      expect(await screen.findByRole("button", { name: `Play the ${label} sound` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("checkbox", { name: /a different sound for each type/i })).toBeChecked();
   });
 
   it("lets a device opt out of one kind of event, and send a test", async () => {
