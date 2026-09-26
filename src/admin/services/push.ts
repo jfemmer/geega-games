@@ -1,5 +1,19 @@
 import { adminFetch } from "../repositories/apiClient";
 import type { StaffPushKind } from "../utils/pushKinds";
+import {
+  cachedNativePermission,
+  isNativeApp,
+  nativeConfig,
+  nativeDeviceState,
+  nativeDisable,
+  nativeEnable,
+  nativePermission,
+  nativeSendTest,
+  nativeSyncOnOpen,
+  nativeUpdateKinds,
+} from "./nativePush";
+
+export { isNativeApp };
 
 // Browser side of admin push notifications: the service worker
 // (public/admin-sw.js), this device's Web Push subscription, and
@@ -10,6 +24,10 @@ import type { StaffPushKind } from "../utils/pushKinds";
 //     Firefox/Safari — in the browser or installed.
 //   * iPhone/iPad (iOS 16.4+) — ONLY after "Add to Home Screen", opened from
 //     the home-screen icon. Safari tabs on iOS have no push at all.
+//
+// Inside the "Geega Admin" iPhone app, every function here hands off to
+// ./nativePush (Apple push notifications, with a sound per type) — the rest
+// of the dashboard doesn't need to know which one it's using.
 
 export const ADMIN_SW_URL = "/admin-sw.js";
 export const ADMIN_SW_SCOPE = "/admin_dashboard";
@@ -59,6 +77,7 @@ function writeFlag(on: boolean): void {
 
 export function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
+  if (isNativeApp()) return true;
   return (
     window.matchMedia?.("(display-mode: standalone)").matches === true ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
@@ -73,6 +92,7 @@ export function isIosDevice(): boolean {
 
 export function pushAvailability(): PushAvailability {
   if (typeof window === "undefined") return "unsupported";
+  if (isNativeApp()) return "supported";
   if (!window.isSecureContext) return "insecure";
   if (isIosDevice() && !isStandalone()) return "ios-needs-install";
   const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -80,10 +100,18 @@ export function pushAvailability(): PushAvailability {
 }
 
 export function notificationPermission(): NotificationPermission {
+  if (isNativeApp()) return cachedNativePermission();
   return typeof Notification === "undefined" ? "default" : Notification.permission;
 }
 
+/** Up-to-date permission (the iPhone app has to ask the system). */
+export async function currentPermission(): Promise<NotificationPermission> {
+  if (isNativeApp()) return nativePermission().catch(() => cachedNativePermission());
+  return notificationPermission();
+}
+
 export async function registerAdminServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (isNativeApp()) return null;
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator) || !window.isSecureContext) return null;
   try {
     return await navigator.serviceWorker.register(ADMIN_SW_URL, { scope: ADMIN_SW_SCOPE });
@@ -124,6 +152,7 @@ export interface PushServerConfig {
 }
 
 export function fetchPushConfig(): Promise<PushServerConfig> {
+  if (isNativeApp()) return nativeConfig();
   return adminFetch<PushServerConfig>("/api/admin/push", { method: "GET" });
 }
 
@@ -149,6 +178,7 @@ function post<T>(body: Record<string, unknown>): Promise<T> {
 
 /** What the server has for this device. */
 export async function deviceState(): Promise<DevicePushState> {
+  if (isNativeApp()) return nativeDeviceState();
   const sub = await deviceSubscription();
   if (!sub) return { subscribed: false, kinds: [] };
   return post<DevicePushState>({ action: "status", endpoint: sub.endpoint });
@@ -160,6 +190,7 @@ export async function deviceState(): Promise<DevicePushState> {
  * network request) may run before Notification.requestPermission().
  */
 export async function enablePush(publicKey: string, kinds?: StaffPushKind[]): Promise<DevicePushState> {
+  if (isNativeApp()) return nativeEnable(kinds);
   const permission =
     Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
   if (permission !== "granted") throw new PushPermissionError(permission);
@@ -182,6 +213,7 @@ export async function enablePush(publicKey: string, kinds?: StaffPushKind[]): Pr
 }
 
 export async function disablePush(): Promise<void> {
+  if (isNativeApp()) return nativeDisable();
   writeFlag(false);
   const sub = await deviceSubscription();
   if (!sub) return;
@@ -193,12 +225,14 @@ export async function disablePush(): Promise<void> {
 }
 
 export async function updatePushKinds(kinds: StaffPushKind[]): Promise<DevicePushState> {
+  if (isNativeApp()) return nativeUpdateKinds(kinds);
   const sub = await deviceSubscription();
   if (!sub) throw new Error("Notifications aren't on for this device.");
   return post<DevicePushState>({ action: "update", endpoint: sub.endpoint, kinds });
 }
 
 export async function sendTestPush(): Promise<void> {
+  if (isNativeApp()) return nativeSendTest();
   const sub = await deviceSubscription();
   if (!sub) throw new Error("Notifications aren't on for this device.");
   await post({ action: "test", endpoint: sub.endpoint });
@@ -210,6 +244,7 @@ export async function sendTestPush(): Promise<void> {
  * subscription (browsers occasionally rotate them). Never prompts.
  */
 export async function syncPushOnOpen(): Promise<void> {
+  if (isNativeApp()) return nativeSyncOnOpen();
   await registerAdminServiceWorker();
   if (!readFlag() || pushAvailability() !== "supported" || notificationPermission() !== "granted") return;
   try {
@@ -258,7 +293,7 @@ export function subscribeInstallPrompt(fn: () => void): () => void {
 }
 
 export function canPromptInstall(): boolean {
-  return deferredInstall !== null;
+  return deferredInstall !== null && !isNativeApp();
 }
 
 export async function promptInstall(): Promise<boolean> {

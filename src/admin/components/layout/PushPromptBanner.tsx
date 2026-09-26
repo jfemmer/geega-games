@@ -1,18 +1,19 @@
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import {
   canPromptInstall,
+  currentPermission,
   isIosDevice,
   isStandalone,
-  notificationPermission,
   pushAvailability,
   subscribeInstallPrompt,
 } from "../../services/push";
 
 // A slim, dismissible nudge at the top of the admin. It shows only when
 // there's a clear next step toward notifications on this device:
-//   * installed app, notifications never asked → turn them on;
+//   * installed app (home-screen web app or the iPhone app), notifications
+//     never asked → turn them on;
 //   * iPhone/iPad in the browser → add to home screen first;
 //   * a browser offering "Install app" → install.
 // "Not now" hides it on this device for 30 days.
@@ -31,13 +32,24 @@ function recentlyDismissed(): boolean {
 
 export function PushPromptBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [dismissed, setDismissed] = useState(recentlyDismissed);
+  // Known asynchronously: the iPhone app has to ask the system.
+  const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const canInstall = useSyncExternalStore(subscribeInstallPrompt, canPromptInstall, () => false);
-  if (dismissed) return null;
+  useEffect(() => {
+    let active = true;
+    void currentPermission().then((p) => {
+      if (active) setPermission(p);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (dismissed || permission === null) return null;
 
   const availability = pushAvailability();
   let message: string | null = null;
   let action = "Turn on";
-  if (isStandalone() && availability === "supported" && notificationPermission() === "default") {
+  if (isStandalone() && availability === "supported" && permission === "default") {
     message = "Get notified on this device about new orders, buying leads and offer responses.";
   } else if (isIosDevice() && !isStandalone()) {
     message = "Add Geega Admin to your home screen to get order and lead notifications on this device.";

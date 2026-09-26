@@ -2,11 +2,13 @@ import webpush, { WebPushError, type PushSubscription } from "web-push";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
 import { ServerEnv } from "./env.js";
 import { hasStaffRole } from "./adminAuth.js";
+import { apnsConfigured, sendApns } from "./apns.js";
 import type { StaffPushKind } from "../../src/admin/utils/pushKinds.js";
 import type { Database } from "../../src/types/database.js";
 
-// Push notifications to staff devices that installed the admin app and
-// turned notifications on (staff_push_subscriptions — see its migration).
+// Push notifications to staff devices that turned notifications on: browsers
+// and the installed web app (Web Push — staff_push_subscriptions) and the
+// "Geega Admin" iPhone app (APNs — staff_apns_devices, api/_lib/apns.ts).
 //
 // notifyStaff() is called next to the matching staff email (new order, new
 // buying lead, offer response, partner lead, kiosk pickup). Like those
@@ -135,17 +137,57 @@ async function checkStaff(userIds: string[]): Promise<{ staff: Set<string>; revo
   return { staff, revoked };
 }
 
+type DeviceRow = { id: string; user_id: string };
+
+/** Web push devices (browsers / installed web app) that want this kind. */
+async function webDevices(kind: StaffPushKind) {
+  if (!pushConfigured()) return [];
+  const { data, error } = await getSupabaseAdmin()
+    .from("staff_push_subscriptions")
+    .select("id, user_id, endpoint, p256dh, auth")
+    .contains("kinds", [kind]);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/** iPhone app devices (APNs) that want this kind. */
+async function appleDevices(kind: StaffPushKind) {
+  if (!apnsConfigured()) return [];
+  const { data, error } = await getSupabaseAdmin()
+    .from("staff_apns_devices")
+    .select("id, user_id, token")
+    .contains("kinds", [kind]);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/** Stamp delivered devices and forget dead ones, in one table. */
+async function recordOutcomes(
+  table: "staff_push_subscriptions" | "staff_apns_devices",
+  deliveredIds: string[],
+  removeIds: string[],
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  await Promise.allSettled([
+    deliveredIds.length ? admin.from(table).update({ last_sent_at: new Date().toISOString() }).in("id", deliveredIds) : null,
+    removeIds.length ? admin.from(table).delete().in("id", removeIds) : null,
+  ]);
+}
+
+function split<T extends DeviceRow>(targets: T[], outcomes: string[], all: T[], revoked: string[]) {
+  const deliveredIds = targets.filter((_, i) => outcomes[i] === "delivered").map((d) => d.id);
+  const goneIds = targets.filter((_, i) => outcomes[i] === "gone").map((d) => d.id);
+  const revokedIds = all.filter((d) => revoked.includes(d.user_id)).map((d) => d.id);
+  return { deliveredIds, removeIds: [...goneIds, ...revokedIds], failed: outcomes.filter((o) => o === "failed").length };
+}
+
 export async function notifyStaff(event: StaffPushEvent): Promise<StaffPushResult> {
   try {
-    if (!pushConfigured()) return { status: "skipped", reason: "not-configured" };
+    if (!pushConfigured() && !apnsConfigured()) return { status: "skipped", reason: "not-configured" };
     const admin = getSupabaseAdmin();
 
-    const { data: subs, error: subsErr } = await admin
-      .from("staff_push_subscriptions")
-      .select("id, user_id, endpoint, p256dh, auth")
-      .contains("kinds", [event.kind]);
-    if (subsErr) throw new Error(subsErr.message);
-    if (!subs || subs.length === 0) return { status: "skipped", reason: "no-subscribers" };
+    const [web, apple] = await Promise.all([webDevices(event.kind), appleDevices(event.kind)]);
+    if (web.length === 0 && apple.length === 0) return { status: "skipped", reason: "no-subscribers" };
 
     // Claim the event. Whoever inserts the key first sends; everyone else stops.
     const { error: claimErr } = await admin
@@ -156,30 +198,33 @@ export async function notifyStaff(event: StaffPushEvent): Promise<StaffPushResul
       throw new Error(claimErr.message);
     }
 
-    const { staff, revoked } = await checkStaff([...new Set(subs.map((s) => s.user_id))]);
+    const { staff, revoked } = await checkStaff([...new Set([...web, ...apple].map((d) => d.user_id))]);
+    const webTargets = web.filter((d) => staff.has(d.user_id));
+    const appleTargets = apple.filter((d) => staff.has(d.user_id));
+
     const payload = pushPayload(event);
-    const targets = subs.filter((s) => staff.has(s.user_id));
-    const outcomes = await Promise.all(targets.map((s) => sendToSubscription(s, payload)));
+    const [webOutcomes, appleOutcomes] = await Promise.all([
+      Promise.all(webTargets.map((d) => sendToSubscription(d, payload))),
+      sendApns(
+        appleTargets.map((d) => d.token),
+        { title: clip(event.title, 120), body: clip(event.body, 240), url: event.url, kind: event.kind, tag: event.tag },
+      ),
+    ]);
 
-    const deliveredIds = targets.filter((_, i) => outcomes[i] === "delivered").map((s) => s.id);
-    const goneIds = targets.filter((_, i) => outcomes[i] === "gone").map((s) => s.id);
-    const revokedIds = subs.filter((s) => revoked.includes(s.user_id)).map((s) => s.id);
-    const removeIds = [...goneIds, ...revokedIds];
-
+    const webResult = split(webTargets, webOutcomes, web, revoked);
+    const appleResult = split(appleTargets, appleOutcomes, apple, revoked);
     const cutoff = new Date(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
     await Promise.allSettled([
-      deliveredIds.length
-        ? admin.from("staff_push_subscriptions").update({ last_sent_at: new Date().toISOString() }).in("id", deliveredIds)
-        : null,
-      removeIds.length ? admin.from("staff_push_subscriptions").delete().in("id", removeIds) : null,
+      recordOutcomes("staff_push_subscriptions", webResult.deliveredIds, webResult.removeIds),
+      recordOutcomes("staff_apns_devices", appleResult.deliveredIds, appleResult.removeIds),
       admin.from("staff_push_log").delete().lt("created_at", cutoff),
     ]);
 
     return {
       status: "sent",
-      delivered: deliveredIds.length,
-      failed: outcomes.filter((o) => o === "failed").length,
-      removed: removeIds.length,
+      delivered: webResult.deliveredIds.length + appleResult.deliveredIds.length,
+      failed: webResult.failed + appleResult.failed,
+      removed: webResult.removeIds.length + appleResult.removeIds.length,
     };
   } catch (err) {
     console.error("[staffPush] notifyStaff failed", event.key, err);

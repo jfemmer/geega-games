@@ -13,9 +13,14 @@
     "email:dev": "email dev --dir api/_lib/emails",
     "scryfall:refresh": "tsx scripts/refreshScryfallBulkIndex.ts",
     "scryfall:refresh-symbols": "tsx scripts/refreshSetSymbolCache.ts",
-    "benchmark": "tsx scripts/benchmarkRecognition.ts"
+    "benchmark": "tsx scripts/benchmarkRecognition.ts",
+    "sounds:render": "tsx scripts/renderNotificationSounds.ts",
+    "ios:sync": "cap sync ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/push-notifications": "^8.1.2",
     "@easypost/api": "^8.9.0",
     "@paypal/react-paypal-js": "^8.9.2",
     "@react-email/components": "1.0.12",
@@ -34,6 +39,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

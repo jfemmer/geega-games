@@ -68,4 +68,17 @@ export const ServerEnv = {
   // Contact for the push services if something goes wrong (mailto: or https:).
   vapidSubject: () =>
     optionalEnv("VAPID_SUBJECT", `mailto:${optionalEnv("RESEND_REPLY_TO", "support@geega-games.com")}`),
+  // Optional: native push for the "Geega Admin" iPhone app (api/_lib/apns.ts,
+  // docs/IOS_APP.md). An APNs auth key from the Apple Developer account
+  // (Certificates, IDs & Profiles → Keys → Apple Push Notifications service):
+  // its Key ID, the account's Team ID, and the .p8 file's contents. Without
+  // them, the iPhone app says notifications aren't set up yet.
+  apnsKeyId: () => optionalEnv("APNS_KEY_ID"),
+  apnsTeamId: () => optionalEnv("APNS_TEAM_ID"),
+  // Vercel may store the .p8's line breaks as literal "\n"; restore them.
+  apnsPrivateKey: () => optionalEnv("APNS_PRIVATE_KEY").replace(/\\n/g, "\n"),
+  apnsBundleId: () => optionalEnv("APNS_BUNDLE_ID", "com.geegagames.admin"),
+  // TestFlight and App Store builds use "production"; only a build run from
+  // Xcode on a Mac uses "sandbox".
+  apnsEnvironment: () => (optionalEnv("APNS_ENVIRONMENT", "production") === "sandbox" ? "sandbox" : "production"),
 } as const;

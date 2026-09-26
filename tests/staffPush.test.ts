@@ -15,6 +15,10 @@ const state: {
   users: Record<string, { app_metadata: Record<string, unknown> } | null>;
   sendResults: Record<string, number>; // endpoint → status code to throw (0 = ok)
   sent: { endpoint: string; payload: string }[];
+  apple: { id: string; user_id: string; token: string }[];
+  appleConfigured: boolean;
+  appleOutcomes: Record<string, "delivered" | "gone" | "failed">;
+  appleSent: { tokens: string[]; message: Record<string, unknown> }[];
 } = {
   subs: [],
   subsError: null,
@@ -26,6 +30,10 @@ const state: {
   users: {},
   sendResults: {},
   sent: [],
+  apple: [],
+  appleConfigured: false,
+  appleOutcomes: {},
+  appleSent: [],
 };
 
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({
@@ -54,6 +62,22 @@ vi.mock("../api/_lib/supabaseAdmin.js", () => ({
               state.touched.push(ids);
               return { error: null };
             },
+          }),
+          delete: () => ({
+            in: async (_col: string, ids: string[]) => {
+              state.deleted.push(ids);
+              return { error: null };
+            },
+          }),
+        };
+      }
+      if (table === "staff_apns_devices") {
+        return {
+          select: () => ({
+            contains: async () => ({ data: state.apple, error: null }),
+          }),
+          update: () => ({
+            in: async () => ({ error: null }),
           }),
           delete: () => ({
             in: async (_col: string, ids: string[]) => {
@@ -101,6 +125,14 @@ vi.mock("web-push", () => {
   };
 });
 
+vi.mock("../api/_lib/apns.js", () => ({
+  apnsConfigured: () => state.appleConfigured,
+  sendApns: vi.fn(async (tokens: string[], message: Record<string, unknown>) => {
+    state.appleSent.push({ tokens, message });
+    return tokens.map((t) => state.appleOutcomes[t] ?? "delivered");
+  }),
+}));
+
 const { notifyStaff, isAllowedPushEndpoint, shortName } = await import("../api/_lib/staffPush.ts");
 
 const EVENT = {
@@ -129,6 +161,10 @@ beforeEach(() => {
   state.users = {};
   state.sendResults = {};
   state.sent = [];
+  state.apple = [];
+  state.appleConfigured = false;
+  state.appleOutcomes = {};
+  state.appleSent = [];
 });
 
 afterEach(() => {
@@ -197,6 +233,34 @@ describe("notifyStaff", () => {
     expect(state.sent.map((s) => s.endpoint)).toEqual([sub("s2", "current").endpoint]);
     expect(state.deleted).toEqual([["s1"]]);
     expect(result).toMatchObject({ delivered: 1, removed: 1 });
+  });
+
+  it("also reaches the iPhone app (APNs), with the event's kind for its sound", async () => {
+    state.appleConfigured = true;
+    state.subs = [sub("s1", "u1")];
+    state.apple = [
+      { id: "i1", user_id: "u1", token: "a".repeat(64) },
+      { id: "i2", user_id: "u1", token: "b".repeat(64) },
+    ];
+    state.users = { u1: { app_metadata: { role: "staff" } } };
+    state.appleOutcomes = { ["b".repeat(64)]: "gone" };
+    const result = await notifyStaff(EVENT);
+    expect(state.appleSent).toEqual([
+      {
+        tokens: ["a".repeat(64), "b".repeat(64)],
+        message: expect.objectContaining({ kind: "order", url: EVENT.url, tag: EVENT.tag, title: EVENT.title }),
+      },
+    ]);
+    expect(result).toEqual({ status: "sent", delivered: 2, failed: 0, removed: 1 });
+    expect(state.deleted).toContainEqual(["i2"]);
+  });
+
+  it("works with only the iPhone app set up (no web push keys)", async () => {
+    delete process.env.VAPID_PUBLIC_KEY;
+    state.appleConfigured = true;
+    state.apple = [{ id: "i1", user_id: "u1", token: "a".repeat(64) }];
+    state.users = { u1: { app_metadata: { role: "admin" } } };
+    expect(await notifyStaff(EVENT)).toMatchObject({ status: "sent", delivered: 1 });
   });
 
   it("never throws, even when the database fails", async () => {

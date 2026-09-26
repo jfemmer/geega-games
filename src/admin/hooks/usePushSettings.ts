@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   PushPermissionError,
   canPromptInstall,
+  currentPermission,
   deviceState,
   disablePush,
   enablePush,
   fetchPushConfig,
+  isNativeApp,
   isStandalone,
   notificationPermission,
   promptInstall,
@@ -23,6 +25,8 @@ export type PushBusy = null | "enable" | "disable" | "kinds" | "test";
 
 export interface PushSettings {
   loading: boolean;
+  /** Running inside the Geega Admin iPhone app (native push, real per-type sounds). */
+  native: boolean;
   availability: PushAvailability;
   permission: NotificationPermission;
   standalone: boolean;
@@ -67,10 +71,11 @@ export function usePushSettings(active: boolean): PushSettings {
       try {
         const cfg = await fetchPushConfig();
         const state = availability === "supported" && cfg.configured ? await deviceState() : OFF;
+        const perm = await currentPermission();
         if (cancelled) return;
         setConfig(cfg);
         setDevice(state);
-        setPermission(notificationPermission());
+        setPermission(perm);
       } catch (err) {
         if (!cancelled) setError(messageOf(err));
       } finally {
@@ -99,6 +104,7 @@ export function usePushSettings(active: boolean): PushSettings {
 
   return {
     loading,
+    native: isNativeApp(),
     availability,
     permission,
     standalone: isStandalone(),
@@ -109,8 +115,11 @@ export function usePushSettings(active: boolean): PushSettings {
     canInstall,
     enable: () =>
       run("enable", async () => {
-        if (!config?.publicKey) throw new Error("Push notifications aren't set up on the server yet.");
-        setDevice(await enablePush(config.publicKey));
+        // Web push needs the server's public key; the iPhone app doesn't.
+        if (!config?.configured || (!isNativeApp() && !config.publicKey)) {
+          throw new Error("Push notifications aren't set up on the server yet.");
+        }
+        setDevice(await enablePush(config.publicKey ?? ""));
       }),
     disable: () =>
       run("disable", async () => {

@@ -1,4 +1,5 @@
 import type { StaffPushKind } from "../utils/pushKinds";
+import { SOUND_TONES, soundKeyFor, type Tone } from "../utils/soundTones";
 
 // A distinct sound for each kind of admin notification, played by the open
 // admin app (the service worker asks it to — see public/admin-sw.js).
@@ -6,65 +7,20 @@ import type { StaffPushKind } from "../utils/pushKinds";
 // Why in the app and not on the notification itself: web push can't choose
 // a notification sound on any platform (iOS plays its standard sound;
 // Android lets you pick one sound per app in its settings). So while Geega
-// Admin is open and visible, it plays the event's own sound and the system
-// notification is shown silently; when it's closed, the phone plays its
-// usual notification sound.
+// Admin is open and visible in a browser, it plays the event's own sound and
+// the system notification is shown silently. (The iPhone app gets real
+// per-type push sounds — see api/_lib/apns.ts — and uses these only for the
+// previews in the Notifications panel.)
 //
-// The sounds are synthesized with Web Audio — no audio files to host or
-// license. Browsers only allow audio after the page has been tapped or
+// The sounds are synthesized with Web Audio from the notes in
+// utils/soundTones.ts, the same notes the iPhone app's push sounds are
+// rendered from. Browsers only allow audio after the page has been tapped or
 // clicked once, so installSoundUnlock() primes it on the first interaction.
 
 export type SoundName = StaffPushKind | "test";
 
-interface Tone {
-  /** Hz */
-  freq: number;
-  /** Glide to this frequency over the tone (Hz). */
-  glideTo?: number;
-  /** Seconds from the start of the sound. */
-  at: number;
-  /** Seconds until it has faded out. */
-  length: number;
-  wave?: OscillatorType;
-  /** 0–1 */
-  level: number;
-}
-
-const SOUNDS: Record<"order" | "buying_lead" | "partner_lead" | "signup" | "default", Tone[]> = {
-  // Bright "cha-ching": two quick high notes with a sparkle on top.
-  order: [
-    { freq: 1568, at: 0, length: 0.12, wave: "triangle", level: 0.35 },
-    { freq: 2093, at: 0.09, length: 0.55, wave: "triangle", level: 0.4 },
-    { freq: 3136, at: 0.09, length: 0.35, wave: "sine", level: 0.1 },
-  ],
-  // Rising three-note marimba: C – E – G.
-  buying_lead: [
-    { freq: 523.25, at: 0, length: 0.28, level: 0.45 },
-    { freq: 659.25, at: 0.12, length: 0.28, level: 0.45 },
-    { freq: 783.99, at: 0.24, length: 0.55, level: 0.5 },
-    { freq: 1567.98, at: 0.24, length: 0.3, level: 0.08 },
-  ],
-  // Softer, lower "ding-dong" doorbell: E – C.
-  partner_lead: [
-    { freq: 659.25, at: 0, length: 0.7, wave: "sine", level: 0.45 },
-    { freq: 1318.5, at: 0, length: 0.3, wave: "sine", level: 0.06 },
-    { freq: 523.25, at: 0.32, length: 0.9, wave: "sine", level: 0.45 },
-    { freq: 1046.5, at: 0.32, length: 0.35, wave: "sine", level: 0.06 },
-  ],
-  // Friendly upward "bloop" and a little welcome ping.
-  signup: [
-    { freq: 392, glideTo: 784, at: 0, length: 0.22, wave: "sine", level: 0.4 },
-    { freq: 1046.5, at: 0.2, length: 0.35, wave: "sine", level: 0.3 },
-  ],
-  // Everything else (offer responses, pickups, test): one gentle chime.
-  default: [
-    { freq: 880, at: 0, length: 0.6, wave: "sine", level: 0.4 },
-    { freq: 1760, at: 0, length: 0.25, wave: "sine", level: 0.08 },
-  ],
-};
-
 function tonesFor(name: string): Tone[] {
-  return name in SOUNDS ? SOUNDS[name as keyof typeof SOUNDS] : SOUNDS.default;
+  return SOUND_TONES[soundKeyFor(name)];
 }
 
 const ENABLED_KEY = "gg_admin_sounds";

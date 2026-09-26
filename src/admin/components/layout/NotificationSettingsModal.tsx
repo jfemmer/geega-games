@@ -22,27 +22,38 @@ const SOUND_PREVIEWS = [
   { kind: "default", label: "Everything else" },
 ] as const;
 
-/** Per-type sounds, played by the open app (see services/sounds.ts for why). */
-function SoundSettings() {
+/**
+ * Per-type sounds. In a browser they play from the open app (see
+ * services/sounds.ts for why); in the iPhone app they're the notifications'
+ * own sounds, so there's nothing to switch — just previews.
+ */
+function SoundSettings({ native }: { native: boolean }) {
   const [on, setOn] = useState(soundsEnabled);
   return (
     <section className="gg-pushsettings__sounds">
       <h3>Sounds</h3>
-      <label className="gg-pushsettings__kind">
-        <input
-          type="checkbox"
-          checked={on}
-          onChange={(e) => {
-            setSoundsEnabled(e.target.checked);
-            setOn(e.target.checked);
-            if (e.target.checked) unlockSounds();
-          }}
-        />
-        <span>
-          <strong>A different sound for each type</strong>
-          <span className="gg-card-meta">Plays while Geega Admin is open on this device.</span>
-        </span>
-      </label>
+      {native ? (
+        <p className="gg-card-meta">
+          Each type plays its own sound — even when your iPhone is locked. Silent mode and Focus
+          still apply.
+        </p>
+      ) : (
+        <label className="gg-pushsettings__kind">
+          <input
+            type="checkbox"
+            checked={on}
+            onChange={(e) => {
+              setSoundsEnabled(e.target.checked);
+              setOn(e.target.checked);
+              if (e.target.checked) unlockSounds();
+            }}
+          />
+          <span>
+            <strong>A different sound for each type</strong>
+            <span className="gg-card-meta">Plays while Geega Admin is open on this device.</span>
+          </span>
+        </label>
+      )}
       <ul className="gg-pushsettings__soundlist">
         {SOUND_PREVIEWS.map((s) => (
           <li key={s.kind}>
@@ -61,11 +72,13 @@ function SoundSettings() {
           </li>
         ))}
       </ul>
-      <p className="gg-card-meta">
-        When Geega Admin is closed, notifications use your phone&rsquo;s standard sound — phones
-        don&rsquo;t let web apps pick a sound per notification. On Android you can choose one sound
-        for Geega Admin in Settings → Notifications.
-      </p>
+      {!native && (
+        <p className="gg-card-meta">
+          When Geega Admin is closed, notifications use your phone&rsquo;s standard sound — web apps
+          can&rsquo;t pick a sound per notification. The Geega Admin iPhone app can: each type
+          plays its own sound even on the lock screen.
+        </p>
+      )}
     </section>
   );
 }
@@ -135,8 +148,20 @@ export function NotificationSettingsModal({ open, onClose }: { open: boolean; on
       <div className="gg-inline-note gg-inline-note--warning">
         <Icon name="warning" size={16} />
         <div>
-          Push notifications aren&rsquo;t set up on the server yet. Add <code>VAPID_PUBLIC_KEY</code>{" "}
-          and <code>VAPID_PRIVATE_KEY</code> in Vercel (see <code>.env.example</code>), then redeploy.
+          {push.native ? (
+            <>
+              Notifications for the iPhone app aren&rsquo;t set up on the server yet. Add the Apple
+              push key (<code>APNS_KEY_ID</code>, <code>APNS_TEAM_ID</code>,{" "}
+              <code>APNS_PRIVATE_KEY</code>) in Vercel — see <code>docs/IOS_APP.md</code> — then
+              redeploy.
+            </>
+          ) : (
+            <>
+              Push notifications aren&rsquo;t set up on the server yet. Add{" "}
+              <code>VAPID_PUBLIC_KEY</code> and <code>VAPID_PRIVATE_KEY</code> in Vercel (see{" "}
+              <code>.env.example</code>), then redeploy.
+            </>
+          )}
         </div>
       </div>
     );
@@ -202,7 +227,7 @@ export function NotificationSettingsModal({ open, onClose }: { open: boolean; on
             Turn off on this device
           </Button>
         </div>
-        <SoundSettings />
+        <SoundSettings native={push.native} />
       </>
     );
   }

@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 // can be in. The browser push APIs are mocked at the service boundary.
 
 const push = {
+  native: false,
   availability: "supported" as "supported" | "ios-needs-install" | "unsupported" | "insecure",
   permission: "default" as NotificationPermission,
   config: { configured: true, publicKey: "BKey" },
@@ -21,6 +22,8 @@ vi.mock("../src/admin/services/push", () => ({
   PushPermissionError: class extends Error {},
   pushAvailability: () => push.availability,
   notificationPermission: () => push.permission,
+  currentPermission: async () => push.permission,
+  isNativeApp: () => push.native,
   isStandalone: () => false,
   isIosDevice: () => push.availability === "ios-needs-install",
   fetchPushConfig: async () => push.config,
@@ -52,6 +55,7 @@ function renderModal() {
 }
 
 beforeEach(() => {
+  push.native = false;
   push.availability = "supported";
   push.permission = "default";
   push.config = { configured: true, publicKey: "BKey" };
@@ -101,6 +105,33 @@ describe("NotificationSettingsModal", () => {
       expect(await screen.findByRole("button", { name: `Play the ${label} sound` })).toBeInTheDocument();
     }
     expect(screen.getByRole("checkbox", { name: /a different sound for each type/i })).toBeChecked();
+  });
+
+  describe("inside the Geega Admin iPhone app", () => {
+    it("points at the Apple push key when the server isn't set up", async () => {
+      push.native = true;
+      push.config = { configured: false, publicKey: null as unknown as string };
+      renderModal();
+      expect(await screen.findByText("APNS_KEY_ID")).toBeInTheDocument();
+    });
+
+    it("turns on without a web push key", async () => {
+      push.native = true;
+      push.config = { configured: true, publicKey: null as unknown as string };
+      const user = userEvent.setup();
+      renderModal();
+      await user.click(await screen.findByRole("button", { name: /turn on notifications/i }));
+      expect(push.enable).toHaveBeenCalledWith("");
+    });
+
+    it("explains the sounds play even when locked, with no browser-only switch", async () => {
+      push.native = true;
+      push.device = { subscribed: true, kinds: ["order"] };
+      renderModal();
+      expect(await screen.findByText(/even when your iPhone is locked/i)).toBeInTheDocument();
+      expect(screen.queryByRole("checkbox", { name: /a different sound for each type/i })).toBeNull();
+      expect(screen.getByRole("button", { name: "Play the new order sound" })).toBeInTheDocument();
+    });
   });
 
   it("lets a device opt out of one kind of event, and send a test", async () => {

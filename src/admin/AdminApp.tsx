@@ -4,6 +4,7 @@ import { AdminLayout } from "./components/layout/AdminLayout";
 import { AdminAuthGate } from "./components/auth/AdminAuthGate";
 import { SECTION_TITLES } from "./components/layout/nav";
 import { useRouter, adminSection, ADMIN_BASE } from "./hooks/useRouter";
+import { installNativeNotificationHandlers } from "./services/nativePush";
 import { OverviewPage } from "./pages/OverviewPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { OrdersPage } from "./pages/OrdersPage";
@@ -61,6 +62,16 @@ function AdminDashboard() {
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, [navigate]);
+
+  // Same for the iPhone app's native notifications (a no-op in a browser).
+  useEffect(
+    () =>
+      installNativeNotificationHandlers((path) => {
+        navigate(path);
+        setOpenNonce((n) => n + 1);
+      }),
+    [navigate],
+  );
 
   const section = adminSection(path);
   const query = useMemo(() => {

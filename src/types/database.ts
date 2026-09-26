@@ -2583,6 +2583,39 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_apns_devices: {
+        Row: {
+          created_at: string
+          device_name: string | null
+          id: string
+          kinds: string[]
+          last_sent_at: string | null
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_name?: string | null
+          id?: string
+          kinds?: string[]
+          last_sent_at?: string | null
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_name?: string | null
+          id?: string
+          kinds?: string[]
+          last_sent_at?: string | null
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       staff_push_log: {
         Row: {
           created_at: string
