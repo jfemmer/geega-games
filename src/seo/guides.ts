@@ -6,7 +6,7 @@
 // the sitemap's <lastmod> and the Article structured data.
 
 /** Which sell page a guide leads to: Magic (we buy) or a partner-referral category. */
-export type GuideTopic = "mtg" | "pokemon" | "video_games";
+export type GuideTopic = "mtg" | "pokemon" | "one_piece" | "video_games";
 
 export interface GuideMeta {
   slug: string;
@@ -83,6 +83,30 @@ export const GUIDES: GuideMeta[] = [
       "Found a stack of Pokémon cards from years ago? What to look for — 1st Edition, shadowless, holos, secret rares — how to spot fakes, and how to check real prices.",
     published: "2026-09-25",
     updated: "2026-09-25",
+  },
+  {
+    slug: "should-i-grade-pokemon-cards-before-selling",
+    topic: "pokemon",
+    heading: "Should you grade Pokémon cards before selling them?",
+    title: "Should I Grade Pokémon Cards Before Selling? | Geega Games",
+    description:
+      "When PSA, BGS or CGC grading is worth it before you sell Pokémon cards: 2026 costs and wait times, which cards benefit, the risks, and when selling raw is the better call.",
+    summary:
+      "Grading can raise the price of a great card — or cost more than it adds. The 2026 costs, the wait, and a simple test for which cards are worth it.",
+    published: "2026-09-26",
+    updated: "2026-09-26",
+  },
+  {
+    slug: "what-are-my-one-piece-cards-worth",
+    topic: "one_piece",
+    heading: "What are my One Piece cards worth?",
+    title: "What Are My One Piece Cards Worth? | Geega Games",
+    description:
+      "How to tell which One Piece Card Game cards are valuable: rarity codes, parallel and manga rares, SP cards, English vs. Japanese, condition, reprints, fakes and checking real prices.",
+    summary:
+      "Rarity codes, parallel and manga rares, SP cards, English vs. Japanese — how to spot the One Piece cards worth a closer look, and how to check what they sell for.",
+    published: "2026-09-26",
+    updated: "2026-09-26",
   },
   {
     slug: "are-my-old-video-games-worth-money",

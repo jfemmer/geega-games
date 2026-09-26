@@ -5226,3 +5226,56 @@
     transform: none;
   }
 }
+
+/* Sell pages: real TCGplayer buyer feedback (SellerReviewsSection). */
+.gg-reviews {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  max-width: 960px;
+  margin: 0 auto 0.75rem;
+  padding: 0;
+}
+.gg-review {
+  background: #faf9fd;
+  border: 1px solid var(--gg-line);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.gg-review blockquote {
+  margin: 0;
+}
+.gg-review blockquote p {
+  margin: 0;
+  color: var(--gg-ink);
+  line-height: 1.5;
+}
+.gg-review-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #5b5470;
+}
+
+/* Reassurance line right above the partner-referral submit button. */
+.gg-referral-assure {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--gg-purple);
+}
+
+/* Partner cross-sell on the Magic sell page: stands out from plain sections. */
+.gg-partner-callout {
+  background: #fff8d6;
+  border: 1px solid #e3b400;
+  border-radius: 16px;
+  padding: 1.5rem 1rem;
+}
+.gg-partner-callout .gg-collect-lead strong {
+  color: #3d2c00;
+}

@@ -11,6 +11,11 @@ import {
   type SafeExchangeSpot,
 } from "../../seo/sellAreas";
 import { guidePath, guidesFor, type GuideTopic } from "../../seo/guides";
+import {
+  SELLER_REVIEWS,
+  SELLER_REVIEW_SUMMARY,
+  TCGPLAYER_SELLER_URL,
+} from "../../seo/sellerReviews";
 
 // Sections shared by the sell landing pages (/sell-my-collection, the St.
 // Louis page and each /sell-magic-cards/:area page). Place-specific content
@@ -106,6 +111,103 @@ export function TrustSection() {
       </div>
     </section>
   );
+}
+
+/**
+ * "What you can count on" for the partner-referral pages (Pokémon, One Piece,
+ * video games). Only claims that hold for every referral: the owner-approved
+ * "buys very competitively", consent-only sharing, free and no obligation.
+ * Nothing about how the partner pays or how fast — those are the partner's.
+ */
+export function PartnerTrustSection({ noun }: { noun: string }) {
+  return (
+    <section className="gg-collect-section gg-collect-trust">
+      <h2>What you can count on</h2>
+      <div className="gg-collect-grid gg-collect-grid--2">
+        <div className="gg-collect-card">
+          <h3>Very competitive offers</h3>
+          <p>
+            Our buying partner specializes in {noun} and buys very competitively — it&rsquo;s why we
+            send sellers to them.
+          </p>
+        </div>
+        <div className="gg-collect-card">
+          <h3>Free, with no obligation</h3>
+          <p>Asking for an offer costs nothing, and you&rsquo;re free to say no to any offer.</p>
+        </div>
+        <div className="gg-collect-card">
+          <h3>Your details, only with your OK</h3>
+          <p>
+            We pass along what you send only after you tick the consent box — and only to our buying
+            partner.
+          </p>
+        </div>
+        <div className="gg-collect-card">
+          <h3>Meet up safely or ship</h3>
+          <p>
+            Meetups are somewhere public around St. Louis. Farther away? Ship from anywhere in the
+            US.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Real buyer feedback from our TCGplayer seller page (src/seo/sellerReviews.ts).
+ * With no reviews loaded it still links to the live page, so visitors can
+ * check our record there — never placeholder or invented testimonials.
+ */
+export function SellerReviewsSection() {
+  const { positivePercent, sales } = SELLER_REVIEW_SUMMARY;
+  const stats = [
+    positivePercent ? `${positivePercent} positive feedback` : null,
+    sales ? `${sales} sales` : null,
+  ].filter(Boolean);
+  return (
+    <section className="gg-collect-section" aria-labelledby="gg-reviews-heading">
+      <h2 id="gg-reviews-heading">
+        {SELLER_REVIEWS.length > 0 ? "What our customers say" : "Check our track record"}
+      </h2>
+      <p className="gg-collect-lead">
+        Geega Games also sells on TCGplayer
+        {stats.length > 0 ? <> — {stats.join(" across ")}</> : null}, where buyers leave feedback on
+        their orders.{" "}
+        {SELLER_REVIEWS.length > 0
+          ? "Here are the most recent, and you can check the full record yourself."
+          : "You can check our full record there yourself."}
+      </p>
+      {SELLER_REVIEWS.length > 0 && (
+        <ul className="gg-reviews">
+          {SELLER_REVIEWS.map((review) => (
+            <li className="gg-review" key={`${review.buyer}-${review.date}-${review.text.slice(0, 20)}`}>
+              <blockquote>
+                <p>&ldquo;{review.text}&rdquo;</p>
+              </blockquote>
+              <p className="gg-review-meta">
+                {review.buyer} · TCGplayer ·{" "}
+                <time dateTime={review.date}>{formatReviewDate(review.date)}</time>
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="gg-area-note">
+        <a href={TCGPLAYER_SELLER_URL} target="_blank" rel="noopener noreferrer">
+          See all our buyer feedback on TCGplayer
+        </a>
+      </p>
+    </section>
+  );
+}
+
+function formatReviewDate(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 /** Store-credit bonus, surfaced near the top of the Magic sell pages. */

@@ -8,6 +8,7 @@ import {
   PricesMoveSection,
   SellCtaSection,
   SellerGuidesSection,
+  SellerReviewsSection,
   StickySellCta,
   TravelAreasSection,
   TrustSection,
@@ -180,6 +181,23 @@ export default function SellCollectionPage() {
         </div>
       </section>
 
+      <section className="gg-collect-section gg-partner-callout">
+        <h2>Selling Pokémon, One Piece or video games too?</h2>
+        <p className="gg-collect-lead">
+          Plenty of Magic collections come with other things. We buy the Magic cards ourselves, and
+          for the rest we connect you with a trusted buyer we work with — one who{" "}
+          <strong>pays very competitively</strong>. Same easy process: tell us what you have, meet up
+          around {HUB_CITY} or ship.
+        </p>
+        <ul className="gg-area-links">
+          {REFERRAL_PAGES.map((p) => (
+            <li key={p.path}>
+              <Link to={p.path}>Sell {p.noun}</Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="gg-collect-section">
         <h2>Built for collections that haven&rsquo;t been touched in years</h2>
         <div className="gg-collect-grid">
@@ -236,6 +254,8 @@ export default function SellCollectionPage() {
 
       <TrustSection />
 
+      <SellerReviewsSection />
+
       <PricesMoveSection />
 
       <div id="areas">
@@ -243,22 +263,6 @@ export default function SellCollectionPage() {
       </div>
 
       <SellerGuidesSection />
-
-      <section className="gg-collect-section">
-        <h2>Selling Pokémon, One Piece or video games too?</h2>
-        <p className="gg-collect-lead">
-          Plenty of Magic collections come with other things. We buy the Magic cards ourselves and
-          can connect you with a trusted buyer we work with — one who buys very competitively — for
-          the rest:
-        </p>
-        <ul className="gg-area-links">
-          {REFERRAL_PAGES.map((p) => (
-            <li key={p.path}>
-              <Link to={p.path}>Sell {p.noun}</Link>
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <FaqSection items={FAQ_ITEMS} />
       <p className="gg-collect-contact">

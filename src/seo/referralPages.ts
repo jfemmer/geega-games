@@ -98,7 +98,7 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     insight: {
       heading: "Should you get your cards graded before selling?",
       paragraphs: [
-        "Grading (PSA, BGS or CGC) can raise the price of a high-value card in top condition, but it's slow and costly: in mid-2026, PSA's cheapest regular service ran about $80 a card, with a wait of roughly 40–60 days.",
+        "Grading (PSA, BGS or CGC) can raise the price of a high-value card in top condition, but it's slow and costly: in 2026, PSA's cheapest tiers ran about $25–30 a card with waits of several months, and its Regular tier about $80 a card.",
         "It usually only makes sense for cards worth a few hundred dollars raw and in excellent shape. For most cards, selling raw now is simpler and nets about the same — without the wait or the risk of a disappointing grade.",
         "Already graded? Just list the grading company, the grade and the certification number in the form.",
       ],
@@ -122,10 +122,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     category: "one_piece",
     path: "/sell-one-piece-cards",
     noun: "One Piece cards",
-    title: "Sell One Piece Cards — St. Louis Meetups or Ship | Geega Games",
+    title: "Sell One Piece Cards in St. Louis — Meet Up or Ship | Geega Games",
     description:
-      "Sell your One Piece cards — manga rares, alt arts, Leaders, sealed boxes or whole collections. Our trusted buying partner buys very competitively. St. Louis meetups or ship.",
-    heading: "Sell your One Piece cards",
+      "Sell your One Piece cards in St. Louis — manga rares, alt arts, Leaders, sealed boxes or whole collections. Our trusted buying partner buys very competitively. Meet up or ship.",
+    heading: "Sell your One Piece cards in St. Louis",
     intro:
       "Alt arts, manga rares, sealed booster boxes or a binder full of playsets — tell us what you have and we'll connect you with the trusted One Piece Card Game buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
     items: [

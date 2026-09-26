@@ -355,6 +355,10 @@ export default function ReferralLeadForm({
         </p>
       )}
 
+      <p className="gg-referral-assure">
+        Our buying partner pays very competitively. Asking is free, and you never have to sell.
+      </p>
+
       <button type="submit" className="gg-btn" disabled={submitting}>
         {submitting ? "Sending…" : "Send to our buying partner"}
       </button>

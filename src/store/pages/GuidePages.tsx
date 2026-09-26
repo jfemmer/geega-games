@@ -20,6 +20,7 @@ import { MAX_DRIVE_HOURS, ORGANIZATION_ID, absoluteUrl, breadcrumbJsonLd } from 
 const TOPIC_HEADINGS: Record<GuideTopic, string> = {
   mtg: "Magic: The Gathering",
   pokemon: "Pokémon",
+  one_piece: "One Piece",
   video_games: "Video games",
 };
 
@@ -35,6 +36,20 @@ function GuideCta({ topic }: { topic: GuideTopic }) {
         </p>
         <Link to="/sell-pokemon-cards" className="gg-btn">
           Sell your Pokémon cards
+        </Link>
+      </aside>
+    );
+  }
+  if (topic === "one_piece") {
+    return (
+      <aside className="gg-collect-cta">
+        <h2>Ready to sell your One Piece cards?</h2>
+        <p>
+          We&rsquo;ll connect you with the trusted buyer we work with, who buys very competitively —
+          meet up around St. Louis, or ship from anywhere in the US.
+        </p>
+        <Link to="/sell-one-piece-cards" className="gg-btn">
+          Sell your One Piece cards
         </Link>
       </aside>
     );
@@ -685,10 +700,14 @@ function PokemonValueGuide() {
       <h2>10. Should you get it graded first?</h2>
       <p>
         Grading (PSA, BGS or CGC) can raise the price of a high-value card in excellent condition, but
-        it isn&rsquo;t cheap or fast: in mid-2026, PSA&rsquo;s cheapest regular service cost about $80
-        a card and took roughly 40–60 days. As a rule of thumb, grading only pays off for cards worth
-        a few hundred dollars raw and in great shape. For most cards, selling raw is simpler and nets
-        about the same.
+        it isn&rsquo;t cheap or fast: in 2026, PSA&rsquo;s cheapest tiers cost about $25–30 a card
+        with waits of several months, and its Regular tier about $80. As a rule of thumb, grading
+        only pays off for cards worth a few hundred dollars raw and in great shape. For most cards,
+        selling raw is simpler and nets about the same.{" "}
+        <Link to={guidePath("should-i-grade-pokemon-cards-before-selling")}>
+          More on whether grading is worth it
+        </Link>
+        .
       </p>
     </>
   );
@@ -792,11 +811,188 @@ function VideoGameValueGuide() {
   );
 }
 
+function PokemonGradingGuide() {
+  return (
+    <>
+      <p>
+        A graded card comes back from a company like PSA, BGS or CGC sealed in a plastic slab with a
+        condition grade from 1 to 10. A high grade on the right card can multiply its price — but
+        grading costs money and time, and most cards don&rsquo;t come back worth more than they cost
+        to grade. Here&rsquo;s how to decide.
+      </p>
+
+      <h2>What grading costs in 2026</h2>
+      <p>
+        PSA, the biggest grader, prices by the card&rsquo;s declared value and how fast you want it
+        back. As of spring 2026, its cheapest tiers ran about $25–30 a card for cards valued under a
+        few hundred dollars, with waits of several months. Its Regular tier was about $80 a card and
+        faster tiers cost far more. Add shipping and insurance both ways. BGS and CGC price
+        differently, so compare before you submit — and check the grader&rsquo;s own site, because
+        prices change.
+      </p>
+
+      <h2>A simple test: is it worth grading?</h2>
+      <ul>
+        <li>
+          <strong>Is it valuable raw?</strong> If the ungraded card sells for less than about $100,
+          grading rarely pays for itself.
+        </li>
+        <li>
+          <strong>Is it in excellent shape?</strong> Most of grading&rsquo;s value is in the top
+          grades (9s and 10s). Look closely at the corners, the edges, the surface under a light and
+          the centering of the border. Visible whitening or scratches usually mean a middling grade.
+        </li>
+        <li>
+          <strong>Is there a real price gap?</strong> Compare the card&rsquo;s recent sold prices raw
+          vs. in a PSA 9 or 10. If the gap is smaller than the grading cost plus shipping, sell it
+          raw.
+        </li>
+        <li>
+          <strong>Can you wait?</strong> The cheapest tiers take months. Prices can move in that
+          time, in either direction.
+        </li>
+      </ul>
+
+      <h2>Cards that most often benefit</h2>
+      <ul>
+        <li>Vintage holos in great condition, especially 1st Edition and shadowless Base Set.</li>
+        <li>
+          High-demand modern chase cards — special illustration rares and similar — that are
+          perfectly centered and clean.
+        </li>
+        <li>Cards where buyers worry about fakes: a slab settles authenticity.</li>
+      </ul>
+
+      <h2>The risks</h2>
+      <ul>
+        <li>
+          <strong>A disappointing grade.</strong> A card you thought was a 10 can come back an 8, and
+          a low grade can sell for less than a raw copy would have.
+        </li>
+        <li>
+          <strong>Your money is tied up.</strong> You pay up front and wait weeks or months to sell.
+        </li>
+        <li>
+          <strong>Shipping.</strong> Valuable cards need careful packing and insured, tracked
+          shipping both ways.
+        </li>
+      </ul>
+
+      <h2>Selling raw is often the better call</h2>
+      <p>
+        For most collections — binders of mixed cards, a few nice holos, sealed product — selling raw
+        is faster and nets about the same once grading costs are counted. A buyer who knows Pokémon
+        will price clean cards for their condition.
+      </p>
+
+      <h2>Already graded?</h2>
+      <p>
+        When you ask for an offer, list the grading company, the grade and the certification number
+        for each slab. A photo of the slab label helps.
+      </p>
+    </>
+  );
+}
+
+function OnePieceValueGuide() {
+  return (
+    <>
+      <p>
+        The One Piece Card Game from Bandai launched in Japan in 2022 and in English later that year.
+        Most cards are worth very little, but the chase cards from each set can be worth a lot — and
+        prices move quickly. Here&rsquo;s how to find the cards worth a closer look.
+      </p>
+
+      <h2>1. Read the card number and rarity</h2>
+      <p>
+        At the bottom of each card is a code like <strong>OP04-014</strong>. The first part is the
+        set: <strong>OP</strong> for main booster sets, <strong>ST</strong> for starter decks, and
+        other letters for special sets and promos. Next to it is the rarity:
+      </p>
+      <ul>
+        <li>
+          <strong>C</strong> common, <strong>UC</strong> uncommon, <strong>R</strong> rare — mostly
+          low value.
+        </li>
+        <li>
+          <strong>L</strong> leader — the card each deck is built around. Popular leaders and their
+          alternate arts can be valuable.
+        </li>
+        <li>
+          <strong>SR</strong> super rare and <strong>SEC</strong> secret rare — the first cards to
+          check in any pile.
+        </li>
+      </ul>
+
+      <h2>2. Parallel (alternate-art) cards</h2>
+      <p>
+        Many cards also come in a parallel version with different, often full-bleed artwork. Parallels
+        usually have a small star (★) near the rarity and are worth far more than the regular
+        version of the same card. If you have two copies of a card that look different, check both.
+      </p>
+
+      <h2>3. Manga rares</h2>
+      <p>
+        Manga rares are secret rares drawn to look like panels from the original manga, often in black
+        and white. They&rsquo;re among the rarest pulls in a set and usually its most valuable
+        cards.
+      </p>
+
+      <h2>4. SP cards</h2>
+      <p>
+        SP (special) cards bring back popular cards from earlier sets with new artwork, marked
+        &ldquo;SP&rdquo; next to the rarity. Many are valuable.
+      </p>
+
+      <h2>5. English vs. Japanese</h2>
+      <p>
+        Both are collected, but they&rsquo;re separate markets with different prices for the same
+        card. When you look up a price or ask for an offer, say which language you have.
+      </p>
+
+      <h2>6. Condition</h2>
+      <p>
+        Edge wear, scratches on the surface and bends lower value quickly, especially on parallels
+        and manga rares. Sleeve anything that looks valuable and don&rsquo;t try to clean cards.
+      </p>
+
+      <h2>7. Reprints move prices</h2>
+      <p>
+        Bandai reprints popular sets and cards, and a reprint can drop a card&rsquo;s price sharply —
+        sometimes as soon as it&rsquo;s announced. If you&rsquo;ve decided to sell, a current offer
+        beats waiting.
+      </p>
+
+      <h2>8. Is it real?</h2>
+      <p>
+        Fakes of valuable One Piece cards are common. Compare a suspicious card side by side with one
+        you know is real: look at the print sharpness, the colors, the card&rsquo;s thickness and
+        feel, and the texture on parallels. If a card seems too good to be true, get a second opinion.
+      </p>
+
+      <h2>9. How to check real prices</h2>
+      <p>
+        Look up the exact card — card number, language, and whether it&rsquo;s a parallel, manga rare
+        or SP — and check what it has actually sold for, not what sellers are asking.
+        TCGplayer&rsquo;s market price and eBay&rsquo;s sold listings both show recent sales.
+      </p>
+
+      <h2>10. Sealed product</h2>
+      <p>
+        Unopened booster boxes and packs are often worth more sealed than their contents — keep them
+        sealed.
+      </p>
+    </>
+  );
+}
+
 const GUIDE_BODIES: Record<string, () => ReactNode> = {
   "how-much-is-my-mtg-collection-worth": CollectionWorthGuide,
   "inherited-magic-card-collection": InheritedCollectionGuide,
   "how-to-sell-bulk-magic-cards": BulkGuide,
   "where-to-sell-magic-cards": WhereToSellMagicGuide,
   "are-my-old-pokemon-cards-worth-anything": PokemonValueGuide,
+  "should-i-grade-pokemon-cards-before-selling": PokemonGradingGuide,
+  "what-are-my-one-piece-cards-worth": OnePieceValueGuide,
   "are-my-old-video-games-worth-money": VideoGameValueGuide,
 };

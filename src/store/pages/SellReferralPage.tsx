@@ -1,7 +1,13 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import ReferralLeadForm from "../components/ReferralLeadForm";
-import { FaqSection, SellerGuidesSection, StickySellCta } from "../components/SellLandingSections";
+import {
+  FaqSection,
+  PartnerTrustSection,
+  SellerGuidesSection,
+  SellerReviewsSection,
+  StickySellCta,
+} from "../components/SellLandingSections";
 import type { ReferralCategory } from "../lib/referralTypes";
 import { REFERRAL_PAGES, referralPageFor, type ReferralPage } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
@@ -78,6 +84,9 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
       <section className="gg-collect-hero">
         <h1>{page.heading}</h1>
         <p className="gg-collect-hero-sub">{page.intro}</p>
+        <p className="gg-credit-badge">
+          Our buying partner pays <strong>very competitively</strong>
+        </p>
         <div className="gg-collect-hero-actions">
           <a href="#tell-us" className="gg-btn">
             Tell us what you have
@@ -123,6 +132,8 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         <p className="gg-area-note">Our buying partner decides what they can make an offer on.</p>
       </section>
 
+      <PartnerTrustSection noun={page.noun} />
+
       <section className="gg-collect-section">
         <h2>{page.insight.heading}</h2>
         {page.insight.paragraphs.map((text) => (
@@ -154,7 +165,9 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         </div>
       </section>
 
-      {page.category !== "one_piece" && <SellerGuidesSection topic={page.category} />}
+      <SellerReviewsSection />
+
+      <SellerGuidesSection topic={page.category} />
 
       <FaqSection items={faq} />
 
