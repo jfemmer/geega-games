@@ -1464,6 +1464,21 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-leaddetail__danger h3 { color: var(--gg-danger); }
 .gg-leaddetail__danger .gg-btn { margin-top: 8px; }
 
+/* Partner Leads → Referral links (ReferralLinksCard). */
+.gg-reflinks__intro { margin: 0 0 6px; font-size: 0.85rem; color: var(--gg-text-soft); }
+.gg-reflinks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gg-reflinks__item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--gg-line); }
+.gg-reflinks__item:last-child { border-bottom: 0; padding-bottom: 0; }
+.gg-reflinks__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.gg-reflinks__label { font-weight: 600; font-size: 0.9rem; color: var(--gg-text); }
+.gg-reflinks__url { font-size: 0.85rem; color: var(--gg-brand); overflow-wrap: anywhere; }
+.gg-reflinks__actions { display: flex; gap: 8px; flex: 0 0 auto; }
+@media (max-width: 560px) {
+  /* Phone: address on top, then full-width buttons that are easy to tap. */
+  .gg-reflinks__item { flex-direction: column; align-items: stretch; gap: 8px; }
+  .gg-reflinks__actions .gg-btn { flex: 1 1 0; justify-content: center; min-height: 40px; }
+}
+
 .gg-leaddetail__cards { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .gg-leaddetail__cards li { display: flex; gap: 12px; padding: 8px; border-radius: 8px; background: var(--gg-surface-2); }
 .gg-leaddetail__card--review { outline: 1px solid #d99a2b; }

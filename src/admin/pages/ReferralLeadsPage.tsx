@@ -13,6 +13,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { PARTNER_LINK_DAYS, referralLeadsRepository } from "../repositories/referralLeads.supabase";
 import { DeleteLeadSection } from "../components/leads/DeleteLeadSection";
+import { ReferralLinksCard } from "../components/leads/ReferralLinksCard";
 import { formatDateTime } from "../utils/format";
 import { REFERRAL_LEAD_STATUS_TONE } from "../utils/labels";
 import type { ReferralLead, ReferralLeadStatus } from "../types";
@@ -29,7 +30,9 @@ import {
 // /sell-pokemon-cards, /sell-one-piece-cards and /sell-video-games, who
 // asked to be connected with the buying partner. Each one also arrives as a
 // "New referral lead" email written to be forwarded as-is; this page is the
-// record of what has been passed on (New → Sent to partner → Closed).
+// record of what has been passed on (New → Sent to partner → Closed). The
+// Referral links card above the list has those pages' addresses to copy or
+// share.
 
 type TabKey = "all" | ReferralLeadStatus;
 
@@ -151,6 +154,8 @@ export function ReferralLeadsPage({ query }: { query: URLSearchParams }) {
         title="Partner Leads"
         description="Pokémon, One Piece and video game sellers to pass on to our buying partner."
       />
+
+      <ReferralLinksCard />
 
       <SectionCard title="Leads">
         <div className="gg-toolbar">

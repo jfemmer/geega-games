@@ -46,7 +46,8 @@ export type IconName =
   | "keyboard"
   | "sparkle"
   | "pause"
-  | "camera";
+  | "camera"
+  | "share";
 
 const PATHS: Record<IconName, string> = {
   overview:
@@ -109,6 +110,8 @@ const PATHS: Record<IconName, string> = {
     "M2 6h20v12H2V6Zm4 3h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6",
   sparkle: "M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1L12 2Z",
   pause: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm-2-14v8m4-8v8",
+  // The box-and-arrow share glyph iPhone users know from the share sheet.
+  share: "M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13",
 };
 
 interface IconProps {
