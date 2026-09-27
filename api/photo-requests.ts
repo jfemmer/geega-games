@@ -7,7 +7,11 @@ import {
   notifyStaffOfPhotoRequest,
   sendPhotoRequestConfirmation,
 } from "./_lib/photoRequestEmails.js";
-import { PHOTO_REQUEST_MAX_NOTE } from "../src/store/lib/photoRequestTypes.js";
+import {
+  PHOTO_REQUEST_MAX_NOTE,
+  PHOTO_REQUEST_MIN_PRICE_LABEL,
+  photoRequestAllowed,
+} from "../src/store/lib/photoRequestTypes.js";
 import type { Database } from "../src/types/database.js";
 
 // POST /api/photo-requests
@@ -82,12 +86,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: item, error: itemErr } = await admin
       .from("inventory_items")
-      .select("id, card_name, set_code, set_name, collector_number, condition, finish, status, quantity")
+      .select(
+        "id, card_name, set_code, set_name, collector_number, condition, finish, status, quantity, price_cents, original_price_cents",
+      )
       .eq("id", itemId)
       .maybeSingle();
     if (itemErr) throw new HttpError(500, "We couldn't look up that card. Please try again.");
     if (!item || item.status !== "active" || item.quantity <= 0) {
       throw new HttpError(404, "That listing isn't available anymore. Please refresh the page.");
+    }
+    // The card page only offers photos from $5 up; this keeps the rule when
+    // someone calls the API directly.
+    if (!photoRequestAllowed(item.price_cents, item.original_price_cents)) {
+      throw new HttpError(400, `Photos are available on cards priced ${PHOTO_REQUEST_MIN_PRICE_LABEL} or more.`);
     }
 
     // Asking twice about the same listing doesn't create a second request.

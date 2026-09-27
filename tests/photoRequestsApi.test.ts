@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { isPhotoRequestOverdue } from "../src/store/lib/photoRequestTypes";
+import { isPhotoRequestOverdue, photoRequestAllowed } from "../src/store/lib/photoRequestTypes";
 
 // Photo requests: the public POST /api/photo-requests (card page) and the
 // staff-only /api/admin/photo-requests/:id that uploads and sends photos.
@@ -14,7 +14,19 @@ beforeAll(() => {
 const ITEM = "11111111-2222-3333-4444-555555555555";
 const REQ = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
-type Item = { id: string; card_name: string; set_code: string; set_name: string; collector_number: string; condition: string; finish: string; status: string; quantity: number };
+type Item = {
+  id: string;
+  card_name: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  condition: string;
+  finish: string;
+  status: string;
+  quantity: number;
+  price_cents: number | null;
+  original_price_cents: number | null;
+};
 
 const state: {
   item: Item | null;
@@ -167,6 +179,8 @@ const activeItem: Item = {
   finish: "foil",
   status: "active",
   quantity: 2,
+  price_cents: 1299,
+  original_price_cents: null,
 };
 
 beforeEach(() => {
@@ -225,6 +239,22 @@ describe("POST /api/photo-requests", () => {
     const res = await postPublic({ ...valid, email: "nope" });
     expect(res.statusCode).toBe(400);
     expect(state.inserted).toBeNull();
+  });
+
+  it("only takes requests for cards priced $5 or more", async () => {
+    state.item = { ...activeItem, price_cents: 499 };
+    const res = await postPublic(valid);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toMatch(/\$5 or more/);
+    expect(state.inserted).toBeNull();
+    expect(pushes).toEqual([]);
+  });
+
+  it("goes by the regular price, so a $6 card on sale for $4.50 still qualifies", async () => {
+    state.item = { ...activeItem, price_cents: 450, original_price_cents: 600 };
+    const res = await postPublic(valid);
+    expect(res.statusCode).toBe(200);
+    expect(state.inserted).not.toBeNull();
   });
 
   it("refuses a sold-out or archived listing", async () => {
@@ -316,6 +346,16 @@ describe("/api/admin/photo-requests/:id", () => {
     expect(typeof state.updated?.closed_at).toBe("string");
     const bad = await callAdmin({ status: "sent" }, "PATCH");
     expect(bad.statusCode).toBe(400);
+  });
+});
+
+describe("photoRequestAllowed", () => {
+  it("offers photos from $5 up, using the regular price for cards on sale", () => {
+    expect(photoRequestAllowed(500)).toBe(true);
+    expect(photoRequestAllowed(499)).toBe(false);
+    expect(photoRequestAllowed(450, 600)).toBe(true);
+    expect(photoRequestAllowed(null)).toBe(false);
+    expect(photoRequestAllowed(undefined, null)).toBe(false);
   });
 });
 

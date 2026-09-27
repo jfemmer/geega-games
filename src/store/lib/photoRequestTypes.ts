@@ -21,6 +21,26 @@ export function photoRequestStatusLabel(status: string): string {
 /** The reply promise shown to shoppers (owner-approved: within 24 hours). */
 export const PHOTO_REQUEST_REPLY_HOURS = 24;
 
+/**
+ * Photo requests are only offered on cards priced $5 and up (owner's call,
+ * 2026-09-27): photographing a cheaper card costs more time than it earns.
+ */
+export const PHOTO_REQUEST_MIN_PRICE_CENTS = 500;
+/** "$5", for copy. */
+export const PHOTO_REQUEST_MIN_PRICE_LABEL = `$${PHOTO_REQUEST_MIN_PRICE_CENTS / 100}`;
+
+/**
+ * Whether a listing can get a photo request. Uses the regular price, so a
+ * card on sale doesn't lose (or flicker) the option: the higher of the
+ * current price and the pre-sale price.
+ */
+export function photoRequestAllowed(
+  priceCents: number | null | undefined,
+  originalPriceCents?: number | null,
+): boolean {
+  return Math.max(priceCents ?? 0, originalPriceCents ?? 0) >= PHOTO_REQUEST_MIN_PRICE_CENTS;
+}
+
 export const PHOTO_REQUEST_MAX_NOTE = 500;
 export const PHOTO_REQUEST_MAX_STAFF_MESSAGE = 1000;
 

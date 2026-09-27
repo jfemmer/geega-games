@@ -21,6 +21,7 @@ import {
 import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { SHIPPING, formatCents } from "../lib/money";
+import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -104,7 +105,8 @@ export function HomePage() {
 // Store policies (owner-approved 2026-09-26): 14-day window to report a
 // problem; Geega pays return shipping when a card's condition was listed
 // wrong; orders ship within 2 business days (Mon–Sat — no Sunday post);
-// email replies within 24 hours; photos of the actual card on request.
+// email replies within 24 hours; photos of the actual card on request for
+// cards $5 and up (2026-09-27; see PHOTO_REQUEST_MIN_PRICE_CENTS).
 // Change these constants, not the page copy, if a policy changes.
 export const RETURN_WINDOW_DAYS = 14;
 export const SHIPS_WITHIN_BUSINESS_DAYS = 2;
@@ -181,8 +183,9 @@ export function ConditionGuidePage() {
       <h2>Want to see the actual card?</h2>
       <p>
         Product pages show a stock image of each card. If you&rsquo;d like a photo of the exact copy
-        you&rsquo;d be buying, tap <strong>Request a photo</strong> under any listing on the card&rsquo;s
-        page, and we&rsquo;ll email you one within {REPLY_WITHIN_HOURS} hours.
+        you&rsquo;d be buying, tap <strong>Request a photo</strong> under any listing priced{" "}
+        {PHOTO_REQUEST_MIN_PRICE_LABEL} or more on the card&rsquo;s page, and we&rsquo;ll email you one
+        within {REPLY_WITHIN_HOURS} hours.
       </p>
     </div>
   );
@@ -415,7 +418,8 @@ export function ContactPage() {
       </p>
       <p>
         Want a photo of the actual card before you buy? Tap <strong>Request a photo</strong> under
-        any listing on the card&rsquo;s page, and we&rsquo;ll email you one.
+        any listing priced {PHOTO_REQUEST_MIN_PRICE_LABEL} or more on the card&rsquo;s page, and
+        we&rsquo;ll email you one.
       </p>
 
       <aside className="gg-alert gg-scam-box" aria-labelledby="gg-scam-heading">
