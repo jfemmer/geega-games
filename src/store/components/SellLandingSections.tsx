@@ -32,7 +32,10 @@ import {
 //
 // Several sections here came out of seller research (2026-09-25): what makes
 // people pick a buyer is protected payment, no pressure, fair condition
-// grading, safe meetups and a fast, simple way to ask for an offer.
+// grading, safe meetups and a fast, simple way to ask for an offer. A second
+// pass (2026-09-27) added the first-screen promises (HeroPoints), the real
+// track record by the buttons (ShopRatingLine) and plainer, more specific
+// wording throughout.
 
 const WHAT_WE_BUY: { title: string; text: string }[] = [
   {
@@ -91,8 +94,9 @@ export function TrustSection() {
           <h3>Protected payment</h3>
           <p>
             PayPal Goods &amp; Services, protected for both of us, or store credit worth{" "}
-            {STORE_CREDIT_BONUS_PERCENT}% more on a free Geega Games account. We never ask you to use
-            Friends &amp; Family.
+            {STORE_CREDIT_BONUS_PERCENT}% more on a free Geega Games account (a $100 PayPal offer
+            becomes ${100 + STORE_CREDIT_BONUS_PERCENT} in credit). We never ask you to use Friends
+            &amp; Family.
           </p>
         </div>
         <div className="gg-collect-card">
@@ -121,41 +125,59 @@ export function TrustSection() {
 /**
  * "What you can count on" for the partner-referral pages (Pokémon, One Piece,
  * video games). Only claims that hold for every referral: the owner-approved
- * "buys very competitively", consent-only sharing, free and no obligation.
- * Nothing about how the partner pays or how fast — those are the partner's.
+ * "buys very competitively", a buyer we know (not a stranger — sellers' main
+ * safety worry about Marketplace), consent-only sharing, free and no
+ * obligation. Nothing about how the partner pays or how fast — those are the
+ * partner's.
  */
-export function PartnerTrustSection({ noun }: { noun: string }) {
+export function PartnerTrustSection() {
   return (
     <section className="gg-collect-section gg-collect-trust">
       <h2>What you can count on</h2>
       <div className="gg-collect-grid gg-collect-grid--2">
         <div className="gg-collect-card">
-          <h3>Very competitive offers</h3>
+          <h3>A buyer we know, not a stranger</h3>
           <p>
-            Our buying partner specializes in {noun} and buys very competitively — it&rsquo;s why we
-            send sellers to them.
+            We send sellers to one buyer we know personally — not an anonymous Marketplace profile —
+            because they buy very competitively.
           </p>
         </div>
         <div className="gg-collect-card">
           <h3>Free, with no obligation</h3>
-          <p>Asking for an offer costs nothing, and you&rsquo;re free to say no to any offer.</p>
+          <p>
+            Asking costs nothing. If you don&rsquo;t like the offer, just say no — no hard feelings.
+          </p>
         </div>
         <div className="gg-collect-card">
           <h3>Your details, only with your OK</h3>
           <p>
-            We pass along what you send only after you tick the consent box — and only to our buying
-            partner.
+            Nothing is passed along until you tick the consent box. Then it goes only to our buying
+            partner, and we never sell your details.
           </p>
         </div>
         <div className="gg-collect-card">
-          <h3>Meet up safely or ship</h3>
+          <h3>Meet up or ship</h3>
           <p>
-            Meetups are somewhere public around St. Louis. Farther away? Ship from anywhere in the
-            US.
+            Meet up around St. Louis — somewhere public, like a police safe-exchange spot — or ship
+            from anywhere in the US.
           </p>
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * The first-screen promises under a sell page's intro (research, 2026-09-27:
+ * put the value where people look first, as a short scannable list).
+ */
+export function HeroPoints({ points }: { points: string[] }) {
+  return (
+    <ul className="gg-hero-points">
+      {points.map((point) => (
+        <li key={point}>{point}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -167,21 +189,44 @@ export function PartnerTrustSection({ noun }: { noun: string }) {
 /** Reviews shown before "Show all" — enough to read at a glance on a phone. */
 const REVIEWS_PREVIEW_COUNT = 6;
 
+/** Count and average of the reviews on file, e.g. { total: 13, averageLabel: "5" }. */
+function sellerReviewStats() {
+  const total = SELLER_REVIEWS.length;
+  const average = total ? SELLER_REVIEWS.reduce((sum, r) => sum + r.rating, 0) / total : 0;
+  const averageLabel = Number.isInteger(average) ? String(average) : average.toFixed(1);
+  return { total, average, averageLabel };
+}
+
+/**
+ * One line of real track record under a sell page's buttons, linking to the
+ * reviews section (#reviews). Hidden when no reviews are on file.
+ */
+export function ShopRatingLine() {
+  const { total, average, averageLabel } = sellerReviewStats();
+  if (total === 0) return null;
+  return (
+    <p className="gg-rating-line">
+      <Stars rating={Math.round(average)} />{" "}
+      <a href="#reviews">
+        Rated {averageLabel} out of 5 by our TCGplayer customers ({total} review{total === 1 ? "" : "s"})
+      </a>
+    </p>
+  );
+}
+
 export function SellerReviewsSection() {
   const [showAll, setShowAll] = useState(false);
   const { positivePercent, sales } = SELLER_REVIEW_SUMMARY;
   const withText = SELLER_REVIEWS.filter((r): r is typeof r & { text: string } => Boolean(r.text));
   const shown = showAll ? withText : withText.slice(0, REVIEWS_PREVIEW_COUNT);
-  const total = SELLER_REVIEWS.length;
-  const average = total ? SELLER_REVIEWS.reduce((sum, r) => sum + r.rating, 0) / total : 0;
-  const averageLabel = Number.isInteger(average) ? String(average) : average.toFixed(1);
+  const { total, average, averageLabel } = sellerReviewStats();
   const stats = [
     positivePercent ? `${positivePercent} positive feedback` : null,
     sales ? `${sales} sales` : null,
   ].filter(Boolean);
 
   return (
-    <section className="gg-collect-section" aria-labelledby="gg-reviews-heading">
+    <section className="gg-collect-section" id="reviews" aria-labelledby="gg-reviews-heading">
       <h2 id="gg-reviews-heading">{total > 0 ? "What our customers say" : "Check our track record"}</h2>
       {total > 0 && (
         <p className="gg-reviews-summary">
@@ -512,7 +557,7 @@ export function PartnerCategoriesSection({ local = true }: { local?: boolean }) 
       <p className="gg-collect-lead">
         Plenty of Magic collections come with other things. We buy the Magic cards ourselves, and
         for the rest we connect you with a trusted buyer we work with — one who{" "}
-        <strong>pays very competitively</strong>.{" "}
+        <strong>buys very competitively</strong>.{" "}
         {local
           ? "Same easy process: tell us what you have, then meet up around St. Louis or ship."
           : "Same easy process: tell us what you have and ship it from anywhere in the US."}
@@ -574,19 +619,37 @@ export function SellCtaSection({
   text,
   handoff,
   buttonLabel = "Get an offer",
+  primary,
 }: {
   heading: string;
   text: string;
   handoff?: "local" | "ship";
   buttonLabel?: string;
+  /**
+   * An in-page main action (e.g. the quick photo quote). When set, it's the
+   * main button and the link to the sell form becomes the second one.
+   */
+  primary?: { label: string; href: string };
 }) {
+  const formLink = (
+    <Link to={sellFormPath(handoff)} className={primary ? "gg-btn gg-btn-ghost" : "gg-btn"}>
+      {buttonLabel}
+    </Link>
+  );
   return (
     <section className="gg-collect-cta">
       <h2>{heading}</h2>
       <p>{text}</p>
-      <Link to={sellFormPath(handoff)} className="gg-btn">
-        {buttonLabel}
-      </Link>
+      {primary ? (
+        <div className="gg-collect-hero-actions">
+          <a href={primary.href} className="gg-btn">
+            {primary.label}
+          </a>
+          {formLink}
+        </div>
+      ) : (
+        formLink
+      )}
     </section>
   );
 }

@@ -15,6 +15,13 @@ const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "
 
 type Handoff = SellContactInfo["transactionPreference"];
 
+/** "…reply by text…" in the "What happens next" list. */
+const CONTACT_PHRASE: Record<SellContactInfo["preferredContactMethod"], string> = {
+  email: "by email",
+  phone: "by phone",
+  text: "by text",
+};
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
@@ -158,10 +165,16 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
     return (
       <div className="gg-referral-done" ref={doneRef} tabIndex={-1} role="status">
         <h3>Thanks{firstName ? `, ${firstName}` : ""} — we got it!</h3>
-        <p>
-          We&rsquo;ll look over your photos and get back to you using your preferred contact method.
-          We also emailed you a copy.
-        </p>
+        <p>What happens next:</p>
+        <ol className="gg-referral-next">
+          <li>We look over your photos and notes.</li>
+          <li>
+            We reply {CONTACT_PHRASE[contactMethod]} with an offer, or with a few questions if we need
+            a closer look.
+          </li>
+          <li>If you accept, we set up shipping or a meetup — whichever works for you.</li>
+        </ol>
+        <p>We also emailed you a copy.</p>
         {referenceNumber && (
           <p className="gg-card-meta">
             Your reference number: <strong>{referenceNumber}</strong>
@@ -212,11 +225,11 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
           <input id="qq-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="gg-field">
-          <label htmlFor="qq-phone">Phone (optional)</label>
+          <label htmlFor="qq-phone">Phone (optional — if you&rsquo;d rather talk or text)</label>
           <input id="qq-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="gg-field">
-          <label htmlFor="qq-zip">ZIP code (optional)</label>
+          <label htmlFor="qq-zip">ZIP code (optional — helps plan a meetup)</label>
           <input
             id="qq-zip"
             autoComplete="postal-code"
@@ -279,8 +292,10 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         </p>
       )}
 
+      <p className="gg-referral-assure">Free, with no obligation to sell. We never sell your details.</p>
+
       <button type="submit" className="gg-btn" disabled={submitting}>
-        {submitting ? "Sending…" : "Get my offer"}
+        {submitting ? "Sending…" : "Get my free offer"}
       </button>
     </form>
   );

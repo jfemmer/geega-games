@@ -5,11 +5,13 @@ import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import {
   CreditBonusBadge,
   FaqSection,
+  HeroPoints,
   PartnerCategoriesSection,
   PricesMoveSection,
   SellCtaSection,
   SellerGuidesSection,
   SellerReviewsSection,
+  ShopRatingLine,
   StickySellCta,
   TravelAreasSection,
   NoSurprisesSection,
@@ -42,21 +44,42 @@ import {
 // One approved exception (2026-09-25): the store-credit BONUS relative to
 // the PayPal offer (STORE_CREDIT_BONUS_PERCENT), which the offer page and
 // /api/sell/respond-to-offer actually honor.
+//
+// Order and wording follow seller research (2026-09-27): the promises and
+// the steps come before the form, the worries sellers raise most (payment,
+// offers that change later, grading) are answered right after it, and one
+// main action — the free photo offer — is repeated down the page.
 
+const CTA_LABEL = "Get my free offer";
+
+const HERO_POINTS = [
+  "Free offer — no obligation to sell",
+  "Unsorted, bulk or inherited is fine",
+  "Paid by PayPal Goods & Services, protected for both of us",
+  "Any change to your offer, explained card by card",
+];
+
+// Worries first (payment, how offers are set, condition, changing your
+// mind), then logistics, then the where-to-sell overview.
 const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
-    question: "Where can I sell my Magic cards?",
-    answer:
-      "You have five main options. List them yourself on TCGplayer or eBay (the most money per card, but roughly 13% or more in fees plus all the listing and shipping work). Sell to an online buylist (quick, but you look up and ship every card yourself). Sell to a local game store (fast, but many only buy what they need). Or sell everything at once to a collection buyer like us — one offer for the whole lot, sorted or not, by mail or in person. Our Where to sell Magic cards guide compares them in detail.",
+    question: "How do you pay?",
+    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount (a $100 PayPal offer becomes $${100 + STORE_CREDIT_BONUS_PERCENT} in credit). Store credit is saved to a free account and works on any singles in our shop.`,
   },
   {
-    question: "How do you pay?",
-    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount. Store credit is saved to a free account and works on any singles in our shop.`,
+    question: "How do you decide what to offer?",
+    answer:
+      "We look at what each card is selling for right now, how quickly it sells and what condition it's in, then make one offer on the whole lot. Until we see the cards in person, we go by a starting condition based on each card's age.",
   },
   {
     question: "What if my cards are in better or worse condition than I thought?",
     answer:
       "Until we see them, each card starts at a condition based on its age: 2005 or earlier at Heavily Played, 2006–2015 at Moderately Played, newer cards at Lightly Played, and brand-new cards at Near Mint. We check every card when it arrives, and your offer goes up or down to match what's really there — we'll tell you which cards changed and why.",
+  },
+  {
+    question: "What if I disagree with how you graded a card?",
+    answer:
+      "Tell us which card and why, and we'll take another look — a clear photo helps. You're never obligated: if we can't agree, you can decline the offer, and if you've already shipped your cards, we send them back (you cover the return shipping).",
   },
   {
     question: "What if I ship my cards and then decline the offer?",
@@ -74,6 +97,21 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
       "Not at all. Most people selling a large collection haven't priced it and don't need to. We go through everything and make an offer based on what's actually there.",
   },
   {
+    question: "What if it's a mix of valuable cards and bulk commons?",
+    answer:
+      "That's the normal case, not an edge case. Most real collections are a mix — a few cards worth looking at closely and a lot that aren't. Send it all; we sort out what's what.",
+  },
+  {
+    question: "Is there a minimum?",
+    answer:
+      "No. A few good singles or a few thousand cards are both fine. For a handful of cards, our Sell page lets you add each card individually; for binders, boxes or anything unsorted, the quick photo quote on this page is the fastest way in.",
+  },
+  {
+    question: "I just want to sell a few Magic cards, not a whole collection. Can I?",
+    answer:
+      "Yes. Use our Sell page to search for and add your cards one at a time in a couple of clicks, or send a few photos through the quick photo quote on this page — whichever is easier.",
+  },
+  {
     question: "Can we meet in person, or do I have to ship it?",
     answer: `Either works. In the ${HUB_CITY} area we're glad to meet up in person. For collections, we'll also drive to you anywhere within about a ${MAX_DRIVE_HOURS}-hour drive of ${HUB_CITY} — Kansas City, Chicago, Indianapolis, Louisville, Nashville, Memphis and everywhere in between. From anywhere else in the US, ship it to us. Tell us your preference in the form.`,
   },
@@ -88,23 +126,13 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
       "Somewhere public that you're comfortable with. Coffee shops, libraries and game stores work well, and many police departments have designated safe-exchange spots. For a very large collection that's hard to move, tell us in the form and we'll work out the easiest option.",
   },
   {
-    question: "Is there a minimum?",
-    answer:
-      "No. A few good singles or a few thousand cards are both fine. For a handful of cards, our Sell page lets you add each card individually; for binders, boxes or anything unsorted, the quick photo quote on this page is the fastest way in.",
-  },
-  {
-    question: "I just want to sell a few Magic cards, not a whole collection. Can I?",
-    answer:
-      "Yes. Use our Sell page to search for and add your cards one at a time in a couple of clicks, or send a few photos through the quick photo quote on this page — whichever is easier.",
-  },
-  {
-    question: "What if it's a mix of valuable cards and bulk commons?",
-    answer:
-      "That's the normal case, not an edge case. Most real collections are a mix — a few cards worth looking at closely and a lot that aren't. Send it all; we sort out what's what.",
-  },
-  {
     question: "Do I have to live near you to sell my collection?",
     answer: `No — shipping in works from anywhere in the US. We're based in ${HUB_CITY}, and for sellers within about a ${MAX_DRIVE_HOURS}-hour drive — including ${SERVICE_STATES.join(", ")} — meeting in person is an option too.`,
+  },
+  {
+    question: "Where can I sell my Magic cards?",
+    answer:
+      "You have five main options. List them yourself on TCGplayer or eBay (the most money per card, but roughly 13% or more in fees plus all the listing and shipping work). Sell to an online buylist (quick, but you look up and ship every card yourself). Sell to a local game store (fast, but many only buy what they need). Or sell everything at once to a collection buyer like us — one offer for the whole lot, sorted or not, by mail or in person. Our Where to sell Magic cards guide compares them in detail.",
   },
 ];
 
@@ -128,7 +156,7 @@ const JSON_LD = [
 export default function SellCollectionPage() {
   useSEO({
     title: "Sell Magic Cards & MTG Collections — We Buy by Mail or In Person | Geega Games",
-    description: `Sell your Magic: The Gathering cards — one card or a whole collection. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (about ${MAX_DRIVE_HOURS} hours). Unsorted is fine.`,
+    description: `Get a free offer on your Magic: The Gathering cards — one card or a whole collection, unsorted is fine. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (about ${MAX_DRIVE_HOURS} hours).`,
     path: "/sell-my-collection",
     jsonLd: JSON_LD,
   });
@@ -138,21 +166,66 @@ export default function SellCollectionPage() {
       <section className="gg-collect-hero">
         <h1>Sell your Magic cards — one card or a whole collection</h1>
         <p className="gg-collect-hero-sub">
-          A few valuable singles, binders you haven&rsquo;t opened in years, or boxes of Magic: The
-          Gathering trading cards from a basement or an estate. Ship them to us from anywhere in the
-          US, meet up with us in {HUB_CITY}, or we&rsquo;ll drive to you — no sorting, no pricing
-          spreadsheet, no cleanup required on your end.
+          Binders you haven&rsquo;t opened in years, boxes from a basement or an estate, or a few
+          valuable singles. Ship them from anywhere in the US, meet up with us in {HUB_CITY}, or
+          we&rsquo;ll drive to you — no sorting or pricing needed.
         </p>
+        <HeroPoints points={HERO_POINTS} />
         <CreditBonusBadge />
         <div className="gg-collect-hero-actions">
           <a href="#quick-quote" className="gg-btn">
-            Get a quick photo quote
+            {CTA_LABEL}
           </a>
           <Link to="/sell" className="gg-btn gg-btn-ghost">
-            List cards one by one
+            List my cards one by one
           </Link>
         </div>
+        <ShopRatingLine />
       </section>
+
+      <section className="gg-collect-section">
+        <h2>How it works</h2>
+        <ol className="gg-collect-steps">
+          <li>
+            <strong>Tell us what you have.</strong> Send a few photos below, or list your cards one by
+            one. &ldquo;Not sure&rdquo; is a fine answer to anything.
+          </li>
+          <li>
+            <strong>Get your offer.</strong> One offer on the whole lot — free, and with no
+            obligation.
+          </li>
+          <li>
+            <strong>Ship it or meet up.</strong> Ship from anywhere in the US, meet us in {HUB_CITY},
+            or — for a collection — we drive to you.
+          </li>
+          <li>
+            <strong>Get paid.</strong> We check every card; if your offer changes, we tell you which
+            cards and why, and you still decide. Then choose PayPal Goods &amp; Services or store
+            credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
+          </li>
+        </ol>
+      </section>
+
+      <section className="gg-collect-section" id="quick-quote">
+        <h2>Get a free offer from a few photos</h2>
+        <p className="gg-collect-lead">
+          Snap a few photos — binder pages, box tops, anything that looks valuable — add your contact
+          details, and we&rsquo;ll reply with an offer or a few questions. No card-by-card list
+          needed.
+        </p>
+        <div className="gg-referral-card">
+          <QuickPhotoQuote />
+        </div>
+        <p className="gg-area-note">
+          Rather list each card? <Link to="/sell">List your cards one by one</Link>.
+        </p>
+      </section>
+
+      <TrustSection />
+
+      <NoSurprisesSection />
+
+      <SellerReviewsSection />
 
       <section className="gg-collect-section">
         <h2>Three ways to sell</h2>
@@ -180,19 +253,6 @@ export default function SellCollectionPage() {
           </div>
         </div>
       </section>
-
-      <section className="gg-collect-section" id="quick-quote">
-        <h2>Get a quick photo quote</h2>
-        <p className="gg-collect-lead">
-          Snap a few photos — binder pages, box tops, anything that looks valuable — add your contact
-          details, and we&rsquo;ll come back with an offer. No card-by-card list needed.
-        </p>
-        <div className="gg-referral-card">
-          <QuickPhotoQuote />
-        </div>
-      </section>
-
-      <PartnerCategoriesSection />
 
       <section className="gg-collect-section">
         <h2>Built for collections that haven&rsquo;t been touched in years</h2>
@@ -222,43 +282,15 @@ export default function SellCollectionPage() {
         </div>
       </section>
 
-      <section className="gg-collect-section">
-        <h2>How it works</h2>
-        <ol className="gg-collect-steps">
-          <li>
-            <strong>Tell us about the collection.</strong> A couple of quick questions —
-            roughly how much you have and what kind of cards are in it. &ldquo;Not sure&rdquo;
-            is a fine answer to any of them.
-          </li>
-          <li>
-            <strong>Choose ship or meet up.</strong> Prefer to box it up and ship it to us? Prefer to
-            meet in person — in {HUB_CITY}, or with us driving to you? Either is fine; let us know
-            which works better for you.
-          </li>
-          <li>
-            <strong>We go through everything.</strong> Every card gets looked at, not just the
-            ones that look valuable at a glance.
-          </li>
-          <li>
-            <strong>You get an offer.</strong> Straightforward, on the whole collection, with
-            no obligation until you say yes.
-          </li>
-        </ol>
-      </section>
-
       <WhatWeBuySection />
-
-      <TrustSection />
-
-      <NoSurprisesSection />
-
-      <SellerReviewsSection />
 
       <PricesMoveSection />
 
       <div id="areas">
         <TravelAreasSection />
       </div>
+
+      <PartnerCategoriesSection />
 
       <SellerGuidesSection />
 
@@ -270,11 +302,12 @@ export default function SellCollectionPage() {
 
       <SellCtaSection
         heading="Ready to sell your Magic cards?"
-        text="A few singles or a whole collection — unsorted, mixed or inherited is fine. List your cards one by one, or use the quick photo quote above."
-        buttonLabel="List cards one by one"
+        text="A few singles or a whole collection — unsorted, mixed or inherited is fine. Send a few photos for a free offer, or list your cards one by one."
+        primary={{ label: CTA_LABEL, href: "#quick-quote" }}
+        buttonLabel="List my cards one by one"
       />
 
-      <StickySellCta label="Get a quick photo quote" to="#quick-quote" targetId="quick-quote" />
+      <StickySellCta label={CTA_LABEL} to="#quick-quote" targetId="quick-quote" />
     </div>
   );
 }

@@ -6,11 +6,19 @@
 // Content rules:
 //   * Never say or imply that Geega Games buys these. "Our buying partner"
 //     makes the offer; we pass the details along with the seller's consent.
-//   * No specific payout, price or turnaround promises — the partner sets
-//     those. The one approved claim (owner, 2026-09-25): the partner "buys
-//     very competitively".
+//   * No specific payout, price or turnaround promises, and nothing about how
+//     the partner pays or prices — the partner sets those. The one approved
+//     claim (owner, 2026-09-25): the partner "buys very competitively" (use
+//     those words, not a paraphrase).
 //   * Keep the tips factual and evergreen (no card prices, nothing that
-//     goes stale with the next set).
+//     goes stale with the next set). Dated facts say when they were true.
+//
+// Seller research (2026-09-27) behind the wording: sellers' top worries are
+// lowball offers, not knowing what they have, the work of listing everything,
+// meeting strangers from Marketplace, fees and returns, and offers that change
+// later. So the pages lead with "free, no obligation, no sorting", explain the
+// partner setup up front, compare honestly with selling it yourself, and show
+// how to judge any offer.
 
 import type { ReferralCategory } from "../store/lib/referralTypes.js";
 
@@ -28,14 +36,25 @@ export interface ReferralPage {
   tips: { title: string; text: string }[];
   /**
    * One research-backed section for what most worries sellers in this
-   * market (2026-09-25): grading for Pokémon, reprint swings for One Piece,
-   * lowball trade-in offers for video games. Dated facts say when.
+   * market (2026-09-25): grading for Pokémon, reprints and rotation for One
+   * Piece, trade-in offers for video games. Dated facts say when.
    */
   insight: { heading: string; paragraphs: string[] };
+  /** "Why not just sell it yourself?": an honest comparison with listing it. */
+  sellYourself: { intro: string; points: string[] };
+  /** Where to look up sold prices, for "How to tell if an offer is fair". */
+  priceCheck: string;
   /** Category-specific FAQ entries; shared ones are added by the page. */
   faq: { question: string; answer: string }[];
   descriptionPlaceholder: string;
 }
+
+const CARD_SELL_YOURSELF_POINTS = [
+  "Looking up, photographing and listing every card",
+  "Fees of about 13% or more on eBay and TCGplayer, plus shipping supplies",
+  "Packing every order, and handling returns and buyer claims",
+  "Haggling, no-shows and meeting strangers from Marketplace",
+];
 
 export const REFERRAL_PAGES: ReferralPage[] = [
   {
@@ -44,10 +63,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     noun: "Pokémon cards",
     title: "Sell Pokémon Cards in St. Louis — Meet Up or Ship | Geega Games",
     description:
-      "Sell your Pokémon cards in St. Louis — binders, graded slabs, sealed product or whole collections. Our trusted buying partner buys very competitively. Meet up or ship.",
+      "Get a free, no-obligation offer on your Pokémon cards in St. Louis — binders, graded slabs, sealed product or whole collections. Our trusted buying partner buys very competitively.",
     heading: "Sell your Pokémon cards in St. Louis",
     intro:
-      "Old binders, graded slabs, sealed boxes, or a shoebox of cards from when you were a kid — tell us what you have and we'll connect you with the trusted Pokémon buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
+      "Your childhood binder, graded slabs, sealed boxes or a whole collection — tell us what you have. With your OK, we'll pass it to the Pokémon buyer we know and trust, who buys very competitively and will contact you about an offer.",
     items: [
       {
         title: "Vintage cards",
@@ -103,11 +122,23 @@ export const REFERRAL_PAGES: ReferralPage[] = [
         "Already graded? Just list the grading company, the grade and the certification number in the form.",
       ],
     },
+    sellYourself: {
+      intro:
+        "Listing cards yourself on eBay, TCGplayer or Facebook Marketplace can get the most money for a single valuable card. For a binder or a whole collection, it usually means:",
+      points: CARD_SELL_YOURSELF_POINTS,
+    },
+    priceCheck:
+      "Look up recent sold prices for your best few cards — eBay's sold listings or TCGplayer's market price — rather than asking prices.",
     faq: [
+      {
+        question: "Are my old Pokémon cards worth anything?",
+        answer:
+          "Some are worth a lot. Cards from 1999–2003 (Base Set, Jungle, Fossil, Team Rocket and Neo), 1st Edition and shadowless cards, holo rares and modern secret rares are the first ones to check — the tips on this page show what to look for. You don't need to work it out before asking for an offer.",
+      },
       {
         question: "Where can I sell Pokémon cards in St. Louis?",
         answer:
-          "You can sell to a local game store, list cards yourself on TCGplayer or eBay, or use Facebook Marketplace. For a binder or a whole collection, the easiest route is to tell us what you have here: we'll connect you with our buying partner, who pays very competitively and meets up around St. Louis. Our guide to where to sell cards in St. Louis compares every option.",
+          "You can sell to a local game store, list cards yourself on TCGplayer or eBay, or use Facebook Marketplace. For a binder or a whole collection, the easiest route is to tell us what you have here: we'll connect you with our buying partner, who buys very competitively and meets up around St. Louis. Our guide to where to sell cards in St. Louis compares every option.",
       },
       {
         question: "What about Japanese Pokémon cards?",
@@ -129,10 +160,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     noun: "One Piece cards",
     title: "Sell One Piece Cards in St. Louis — Meet Up or Ship | Geega Games",
     description:
-      "Sell your One Piece cards in St. Louis — manga rares, alt arts, Leaders, sealed boxes or whole collections. Our trusted buying partner buys very competitively. Meet up or ship.",
+      "Get a free, no-obligation offer on your One Piece cards in St. Louis — manga rares, alt arts, Leaders, sealed boxes or whole collections. Our trusted buying partner buys very competitively.",
     heading: "Sell your One Piece cards in St. Louis",
     intro:
-      "Alt arts, manga rares, sealed booster boxes or a binder full of playsets — tell us what you have and we'll connect you with the trusted One Piece Card Game buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
+      "Alt arts, manga rares, sealed booster boxes, or decks you've stopped playing since rotation — tell us what you have. With your OK, we'll pass it to the One Piece Card Game buyer we know and trust, who buys very competitively and will contact you about an offer.",
     items: [
       {
         title: "Chase rares",
@@ -178,14 +209,32 @@ export const REFERRAL_PAGES: ReferralPage[] = [
       heading: "One Piece prices move fast",
       paragraphs: [
         "Bandai reprints cards and whole sets when they sell out, and reprinted cards have fallen sharply on the secondary market — in some cases by around 40% during 2026. Prices can shift week to week, so an offer based on today's market is worth more than a guess from last month.",
+        "Rotation matters too. Bandai's first Standard rotation, on April 1, 2026, moved the earliest block of cards — the OP-01 to OP-04 era — out of Standard play. They're still legal in Extra Regulation and alt arts are still collected, but cards people mainly wanted for Standard decks can lose value.",
         "For the most accurate offer, include each notable card's set code (like OP05), whether it's English or Japanese, and whether it's an alt art or manga rare.",
       ],
     },
+    sellYourself: {
+      intro:
+        "Listing cards yourself on TCGplayer, eBay or Facebook Marketplace can get the most money for a single valuable card. For a binder or a whole collection, it usually means:",
+      points: CARD_SELL_YOURSELF_POINTS,
+    },
+    priceCheck:
+      "Look up recent sold prices for your best few cards — eBay's sold listings or TCGplayer's market price — rather than asking prices. English and Japanese versions are priced separately.",
     faq: [
+      {
+        question: "Are my One Piece cards worth anything?",
+        answer:
+          "Most commons aren't worth much, but alt arts, manga rares, Secret Rares (SEC), Special cards (SP) and sealed booster boxes can be. Check the rarity code at the bottom of each card — the tips on this page explain them — or just describe what you have and let our buying partner tell you.",
+      },
+      {
+        question: "Did rotation make my older One Piece cards worthless?",
+        answer:
+          "No. Cards from the first block (the OP-01 to OP-04 era) left Standard on April 1, 2026, but they're still legal in Extra Regulation, and alt arts and manga rares are still collected. Rotation can lower prices for cards people mainly wanted for Standard decks.",
+      },
       {
         question: "Where can I sell One Piece cards in St. Louis?",
         answer:
-          "Some local game stores buy One Piece cards, St. Louis has local buy/sell/trade groups, and you can list cards yourself online. For alt arts, manga rares or a whole collection, tell us what you have here and we'll connect you with our buying partner, who pays very competitively and meets up around St. Louis or buys by mail.",
+          "Some local game stores buy One Piece cards, St. Louis has local buy/sell/trade groups, and you can list cards yourself online. For alt arts, manga rares or a whole collection, tell us what you have here and we'll connect you with our buying partner, who buys very competitively and meets up around St. Louis or buys by mail.",
       },
       {
         question: "Do you buy starter decks and bulk One Piece cards?",
@@ -202,10 +251,10 @@ export const REFERRAL_PAGES: ReferralPage[] = [
     noun: "video games",
     title: "Sell Video Games in St. Louis — Retro & Modern | Geega Games",
     description:
-      "Sell your video games in St. Louis — retro and modern games, consoles, complete-in-box or whole collections. Our trusted buying partner buys very competitively. Meet up or ship.",
+      "Get a free, no-obligation offer on your video games in St. Louis — retro and modern games, consoles, complete-in-box or whole collections. Our trusted buying partner buys very competitively.",
     heading: "Sell your video games in St. Louis",
     intro:
-      "Retro cartridges, a shelf of disc games, consoles and controllers, or a whole collection — tell us what you have and we'll connect you with the trusted video game buyer we work with, who buys very competitively. Meet up around St. Louis, or ship from anywhere in the US.",
+      "Old games collecting dust, a console you've upgraded from, or a whole collection — tell us what you have. With your OK, we'll pass it to the video game buyer we know and trust, who buys very competitively and will contact you about an offer.",
     items: [
       {
         title: "Retro games & consoles",
@@ -249,27 +298,67 @@ export const REFERRAL_PAGES: ReferralPage[] = [
         text: "If you can test your consoles and games, mention it. If you can't — or something doesn't work — say that too; the buyer will factor it in.",
       },
       {
+        title: "Reset modern consoles",
+        text: "Before you hand over a Switch, PlayStation or Xbox, sign out of your accounts and reset it to factory settings to protect your data.",
+      },
+      {
         title: "Photos of labels and boxes help",
         text: "A photo of the game spines on a shelf, or of cartridge labels, is often all a buyer needs to get started.",
       },
     ],
     insight: {
-      heading: "Big-box trade-in vs. a specialist buyer",
+      heading: "Get a second offer before you trade in",
       paragraphs: [
-        "Chain-store trade-in programs price games by barcode for resale, so their cash offers on retro and collectible games are usually a small fraction of what collectors pay — especially for complete-in-box copies.",
-        "A specialist buyer prices by collector demand instead. Before you trade in a box of old games, it's worth getting an offer from someone who knows what they're worth.",
+        "Chain-store trade-in counters are quick, but their offers on older games are often well below what collectors pay, and some won't take retro games or older consoles at all.",
+        "Before you trade in a box of old games, it's worth asking for a second offer. It's free, and you can compare it with anything else.",
       ],
     },
+    sellYourself: {
+      intro:
+        "Listing games yourself on eBay or Facebook Marketplace can get the most money for a rare title. For a shelf or a box of games, it usually means:",
+      points: [
+        "Testing, photographing and listing every game",
+        "Selling fees, plus boxes and shipping for every order",
+        "Returns when something arrives \"not working\"",
+        "Haggling, no-shows and \"is this still available?\" messages",
+      ],
+    },
+    priceCheck:
+      "Look up recent sold prices for your best few games — PriceCharting or eBay's sold listings — rather than asking prices. Loose, complete-in-box and sealed copies are priced separately.",
     faq: [
+      {
+        question: "Are my old video games worth anything?",
+        answer:
+          "Some are worth a lot, many are worth a little. Complete-in-box copies, factory-sealed games and some Nintendo, Sega and PlayStation titles are the first ones to check — the tips on this page show what matters. You don't need to know before you ask.",
+      },
       {
         question: "Where can I sell video games in St. Louis?",
         answer:
-          "Chain stores will take games for trade-in, but they price by barcode, so retro and complete-in-box games usually get low offers. For a collection, tell us what you have here and we'll connect you with our buying partner, who prices by what collectors pay, pays very competitively and meets up around St. Louis.",
+          "Chain stores and pawn shops are quick but usually offer the least, and some won't take older games. Local game shops vary a lot. Listing games yourself on eBay or Facebook Marketplace can pay the most for your best games, but it's the most work. For a collection, tell us what you have here and we'll connect you with our buying partner, who buys very competitively and meets up around St. Louis.",
+      },
+      {
+        question: "Can I sell games without their cases or manuals?",
+        answer:
+          "Yes, include them. Loose cartridges and discs are part of most collections — just say which games are loose and which are complete. Our buying partner will tell you what they can make an offer on.",
+      },
+      {
+        question: "I can't test my games or consoles. Can I still ask?",
+        answer: "Yes. Say they're untested, and our buying partner will take that into account.",
       },
       {
         question: "Do you buy consoles or games that don't work?",
         answer:
           "Mention it in the form either way. Our buying partner will tell you whether they can make an offer on items that need repair.",
+      },
+      {
+        question: "Should I sell games one at a time or as a lot?",
+        answer:
+          "A rare game can bring more on its own if you're willing to list, photograph and ship it. For a shelf of everyday games, selling them together is much faster — ask for an offer on everything, then decide.",
+      },
+      {
+        question: "I'm selling a relative's collection. Where do I start?",
+        answer:
+          "Don't sort, clean or test anything. Take a few photos of what's there — shelves, boxes, consoles — and describe it as best you can. That's enough to get started.",
       },
     ],
     descriptionPlaceholder:

@@ -819,16 +819,16 @@ function VideoGameValueGuide() {
           best games, and the most work.
         </li>
         <li>
-          <strong>Chain-store trade-in:</strong> fast, but priced by barcode for resale, so offers on
-          retro and collectible games are usually low.
+          <strong>Chain-store trade-in:</strong> fast, but offers on older and collectible games are
+          often well below what collectors pay, and some stores won&rsquo;t take them at all.
         </li>
         <li>
           <strong>A local game shop:</strong> in person and quick; prices vary a lot from shop to
           shop.
         </li>
         <li>
-          <strong>A specialist buyer:</strong> prices by what collectors pay, takes a whole
-          collection at once, and saves you listing everything yourself.
+          <strong>A buyer who takes whole collections:</strong> one offer on everything at once,
+          and no listing it all yourself.
         </li>
       </ul>
     </>
@@ -1128,7 +1128,7 @@ function StLouisWhereToSellGuide() {
         For <Link to="/sell-pokemon-cards">Pokémon cards</Link>,{" "}
         <Link to="/sell-one-piece-cards">One Piece cards</Link> and{" "}
         <Link to="/sell-video-games">video games</Link>, we connect you with a trusted buyer we work
-        with, who pays very competitively and meets up around St. Louis or buys by mail.
+        with, who buys very competitively and meets up around St. Louis or buys by mail.
       </p>
 
       <h2>By game</h2>

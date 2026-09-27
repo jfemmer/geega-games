@@ -31,7 +31,7 @@ describe("QuickPhotoQuote", () => {
     const user = userEvent.setup();
     render(<QuickPhotoQuote />);
     await fillRequired(user);
-    await user.click(screen.getByRole("button", { name: "Get my offer" }));
+    await user.click(screen.getByRole("button", { name: "Get my free offer" }));
     expect(screen.getByRole("alert")).toHaveTextContent(/own or are authorized/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -41,7 +41,7 @@ describe("QuickPhotoQuote", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     render(<QuickPhotoQuote />);
-    await user.click(screen.getByRole("button", { name: "Get my offer" }));
+    await user.click(screen.getByRole("button", { name: "Get my free offer" }));
     expect(screen.getByRole("alert")).toHaveTextContent(/photos or a short description/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -58,7 +58,7 @@ describe("QuickPhotoQuote", () => {
     expect(screen.getByLabelText("Meet up or ship?")).toHaveValue("local");
     await fillRequired(user);
     await user.click(screen.getByRole("checkbox", { name: /i confirm that i own/i }));
-    await user.click(screen.getByRole("button", { name: "Get my offer" }));
+    await user.click(screen.getByRole("button", { name: "Get my free offer" }));
 
     expect(await screen.findByText("GG-S-100042")).toBeInTheDocument();
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];

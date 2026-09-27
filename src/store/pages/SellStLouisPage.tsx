@@ -12,6 +12,7 @@ import {
   NoSurprisesSection,
   PartnerCategoriesSection,
   SellerReviewsSection,
+  ShopRatingLine,
   TrustSection,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
@@ -135,12 +136,13 @@ export default function SellStLouisPage() {
         <CreditBonusBadge />
         <div className="gg-collect-hero-actions">
           <a href="#quick-quote" className="gg-btn">
-            Get a quick photo quote
+            Get my free offer
           </a>
           <Link to={sellFormPath("local")} className="gg-btn gg-btn-ghost">
             Set up a meetup
           </Link>
         </div>
+        <ShopRatingLine />
       </section>
 
       <section className="gg-collect-section">
@@ -184,10 +186,10 @@ export default function SellStLouisPage() {
       </section>
 
       <section className="gg-collect-section" id="quick-quote">
-        <h2>Get a quick photo quote</h2>
+        <h2>Get a free offer from a few photos</h2>
         <p className="gg-collect-lead">
-          Send a few photos and your contact details and we&rsquo;ll come back with an offer — then we
-          can meet up to finish the sale, or you can ship if that&rsquo;s easier.
+          Send a few photos and your contact details, and we&rsquo;ll reply with an offer or a few
+          questions — then we can meet up to finish the sale, or you can ship if that&rsquo;s easier.
         </p>
         <div className="gg-referral-card">
           <QuickPhotoQuote defaultHandoff="local" />
@@ -224,7 +226,7 @@ export default function SellStLouisPage() {
         buttonLabel="Set up a meetup"
       />
 
-      <StickySellCta label="Get a quick photo quote" to="#quick-quote" targetId="quick-quote" />
+      <StickySellCta label="Get my free offer" to="#quick-quote" targetId="quick-quote" />
     </div>
   );
 }

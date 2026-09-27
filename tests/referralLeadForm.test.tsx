@@ -20,7 +20,7 @@ function renderForm() {
 }
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText(/tell us about it/i), "A booster box and some alt arts");
+  await user.type(screen.getByLabelText(/what do you have/i), "A booster box and some alt arts");
   await user.type(screen.getByLabelText(/^first name/i), "Sam");
   await user.type(screen.getByRole("textbox", { name: "Email" }), "sam@example.com");
 }
@@ -38,7 +38,7 @@ describe("ReferralLeadForm", () => {
     const user = userEvent.setup();
     renderForm();
     await fillRequired(user);
-    await user.click(screen.getByRole("button", { name: /send to our buying partner/i }));
+    await user.click(screen.getByRole("button", { name: /request my free offer/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/share your details/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -54,7 +54,7 @@ describe("ReferralLeadForm", () => {
     await fillRequired(user);
     await user.click(screen.getByRole("checkbox", { name: "Video games & consoles" }));
     await user.click(screen.getByRole("checkbox", { name: /i own these items/i }));
-    await user.click(screen.getByRole("button", { name: /send to our buying partner/i }));
+    await user.click(screen.getByRole("button", { name: /request my free offer/i }));
 
     expect(await screen.findByText("GG-R-100007")).toBeInTheDocument();
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];

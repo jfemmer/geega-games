@@ -133,7 +133,7 @@ export const GUIDES: GuideMeta[] = [
     summary:
       "Boxes of old games and consoles? What actually makes them valuable — complete-in-box, sealed, rare late releases — and how to check what they're worth.",
     published: "2026-09-25",
-    updated: "2026-09-25",
+    updated: "2026-09-27",
   },
 ];
 

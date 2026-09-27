@@ -267,8 +267,47 @@ What the Magic sell pages now do about the things sellers worry about most:
   - `tests/prerender.test.tsx` fails if Washington, MO is dropped.
 - **Urgency without pressure:** a "Why a current offer matters" section
   covers reprint risk.
-- **Phones:** a sticky "Get an offer" bar (`StickySellCta`) hides while the
-  form is on screen.
+- **Phones:** a sticky "Get my free offer" bar (`StickySellCta`) hides while
+  the form is on screen.
+
+### Wording pass (seller research, 2026-09-27)
+
+Sellers' biggest worries, across Magic, Pokémon, One Piece and video games:
+- lowball offers;
+- not knowing what they have;
+- the work of listing everything;
+- meeting strangers from Marketplace;
+- fees and returns;
+- offers that change after the cards arrive.
+
+What they praise is a buyer who explains, communicates and pays. The pages now
+answer those worries in plain words:
+- **First screen:** a short checklist of promises (`HeroPoints`), the real
+  TCGplayer rating linking to the reviews (`ShopRatingLine` → `#reviews`), and
+  one main button, "Get my free offer", repeated in the sticky bar and at the
+  end.
+- **Order:** the steps and trust points come before the form. The
+  Pokémon/One Piece cross-sell sits after the Magic page's form, not right
+  under it.
+- **Referral pages:**
+  - The partner setup is explained up front: "a buyer we know, not a
+    stranger".
+  - "Why not just sell it yourself?" is an honest comparison with listing it
+    yourself.
+  - "How to tell if an offer is fair" covers sold vs. asking prices, and why
+    any reseller pays less.
+  - New FAQs match what sellers search: "are my old … worth anything",
+    rotation, games without cases, untested consoles, a relative's collection.
+- **Forms:**
+  - Optional fields say why they're asked (phone, ZIP).
+  - A positive privacy line sits by the button ("we never sell your details").
+  - The success message lists "What happens next".
+- **Claims removed:**
+  - "Specializes in" and "prices by what collectors pay" were claims about the
+    partner that nobody had approved.
+  - "Priced by barcode" had no source.
+  - "Pays very competitively" is now the approved wording, "buys very
+    competitively".
 
 Before adding claims, remember the content rule: no payout percentages, and no
 turnaround or reply-time promises, until the owner confirms them (section 6).
@@ -304,3 +343,17 @@ These change what the pages should say. Update the copy once they're settled:
   Profile, and to `SITE_JSON_LD.sameAs` in `src/seo/site.ts`.
 - The homepage newsletter box still says "Get the launch notice… the moment
   checkout goes live", but checkout is live. It needs new copy.
+- **PayPal fee:** PayPal usually charges the person *receiving* a Goods &
+  Services payment, which here is the seller. The where-to-sell guide says a
+  collection buyer means "no fees". Either cover the fee or disclose it.
+- **Reply time and payment timing (Magic):** both Card Kingdom and Star City
+  Games publish these. If you have a typical reply time, it's one of the
+  strongest things the page could add.
+- **The buying partner:** these would be the most persuasive additions to the
+  referral pages, but only the partner can confirm them:
+  - how they pay (cash at meetups?) and how fast;
+  - how quickly they reach out;
+  - whether they send prepaid shipping labels, and who pays return shipping
+    if an offer changes;
+  - whether they take bulk, loose games and broken consoles;
+  - whether they can be named, with years in business.

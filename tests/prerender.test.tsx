@@ -68,13 +68,50 @@ describe("build-time prerender", () => {
     const expected: Record<string, string> = {
       "/sell-pokemon-cards": "Should you get your cards graded before selling?",
       "/sell-one-piece-cards": "One Piece prices move fast",
-      "/sell-video-games": "Big-box trade-in vs. a specialist buyer",
+      "/sell-video-games": "Get a second offer before you trade in",
     };
     for (const [path, heading] of Object.entries(expected)) {
       const { html } = renderPage(path);
       expect(html, path).toContain(heading);
       expect(html, path).toContain('href="#tell-us"');
     }
+  });
+
+  it("never says Geega Games buys Pokémon, One Piece or video games itself", () => {
+    for (const path of ["/sell-pokemon-cards", "/sell-one-piece-cards", "/sell-video-games"]) {
+      const text = renderPage(path).html.replace(/<[^>]+>/g, " ");
+      expect(text, path).not.toMatch(/\bwe buy (pok|one piece|video|games)/i);
+      expect(text, path).toContain("Does Geega Games buy");
+    }
+  });
+
+  it("answers sellers' worries on each referral page, with the promises and the form up front", () => {
+    for (const path of ["/sell-pokemon-cards", "/sell-one-piece-cards", "/sell-video-games"]) {
+      const { html } = renderPage(path);
+      expect(html, path).toContain('class="gg-hero-points"');
+      expect(html, path).toContain("Get my free offer");
+      expect(html, path).toContain("Why not just sell it yourself?");
+      expect(html, path).toContain("How to tell if an offer is fair");
+      // Trust before the form; the comparisons for people still deciding after it.
+      const trust = html.indexOf("What you can count on");
+      const form = html.indexOf('id="tell-us"');
+      const diy = html.indexOf("Why not just sell it yourself?");
+      expect(trust, path).toBeGreaterThan(0);
+      expect(trust, path).toBeLessThan(form);
+      expect(form, path).toBeLessThan(diy);
+    }
+  });
+
+  it("puts the steps before the photo form on the Magic sell page, and the partner cross-sell after it", () => {
+    const { html } = renderPage("/sell-my-collection");
+    const steps = html.indexOf("<h2>How it works</h2>");
+    const form = html.indexOf('id="quick-quote"');
+    const partner = html.indexOf("Selling Pokémon, One Piece or video games too?");
+    expect(steps).toBeGreaterThan(0);
+    expect(steps).toBeLessThan(form);
+    expect(form).toBeLessThan(partner);
+    expect(html).toContain("Get my free offer");
+    expect(html).toContain('href="#reviews"');
   });
 
   it("groups the guides index by topic and cross-links guides from their topic's sell page", () => {

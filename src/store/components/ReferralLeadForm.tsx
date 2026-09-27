@@ -22,6 +22,13 @@ import {
 
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 
+/** "…contact you by text…" in the "What happens next" list. */
+const CONTACT_PHRASE: Record<ReferralContactMethod, string> = {
+  email: "by email",
+  phone: "by phone",
+  text: "by text",
+};
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
@@ -182,10 +189,16 @@ export default function ReferralLeadForm({
     return (
       <div className="gg-referral-done" ref={resultRef} tabIndex={-1} role="status">
         <h3>Thanks{firstName ? `, ${firstName}` : ""} — we got it!</h3>
-        <p>
-          We&rsquo;re passing your details to our buying partner, and they&rsquo;ll contact you
-          directly to talk about an offer. We also emailed you a copy.
-        </p>
+        <p>What happens next:</p>
+        <ol className="gg-referral-next">
+          <li>We pass your details to our buying partner.</li>
+          <li>
+            They contact you {CONTACT_PHRASE[contactMethod]} to talk about an offer. They may ask a
+            few questions or for more photos first.
+          </li>
+          <li>If you like the offer, you meet up or ship. If not, just say no.</li>
+        </ol>
+        <p>We also emailed you a copy.</p>
         <p className="gg-card-meta">
           Your reference number: <strong>{referenceNumber}</strong>
         </p>
@@ -212,7 +225,7 @@ export default function ReferralLeadForm({
       </fieldset>
 
       <div className="gg-field">
-        <label htmlFor="rl-description">Tell us about it</label>
+        <label htmlFor="rl-description">What do you have?</label>
         <textarea
           id="rl-description"
           rows={5}
@@ -220,8 +233,12 @@ export default function ReferralLeadForm({
           placeholder={descriptionPlaceholder}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          aria-describedby="rl-description-hint"
           required
         />
+        <p className="gg-card-meta" id="rl-description-hint">
+          A rough description is plenty — no need to know what anything is worth.
+        </p>
       </div>
 
       <div className="gg-form-grid">
@@ -257,6 +274,7 @@ export default function ReferralLeadForm({
           onRemove={removePhoto}
           onRetry={retryPhoto}
         />
+        <p className="gg-card-meta">Close-ups of your best items, or one photo of the whole pile.</p>
       </div>
 
       <div className="gg-form-grid">
@@ -291,7 +309,7 @@ export default function ReferralLeadForm({
           />
         </div>
         <div className="gg-field">
-          <label htmlFor="rl-phone">Phone (optional)</label>
+          <label htmlFor="rl-phone">Phone (optional — if you&rsquo;d rather talk or text)</label>
           <input
             id="rl-phone"
             type="tel"
@@ -301,10 +319,11 @@ export default function ReferralLeadForm({
           />
         </div>
         <div className="gg-field gg-field-span2">
-          <label htmlFor="rl-location">Where are you? City and state, or ZIP (optional)</label>
+          <label htmlFor="rl-location">Where are you? (optional — helps plan a meetup)</label>
           <input
             id="rl-location"
             autoComplete="address-level2"
+            placeholder="City and state, or ZIP"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
           />
@@ -356,11 +375,12 @@ export default function ReferralLeadForm({
       )}
 
       <p className="gg-referral-assure">
-        Our buying partner pays very competitively. Asking is free, and you never have to sell.
+        Free, with no obligation to sell. We share what you send only with our buying partner, and we
+        never sell your details.
       </p>
 
       <button type="submit" className="gg-btn" disabled={submitting}>
-        {submitting ? "Sending…" : "Send to our buying partner"}
+        {submitting ? "Sending…" : "Request my free offer"}
       </button>
     </form>
   );
