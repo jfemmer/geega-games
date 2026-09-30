@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { Icon } from "./Icon";
@@ -28,6 +28,9 @@ export function Modal({
   headerExtra,
 }: OverlayProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // Unique per dialog: a drawer with a dialog on top (an order and its Ship
+  // dialog) must not share a title id, or both are announced by the first.
+  const titleId = useId();
   useFocusTrap(ref, open, onClose);
 
   useEffect(() => {
@@ -40,8 +43,6 @@ export function Modal({
   }, [open]);
 
   if (!open) return null;
-
-  const titleId = "gg-overlay-title";
 
   return createPortal(
     <div

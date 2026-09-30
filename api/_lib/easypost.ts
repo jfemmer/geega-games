@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { ServerEnv } from "./env.js";
+import { SHIP_FROM } from "../../src/store/lib/shipFrom.js";
 
 // The @easypost/api package's shipped .d.ts mixes a default export with a
 // UMD `export as namespace` global in a way that TypeScript cannot resolve
@@ -25,6 +26,17 @@ interface EasyPostPostageLabel {
   label_url?: string;
   label_pdf_url?: string;
 }
+export interface EasyPostTrackingDetail {
+  status?: string | null;
+  datetime?: string | null;
+}
+export interface EasyPostTracker {
+  id: string;
+  /** unknown, pre_transit, in_transit, out_for_delivery, delivered, available_for_pickup, return_to_sender, failure, cancelled, error */
+  status: string;
+  tracking_code?: string;
+  tracking_details?: EasyPostTrackingDetail[] | null;
+}
 interface EasyPostShipment {
   id: string;
   rates: EasyPostRate[];
@@ -32,12 +44,18 @@ interface EasyPostShipment {
   tracking_code: string;
   selected_rate: EasyPostRate | null;
   postage_label: EasyPostPostageLabel | null;
+  tracker?: EasyPostTracker | null;
   lowestRate(carriers?: string[], services?: string[]): EasyPostRate;
 }
 interface EasyPostClient {
   Shipment: {
     create(params: Record<string, unknown>): Promise<EasyPostShipment>;
     buy(id: string, rate: EasyPostRate): Promise<EasyPostShipment>;
+    retrieve(id: string): Promise<EasyPostShipment>;
+  };
+  Tracker: {
+    create(params: Record<string, unknown>): Promise<EasyPostTracker>;
+    retrieve(id: string): Promise<EasyPostTracker>;
   };
 }
 type EasyPostConstructor = new (apiKey: string) => EasyPostClient;
@@ -53,15 +71,21 @@ export function getEasyPostClient(): EasyPostClient | null {
   return cached;
 }
 
+/** True once EASYPOST_API_KEY is set: labels can be bought and deliveries tracked. */
+export function isEasyPostConnected(): boolean {
+  return Boolean(ServerEnv.easypostApiKey());
+}
+
 // The business's own return address — printed as the "from" on every label
-// and every plain (unpaid) address label. Update here if it ever changes.
+// (and on the plain PWE labels the admin prints). Lives in
+// src/store/lib/shipFrom.ts so the browser and the server share one copy.
 export const SHIP_FROM_ADDRESS = {
-  name: "Geega Games",
-  street1: "390 Newbury Dr.",
-  city: "Ballwin",
-  state: "MO",
-  zip: "63011",
-  country: "US",
+  name: SHIP_FROM.name,
+  street1: SHIP_FROM.street1,
+  city: SHIP_FROM.city,
+  state: SHIP_FROM.state,
+  zip: SHIP_FROM.zip,
+  country: SHIP_FROM.country,
 } as const;
 
 // A fixed default package size/weight for every tracked order, rather than
@@ -86,12 +110,15 @@ export interface ShipToAddress {
 }
 
 export interface PurchasedLabel {
+  /** The 4×6 label image (PNG), which the admin prints directly. */
   labelUrl: string;
   trackingCode: string;
   carrier: string;
   service: string;
   rateCents: number;
   shipmentId: string;
+  /** EasyPost creates a tracker with every label; used to spot delivery. */
+  trackerId: string | null;
   weightOz: number;
 }
 
@@ -100,6 +127,10 @@ export interface PurchasedLabel {
  * the fixed default package size. Throws a caller-safe Error (message is
  * fine to surface to admin UI) on any failure — no EasyPost/HTTP internals
  * leak through.
+ *
+ * The label comes back as EasyPost's default PNG (4×6), not a PDF: an image
+ * can be printed straight from the admin page with one click, where a PDF
+ * on another domain can only be opened in a new tab.
  */
 export async function buyShippingLabel(to: ShipToAddress): Promise<PurchasedLabel> {
   const client = getEasyPostClient();
@@ -129,7 +160,6 @@ export async function buyShippingLabel(to: ShipToAddress): Promise<PurchasedLabe
       width: DEFAULT_PACKAGE.widthIn,
       height: DEFAULT_PACKAGE.heightIn,
     },
-    options: { label_format: "PDF" },
   });
 
   if (!shipment.rates || shipment.rates.length === 0) {
@@ -144,7 +174,7 @@ export async function buyShippingLabel(to: ShipToAddress): Promise<PurchasedLabe
   const rate = shipment.lowestRate();
   const bought = await client.Shipment.buy(shipment.id, rate);
 
-  const labelUrl = bought.postage_label?.label_pdf_url || bought.postage_label?.label_url;
+  const labelUrl = bought.postage_label?.label_url || bought.postage_label?.label_pdf_url;
   if (!labelUrl) {
     throw new Error("The label was purchased but EasyPost didn't return a label file — check the EasyPost dashboard.");
   }
@@ -158,6 +188,53 @@ export async function buyShippingLabel(to: ShipToAddress): Promise<PurchasedLabe
     service: selected.service,
     rateCents: Number.isFinite(rateCents) ? rateCents : 0,
     shipmentId: bought.id,
+    trackerId: bought.tracker?.id ?? null,
     weightOz: DEFAULT_PACKAGE.weightOz,
   };
+}
+
+// EasyPost's own carrier codes for the carriers staff can pick when they
+// type in a tracking number from a label bought elsewhere.
+const EASYPOST_CARRIERS: Record<string, string> = { USPS: "USPS", UPS: "UPS", FEDEX: "FedEx" };
+
+/**
+ * The tracker for a shipment, whichever way it was shipped: an existing
+ * tracker by id, the tracker EasyPost made with a label it sold, or a new
+ * tracker for a tracking number typed in by hand (EasyPost bills these per
+ * tracker, so callers store the id and never create twice).
+ */
+export async function loadTracker(order: {
+  trackerId: string | null;
+  shipmentId: string | null;
+  trackingNumber: string;
+  carrier: string | null;
+}): Promise<{ tracker: EasyPostTracker; created: boolean }> {
+  const client = getEasyPostClient();
+  if (!client) throw new Error("EasyPost isn't connected.");
+  if (order.trackerId) {
+    return { tracker: await client.Tracker.retrieve(order.trackerId), created: false };
+  }
+  if (order.shipmentId) {
+    const shipment = await client.Shipment.retrieve(order.shipmentId);
+    if (shipment.tracker) return { tracker: shipment.tracker, created: false };
+  }
+  const carrier = EASYPOST_CARRIERS[(order.carrier ?? "").trim().toUpperCase()];
+  const tracker = await client.Tracker.create({
+    tracking_code: order.trackingNumber,
+    ...(carrier ? { carrier } : {}),
+  });
+  return { tracker, created: true };
+}
+
+/** When the carrier scanned it delivered, falling back to now. */
+export function deliveredAtOf(tracker: EasyPostTracker, now: number = Date.now()): string {
+  const details = tracker.tracking_details ?? [];
+  for (let i = details.length - 1; i >= 0; i -= 1) {
+    const detail = details[i];
+    if (detail?.status === "delivered" && detail.datetime) {
+      const t = Date.parse(detail.datetime);
+      if (Number.isFinite(t) && t <= now) return new Date(t).toISOString();
+    }
+  }
+  return new Date(now).toISOString();
 }

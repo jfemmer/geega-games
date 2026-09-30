@@ -3,11 +3,15 @@ import { Modal } from "../components/ui/Modal";
 import { Button } from "../components/ui/Button";
 import { TextField, SelectField } from "../components/ui/Field";
 import { Icon } from "../components/ui/Icon";
-import { AddressLabelPrint } from "../components/orders/AddressLabelPrint";
 import { orderRepository } from "../repositories";
 import { useToast } from "../hooks/useToast";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { formatCents } from "../utils/format";
+import {
+  PWE_LABEL_FORMATS,
+  hasPrintableAddress,
+  type PweLabelFormat,
+} from "../utils/shippingLabels";
 import type { Order, ShippingCarrier } from "../types";
 
 const CARRIERS: ShippingCarrier[] = ["USPS", "UPS", "FedEx", "Other"];
@@ -16,20 +20,41 @@ const CARRIERS: ShippingCarrier[] = ["USPS", "UPS", "FedEx", "Other"];
 // customer chose that shipping method precisely because it's cheaper and
 // untracked. Requiring a carrier/tracking number here would force staff to
 // invent fake tracking data, which the storefront's "Track My Order" would
-// then present to the customer as real. So: `tracked` orders can buy a real
+// then present to the customer as real. So: `tracked` orders buy a real
 // postage label (or fall back to typing in a carrier + tracking number from
-// one bought elsewhere); `pwe` orders only ever get a plain address label
-// with no postage and no tracking.
+// one bought elsewhere); `pwe` orders print an envelope label with no postage
+// and no tracking.
+//
+// Printing is one click either way (LabelPrintView, opened by the Orders page
+// through onPrintLabel). Marking an order shipped emails the customer
+// (server side, see api/_lib/orderStatusEmail.ts); the preview at the bottom
+// shows what they get.
+
+/** Whether the server logged a shipped email for this order. */
+function shippedEmailSent(order: Order): boolean {
+  return order.emails.some((e) => e.emailType === "order_shipped");
+}
+
 export function ShipModal({
   order,
   open,
   onClose,
   onShipped,
+  onPrintLabel,
+  pweFormat,
+  onPweFormatChange,
+  easypostConnected,
 }: {
   order: Order | null;
   open: boolean;
   onClose: () => void;
   onShipped: (updated: Order) => void;
+  /** Opens the print dialog for this order's label (envelope or postage). */
+  onPrintLabel: (order: Order) => void;
+  pweFormat: PweLabelFormat;
+  onPweFormatChange: (format: PweLabelFormat) => void;
+  /** Null until known. False: EASYPOST_API_KEY isn't set, labels can't be bought here. */
+  easypostConnected: boolean | null;
 }) {
   const toast = useToast();
   const currentAdmin = useCurrentAdmin();
@@ -38,7 +63,6 @@ export function ShipModal({
   const [busy, setBusy] = useState(false);
   const [buyingLabel, setBuyingLabel] = useState(false);
   const [labelError, setLabelError] = useState<string | null>(null);
-  const [printingAddressLabel, setPrintingAddressLabel] = useState(false);
 
   // ShipModal stays mounted across orders (no `key` in OrdersPage), so
   // without this a tracking number/carrier typed for one order -- or a
@@ -49,12 +73,13 @@ export function ShipModal({
     setCarrier("USPS");
     setTracking("");
     setLabelError(null);
-    setPrintingAddressLabel(false);
   }, [order?.id]);
 
   if (!order) return null;
 
   const isPwe = order.shippingMethod === "pwe";
+  const addressOk = hasPrintableAddress(order);
+  const firstName = order.customerName.split(" ")[0] || "there";
 
   async function confirmShip() {
     if (!order) return;
@@ -70,16 +95,19 @@ export function ShipModal({
         isPwe ? null : tracking.trim(),
         currentAdmin.name,
       );
+      const emailed = shippedEmailSent(updated)
+        ? " The customer was emailed."
+        : " No email: the customer turned order emails off.";
       toast.success(
         isPwe
-          ? `${order.orderNumber} marked shipped (Plain White Envelope — no tracking).`
-          : `${order.orderNumber} marked shipped. No confirmation email is sent automatically.`,
+          ? `${order.orderNumber} marked shipped (Plain White Envelope, no tracking).${emailed}`
+          : `${order.orderNumber} marked shipped.${emailed}`,
       );
       onShipped(updated);
       setTracking("");
       onClose();
-    } catch {
-      toast.error("Could not mark the order shipped.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not mark the order shipped.");
     } finally {
       setBusy(false);
     }
@@ -92,11 +120,13 @@ export function ShipModal({
     try {
       const updated = await orderRepository.buyLabel(order.id);
       toast.success(
-        `Label purchased — ${updated.carrier} ${updated.trackingNumber}. ${order.orderNumber} marked shipped.`,
+        `Label bought: ${updated.carrier} ${updated.trackingNumber}. ${order.orderNumber} marked shipped${
+          shippedEmailSent(updated) ? " and the customer emailed." : "."
+        }`,
       );
       onShipped(updated);
-      if (updated.labelUrl) window.open(updated.labelUrl, "_blank", "noopener,noreferrer");
       onClose();
+      onPrintLabel(updated);
     } catch (err) {
       setLabelError(err instanceof Error ? err.message : "Could not purchase a shipping label.");
     } finally {
@@ -105,130 +135,168 @@ export function ShipModal({
   }
 
   return (
-    <>
-      <Modal
-        open={open}
-        onClose={onClose}
-        title={`Ship ${order.orderNumber}`}
-        size="md"
-        footer={
-          <div className="gg-drawer-actions__buttons">
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Ship ${order.orderNumber}`}
+      size="md"
+      footer={
+        <div className="gg-drawer-actions__buttons">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      }
+    >
+      <div className="gg-ship">
+        <p className="gg-tag" style={{ marginBottom: "0.75rem" }}>
+          Shipping method: <strong>{isPwe ? "Plain White Envelope" : "Tracked"}</strong>
+        </p>
+
+        {!addressOk && (
+          <div className="gg-alert gg-alert-warn" role="note" style={{ marginBottom: "0.75rem" }}>
+            This order&rsquo;s shipping address is incomplete, so there&rsquo;s nothing to print a
+            label with. Check the address with the customer first.
           </div>
-        }
-      >
-        <div className="gg-ship">
-          <p className="gg-tag" style={{ marginBottom: "0.75rem" }}>
-            Shipping method: <strong>{isPwe ? "Plain White Envelope" : "Tracked"}</strong>
-          </p>
+        )}
 
-          {isPwe ? (
-            <>
-              <div className="gg-alert gg-alert-warn" role="note">
-                This order was placed with Plain White Envelope shipping, which is
-                intentionally untracked. No carrier or tracking number is recorded —
-                marking it shipped will not create fake tracking data.
-              </div>
-              <div className="gg-drawer-actions__buttons" style={{ margin: "0.75rem 0" }}>
-                <Button variant="secondary" icon="box" onClick={() => setPrintingAddressLabel(true)}>
-                  Print address label
-                </Button>
-                <Button variant="primary" icon="truck" loading={busy} onClick={confirmShip}>
-                  Mark shipped
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="gg-ship__buylabel">
-                <h4>Buy &amp; print a label</h4>
-                <p className="gg-muted">
-                  Buys real USPS postage via EasyPost using your saved return address and a
-                  standard package weight, then marks this order shipped — no other apps needed.
-                </p>
-                <Button variant="primary" icon="truck" loading={buyingLabel} onClick={handleBuyLabel}>
-                  Buy &amp; print label
-                </Button>
-                {labelError && (
-                  <div className="gg-alert gg-alert-error" role="alert" style={{ marginTop: "0.6rem" }}>
-                    {labelError}
-                  </div>
-                )}
-              </div>
-
-              <details className="gg-ship__manual">
-                <summary>Or enter tracking manually</summary>
-                <div className="gg-form-grid">
-                  <SelectField
-                    label="Carrier"
-                    value={carrier}
-                    onChange={(e) => setCarrier(e.target.value as ShippingCarrier)}
-                  >
-                    {CARRIERS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </SelectField>
-                  <TextField
-                    label="Tracking number"
-                    value={tracking}
-                    onChange={(e) => setTracking(e.target.value)}
-                    placeholder="e.g. 9400 1000 0000 0000 0000 00"
-                  />
-                </div>
-                <Button variant="secondary" loading={busy} onClick={confirmShip}>
-                  Mark shipped
-                </Button>
-              </details>
-            </>
-          )}
-
-          {order.labelUrl && (
-            <div className="gg-inline-note gg-inline-note--info" style={{ marginBottom: "0.75rem" }}>
-              <Icon name="download" size={16} />
-              <div>
-                A label was already purchased for this order
-                {order.postageCostCents != null ? ` (${formatCents(order.postageCostCents)} postage)` : ""}.{" "}
-                <a href={order.labelUrl} target="_blank" rel="noopener noreferrer">
-                  Open label
-                </a>
-              </div>
-            </div>
-          )}
-
-          <div className="gg-emailpreview">
-            <div className="gg-emailpreview__head">
-              <Icon name="mail" size={16} />
-              <span>Customer email preview</span>
-              <span className="gg-tag gg-tag--mock">Preview only — not sent</span>
-            </div>
-            <div className="gg-emailpreview__body">
-              <p>Hi {order.customerName.split(" ")[0]},</p>
-              <p>
-                Great news — your Geega Games order {order.orderNumber} is on its
-                way{" "}
-                {isPwe
-                  ? "via Plain White Envelope. This shipping method does not include tracking."
-                  : `via ${carrier}${tracking.trim() ? `, tracking ${tracking.trim()}` : ""}.`}
-              </p>
-              <ul>
-                {order.items.map((it) => (
-                  <li key={it.id}>
-                    {it.quantity}× {it.cardName} ({it.condition})
-                  </li>
+        {isPwe ? (
+          <>
+            <p className="gg-muted">
+              The customer chose Plain White Envelope, which has no tracking. Print the envelope, add
+              a stamp, and mark it shipped.
+            </p>
+            <div className="gg-ship__format">
+              <SelectField
+                label="Print on"
+                value={pweFormat}
+                onChange={(e) => onPweFormatChange(e.target.value as PweLabelFormat)}
+              >
+                {PWE_LABEL_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
                 ))}
-              </ul>
-              <p>Thanks for playing with us.</p>
+              </SelectField>
             </div>
+            <div className="gg-drawer-actions__buttons" style={{ margin: "0.75rem 0" }}>
+              <Button
+                variant="secondary"
+                icon="printer"
+                disabled={!addressOk}
+                onClick={() => onPrintLabel(order)}
+              >
+                Print envelope
+              </Button>
+              <Button variant="primary" icon="truck" loading={busy} onClick={confirmShip}>
+                Mark shipped
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="gg-ship__buylabel">
+              <h4>Buy &amp; print a label</h4>
+              {easypostConnected === false ? (
+                <p className="gg-muted">
+                  Label buying isn&rsquo;t connected yet. Add your EasyPost API key as{" "}
+                  <code>EASYPOST_API_KEY</code> in Vercel to buy USPS labels here (and send delivery
+                  emails automatically). Until then, buy the label elsewhere and enter its tracking
+                  number below.
+                </p>
+              ) : (
+                <p className="gg-muted">
+                  Buys USPS postage through EasyPost for a standard small mailer, marks the order
+                  shipped, emails the customer their tracking number, and opens the print dialog.
+                </p>
+              )}
+              <Button
+                variant="primary"
+                icon="printer"
+                loading={buyingLabel}
+                disabled={easypostConnected === false || !addressOk}
+                onClick={handleBuyLabel}
+              >
+                Buy &amp; print label
+              </Button>
+              {labelError && (
+                <div className="gg-alert gg-alert-error" role="alert" style={{ marginTop: "0.6rem" }}>
+                  {labelError}
+                </div>
+              )}
+            </div>
+
+            <details className="gg-ship__manual" open={easypostConnected === false}>
+              <summary>Or enter tracking manually</summary>
+              <div className="gg-form-grid">
+                <SelectField
+                  label="Carrier"
+                  value={carrier}
+                  onChange={(e) => setCarrier(e.target.value as ShippingCarrier)}
+                >
+                  {CARRIERS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </SelectField>
+                <TextField
+                  label="Tracking number"
+                  value={tracking}
+                  onChange={(e) => setTracking(e.target.value)}
+                  placeholder="e.g. 9400 1000 0000 0000 0000 00"
+                />
+              </div>
+              <Button variant="secondary" loading={busy} onClick={confirmShip}>
+                Mark shipped
+              </Button>
+            </details>
+          </>
+        )}
+
+        {order.labelUrl && (
+          <div className="gg-inline-note gg-inline-note--info" style={{ marginBottom: "0.75rem" }}>
+            <Icon name="printer" size={16} />
+            <div>
+              A label was already bought for this order
+              {order.postageCostCents != null ? ` (${formatCents(order.postageCostCents)} postage)` : ""}.{" "}
+              <button type="button" className="gg-linkbutton" onClick={() => onPrintLabel(order)}>
+                Print it again
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="gg-emailpreview">
+          <div className="gg-emailpreview__head">
+            <Icon name="mail" size={16} />
+            <span>Email to {order.customerEmail ?? "the customer"}</span>
+            <span className="gg-tag gg-tag--auto">Sent when it&rsquo;s marked shipped</span>
+          </div>
+          <div className="gg-emailpreview__body">
+            <p>
+              <strong>Your order has shipped!</strong>
+            </p>
+            <p>Hi {firstName},</p>
+            <p>Your cards are on their way to you.</p>
+            {isPwe ? (
+              <p>
+                This order shipped via Plain White Envelope, which does not include tracking.
+                We&rsquo;ll check in after it&rsquo;s had time to arrive.
+              </p>
+            ) : (
+              <p>
+                Carrier: {carrier}
+                <br />
+                Tracking number: {tracking.trim() || "(from the label)"}
+              </p>
+            )}
+            <p className="gg-muted">
+              Customers who turned off order emails in their account don&rsquo;t get it.
+            </p>
           </div>
         </div>
-      </Modal>
-      {printingAddressLabel && (
-        <AddressLabelPrint order={order} onClose={() => setPrintingAddressLabel(false)} />
-      )}
-    </>
+      </div>
+    </Modal>
   );
 }

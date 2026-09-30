@@ -591,10 +591,17 @@ export interface Order {
   carrier: ShippingCarrier | null;
   trackingNumber: string | null;
   shippingMethod: string | null;
-  /** Hosted PDF of a postage label purchased via EasyPost. Null unless bought through the "Buy & print label" flow. */
+  /**
+   * The postage label bought through "Buy & print label" (EasyPost): a 4×6
+   * PNG, or a PDF for labels bought before 2026-09-30. Null otherwise.
+   */
   labelUrl: string | null;
   postageCostCents: number | null;
   shippingService: string | null;
+  /** Latest carrier status from EasyPost (in_transit, delivered, …), when tracked. */
+  trackingStatus?: string | null;
+  /** When the shipping-updates worker last checked the tracking. */
+  trackingCheckedAt?: string | null;
   items: OrderItem[];
   subtotalCents: number;
   discountCents: number;

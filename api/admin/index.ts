@@ -20,7 +20,7 @@ import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
 import { logAdminAction } from "../_lib/auditLog.js";
 import { sendPickupReadyEmail } from "../_lib/pickupEmails.js";
 import { getStripe } from "../_lib/stripe.js";
-import { buyShippingLabel } from "../_lib/easypost.js";
+import { buyShippingLabel, isEasyPostConnected } from "../_lib/easypost.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Consolidated admin API router.
@@ -45,6 +45,8 @@ import { buyShippingLabel } from "../_lib/easypost.js";
 //   resource=reservations action=release       POST
 //   resource=orders       action=set-status    POST
 //   resource=orders       action=ship          POST
+//   resource=orders       action=buy-label     POST
+//   resource=orders       action=shipping-setup GET
 //   resource=orders       action=add-note      POST
 //   resource=orders       action=toggle-packed POST
 //   resource=campaigns   action=list           GET
@@ -586,6 +588,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (resource === "orders") {
       const SETTABLE_STATUSES = new Set(["packing", "ready_to_ship", "cancelled"]);
 
+      // Whether postage labels can be bought and deliveries tracked yet, so
+      // the Orders page can say so before anyone clicks "Buy & print label".
+      if (action === "shipping-setup" && method === "GET") {
+        return sendJson(res, 200, { ok: true, easypostConnected: isEasyPostConnected() });
+      }
+
       if (action === "set-status" && method === "POST") {
         const body = await readJsonBody(req);
         const orderId = String(body.orderId ?? "");
@@ -600,7 +608,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const nextStatus = status as "packing" | "ready_to_ship" | "cancelled";
         const { data: existing, error: readErr } = await admin
           .from("orders")
-          .select("id, status, packed_at, ready_at, cancelled_at")
+          .select("id, status, packed_at, ready_at, cancelled_at, channel, shipping_method")
           .eq("id", orderId)
           .maybeSingle();
         if (readErr) throw new HttpError(500, readErr.message);
@@ -620,6 +628,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .update({ status: nextStatus, ready_at: existing.ready_at ?? now })
             .eq("id", orderId);
           if (error) throw new HttpError(500, error.message);
+          // "Your order is packed" — only for orders that ship. Idempotent
+          // per order, so marking it ready a second time never re-sends, and
+          // an email failure never undoes the status change.
+          if (existing.channel === "online" && existing.shipping_method) {
+            try {
+              await sendOrderStatusEmail(orderId, "packed");
+            } catch (mailErr) {
+              console.error("[admin/orders/set-status] packed email failed", mailErr);
+            }
+          }
         } else {
           const { error } = await admin
             .from("orders")
@@ -689,6 +707,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             shipped_at: new Date().toISOString(),
             tracking_carrier: carrier,
             tracking_number: trackingNumber,
+            // A hand-typed number gets its EasyPost tracker from the hourly
+            // shipping-updates worker (api/_lib/shippingUpdates.ts).
+            easypost_tracker_id: null,
+            tracking_status: null,
+            tracking_checked_at: null,
           })
           .eq("id", orderId);
         if (updErr) throw new HttpError(500, updErr.message);
@@ -764,6 +787,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             label_url: purchased.labelUrl,
             postage_cost_cents: purchased.rateCents,
             easypost_shipment_id: purchased.shipmentId,
+            easypost_tracker_id: purchased.trackerId,
+            tracking_status: "pre_transit",
+            tracking_checked_at: null,
             shipping_service: purchased.service,
             package_weight_oz: purchased.weightOz,
           })

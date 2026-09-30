@@ -1471,6 +1471,7 @@ export type Database = {
           delivered_at: string | null
           discount_cents: number
           easypost_shipment_id: string | null
+          easypost_tracker_id: string | null
           email: string | null
           id: string
           internal_notes: string | null
@@ -1503,7 +1504,9 @@ export type Database = {
           tax_cents: number
           total_cents: number
           tracking_carrier: string | null
+          tracking_checked_at: string | null
           tracking_number: string | null
+          tracking_status: string | null
           updated_at: string
           user_id: string | null
         }
@@ -1516,6 +1519,7 @@ export type Database = {
           delivered_at?: string | null
           discount_cents?: number
           easypost_shipment_id?: string | null
+          easypost_tracker_id?: string | null
           email?: string | null
           id?: string
           internal_notes?: string | null
@@ -1550,7 +1554,9 @@ export type Database = {
           tax_cents?: number
           total_cents: number
           tracking_carrier?: string | null
+          tracking_checked_at?: string | null
           tracking_number?: string | null
+          tracking_status?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -1563,6 +1569,7 @@ export type Database = {
           delivered_at?: string | null
           discount_cents?: number
           easypost_shipment_id?: string | null
+          easypost_tracker_id?: string | null
           email?: string | null
           id?: string
           internal_notes?: string | null
@@ -1597,7 +1604,9 @@ export type Database = {
           tax_cents?: number
           total_cents?: number
           tracking_carrier?: string | null
+          tracking_checked_at?: string | null
           tracking_number?: string | null
+          tracking_status?: string | null
           updated_at?: string
           user_id?: string | null
         }

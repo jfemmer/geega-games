@@ -7,6 +7,7 @@ import { ServerEnv } from "./env.js";
 import { logoUrl, siteUrl } from "./assets.js";
 import { normalizeEmail } from "./tokens.js";
 import { GOOGLE_REVIEW_URL, PRODUCTION_ORIGIN } from "../../src/seo/site.js";
+import { pweArrivalDueAt } from "./mailDays.js";
 import {
   ReviewRequest,
   reviewRequestSubject,
@@ -22,9 +23,10 @@ import {
 // one a single email asking for an honest Google review:
 //
 //   customer                       asked                          measured from
-//   online order that shipped      2 days after delivery, or 7    delivered_at, else
-//                                  days after shipping when it's   shipped_at
-//                                  never marked delivered
+//   online order that shipped      2 days after delivery; Plain    delivered_at, else
+//                                  White Envelope: 2 days after    shipped_at
+//                                  the arrival check-in; else 7
+//                                  days after shipping
 //   in-person sale at the register 1 day after paying (only when  orders.paid_at
 //                                  a customer with an email was
 //                                  attached to the sale)
@@ -170,12 +172,26 @@ function parseTime(iso: string | null | undefined): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
-/** When to ask about a shipped online order, or null without a ship or delivery date. */
-export function shippedOrderDueAt(order: { shipped_at: string | null; delivered_at: string | null }): number | null {
+/**
+ * When to ask about a shipped online order, or null without a ship or
+ * delivery date. Delivered orders: 2 days after delivery. Plain White
+ * Envelope (never delivered, no tracking): 2 days after the "should have
+ * arrived" check-in (api/_lib/shippingUpdates.ts), so the two emails don't
+ * land together. Anything else: SHIPPED_ASK_AFTER_DAYS after shipping.
+ */
+export function shippedOrderDueAt(order: {
+  shipped_at: string | null;
+  delivered_at: string | null;
+  shipping_method?: string | null;
+}): number | null {
   const delivered = parseTime(order.delivered_at);
   if (delivered !== null) return delivered + REVIEW_DELAY_DAYS.shipped_order * DAY_MS;
   const shipped = parseTime(order.shipped_at);
-  return shipped === null ? null : shipped + SHIPPED_ASK_AFTER_DAYS * DAY_MS;
+  if (shipped === null) return null;
+  if (order.shipping_method === "pwe") {
+    return pweArrivalDueAt(shipped) + REVIEW_DELAY_DAYS.shipped_order * DAY_MS;
+  }
+  return shipped + SHIPPED_ASK_AFTER_DAYS * DAY_MS;
 }
 
 /** When to ask, counting from the moment the customer had their cards or money. */
@@ -298,7 +314,7 @@ export async function loadReviewCandidates(db: Db, now: number): Promise<ReviewC
   const [shipped, register, pickups, sells] = await Promise.all([
     db
       .from("orders")
-      .select("id, email, user_id, shipped_at, delivered_at")
+      .select("id, email, user_id, shipped_at, delivered_at, shipping_method")
       .eq("channel", "online")
       .eq("payment_status", "paid")
       .in("status", SHIPPED_STATUSES)

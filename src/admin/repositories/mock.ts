@@ -540,18 +540,32 @@ export const mockOrderRepository: OrderRepository = {
       cancelled: "Cancelled",
       paid: "Reopened",
     };
-    orders = orders.map((o) =>
-      o.id === id
-        ? {
-            ...o,
-            status,
-            timeline: [
-              ...o.timeline,
-              statusEvent(labels[status] ?? `Status → ${status}`, null, adminName),
-            ],
-          }
-        : o,
-    );
+    // Mirrors the server: "packed" email on ready-to-ship (once), and a
+    // cancellation email on cancel.
+    const emailFor: Record<string, string> = { ready_to_ship: "order_packed", cancelled: "order_cancelled" };
+    const at = new Date().toISOString();
+    orders = orders.map((o) => {
+      if (o.id !== id) return o;
+      const emailType = emailFor[status];
+      const sendEmail =
+        emailType !== undefined &&
+        o.channel === "online" &&
+        !o.emails.some((e) => e.emailType === emailType);
+      return {
+        ...o,
+        status,
+        timeline: [
+          ...o.timeline,
+          statusEvent(labels[status] ?? `Status → ${status}`, null, adminName),
+        ],
+        emails: sendEmail
+          ? [
+              ...o.emails,
+              { id: mockId("em"), emailType, toEmail: o.customerEmail ?? "unknown", status: "sent", at },
+            ]
+          : o.emails,
+      };
+    });
     return delay(orders.find((o) => o.id === id)!, 200);
   },
 
@@ -600,7 +614,7 @@ export const mockOrderRepository: OrderRepository = {
               ...o.emails,
               {
                 id: mockId("em"),
-                emailType: "shipping_confirmation",
+                emailType: "order_shipped",
                 toEmail: o.customerEmail ?? "unknown",
                 status: "sent",
                 at,
@@ -610,6 +624,11 @@ export const mockOrderRepository: OrderRepository = {
         : o,
     );
     return delay(orders.find((o) => o.id === orderId)!, 250);
+  },
+
+  async shippingSetup() {
+    // Mock mode simulates label purchases, so the flow can be tried end to end.
+    return delay({ easypostConnected: true }, 60);
   },
 
   async buyLabel(orderId) {
@@ -623,7 +642,7 @@ export const mockOrderRepository: OrderRepository = {
             status: "shipped",
             carrier: "USPS",
             trackingNumber: `9400${Math.floor(Math.random() * 1e15)}`,
-            labelUrl: "https://example.com/mock-label.pdf",
+            labelUrl: "https://example.com/mock-label.png",
             postageCostCents: 487,
             shippingService: "First",
             shippedAt: at,
@@ -635,7 +654,7 @@ export const mockOrderRepository: OrderRepository = {
               ...o.emails,
               {
                 id: mockId("em"),
-                emailType: "shipping_confirmation",
+                emailType: "order_shipped",
                 toEmail: o.customerEmail ?? "unknown",
                 status: "sent",
                 at,

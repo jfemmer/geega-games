@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -11,6 +12,7 @@ import { TableSkeleton, ErrorState, EmptyState } from "../components/ui/States";
 import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { ShipModal } from "./ShipModal";
+import { LabelPrintView, type LabelPrintJob } from "../components/orders/LabelPrintView";
 import { OrderCardImage } from "../components/cards/OrderCardImage";
 import { CardPrintingBadges } from "../components/cards/CardPrintingBadges";
 import { useAsync } from "../hooks/useAsync";
@@ -31,7 +33,18 @@ import {
   EMAIL_STATUS_LABELS,
   EMAIL_STATUS_TONE,
   FINISH_LABELS,
+  orderEmailTypeLabel,
 } from "../utils/labels";
+import {
+  PWE_LABEL_FORMATS,
+  hasPrintableAddress,
+  isImageLabel,
+  isTrackingProblem,
+  loadPweLabelFormat,
+  savePweLabelFormat,
+  trackingStatusLabel,
+  type PweLabelFormat,
+} from "../utils/shippingLabels";
 import type { Order, OrderQuery, OrderStatus } from "../types";
 
 type TabKey =
@@ -68,6 +81,42 @@ export function OrdersPage({
   const [shipOpen, setShipOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [printJob, setPrintJob] = useState<LabelPrintJob | null>(null);
+  // Printers belong to a device, so the envelope format is remembered per device.
+  const [pweFormat, setPweFormat] = useState<PweLabelFormat>(loadPweLabelFormat);
+  const [easypostConnected, setEasypostConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    orderRepository
+      .shippingSetup()
+      .then((setup) => setEasypostConnected(setup.easypostConnected))
+      .catch(() => setEasypostConnected(null));
+  }, []);
+
+  function changePweFormat(format: PweLabelFormat) {
+    setPweFormat(format);
+    savePweLabelFormat(format);
+  }
+
+  // One click to print: rendering the print view synchronously keeps the
+  // print dialog inside the click (browsers are pickier about print() later).
+  function printLabel(order: Order) {
+    let job: LabelPrintJob | null = null;
+    if (order.shippingMethod === "pwe") {
+      job = { kind: "pwe", order, format: pweFormat };
+    } else if (order.labelUrl && isImageLabel(order.labelUrl)) {
+      job = { kind: "postage", order, labelUrl: order.labelUrl };
+    } else if (order.labelUrl) {
+      // An older PDF label can't be printed from here; open it to print.
+      window.open(order.labelUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (!job) return;
+    const next = job;
+    flushSync(() => setPrintJob(next));
+  }
+
+  const closePrint = useCallback(() => setPrintJob(null), []);
 
   const q: OrderQuery = useMemo(
     () => ({
@@ -240,6 +289,9 @@ export function OrdersPage({
         onShip={() => setShipOpen(true)}
         onCancel={(o) => setCancelTarget(o)}
         onChanged={() => detail && refreshDetail(detail.id)}
+        onPrintLabel={printLabel}
+        pweFormat={pweFormat}
+        onPweFormatChange={changePweFormat}
       />
 
       <ShipModal
@@ -251,14 +303,20 @@ export function OrdersPage({
           orders.reload();
           refreshCounts();
         }}
+        onPrintLabel={printLabel}
+        pweFormat={pweFormat}
+        onPweFormatChange={changePweFormat}
+        easypostConnected={easypostConnected}
       />
+
+      {printJob && <LabelPrintView job={printJob} onClose={closePrint} />}
 
       <ConfirmDialog
         open={!!cancelTarget}
         title="Cancel this order?"
         message={
           cancelTarget
-            ? `${cancelTarget.orderNumber} will be marked cancelled. This does not trigger a Stripe refund or send an email automatically — handle those separately.`
+            ? `${cancelTarget.orderNumber} will be marked cancelled and the customer emailed that it was. Refunds aren't automatic: issue it in Stripe or PayPal.`
             : ""
         }
         confirmLabel="Cancel order"
@@ -283,18 +341,30 @@ export function OrdersPage({
 
 /* --------------------------- Order detail --------------------------- */
 
+const SHIPPING_METHOD_LABELS: Record<string, string> = {
+  pwe: "Plain White Envelope (no tracking)",
+  tracked: "Tracked",
+};
+
 function OrderDetail({
   order,
   onClose,
   onShip,
   onCancel,
   onChanged,
+  onPrintLabel,
+  pweFormat,
+  onPweFormatChange,
 }: {
   order: Order | null;
   onClose: () => void;
   onShip: () => void;
   onCancel: (o: Order) => void;
   onChanged: () => void;
+  /** One-click print of this order's envelope or postage label. */
+  onPrintLabel: (o: Order) => void;
+  pweFormat: PweLabelFormat;
+  onPweFormatChange: (format: PweLabelFormat) => void;
 }) {
   const toast = useToast();
   const currentAdmin = useCurrentAdmin();
@@ -315,6 +385,16 @@ function OrderDetail({
   const isClosed = ["shipped", "delivered", "cancelled", "refunded"].includes(
     order.status,
   );
+  const isPwe = order.shippingMethod === "pwe";
+  const addressOk = hasPrintableAddress(order);
+  // Envelopes print from packing on (and again later, if one gets smudged).
+  const canPrintEnvelope =
+    isPwe && addressOk && ["packing", "ready_to_ship", "shipped", "delivered"].includes(order.status);
+  const canPrintPostage = !isPwe && Boolean(order.labelUrl);
+  const trackingLine =
+    !isPwe && (order.status === "shipped" || order.status === "delivered")
+      ? trackingStatusLabel(order.trackingStatus)
+      : null;
 
   async function toggleItem(itemId: string) {
     if (!order) return;
@@ -387,6 +467,11 @@ function OrderDetail({
               {allPacked
                 ? "Mark ready to ship"
                 : `Pack all items (${packedCount}/${order.items.length})`}
+            </Button>
+          )}
+          {(canPrintEnvelope || canPrintPostage) && (
+            <Button variant="secondary" icon="printer" onClick={() => onPrintLabel(order)}>
+              {canPrintEnvelope ? "Print envelope" : "Print label"}
             </Button>
           )}
           {canShip && (
@@ -578,12 +663,59 @@ function OrderDetail({
                 <br />
                 {order.shipCountry}
               </address>
-              <p className="gg-muted">{order.shippingMethod}</p>
+              <p className="gg-muted">
+                {order.shippingMethod
+                  ? (SHIPPING_METHOD_LABELS[order.shippingMethod] ?? order.shippingMethod)
+                  : "No shipping (in person)"}
+              </p>
               {order.trackingNumber && (
                 <p className="gg-orderdetail__tracking">
                   <Icon name="truck" size={15} /> {order.carrier} ·{" "}
                   {order.trackingNumber}
                 </p>
+              )}
+              {trackingLine && (
+                <p
+                  className={`gg-orderdetail__trackstatus${
+                    isTrackingProblem(order.trackingStatus) ? " gg-orderdetail__trackstatus--problem" : ""
+                  }`}
+                >
+                  {trackingLine}
+                  {order.trackingCheckedAt ? ` · checked ${timeAgo(order.trackingCheckedAt)}` : ""}
+                </p>
+              )}
+              {canPrintEnvelope && (
+                <div className="gg-orderdetail__label">
+                  <label className="gg-orderdetail__labelformat">
+                    <span>Print on</span>
+                    <select
+                      className="gg-input"
+                      value={pweFormat}
+                      onChange={(e) => onPweFormatChange(e.target.value as PweLabelFormat)}
+                    >
+                      {PWE_LABEL_FORMATS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button size="sm" variant="secondary" icon="printer" onClick={() => onPrintLabel(order)}>
+                    Print envelope
+                  </Button>
+                </div>
+              )}
+              {canPrintPostage && (
+                <p className="gg-muted">
+                  Label bought
+                  {order.postageCostCents != null ? ` (${formatCents(order.postageCostCents)})` : ""}.{" "}
+                  <button type="button" className="gg-linkbutton" onClick={() => onPrintLabel(order)}>
+                    Print label
+                  </button>
+                </p>
+              )}
+              {isPwe && !addressOk && (
+                <p className="gg-muted">The address is incomplete, so there&rsquo;s no envelope to print.</p>
               )}
             </div>
 
@@ -595,7 +727,7 @@ function OrderDetail({
                 <ul className="gg-emaillog">
                   {order.emails.map((em) => (
                     <li key={em.id} className="gg-emaillog__row">
-                      <span className="gg-emaillog__type">{em.emailType}</span>
+                      <span className="gg-emaillog__type">{orderEmailTypeLabel(em.emailType)}</span>
                       <Badge tone={EMAIL_STATUS_TONE[em.status]}>
                         {EMAIL_STATUS_LABELS[em.status]}
                       </Badge>

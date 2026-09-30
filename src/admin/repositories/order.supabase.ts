@@ -123,7 +123,7 @@ function buildTimeline(o: OrderRowDb): OrderTimelineEvent[] {
       ? {
           id: `${o.id}-delivered`,
           label: "Delivered",
-          detail: null,
+          detail: o.tracking_carrier ? `Reported by ${o.tracking_carrier}` : null,
           actor: "System",
           at: o.delivered_at,
         }
@@ -169,6 +169,8 @@ function mapOrder(
     labelUrl: o.label_url,
     postageCostCents: o.postage_cost_cents,
     shippingService: o.shipping_service,
+    trackingStatus: o.tracking_status,
+    trackingCheckedAt: o.tracking_checked_at,
     items: (o.order_items ?? []).map(mapItem),
     subtotalCents: o.subtotal_cents,
     discountCents: o.discount_cents,
@@ -356,6 +358,13 @@ export const supabaseOrderRepository: OrderRepository = {
     const fresh = await supabaseOrderRepository.get(orderId);
     if (!fresh) throw new Error("Order not found after update.");
     return fresh;
+  },
+
+  async shippingSetup(): Promise<{ easypostConnected: boolean }> {
+    const body = await adminFetch<{ easypostConnected?: boolean }>(
+      "/api/admin?resource=orders&action=shipping-setup",
+    );
+    return { easypostConnected: body?.easypostConnected === true };
   },
 
   async counts(): Promise<Record<string, number>> {

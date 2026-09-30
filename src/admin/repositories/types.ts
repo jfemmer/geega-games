@@ -330,6 +330,11 @@ export interface OrderRepository {
    * ready-to-ship, or no rate is available for the address.
    */
   buyLabel(orderId: string): Promise<Order>;
+  /**
+   * Whether postage labels can be bought (and deliveries tracked) yet —
+   * false until EASYPOST_API_KEY is set on the server.
+   */
+  shippingSetup(): Promise<{ easypostConnected: boolean }>;
   counts(): Promise<Record<string, number>>;
 }
 

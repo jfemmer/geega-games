@@ -53,7 +53,28 @@ export type OrderEmailData = {
   trackUrl?: string | null;
   /** Guest orders only: create an account and attach this order to it. */
   createAccountUrl?: string | null;
+  /** "online" orders ship; an in-person "pos" sale is already in hand. */
+  channel?: "online" | "pos" | null;
+  /** Decides what the "What happens next" line promises. */
+  shippingMethod?: "tracked" | "pwe" | null;
 };
+
+/**
+ * The "What happens next" line, matched to how the order ships — or null for
+ * an in-person sale, which has nothing left to happen. Only promises emails
+ * that always go out (packed, shipped, and the PWE arrival check-in).
+ */
+export function orderNextSteps(d: Pick<OrderEmailData, "channel" | "shippingMethod">): string | null {
+  if (d.channel === "pos") return null;
+  const questions = "You can reply to this email any time with questions.";
+  if (d.shippingMethod === "pwe") {
+    return `We’ll pack your cards with care and email you when your order is packed and again when it’s in the mail. Plain White Envelope has no tracking, so we’ll also check in after it’s had time to arrive. ${questions}`;
+  }
+  if (d.shippingMethod === "tracked") {
+    return `We’ll pack your cards with care and email you when your order is packed and again when it ships, with your tracking number. ${questions}`;
+  }
+  return `We’ll pack your cards with care and email you as your order moves along. ${questions}`;
+}
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const CONDITION_LABELS: Record<string, string> = {
@@ -83,6 +104,7 @@ export function OrderConfirmation(data: OrderEmailData) {
   const greeting = data.firstName
     ? `Thanks, ${data.firstName}!`
     : "Thanks for your order!";
+  const nextSteps = orderNextSteps(data);
   const orderDate = new Date(data.createdAtISO).toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -190,12 +212,8 @@ export function OrderConfirmation(data: OrderEmailData) {
           h("br", { key: `br-${idx}` }),
         ]),
     ),
-    h(Text, { key: "nextH", style: sectionH }, "What happens next"),
-    h(
-      Text,
-      { key: "next", style: p },
-      "We\u2019ll pack your cards with care and email you tracking as soon as your order ships. You can reply to this email any time with questions.",
-    ),
+    nextSteps ? h(Text, { key: "nextH", style: sectionH }, "What happens next") : null,
+    nextSteps ? h(Text, { key: "next", style: p }, nextSteps) : null,
     data.trackUrl
       ? h(
           Text,
@@ -257,6 +275,7 @@ export function orderConfirmationText(d: OrderEmailData): string {
     `  ${[d.ship.city, d.ship.state, d.ship.postalCode].filter(Boolean).join(", ")}`,
     `  ${d.ship.country ?? ""}`,
     "",
+    orderNextSteps(d) ?? "",
     d.trackUrl ? `Track this order: ${d.trackUrl}` : "",
     d.createAccountUrl
       ? `Save this order to a free account (faster checkout, wishlist restock & price-drop alerts): ${d.createAccountUrl}`

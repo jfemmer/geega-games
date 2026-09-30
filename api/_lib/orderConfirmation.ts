@@ -44,7 +44,7 @@ export async function sendOrderConfirmation(
   const { data: order, error: orderErr } = await db
     .from("orders")
     .select(
-      "id, email, payment_status, created_at, subtotal_cents, shipping_cents, discount_cents, total_cents, ship_recipient, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, user_id",
+      "id, email, payment_status, created_at, subtotal_cents, shipping_cents, discount_cents, total_cents, ship_recipient, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country, user_id, channel, shipping_method",
     )
     .eq("id", orderId)
     .single();
@@ -118,6 +118,8 @@ export async function sendOrderConfirmation(
     // Guest order: the signed claim link lets them attach it to a new (or
     // existing) account — see api/_lib/guestAccess.ts.
     createAccountUrl: order.user_id ? null : guestSignupUrl("order", order.id, order.email),
+    channel: order.channel,
+    shippingMethod: order.shipping_method,
   };
 
   return sendTrackedEmail({

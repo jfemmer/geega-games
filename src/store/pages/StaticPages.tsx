@@ -209,8 +209,9 @@ export function ShippingPage() {
       <h2>Ships within {SHIPS_WITHIN_BUSINESS_DAYS} business days</h2>
       <p>
         Every order ships no more than {SHIPS_WITHIN_BUSINESS_DAYS} business days after you place
-        it. We ship Monday through Saturday — the post office is closed on Sundays. You&rsquo;ll get
-        an email when your order ships, and you can check on it any time on{" "}
+        it. We ship Monday through Saturday — the post office is closed on Sundays. We&rsquo;ll email
+        you when your order is packed and again when it ships (with your tracking number, for tracked
+        orders), and you can check on it any time on{" "}
         <Link to="/track-order">Track your order</Link>.
       </p>
 
@@ -228,7 +229,8 @@ export function ShippingPage() {
       <p>
         A low-cost option for smaller orders: sleeved and top-loaded inside a plain envelope. PWE is{" "}
         <strong>not tracked</strong>, so a lost envelope can&rsquo;t be traced — for anything
-        you&rsquo;d hate to lose, choose tracked shipping.
+        you&rsquo;d hate to lose, choose tracked shipping. Since there&rsquo;s no tracking, we email
+        you after it&rsquo;s had time to arrive, so you can tell us if it hasn&rsquo;t.
       </p>
       <h3>Tracked shipping — {formatCents(SHIPPING.trackedCents)}</h3>
       <p>

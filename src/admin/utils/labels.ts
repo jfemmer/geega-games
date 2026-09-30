@@ -215,6 +215,24 @@ export const EMAIL_STATUS_LABELS: Record<EmailDeliveryStatus, string> = {
   canceled: "Canceled",
 };
 
+/** email_deliveries.email_type values on an order, in words. */
+const ORDER_EMAIL_TYPE_LABELS: Record<string, string> = {
+  order_confirmation: "Order confirmation",
+  order_admin_notification: "New-order alert (staff)",
+  order_packed: "Packed",
+  order_shipped: "Shipped",
+  order_delivered: "Delivered",
+  order_arrival_check: "Arrival check-in",
+  order_cancelled: "Cancelled",
+  order_refunded: "Refunded",
+  checkout_recovery: "Checkout reminder",
+  review_request: "Review request",
+};
+
+export function orderEmailTypeLabel(emailType: string): string {
+  return ORDER_EMAIL_TYPE_LABELS[emailType] ?? emailType.replace(/_/g, " ");
+}
+
 export const EMAIL_STATUS_TONE: Record<EmailDeliveryStatus, BadgeTone> = {
   queued: "neutral",
   sent: "info",
