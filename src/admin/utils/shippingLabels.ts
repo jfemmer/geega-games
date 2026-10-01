@@ -5,18 +5,21 @@ import type { Order } from "../types";
 
 /**
  * How a Plain White Envelope is addressed:
- *   label-4x6    a 4×6 thermal label, stuck on a #10 envelope. The address
- *                reads along the label's long side (USPS wants it parallel
- *                to the envelope's long side), so it prints turned a quarter
- *                turn on the label roll.
+ *   label-4x6    a 4×6 thermal label (Rollo, Zebra, MUNBYN, DYMO 4XL…),
+ *                stuck on a #10 envelope. The address reads along the
+ *                label's long side (USPS wants it parallel to the envelope's
+ *                long side), so it prints turned a quarter turn on the roll.
  *   envelope-10  printed straight onto a #10 envelope (9½ × 4⅛ in) with a
  *                regular printer.
+ *
+ * Both print in solid black (thermal printers can't do gray) with the
+ * addresses in capitals, as USPS recommends for its sorting machines.
  */
 export type PweLabelFormat = "label-4x6" | "envelope-10";
 
 export const PWE_LABEL_FORMATS: { value: PweLabelFormat; label: string }[] = [
-  { value: "label-4x6", label: "4×6 label" },
-  { value: "envelope-10", label: "#10 envelope" },
+  { value: "label-4x6", label: "4×6 label (label printer)" },
+  { value: "envelope-10", label: "#10 envelope (regular printer)" },
 ];
 
 export const DEFAULT_PWE_LABEL_FORMAT: PweLabelFormat = "label-4x6";
@@ -89,6 +92,40 @@ export function recipientLines(
     cityLine,
     DOMESTIC.has(country) ? "" : country,
   ].filter(Boolean);
+}
+
+/**
+ * Where the delivery address goes on each PWE layout, in inches, measured on
+ * the label as it reads (the 4×6 label is laid out 6 wide × 4 tall, then
+ * turned onto the portrait page). Once on a #10 envelope, both put the
+ * address inside USPS's read area: 1⅜–3½ in from the envelope's top, at
+ * least ½ in from its sides.
+ */
+export const ADDRESS_BLOCK: Record<PweLabelFormat, { leftIn: number; topIn: number; widthIn: number; maxPt: number }> = {
+  "label-4x6": { leftIn: 1.2, topIn: 1.4, widthIn: 4.5, maxPt: 16 },
+  "envelope-10": { leftIn: 3.6, topIn: 1.65, widthIn: 5.3, maxPt: 14 },
+};
+
+/** The smallest address type USPS recommends. */
+export const MIN_ADDRESS_PT = 10;
+
+/**
+ * Width of an average bold capital (Arial), in ems, with room to spare:
+ * real addresses measure 0.53–0.67.
+ */
+const BOLD_CAPS_EM_PER_CHAR = 0.7;
+
+/**
+ * Type size for the delivery address: as large as the layout allows while
+ * the longest line still fits on one line (a city/state/ZIP line broken in
+ * two is harder for USPS's machines to read). Worked out from the character
+ * count, not measured, so it prints the same in every browser.
+ */
+export function addressFontSizePt(lines: string[], format: PweLabelFormat): number {
+  const { widthIn, maxPt } = ADDRESS_BLOCK[format];
+  const longest = Math.max(1, ...lines.map((line) => line.length));
+  const fitting = (widthIn * 72) / (longest * BOLD_CAPS_EM_PER_CHAR);
+  return Math.min(maxPt, Math.max(MIN_ADDRESS_PT, Math.floor(fitting * 2) / 2));
 }
 
 /** An order has enough of an address to print. */

@@ -54,11 +54,33 @@ describe("LabelPrintView — Plain White Envelope", () => {
     // A 4×6 label page, printing only the label.
     expect(pageStyle()).toContain("size: 4in 6in");
     expect(document.body).toHaveClass("gg-printing-label");
+    // Clipped to that one page, so a label printer never feeds a blank second label.
+    expect(pageStyle()).toContain("height: 6in !important");
+    expect(pageStyle()).toContain("overflow: hidden !important");
+  });
+
+  it("places the address for the label and sizes it to fit", () => {
+    render(<LabelPrintView job={{ kind: "pwe", order, format: "label-4x6" }} onClose={() => {}} />);
+    const address = screen.getByText("123 Main St").parentElement as HTMLElement;
+    expect(address).toHaveClass("gg-label__to");
+    expect(address.style).toMatchObject({ left: "1.2in", top: "1.4in", width: "4.5in", fontSize: "16pt" });
+  });
+
+  it("says how to set up a label printer", () => {
+    render(<LabelPrintView job={{ kind: "pwe", order, format: "label-4x6" }} onClose={() => {}} />);
+    const dialog = screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
+    expect(dialog).toHaveTextContent("For a 4×6 label printer.");
+    expect(dialog).toHaveTextContent("paper size 4×6 (or 100 × 150 mm), margins None and scale 100%");
   });
 
   it("sizes the page to a #10 envelope when that's the format", () => {
     render(<LabelPrintView job={{ kind: "pwe", order, format: "envelope-10" }} onClose={() => {}} />);
     expect(pageStyle()).toContain("size: 9.5in 4.125in");
+    expect(pageStyle()).toContain("height: 4.125in !important");
+    expect((screen.getByText("123 Main St").parentElement as HTMLElement).style).toMatchObject({
+      left: "3.6in",
+      fontSize: "14pt",
+    });
   });
 
   it("cleans up after itself so other printing is unaffected", () => {

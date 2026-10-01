@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_PWE_LABEL_FORMAT,
+  addressFontSizePt,
   hasPrintableAddress,
   isImageLabel,
   isTrackingProblem,
@@ -57,6 +58,26 @@ describe("label address lines", () => {
 
   it("uses the store's return address", () => {
     expect(shipFromLines()).toEqual(["Geega Games", "390 Newbury Dr.", "Ballwin, MO 63011"]);
+  });
+});
+
+describe("address type size", () => {
+  const usual = ["Jordan Vega", "123 Main St", "Ballwin, MO 63011"];
+  // 40 characters, the most USPS expects on an address line.
+  const long = ["Jordan Vega", "12345 North Lindbergh Boulevard Apt 1204", "Saint Charles, MO 63303-1234"];
+
+  it("prints a usual address at full size", () => {
+    expect(addressFontSizePt(usual, "label-4x6")).toBe(16);
+    expect(addressFontSizePt(usual, "envelope-10")).toBe(14);
+  });
+
+  it("shrinks so the longest line still fits on one line", () => {
+    expect(addressFontSizePt(long, "label-4x6")).toBe(11.5);
+    expect(addressFontSizePt(long, "envelope-10")).toBe(13.5);
+  });
+
+  it("never goes below the 10 pt USPS recommends", () => {
+    expect(addressFontSizePt(["X".repeat(90)], "label-4x6")).toBe(10);
   });
 });
 

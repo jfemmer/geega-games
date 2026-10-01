@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import { Button } from "../ui/Button";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { shipFromLines } from "../../../store/lib/shipFrom";
-import { PAGE_SIZE_IN, recipientLines, type PweLabelFormat } from "../../utils/shippingLabels";
+import {
+  ADDRESS_BLOCK,
+  PAGE_SIZE_IN,
+  addressFontSizePt,
+  recipientLines,
+  type PweLabelFormat,
+} from "../../utils/shippingLabels";
 import type { Order } from "../../types";
 
 // One-click label printing for the Orders page. Opening this prints right
@@ -18,8 +24,9 @@ import type { Order } from "../../types";
 // Printing is isolated to the label: while this is open, the body carries
 // gg-printing-label (admin.css hides everything else when printing) and a
 // <style> sets the page to the label's exact size, so no scaling or margins
-// creep in. Both are removed on close, so they never affect another print
-// (like a POS receipt).
+// creep in, and clips the printout to that one page, so a label printer
+// never feeds a blank second label. Both are removed on close, so they never
+// affect another print (like a POS receipt).
 
 export type LabelPrintJob =
   | { kind: "pwe"; order: Order; format: PweLabelFormat }
@@ -30,12 +37,15 @@ const PX_PER_IN = 96;
 /** An afterprint sooner than this means the dialog didn't block (iOS), so stay open. */
 const REAL_DIALOG_MS = 1000;
 
+/** What a label printer needs, set once in the print dialog (browsers remember it). */
+const LABEL_PRINTER_SETUP =
+  "In the print dialog, pick your label printer with paper size 4×6 (or 100 × 150 mm), margins None and scale 100%. Your browser remembers this after the first label.";
+
 const HINTS: Record<PweLabelFormat | "postage-4x6", string> = {
-  "label-4x6":
-    "Prints on a 4×6 label with the address running along its long side, to stick on a #10 envelope. The stamp goes on the envelope's top right.",
+  "label-4x6": `For a 4×6 label printer. ${LABEL_PRINTER_SETUP} Stick it on a #10 envelope and put the stamp at the top right.`,
   "envelope-10":
-    "Load a #10 envelope in your printer. Print at 100% (actual size). Leave the top right corner for the stamp.",
-  "postage-4x6": "4×6 postage label. Print at 100% (actual size) on a 4×6 label, or on paper and trim it.",
+    "For a regular printer: load a #10 envelope and print at 100% (actual size). Leave the top right corner for the stamp.",
+  "postage-4x6": `For a 4×6 label printer. ${LABEL_PRINTER_SETUP}`,
 };
 
 export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: () => void }) {
@@ -61,7 +71,10 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
     document.body.classList.add(PRINTING_BODY_CLASS);
     const style = document.createElement("style");
     style.setAttribute("data-gg-label-page", "");
-    style.textContent = `@page { size: ${page.width}in ${page.height}in; margin: 0; }`;
+    const size = `width: ${page.width}in !important; height: ${page.height}in !important;`;
+    style.textContent =
+      `@page { size: ${page.width}in ${page.height}in; margin: 0; }\n` +
+      `@media print { html, body { ${size} overflow: hidden !important; } }`;
     document.head.appendChild(style);
     return () => {
       document.body.classList.remove(PRINTING_BODY_CLASS);
@@ -155,11 +168,7 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
                   ))}
                   <div className="gg-label__ref">Order {job.order.orderNumber}</div>
                 </div>
-                <div className="gg-label__to">
-                  {recipientLines(job.order).map((line, i) => (
-                    <div key={`${i}-${line}`}>{line}</div>
-                  ))}
-                </div>
+                <PweAddress order={job.order} format={job.format} />
               </div>
             ) : (
               <img
@@ -179,5 +188,26 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** The delivery address, placed for the format and sized so no line breaks. */
+function PweAddress({ order, format }: { order: Order; format: PweLabelFormat }) {
+  const lines = recipientLines(order);
+  const block = ADDRESS_BLOCK[format];
+  return (
+    <div
+      className="gg-label__to"
+      style={{
+        left: `${block.leftIn}in`,
+        top: `${block.topIn}in`,
+        width: `${block.widthIn}in`,
+        fontSize: `${addressFontSizePt(lines, format)}pt`,
+      }}
+    >
+      {lines.map((line, i) => (
+        <div key={`${i}-${line}`}>{line}</div>
+      ))}
+    </div>
   );
 }
