@@ -43,44 +43,48 @@ describe("LabelPrintView — Plain White Envelope", () => {
     render(<LabelPrintView job={job} onClose={() => {}} />);
 
     expect(printSpy).toHaveBeenCalledTimes(1);
-    const dialog = screen.getByRole("dialog", { name: "Envelope for #1A2B3C4D" });
-    expect(dialog).toHaveTextContent("Geega Games");
-    expect(dialog).toHaveTextContent("390 Newbury Dr.");
-    expect(dialog).toHaveTextContent("Ballwin, MO 63011");
-    expect(dialog).toHaveTextContent("Jordan Vega");
-    expect(dialog).toHaveTextContent("123 Main St");
-    expect(dialog).toHaveTextContent("Apt 4");
-    expect(dialog).toHaveTextContent("Order #1A2B3C4D");
-    // The page is the 3⅝ × 6½ envelope itself, printing only the addresses.
-    expect(pageStyle()).toContain("size: 6.5in 3.625in");
+    screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
+    const label = document.querySelector(".gg-label");
+    expect(label).toHaveTextContent("Geega Games");
+    expect(label).toHaveTextContent("390 Newbury Dr.");
+    expect(label).toHaveTextContent("Ballwin, MO 63011");
+    expect(label).toHaveTextContent("Jordan Vega");
+    expect(label).toHaveTextContent("123 Main St");
+    expect(label).toHaveTextContent("Apt 4");
+    // Just the two addresses: no order number.
+    expect(label).not.toHaveTextContent("1A2B3C4D");
+    // A standard 4×6 label, printing only the label.
+    expect(pageStyle()).toContain("size: 4in 6in");
     expect(document.body).toHaveClass("gg-printing-label");
-    // Clipped to that one page, so the printer never feeds a blank second envelope.
-    expect(pageStyle()).toContain("height: 3.625in !important");
+    // Clipped to that one page, so the label printer never feeds a blank second label.
+    expect(pageStyle()).toContain("height: 6in !important");
     expect(pageStyle()).toContain("overflow: hidden !important");
   });
 
-  it("places the address on the envelope and sizes it to fit", () => {
+  it("places the address for the 3⅝ × 6½ envelope and sizes it to fit", () => {
     render(<LabelPrintView job={{ kind: "pwe", order, format: "envelope-6-3-4" }} onClose={() => {}} />);
     const address = screen.getByText("123 Main St").parentElement as HTMLElement;
     expect(address).toHaveClass("gg-label__to");
-    expect(address.style).toMatchObject({ left: "2.2in", top: "1.3in", width: "3.8in", fontSize: "13pt" });
+    expect(address.style).toMatchObject({ left: "1.2in", top: "1.4in", width: "4.5in", fontSize: "16pt" });
   });
 
-  it("says how to load and print the envelope", () => {
+  it("says how to set up the label printer and where the label goes", () => {
     render(<LabelPrintView job={{ kind: "pwe", order, format: "envelope-6-3-4" }} onClose={() => {}} />);
-    const dialog = screen.getByRole("dialog", { name: "Envelope for #1A2B3C4D" });
-    expect(dialog).toHaveTextContent("Load a 3⅝ × 6½ (#6¾) envelope in your printer.");
-    expect(dialog).toHaveTextContent("pick that envelope size, margins None and scale 100%");
+    const dialog = screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
+    expect(dialog).toHaveTextContent("For a 4×6 label printer.");
+    expect(dialog).toHaveTextContent("paper size 4×6 (or 100 × 150 mm), margins None and scale 100%");
+    expect(dialog).toHaveTextContent("Stick it on the 3⅝ × 6½ envelope");
   });
 
-  it("sizes the page to a #10 envelope when that's the format", () => {
+  it("moves the address farther right on the same 4×6 label for a #10 envelope", () => {
     render(<LabelPrintView job={{ kind: "pwe", order, format: "envelope-10" }} onClose={() => {}} />);
-    expect(pageStyle()).toContain("size: 9.5in 4.125in");
-    expect(pageStyle()).toContain("height: 4.125in !important");
-    expect(screen.getByRole("dialog")).toHaveTextContent("Load a 4⅛ × 9½ (#10) envelope in your printer.");
+    expect(pageStyle()).toContain("size: 4in 6in");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Stick it at the left of the #10 envelope");
     expect((screen.getByText("123 Main St").parentElement as HTMLElement).style).toMatchObject({
-      left: "3.6in",
-      fontSize: "14pt",
+      left: "2.3in",
+      top: "1.4in",
+      width: "3.5in",
+      fontSize: "16pt",
     });
   });
 

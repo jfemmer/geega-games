@@ -8,26 +8,27 @@ import {
   PAGE_SIZE_IN,
   addressFontSizePt,
   recipientLines,
+  type LabelPage,
   type PweLabelFormat,
 } from "../../utils/shippingLabels";
 import type { Order } from "../../types";
 
 // One-click label printing for the Orders page. Opening this prints right
 // away (the browser's print dialog is the only step left), then closes
-// itself when the dialog does.
+// itself when the dialog does. Everything prints on a standard 4×6 label
+// printer label:
 //
 //   pwe      Plain White Envelope: the store's return address and the
-//            customer's address, printed straight onto a 3⅝ × 6½ or a #10
-//            envelope (see PweLabelFormat). No postage, no server call.
-//   postage  the 4×6 label image bought through EasyPost, for the label
-//            printer.
+//            customer's address, laid out for the envelope the label goes
+//            on (see PweLabelFormat). No postage, no server call.
+//   postage  the 4×6 label image bought through EasyPost.
 //
-// Printing is isolated to the envelope or label: while this is open, the
-// body carries gg-printing-label (admin.css hides everything else when
-// printing) and a <style> sets the page to its exact size, so no scaling or
-// margins creep in, and clips the printout to that one page, so a printer
-// never feeds a blank second envelope or label. Both are removed on close,
-// so they never affect another print (like a POS receipt).
+// Printing is isolated to the label: while this is open, the body carries
+// gg-printing-label (admin.css hides everything else when printing) and a
+// <style> sets the page to the label's exact size, so no scaling or margins
+// creep in, and clips the printout to that one page, so the printer never
+// feeds a blank second label. Both are removed on close, so they never
+// affect another print (like a POS receipt).
 
 export type LabelPrintJob =
   | { kind: "pwe"; order: Order; format: PweLabelFormat }
@@ -38,17 +39,14 @@ const PX_PER_IN = 96;
 /** An afterprint sooner than this means the dialog didn't block (iOS), so stay open. */
 const REAL_DIALOG_MS = 1000;
 
-/** Print dialog settings, set once (browsers remember them). */
-const PRINT_SETTINGS = "margins None and scale 100%. Your browser remembers this after the first one.";
+/** What the label printer needs, set once in the print dialog (browsers remember it). */
+const LABEL_PRINTER_SETUP =
+  "For a 4×6 label printer. In the print dialog, pick it with paper size 4×6 (or 100 × 150 mm), margins None and scale 100%. Your browser remembers this after the first label.";
 
-function envelopeHint(size: string): string {
-  return `Load a ${size} envelope in your printer. In the print dialog, pick that envelope size, ${PRINT_SETTINGS} The stamp goes in the top right corner.`;
-}
-
-const HINTS: Record<PweLabelFormat | "postage-4x6", string> = {
-  "envelope-6-3-4": envelopeHint("3⅝ × 6½ (#6¾)"),
-  "envelope-10": envelopeHint("4⅛ × 9½ (#10)"),
-  "postage-4x6": `For a 4×6 label printer. In the print dialog, pick it with paper size 4×6 (or 100 × 150 mm), ${PRINT_SETTINGS}`,
+const HINTS: Record<PweLabelFormat | "postage", string> = {
+  "envelope-6-3-4": `${LABEL_PRINTER_SETUP} Stick it on the 3⅝ × 6½ envelope with the return address at the top left, and put the stamp on the label's blank top right corner.`,
+  "envelope-10": `${LABEL_PRINTER_SETUP} Stick it at the left of the #10 envelope with the return address at the top left, and put the stamp on the envelope's top right.`,
+  postage: LABEL_PRINTER_SETUP,
 };
 
 export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: () => void }) {
@@ -61,9 +59,13 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
   const [landscapeImage, setLandscapeImage] = useState(false);
   const [zoom, setZoom] = useState(1);
 
-  const pageKey = job.kind === "pwe" ? job.format : "postage-4x6";
+  const pageKey: LabelPage = job.kind === "pwe" ? "pwe-4x6" : "postage-4x6";
   const page = PAGE_SIZE_IN[pageKey];
-  const title = `${job.kind === "pwe" ? "Envelope" : "Shipping label"} for ${job.order.orderNumber}`;
+  // The envelope label is previewed the way it reads on the envelope
+  // (landscape); it only turns sideways on the printed page.
+  const preview = job.kind === "pwe" ? { width: page.height, height: page.width } : page;
+  const hint = HINTS[job.kind === "pwe" ? job.format : "postage"];
+  const title = `${job.kind === "pwe" ? "Envelope label" : "Shipping label"} for ${job.order.orderNumber}`;
 
   useFocusTrap(rootRef, true, onClose);
 
@@ -88,12 +90,12 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
     if (!stage) return;
     const fit = () => {
       // Not laid out yet (or hidden): keep the full size rather than zoom to nothing.
-      if (stage.clientWidth > 0) setZoom(Math.min(1, stage.clientWidth / (page.width * PX_PER_IN)));
+      if (stage.clientWidth > 0) setZoom(Math.min(1, stage.clientWidth / (preview.width * PX_PER_IN)));
     };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [page.width]);
+  }, [preview.width]);
 
   function print() {
     printStartedAt.current = Date.now();
@@ -136,7 +138,7 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
       <div className="gg-labelprint-toolbar no-print">
         <div className="gg-labelprint-heading">
           <strong>{title}</strong>
-          <span>{HINTS[pageKey]}</span>
+          <span>{hint}</span>
         </div>
         <div className="gg-labelprint-actions">
           <Button variant="primary" icon="printer" onClick={print} disabled={imageState !== "ready"}>
@@ -166,7 +168,6 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
                   {shipFromLines().map((line) => (
                     <div key={line}>{line}</div>
                   ))}
-                  <div className="gg-label__ref">Order {job.order.orderNumber}</div>
                 </div>
                 <PweAddress order={job.order} format={job.format} />
               </div>

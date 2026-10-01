@@ -4,12 +4,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { Order } from "../src/admin/types";
 
 // The Orders page's label printing and shipment emails, as staff use them:
-// one click prints the envelope (or the postage label), the envelope format
-// is remembered on the device, the ship dialog is honest about what the
-// customer is emailed, and it says when label buying isn't connected yet.
+// one click prints the envelope label (or the postage label), the envelope
+// size is picked per order (the usual one by default), the ship dialog is
+// honest about what the customer is emailed, and it says when label buying
+// isn't connected yet.
 
 const mocked = vi.hoisted(() => ({
   order: null as Order | null,
+  /** The order list, when a test needs more than one order. */
+  orders: null as Order[] | null,
   easypostConnected: true,
 }));
 
@@ -25,8 +28,8 @@ vi.mock("../src/supabase", () => ({
 
 vi.mock("../src/admin/repositories", () => ({
   orderRepository: {
-    list: async () => (mocked.order ? [mocked.order] : []),
-    get: async () => mocked.order,
+    list: async () => mocked.orders ?? (mocked.order ? [mocked.order] : []),
+    get: async (id: string) => mocked.orders?.find((o) => o.id === id) ?? mocked.order,
     counts: async () => ({}),
     shippingSetup: async () => ({ easypostConnected: mocked.easypostConnected }),
     setStatus: async () => mocked.order,
@@ -100,10 +103,14 @@ async function openOrder(order: Order) {
 
 beforeEach(() => {
   mocked.easypostConnected = true;
+  mocked.orders = null;
   printSpy.mockReset();
   window.print = printSpy;
-  window.localStorage.clear();
 });
+
+function printedAddress(): HTMLElement {
+  return document.querySelector(".gg-labelprint-root .gg-label__to") as HTMLElement;
+}
 
 afterEach(() => {
   cleanup();
@@ -116,30 +123,39 @@ describe("printing from an order", () => {
     fireEvent.click(buttons[0]);
 
     expect(printSpy).toHaveBeenCalledTimes(1);
-    const view = screen.getByRole("dialog", { name: "Envelope for #1A2B3C4D" });
+    const view = screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
     expect(view).toHaveTextContent("123 Main St");
     expect(view).toHaveTextContent("Geega Games");
-    // On the usual 3⅝ × 6½ envelope unless another size is picked.
-    expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("6.5in 3.625in");
+    // A 4×6 label, laid out for the usual 3⅝ × 6½ envelope.
+    expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("4in 6in");
+    expect(printedAddress().style.left).toBe("1.2in");
   });
 
   it("offers the two envelope sizes, the usual one first", async () => {
     const drawer = await openOrder(makeOrder());
-    const picker = within(drawer).getByLabelText("Print on") as HTMLSelectElement;
-    expect(Array.from(picker.options).map((o) => o.textContent)).toEqual([
-      "3⅝ × 6½ envelope",
-      "4⅛ × 9½ envelope (#10)",
-    ]);
+    const picker = within(drawer).getByLabelText("Envelope size") as HTMLSelectElement;
+    expect(Array.from(picker.options).map((o) => o.textContent)).toEqual(["3⅝ × 6½", "4⅛ × 9½ (#10)"]);
     expect(picker.value).toBe("envelope-6-3-4");
   });
 
-  it("remembers the envelope size on this device", async () => {
-    const drawer = await openOrder(makeOrder());
-    fireEvent.change(within(drawer).getByLabelText("Print on"), { target: { value: "envelope-10" } });
-    expect(window.localStorage.getItem("gg-admin:pwe-envelope")).toBe("envelope-10");
+  it("lays the label out for a #10 when picked, for that order only", async () => {
+    const first = makeOrder();
+    const second = makeOrder({ id: "order-2", orderNumber: "#5E6F7A8B", shipRecipient: "Sam Ortiz" });
+    mocked.orders = [first, second];
+    const drawer = await openOrder(first);
 
+    fireEvent.change(within(drawer).getByLabelText("Envelope size"), { target: { value: "envelope-10" } });
     fireEvent.click(within(drawer).getAllByRole("button", { name: "Print envelope" })[0]);
-    expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("9.5in 4.125in");
+    // Same 4×6 label, address farther right.
+    expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("4in 6in");
+    expect(printedAddress().style.left).toBe("2.3in");
+    const labelView = screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
+    fireEvent.click(within(labelView).getByRole("button", { name: "Close" }));
+
+    // The next order starts on the usual envelope again.
+    fireEvent.click(await screen.findByText("#5E6F7A8B"));
+    const next = await screen.findByRole("dialog", { name: "#5E6F7A8B" });
+    expect((within(next).getByLabelText("Envelope size") as HTMLSelectElement).value).toBe("envelope-6-3-4");
   });
 
   it("reprints a bought postage label", async () => {

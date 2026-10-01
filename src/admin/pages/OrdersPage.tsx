@@ -36,12 +36,11 @@ import {
   orderEmailTypeLabel,
 } from "../utils/labels";
 import {
+  DEFAULT_PWE_LABEL_FORMAT,
   PWE_LABEL_FORMATS,
   hasPrintableAddress,
   isImageLabel,
   isTrackingProblem,
-  loadPweLabelFormat,
-  savePweLabelFormat,
   trackingStatusLabel,
   type PweLabelFormat,
 } from "../utils/shippingLabels";
@@ -82,8 +81,10 @@ export function OrdersPage({
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [printJob, setPrintJob] = useState<LabelPrintJob | null>(null);
-  // Printers belong to a device, so the envelope format is remembered per device.
-  const [pweFormat, setPweFormat] = useState<PweLabelFormat>(loadPweLabelFormat);
+  // The envelope a PWE order's label goes on: the usual 3⅝ × 6½ unless
+  // another size is picked for that order. The #10 is occasional, so the
+  // choice belongs to the order and never carries over to the next one.
+  const [envelopeChoice, setEnvelopeChoice] = useState<{ orderId: string; format: PweLabelFormat } | null>(null);
   const [easypostConnected, setEasypostConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -93,9 +94,13 @@ export function OrdersPage({
       .catch(() => setEasypostConnected(null));
   }, []);
 
+  function envelopeFor(orderId: string | undefined): PweLabelFormat {
+    return envelopeChoice && envelopeChoice.orderId === orderId ? envelopeChoice.format : DEFAULT_PWE_LABEL_FORMAT;
+  }
+  const pweFormat = envelopeFor(detail?.id);
+
   function changePweFormat(format: PweLabelFormat) {
-    setPweFormat(format);
-    savePweLabelFormat(format);
+    if (detail) setEnvelopeChoice({ orderId: detail.id, format });
   }
 
   // One click to print: rendering the print view synchronously keeps the
@@ -103,7 +108,7 @@ export function OrdersPage({
   function printLabel(order: Order) {
     let job: LabelPrintJob | null = null;
     if (order.shippingMethod === "pwe") {
-      job = { kind: "pwe", order, format: pweFormat };
+      job = { kind: "pwe", order, format: envelopeFor(order.id) };
     } else if (order.labelUrl && isImageLabel(order.labelUrl)) {
       job = { kind: "postage", order, labelUrl: order.labelUrl };
     } else if (order.labelUrl) {
@@ -687,7 +692,7 @@ function OrderDetail({
               {canPrintEnvelope && (
                 <div className="gg-orderdetail__label">
                   <label className="gg-orderdetail__labelformat">
-                    <span>Print on</span>
+                    <span>Envelope size</span>
                     <select
                       className="gg-input"
                       value={pweFormat}

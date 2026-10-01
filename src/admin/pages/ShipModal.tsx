@@ -22,7 +22,7 @@ const CARRIERS: ShippingCarrier[] = ["USPS", "UPS", "FedEx", "Other"];
 // invent fake tracking data, which the storefront's "Track My Order" would
 // then present to the customer as real. So: `tracked` orders buy a real
 // postage label (or fall back to typing in a carrier + tracking number from
-// one bought elsewhere); `pwe` orders print the addresses straight onto the
+// one bought elsewhere); `pwe` orders print a 4×6 address label for the
 // envelope, with no postage and no tracking.
 //
 // Printing is one click either way (LabelPrintView, opened by the Orders page
@@ -168,7 +168,7 @@ export function ShipModal({
             </p>
             <div className="gg-ship__format">
               <SelectField
-                label="Print on"
+                label="Envelope size"
                 value={pweFormat}
                 onChange={(e) => onPweFormatChange(e.target.value as PweLabelFormat)}
               >

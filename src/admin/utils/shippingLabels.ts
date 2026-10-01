@@ -4,56 +4,36 @@
 import type { Order } from "../types";
 
 /**
- * The envelope a Plain White Envelope order is printed straight onto, with
- * a regular (inkjet or laser) printer:
- *   envelope-6-3-4  3⅝ × 6½ in (#6¾), the store's usual one and the default
+ * Every label prints on a standard 4×6 label printer label. A Plain White
+ * Envelope label is stuck on one of the store's two envelopes, and the
+ * envelope decides where the delivery address sits on the label
+ * (ADDRESS_BLOCK):
+ *   envelope-6-3-4  3⅝ × 6½ in (#6¾), the usual one and the default
  *   envelope-10     4⅛ × 9½ in (#10), for the odd bigger order
  *
- * Both print in solid black with the addresses in capitals, as USPS
- * recommends for its sorting machines. (Bought postage labels are separate:
- * 4×6, for the label printer.)
+ * Labels print in solid black (a thermal printer turns gray into faint
+ * speckles) with the addresses in capitals, as USPS recommends for its
+ * sorting machines.
  */
 export type PweLabelFormat = "envelope-6-3-4" | "envelope-10";
 
 export const PWE_LABEL_FORMATS: { value: PweLabelFormat; label: string }[] = [
-  { value: "envelope-6-3-4", label: "3⅝ × 6½ envelope" },
-  { value: "envelope-10", label: "4⅛ × 9½ envelope (#10)" },
+  { value: "envelope-6-3-4", label: "3⅝ × 6½" },
+  { value: "envelope-10", label: "4⅛ × 9½ (#10)" },
 ];
 
 export const DEFAULT_PWE_LABEL_FORMAT: PweLabelFormat = "envelope-6-3-4";
 
-/** Page size for each printable, in inches, as it reads. */
-export const PAGE_SIZE_IN: Record<PweLabelFormat | "postage-4x6", { width: number; height: number }> = {
-  "envelope-6-3-4": { width: 6.5, height: 3.625 },
-  "envelope-10": { width: 9.5, height: 4.125 },
+export type LabelPage = "pwe-4x6" | "postage-4x6";
+
+/** Page size, in inches, as the label feeds through the printer (portrait). */
+export const PAGE_SIZE_IN: Record<LabelPage, { width: number; height: number }> = {
+  // The envelope label is laid out the way it reads on the envelope (6 wide
+  // × 4 tall) and printed turned a quarter turn onto the portrait label, so
+  // the address runs along the envelope's long side, as USPS wants.
+  "pwe-4x6": { width: 4, height: 6 },
   "postage-4x6": { width: 4, height: 6 },
 };
-
-// Versioned with the choices: a device that picked from the old ones
-// (a 4×6 label or #10) starts again on the new default.
-const FORMAT_STORAGE_KEY = "gg-admin:pwe-envelope";
-
-function isPweLabelFormat(value: unknown): value is PweLabelFormat {
-  return PWE_LABEL_FORMATS.some((f) => f.value === value);
-}
-
-/** This device's chosen PWE format (printers are per device). */
-export function loadPweLabelFormat(): PweLabelFormat {
-  try {
-    const saved = window.localStorage.getItem(FORMAT_STORAGE_KEY);
-    return isPweLabelFormat(saved) ? saved : DEFAULT_PWE_LABEL_FORMAT;
-  } catch {
-    return DEFAULT_PWE_LABEL_FORMAT;
-  }
-}
-
-export function savePweLabelFormat(format: PweLabelFormat): void {
-  try {
-    window.localStorage.setItem(FORMAT_STORAGE_KEY, format);
-  } catch {
-    // Private mode or storage blocked: the choice just isn't remembered.
-  }
-}
 
 const DOMESTIC = new Set(["", "US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"]);
 
@@ -93,14 +73,20 @@ export function recipientLines(
 }
 
 /**
- * Where the delivery address goes on each envelope, in inches from its top
- * left corner. Both sit inside USPS's address read area (between ⅝ in and
- * 2¾ in up from the bottom edge, at least ½ in from the sides), below the
- * stamp, and clear of the barcode strip USPS prints along the bottom.
+ * Where the delivery address goes on the 4×6 label for each envelope, in
+ * inches from the label's top left as it reads (6 wide × 4 tall).
+ *
+ *   envelope-6-3-4  The label nearly covers the envelope (it's ⅜ in taller,
+ *                   so its bottom folds under). Everything prints in the
+ *                   top 2.9 in, the top right corner stays blank for the
+ *                   stamp, and the address lands in USPS's read area.
+ *   envelope-10     The label goes at the left of the 9½ in envelope, so
+ *                   the address moves over toward the envelope's middle.
+ *                   The stamp goes on the envelope, right of the label.
  */
 export const ADDRESS_BLOCK: Record<PweLabelFormat, { leftIn: number; topIn: number; widthIn: number; maxPt: number }> = {
-  "envelope-6-3-4": { leftIn: 2.2, topIn: 1.3, widthIn: 3.8, maxPt: 13 },
-  "envelope-10": { leftIn: 3.6, topIn: 1.65, widthIn: 5.3, maxPt: 14 },
+  "envelope-6-3-4": { leftIn: 1.2, topIn: 1.4, widthIn: 4.5, maxPt: 16 },
+  "envelope-10": { leftIn: 2.3, topIn: 1.4, widthIn: 3.5, maxPt: 16 },
 };
 
 /** The smallest address type USPS recommends. */
