@@ -22,8 +22,8 @@ const CARRIERS: ShippingCarrier[] = ["USPS", "UPS", "FedEx", "Other"];
 // invent fake tracking data, which the storefront's "Track My Order" would
 // then present to the customer as real. So: `tracked` orders buy a real
 // postage label (or fall back to typing in a carrier + tracking number from
-// one bought elsewhere); `pwe` orders print an envelope label with no postage
-// and no tracking.
+// one bought elsewhere); `pwe` orders print the addresses straight onto the
+// envelope, with no postage and no tracking.
 //
 // Printing is one click either way (LabelPrintView, opened by the Orders page
 // through onPrintLabel). Marking an order shipped emails the customer

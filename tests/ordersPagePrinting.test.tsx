@@ -116,15 +116,27 @@ describe("printing from an order", () => {
     fireEvent.click(buttons[0]);
 
     expect(printSpy).toHaveBeenCalledTimes(1);
-    const view = screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
+    const view = screen.getByRole("dialog", { name: "Envelope for #1A2B3C4D" });
     expect(view).toHaveTextContent("123 Main St");
     expect(view).toHaveTextContent("Geega Games");
+    // On the usual 3⅝ × 6½ envelope unless another size is picked.
+    expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("6.5in 3.625in");
   });
 
-  it("remembers the envelope format on this device", async () => {
+  it("offers the two envelope sizes, the usual one first", async () => {
+    const drawer = await openOrder(makeOrder());
+    const picker = within(drawer).getByLabelText("Print on") as HTMLSelectElement;
+    expect(Array.from(picker.options).map((o) => o.textContent)).toEqual([
+      "3⅝ × 6½ envelope",
+      "4⅛ × 9½ envelope (#10)",
+    ]);
+    expect(picker.value).toBe("envelope-6-3-4");
+  });
+
+  it("remembers the envelope size on this device", async () => {
     const drawer = await openOrder(makeOrder());
     fireEvent.change(within(drawer).getByLabelText("Print on"), { target: { value: "envelope-10" } });
-    expect(window.localStorage.getItem("gg-admin:pwe-label-format")).toBe("envelope-10");
+    expect(window.localStorage.getItem("gg-admin:pwe-envelope")).toBe("envelope-10");
 
     fireEvent.click(within(drawer).getAllByRole("button", { name: "Print envelope" })[0]);
     expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("9.5in 4.125in");

@@ -4,36 +4,34 @@
 import type { Order } from "../types";
 
 /**
- * How a Plain White Envelope is addressed:
- *   label-4x6    a 4×6 thermal label (Rollo, Zebra, MUNBYN, DYMO 4XL…),
- *                stuck on a #10 envelope. The address reads along the
- *                label's long side (USPS wants it parallel to the envelope's
- *                long side), so it prints turned a quarter turn on the roll.
- *   envelope-10  printed straight onto a #10 envelope (9½ × 4⅛ in) with a
- *                regular printer.
+ * The envelope a Plain White Envelope order is printed straight onto, with
+ * a regular (inkjet or laser) printer:
+ *   envelope-6-3-4  3⅝ × 6½ in (#6¾), the store's usual one and the default
+ *   envelope-10     4⅛ × 9½ in (#10), for the odd bigger order
  *
- * Both print in solid black (thermal printers can't do gray) with the
- * addresses in capitals, as USPS recommends for its sorting machines.
+ * Both print in solid black with the addresses in capitals, as USPS
+ * recommends for its sorting machines. (Bought postage labels are separate:
+ * 4×6, for the label printer.)
  */
-export type PweLabelFormat = "label-4x6" | "envelope-10";
+export type PweLabelFormat = "envelope-6-3-4" | "envelope-10";
 
 export const PWE_LABEL_FORMATS: { value: PweLabelFormat; label: string }[] = [
-  { value: "label-4x6", label: "4×6 label (label printer)" },
-  { value: "envelope-10", label: "#10 envelope (regular printer)" },
+  { value: "envelope-6-3-4", label: "3⅝ × 6½ envelope" },
+  { value: "envelope-10", label: "4⅛ × 9½ envelope (#10)" },
 ];
 
-export const DEFAULT_PWE_LABEL_FORMAT: PweLabelFormat = "label-4x6";
+export const DEFAULT_PWE_LABEL_FORMAT: PweLabelFormat = "envelope-6-3-4";
 
-/** Page size for each printable, in inches. */
+/** Page size for each printable, in inches, as it reads. */
 export const PAGE_SIZE_IN: Record<PweLabelFormat | "postage-4x6", { width: number; height: number }> = {
-  // The 4×6 PWE label prints portrait (as the roll feeds) with the address
-  // turned, so both 4×6 kinds share a portrait page.
-  "label-4x6": { width: 4, height: 6 },
+  "envelope-6-3-4": { width: 6.5, height: 3.625 },
   "envelope-10": { width: 9.5, height: 4.125 },
   "postage-4x6": { width: 4, height: 6 },
 };
 
-const FORMAT_STORAGE_KEY = "gg-admin:pwe-label-format";
+// Versioned with the choices: a device that picked from the old ones
+// (a 4×6 label or #10) starts again on the new default.
+const FORMAT_STORAGE_KEY = "gg-admin:pwe-envelope";
 
 function isPweLabelFormat(value: unknown): value is PweLabelFormat {
   return PWE_LABEL_FORMATS.some((f) => f.value === value);
@@ -95,14 +93,13 @@ export function recipientLines(
 }
 
 /**
- * Where the delivery address goes on each PWE layout, in inches, measured on
- * the label as it reads (the 4×6 label is laid out 6 wide × 4 tall, then
- * turned onto the portrait page). Once on a #10 envelope, both put the
- * address inside USPS's read area: 1⅜–3½ in from the envelope's top, at
- * least ½ in from its sides.
+ * Where the delivery address goes on each envelope, in inches from its top
+ * left corner. Both sit inside USPS's address read area (between ⅝ in and
+ * 2¾ in up from the bottom edge, at least ½ in from the sides), below the
+ * stamp, and clear of the barcode strip USPS prints along the bottom.
  */
 export const ADDRESS_BLOCK: Record<PweLabelFormat, { leftIn: number; topIn: number; widthIn: number; maxPt: number }> = {
-  "label-4x6": { leftIn: 1.2, topIn: 1.4, widthIn: 4.5, maxPt: 16 },
+  "envelope-6-3-4": { leftIn: 2.2, topIn: 1.3, widthIn: 3.8, maxPt: 13 },
   "envelope-10": { leftIn: 3.6, topIn: 1.65, widthIn: 5.3, maxPt: 14 },
 };
 

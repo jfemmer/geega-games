@@ -63,21 +63,24 @@ describe("label address lines", () => {
 
 describe("address type size", () => {
   const usual = ["Jordan Vega", "123 Main St", "Ballwin, MO 63011"];
+  const longish = ["Jordan Vega", "1234 Longwood Terrace Dr Apt 1204", "Saint Charles, MO 63303-1234"];
   // 40 characters, the most USPS expects on an address line.
   const long = ["Jordan Vega", "12345 North Lindbergh Boulevard Apt 1204", "Saint Charles, MO 63303-1234"];
 
   it("prints a usual address at full size", () => {
-    expect(addressFontSizePt(usual, "label-4x6")).toBe(16);
+    expect(addressFontSizePt(usual, "envelope-6-3-4")).toBe(13);
     expect(addressFontSizePt(usual, "envelope-10")).toBe(14);
   });
 
   it("shrinks so the longest line still fits on one line", () => {
-    expect(addressFontSizePt(long, "label-4x6")).toBe(11.5);
+    expect(addressFontSizePt(longish, "envelope-6-3-4")).toBe(11.5);
+    expect(addressFontSizePt(longish, "envelope-10")).toBe(14);
     expect(addressFontSizePt(long, "envelope-10")).toBe(13.5);
   });
 
   it("never goes below the 10 pt USPS recommends", () => {
-    expect(addressFontSizePt(["X".repeat(90)], "label-4x6")).toBe(10);
+    expect(addressFontSizePt(long, "envelope-6-3-4")).toBe(10);
+    expect(addressFontSizePt(["X".repeat(90)], "envelope-10")).toBe(10);
   });
 });
 
@@ -92,14 +95,24 @@ describe("label files", () => {
 });
 
 describe("envelope format preference", () => {
+  it("defaults to the 3⅝ × 6½ envelope", () => {
+    expect(DEFAULT_PWE_LABEL_FORMAT).toBe("envelope-6-3-4");
+    expect(loadPweLabelFormat()).toBe("envelope-6-3-4");
+  });
+
   it("remembers the choice on this device", () => {
-    expect(loadPweLabelFormat()).toBe(DEFAULT_PWE_LABEL_FORMAT);
     savePweLabelFormat("envelope-10");
     expect(loadPweLabelFormat()).toBe("envelope-10");
   });
 
+  it("starts over on the new default after the choices changed", () => {
+    // Saved before the envelope sizes changed (a 4×6 label, or #10).
+    window.localStorage.setItem("gg-admin:pwe-label-format", "envelope-10");
+    expect(loadPweLabelFormat()).toBe("envelope-6-3-4");
+  });
+
   it("ignores junk and blocked storage", () => {
-    window.localStorage.setItem("gg-admin:pwe-label-format", "poster");
+    window.localStorage.setItem("gg-admin:pwe-envelope", "label-4x6");
     expect(loadPweLabelFormat()).toBe(DEFAULT_PWE_LABEL_FORMAT);
 
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
