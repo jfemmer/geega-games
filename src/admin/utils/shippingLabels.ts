@@ -72,21 +72,40 @@ export function recipientLines(
   ].filter(Boolean);
 }
 
+export interface AddressPlacement {
+  /** The area the address goes in, in inches from the label's top left as it reads (6 wide × 4 tall). */
+  leftIn: number;
+  topIn: number;
+  widthIn: number;
+  /** The area's height, for an address centered in it. */
+  heightIn?: number;
+  /**
+   * start   the address starts at the area's top left.
+   * center  the address is centered in the area; one too wide for it lines
+   *         up with the area's right edge and extends left, so it never
+   *         runs off the label.
+   */
+  align: "start" | "center";
+  maxPt: number;
+}
+
 /**
- * Where the delivery address goes on the 4×6 label for each envelope, in
- * inches from the label's top left as it reads (6 wide × 4 tall).
+ * Where the delivery address goes on the 4×6 label for each envelope.
  *
  *   envelope-6-3-4  The label nearly covers the envelope (it's ⅜ in taller,
  *                   so its bottom folds under). Everything prints in the
- *                   top 2.9 in, the top right corner stays blank for the
+ *                   top 2½ in, the top right corner stays blank for the
  *                   stamp, and the address lands in USPS's read area.
- *   envelope-10     The label goes at the left of the 9½ in envelope, so
- *                   the address moves over toward the envelope's middle.
- *                   The stamp goes on the envelope, right of the label.
+ *   envelope-10     The label lines up with the envelope's left edge, so
+ *                   the envelope's middle (4¾ in across) is 4¾ in into the
+ *                   label. The area is centered there, both ways, and ends
+ *                   0.1 in from the label's right edge, which is why the
+ *                   type is smaller. The stamp goes on the envelope, right
+ *                   of the label.
  */
-export const ADDRESS_BLOCK: Record<PweLabelFormat, { leftIn: number; topIn: number; widthIn: number; maxPt: number }> = {
-  "envelope-6-3-4": { leftIn: 1.2, topIn: 1.4, widthIn: 4.5, maxPt: 16 },
-  "envelope-10": { leftIn: 2.3, topIn: 1.4, widthIn: 3.5, maxPt: 16 },
+export const ADDRESS_BLOCK: Record<PweLabelFormat, AddressPlacement> = {
+  "envelope-6-3-4": { leftIn: 1.2, topIn: 1.4, widthIn: 4.5, align: "start", maxPt: 16 },
+  "envelope-10": { leftIn: 3.6, topIn: 1.35, widthIn: 2.3, heightIn: 1.4, align: "center", maxPt: 16 },
 };
 
 /** The smallest address type USPS recommends. */

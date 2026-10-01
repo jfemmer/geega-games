@@ -146,9 +146,10 @@ describe("printing from an order", () => {
 
     fireEvent.change(within(drawer).getByLabelText("Envelope size"), { target: { value: "envelope-10" } });
     fireEvent.click(within(drawer).getAllByRole("button", { name: "Print envelope" })[0]);
-    // Same 4×6 label, address farther right.
+    // Same 4×6 label, address centered for the #10.
     expect(document.querySelector("style[data-gg-label-page]")?.textContent).toContain("4in 6in");
-    expect(printedAddress().style.left).toBe("2.3in");
+    expect(printedAddress()).toHaveClass("gg-label__to--centered");
+    expect((printedAddress().parentElement as HTMLElement).style.left).toBe("3.6in");
     const labelView = screen.getByRole("dialog", { name: "Envelope label for #1A2B3C4D" });
     fireEvent.click(within(labelView).getByRole("button", { name: "Close" }));
 

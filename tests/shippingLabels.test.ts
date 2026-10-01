@@ -63,18 +63,21 @@ describe("address type size", () => {
   // 40 characters, the most USPS expects on an address line.
   const long = ["Jordan Vega", "12345 North Lindbergh Boulevard Apt 1204", "Saint Charles, MO 63303-1234"];
 
-  it("prints a usual address at full size", () => {
+  it("prints a usual address at full size on the 3⅝ × 6½ label", () => {
     expect(addressFontSizePt(usual, "envelope-6-3-4")).toBe(16);
-    expect(addressFontSizePt(usual, "envelope-10")).toBe(16);
+  });
+
+  it("prints smaller to stay centered on a #10", () => {
+    expect(addressFontSizePt(usual, "envelope-10")).toBe(13.5);
   });
 
   it("shrinks so the longest line still fits on one line", () => {
     expect(addressFontSizePt(longish, "envelope-6-3-4")).toBe(14);
-    expect(addressFontSizePt(longish, "envelope-10")).toBe(10.5);
     expect(addressFontSizePt(long, "envelope-6-3-4")).toBe(11.5);
   });
 
   it("never goes below the 10 pt USPS recommends", () => {
+    expect(addressFontSizePt(longish, "envelope-10")).toBe(10);
     expect(addressFontSizePt(long, "envelope-10")).toBe(10);
     expect(addressFontSizePt(["X".repeat(90)], "envelope-6-3-4")).toBe(10);
   });
@@ -91,13 +94,21 @@ describe("envelope choices", () => {
     expect(PAGE_SIZE_IN["postage-4x6"]).toEqual({ width: 4, height: 6 });
   });
 
-  it("moves the address farther right for the #10 envelope, still on the label", () => {
-    const small = ADDRESS_BLOCK["envelope-6-3-4"];
+  it("centers the #10 address on the envelope, with the label at its left edge", () => {
     const large = ADDRESS_BLOCK["envelope-10"];
-    expect(large.leftIn).toBeGreaterThanOrEqual(small.leftIn + 1);
-    expect(large.topIn).toBe(small.topIn);
-    // The label reads 6 in wide: keep the address off its edge.
-    for (const block of [small, large]) expect(block.leftIn + block.widthIn).toBeLessThanOrEqual(5.8);
+    expect(large.align).toBe("center");
+    // The #10 is 9½ in wide, so its middle is 4¾ in from the left edge.
+    expect(large.leftIn + large.widthIn / 2).toBeCloseTo(9.5 / 2, 5);
+    // …and about halfway down (the label is 4 in tall on a 4⅛ in envelope).
+    expect(large.topIn + (large.heightIn ?? 0) / 2).toBeCloseTo(2.05, 5);
+    // Still on the 6 in label, 0.1 in from its edge.
+    expect(large.leftIn + large.widthIn).toBeCloseTo(5.9, 5);
+  });
+
+  it("keeps the 3⅝ × 6½ address where it was", () => {
+    const small = ADDRESS_BLOCK["envelope-6-3-4"];
+    expect(small).toMatchObject({ align: "start", leftIn: 1.2, topIn: 1.4 });
+    expect(small.leftIn + small.widthIn).toBeLessThanOrEqual(5.8);
   });
 });
 

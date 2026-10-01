@@ -45,7 +45,7 @@ const LABEL_PRINTER_SETUP =
 
 const HINTS: Record<PweLabelFormat | "postage", string> = {
   "envelope-6-3-4": `${LABEL_PRINTER_SETUP} Stick it on the 3⅝ × 6½ envelope with the return address at the top left, and put the stamp on the label's blank top right corner.`,
-  "envelope-10": `${LABEL_PRINTER_SETUP} Stick it at the left of the #10 envelope with the return address at the top left, and put the stamp on the envelope's top right.`,
+  "envelope-10": `${LABEL_PRINTER_SETUP} Line it up with the left edge of the #10 envelope, return address at the top left, so the address lands in the middle of the envelope. The stamp goes on the envelope's top right.`,
   postage: LABEL_PRINTER_SETUP,
 };
 
@@ -195,20 +195,25 @@ export function LabelPrintView({ job, onClose }: { job: LabelPrintJob; onClose: 
 /** The delivery address, placed for the format and sized so no line breaks. */
 function PweAddress({ order, format }: { order: Order; format: PweLabelFormat }) {
   const lines = recipientLines(order);
-  const block = ADDRESS_BLOCK[format];
+  const place = ADDRESS_BLOCK[format];
+  const area = { left: `${place.leftIn}in`, top: `${place.topIn}in`, width: `${place.widthIn}in` };
+  const fontSize = `${addressFontSizePt(lines, format)}pt`;
+  const text = lines.map((line, i) => <div key={`${i}-${line}`}>{line}</div>);
+
+  if (place.align === "center") {
+    // Centered by the browser from the address's real width (admin.css),
+    // so it's centered whatever the font, and never pushed off the label.
+    return (
+      <div className="gg-label__toarea" style={{ ...area, height: `${place.heightIn ?? 0}in` }}>
+        <div className="gg-label__to gg-label__to--centered" style={{ fontSize }}>
+          {text}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div
-      className="gg-label__to"
-      style={{
-        left: `${block.leftIn}in`,
-        top: `${block.topIn}in`,
-        width: `${block.widthIn}in`,
-        fontSize: `${addressFontSizePt(lines, format)}pt`,
-      }}
-    >
-      {lines.map((line, i) => (
-        <div key={`${i}-${line}`}>{line}</div>
-      ))}
+    <div className="gg-label__to" style={{ ...area, fontSize }}>
+      {text}
     </div>
   );
 }

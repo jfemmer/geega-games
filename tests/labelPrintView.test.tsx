@@ -76,16 +76,19 @@ describe("LabelPrintView — Plain White Envelope", () => {
     expect(dialog).toHaveTextContent("Stick it on the 3⅝ × 6½ envelope");
   });
 
-  it("moves the address farther right on the same 4×6 label for a #10 envelope", () => {
+  it("centers the address on a #10 envelope, on the same 4×6 label", () => {
     render(<LabelPrintView job={{ kind: "pwe", order, format: "envelope-10" }} onClose={() => {}} />);
     expect(pageStyle()).toContain("size: 4in 6in");
-    expect(screen.getByRole("dialog")).toHaveTextContent("Stick it at the left of the #10 envelope");
-    expect((screen.getByText("123 Main St").parentElement as HTMLElement).style).toMatchObject({
-      left: "2.3in",
-      top: "1.4in",
-      width: "3.5in",
-      fontSize: "16pt",
-    });
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "Line it up with the left edge of the #10 envelope, return address at the top left, so the address lands in the middle of the envelope.",
+    );
+    const address = screen.getByText("123 Main St").parentElement as HTMLElement;
+    expect(address).toHaveClass("gg-label__to", "gg-label__to--centered");
+    expect(address.style.fontSize).toBe("13.5pt");
+    // Centered (by the browser) in an area around the envelope's middle.
+    const area = address.parentElement as HTMLElement;
+    expect(area).toHaveClass("gg-label__toarea");
+    expect(area.style).toMatchObject({ left: "3.6in", top: "1.35in", width: "2.3in", height: "1.4in" });
   });
 
   it("cleans up after itself so other printing is unaffected", () => {
