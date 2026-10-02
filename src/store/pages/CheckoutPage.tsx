@@ -19,10 +19,12 @@ import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
 import { formatReopenDate, refreshStoreStatus, useStoreStatus } from "../lib/storeStatus";
+import { ShippingMethodPicker } from "../components/ShippingMethodPicker";
 import {
+  effectiveShippingMethod,
   formatCents,
+  formatShipping,
   previewOrderTotals,
-  amountUntilFreeShipping,
   type ShippingMethod,
 } from "../lib/money";
 
@@ -31,6 +33,10 @@ import {
 //     atomically revalidates SELLABLE stock (physical minus active
 //     reservations) and computes the canonical amount due. The totals shown
 //     below are display-only previews, never trusted for money.
+//   - Free shipping is the server's rule too: an order with enough cards
+//     (SHIPPING.freeShippingThresholdCents) is created tracked with $0
+//     shipping whatever this page sends. The page mirrors that so the
+//     customer sees it before paying (ShippingMethodPicker, `shipMethod`).
 //   - A zero-balance order (fully covered by store credit) is marked paid by
 //     that trusted DB path — no Stripe involved.
 //   - A balance-due order gets a Stripe PaymentIntent for EXACTLY the
@@ -284,15 +290,19 @@ export default function CheckoutPage() {
     });
   }, [user]);
 
+  // How the order will really ship: the customer's pick, unless the cart
+  // qualifies for free shipping, which is always tracked.
+  const shipMethod = effectiveShippingMethod(method, subtotalCents);
+
   const totals = useMemo(
     () =>
       previewOrderTotals({
         subtotalCents,
-        method,
+        method: shipMethod,
         storeCreditBalanceCents: creditBalance,
         storeCreditRequestedCents: useCredit ? creditBalance : 0,
       }),
-    [subtotalCents, method, creditBalance, useCredit],
+    [subtotalCents, shipMethod, creditBalance, useCredit],
   );
 
   const chosenAddress: Partial<Address> | null =
@@ -383,7 +393,7 @@ export default function CheckoutPage() {
       },
       credentials: "same-origin",
       body: JSON.stringify({
-        shippingMethod: method,
+        shippingMethod: shipMethod,
         storeCreditRequestedCents: token && useCredit ? creditBalance : 0,
         // Guests: the server re-prices these ids from inventory; only ids
         // and quantities are sent, never prices.
@@ -457,7 +467,7 @@ export default function CheckoutPage() {
   // directly; any balance due stays pending_payment.
   const placeOrderLegacy = async () => {
     const { data, error: rpcError } = await supabase.rpc("checkout_create_order", {
-      p_shipping_method: method,
+      p_shipping_method: shipMethod,
       p_store_credit_requested_cents: useCredit ? creditBalance : 0,
       p_ship_recipient: chosenAddress?.recipient ?? null,
       p_ship_line1: chosenAddress?.line1 ?? null,
@@ -655,8 +665,6 @@ export default function CheckoutPage() {
     );
   }
 
-  const freeGap = amountUntilFreeShipping(subtotalCents);
-
   return (
     <div className="gg-page">
       <h1 style={{ color: "var(--gg-ink)" }}>Checkout</h1>
@@ -766,34 +774,18 @@ export default function CheckoutPage() {
 
           {/* Shipping method */}
           <h2 style={{ marginTop: "1.5rem" }}>Shipping method</h2>
-          <label className="gg-check">
-            <input
-              type="radio"
-              name="ship"
-              checked={method === "tracked"}
-              onChange={() => setMethod("tracked")}
-            />
-            Tracked{" "}
-            {freeGap === 0
-              ? "(free)"
-              : `(${formatCents(550)}; free over ${formatCents(8500)})`}
-          </label>
-          <label className="gg-check">
-            <input
-              type="radio"
-              name="ship"
-              checked={method === "pwe"}
-              onChange={() => setMethod("pwe")}
-            />
-            Plain White Envelope ({formatCents(150)}, untracked)
-          </label>
+          <ShippingMethodPicker subtotalCents={subtotalCents} method={method} onChange={setMethod} />
         </div>
 
         {/* Summary */}
         <aside className="gg-filters" style={{ alignSelf: "start" }}>
           <h2 style={{ marginTop: 0 }}>Summary</h2>
           <SummaryRow label="Subtotal" value={totals.subtotalCents} />
-          <SummaryRow label="Shipping" value={totals.shippingCents} />
+          <SummaryRow
+            label="Shipping"
+            value={totals.shippingCents}
+            text={formatShipping(totals.shippingCents)}
+          />
           {creditBalance > 0 && (
             <label className="gg-check" style={{ margin: "0.5rem 0" }}>
               <input
@@ -1234,10 +1226,13 @@ function WalletButtons({ handlers }: { handlers: PayPalButtonsComponentProps }) 
 function SummaryRow({
   label,
   value,
+  text,
   strong,
 }: {
   label: string;
   value: number;
+  /** Shown instead of the formatted amount (e.g. "Free" for $0 shipping). */
+  text?: string;
   strong?: boolean;
 }) {
   return (
@@ -1250,7 +1245,7 @@ function SummaryRow({
       }}
     >
       <span>{label}</span>
-      <span>{formatCents(value)}</span>
+      <span>{text ?? formatCents(value)}</span>
     </div>
   );
 }

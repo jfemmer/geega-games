@@ -40,7 +40,7 @@ const STATIC_ROUTES: SeoRoute[] = [
   { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: SEO_REFRESH },
   { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: SEO_REFRESH },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
-  { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
+  { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: "2026-10-02" },
   { path: "/returns", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/contact", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/privacy", changefreq: "yearly", priority: "0.1" },

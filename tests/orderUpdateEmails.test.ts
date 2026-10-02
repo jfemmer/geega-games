@@ -7,7 +7,7 @@ import {
   orderStatusUpdateText,
   type OrderStatusEmailData,
 } from "../api/_lib/emails/OrderStatusUpdate.js";
-import { orderNextSteps } from "../api/_lib/emails/OrderConfirmation.js";
+import { orderNextSteps, shippingText } from "../api/_lib/emails/OrderConfirmation.js";
 import { formatShipDate } from "../api/_lib/orderStatusEmail.js";
 
 // The customer emails for a shipment: packed → shipped → delivered (tracked)
@@ -93,6 +93,21 @@ describe("order confirmation next steps", () => {
 
   it("says nothing about shipping for an in-person sale", () => {
     expect(orderNextSteps({ channel: "pos", shippingMethod: null })).toBeNull();
+  });
+});
+
+describe("order confirmation shipping line", () => {
+  it("says Free when the order shipped free", () => {
+    expect(shippingText({ shippingCents: 0, shippingMethod: "tracked" })).toBe("Free");
+  });
+
+  it("shows the amount when shipping was charged", () => {
+    expect(shippingText({ shippingCents: 550, shippingMethod: "tracked" })).toBe("$5.50");
+    expect(shippingText({ shippingCents: 150, shippingMethod: "pwe" })).toBe("$1.50");
+  });
+
+  it("keeps $0.00 for an in-person sale, which doesn't ship", () => {
+    expect(shippingText({ shippingCents: 0, shippingMethod: null })).toBe("$0.00");
   });
 });
 

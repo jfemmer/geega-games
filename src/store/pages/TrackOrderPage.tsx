@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useRouter } from "../lib/router";
 import { supabase } from "../../supabase";
-import { formatCents } from "../lib/money";
+import { formatCents, orderShippingText } from "../lib/money";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { useSEO } from "../lib/useSEO";
@@ -227,7 +227,7 @@ export default function TrackOrderPage() {
 
         <div style={{ marginTop: "1.25rem", maxWidth: 320, marginLeft: "auto" }}>
           <Row label="Subtotal" value={order.subtotal_cents} />
-          <Row label="Shipping" value={order.shipping_cents} />
+          <Row label="Shipping" value={order.shipping_cents} text={orderShippingText(order)} />
           {order.store_credit_used_cents > 0 && (
             <Row label="Store credit" value={-order.store_credit_used_cents} />
           )}

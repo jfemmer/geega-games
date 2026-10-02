@@ -77,6 +77,16 @@ export function orderNextSteps(d: Pick<OrderEmailData, "channel" | "shippingMeth
 }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * The shipping line: "Free" rather than "$0.00" when the order ships free
+ * (orders of $75 or more). An in-person sale has no shipping method, so it
+ * keeps the plain amount.
+ */
+export function shippingText(d: Pick<OrderEmailData, "shippingCents" | "shippingMethod">): string {
+  return d.shippingCents === 0 && d.shippingMethod ? "Free" : money(d.shippingCents);
+}
+
 const CONDITION_LABELS: Record<string, string> = {
   NM: "Near Mint",
   LP: "Lightly Played",
@@ -187,7 +197,7 @@ export function OrderConfirmation(data: OrderEmailData) {
           TotalsRow("Discount", `-${money(data.discountCents)}`),
         )
       : null,
-    h("div", { key: "ship" }, TotalsRow("Shipping", money(data.shippingCents))),
+    h("div", { key: "ship" }, TotalsRow("Shipping", shippingText(data))),
     data.taxCents > 0
       ? h("div", { key: "tax" }, TotalsRow("Tax", money(data.taxCents)))
       : null,
@@ -266,7 +276,7 @@ export function orderConfirmationText(d: OrderEmailData): string {
     "",
     `Subtotal: ${money(d.subtotalCents)}`,
     d.discountCents > 0 ? `Discount: -${money(d.discountCents)}` : "",
-    `Shipping: ${money(d.shippingCents)}`,
+    `Shipping: ${shippingText(d)}`,
     d.taxCents > 0 ? `Tax: ${money(d.taxCents)}` : "",
     `Total: ${money(d.totalCents)}`,
     "",

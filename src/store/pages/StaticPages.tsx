@@ -20,7 +20,7 @@ import {
 } from "../../seo/site";
 import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
-import { SHIPPING, formatCents } from "../lib/money";
+import { SHIPPING, formatCents, formatCentsShort } from "../lib/money";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
 
 export const SUPPORT_EMAIL =
@@ -192,9 +192,10 @@ export function ConditionGuidePage() {
 }
 
 export function ShippingPage() {
+  const freeFrom = formatCentsShort(SHIPPING.freeShippingThresholdCents);
   useSEO({
     title: "Shipping Options & Rates | Geega Games",
-    description: `Every Geega Games order ships within ${SHIPS_WITHIN_BUSINESS_DAYS} business days, sleeved, top-loaded and packed tight. Plain white envelope or tracked shipping, with free tracked shipping over ${formatCents(SHIPPING.freeTrackedThresholdCents)}.`,
+    description: `Every Geega Games order ships within ${SHIPS_WITHIN_BUSINESS_DAYS} business days, sleeved, top-loaded and packed tight. Plain white envelope or tracked shipping, and orders of ${freeFrom} or more ship free with tracking.`,
     path: "/shipping",
   });
 
@@ -225,17 +226,22 @@ export function ShippingPage() {
       </ul>
 
       <h2>Your options at checkout</h2>
+      <h3>Free shipping on orders of {freeFrom} or more</h3>
+      <p>
+        Spend {freeFrom} or more on cards and your order <strong>ships free with tracking</strong>.
+        It&rsquo;s applied automatically at checkout: no code to enter and nothing to choose.
+      </p>
       <h3>Plain White Envelope (PWE) — {formatCents(SHIPPING.pweCents)}</h3>
       <p>
-        A low-cost option for smaller orders: sleeved and top-loaded inside a plain envelope. PWE is{" "}
-        <strong>not tracked</strong>, so a lost envelope can&rsquo;t be traced — for anything
-        you&rsquo;d hate to lose, choose tracked shipping. Since there&rsquo;s no tracking, we email
-        you after it&rsquo;s had time to arrive, so you can tell us if it hasn&rsquo;t.
+        A low-cost option for orders under {freeFrom}: sleeved and top-loaded inside a plain
+        envelope. PWE is <strong>not tracked</strong>, so a lost envelope can&rsquo;t be traced — for
+        anything you&rsquo;d hate to lose, choose tracked shipping. Since there&rsquo;s no tracking,
+        we email you after it&rsquo;s had time to arrive, so you can tell us if it hasn&rsquo;t.
       </p>
       <h3>Tracked shipping — {formatCents(SHIPPING.trackedCents)}</h3>
       <p>
         Fully tracked and better protected, recommended for higher-value orders.{" "}
-        <strong>Free on orders of {formatCents(SHIPPING.freeTrackedThresholdCents)} or more.</strong>
+        <strong>Free on orders of {freeFrom} or more.</strong>
       </p>
       <p>Your exact shipping cost is always shown in your cart before you pay — no surprises.</p>
 

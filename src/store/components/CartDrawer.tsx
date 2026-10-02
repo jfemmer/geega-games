@@ -2,8 +2,9 @@ import { useEffect, useRef } from "react";
 import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
-import { formatCents } from "../lib/money";
+import { formatCents, qualifiesForFreeShipping } from "../lib/money";
 import { formatReopenDate, useStoreStatus } from "../lib/storeStatus";
+import { FreeShippingNote } from "./FreeShippingNote";
 
 // Accessible slide-over cart. Focus is trapped while open; Escape closes;
 // the trigger is restored on close. Live cart data comes from CartContext.
@@ -194,8 +195,11 @@ export default function CartDrawer({
               <strong>Subtotal</strong>
               <strong>{formatCents(subtotalCents)}</strong>
             </div>
+            <FreeShippingNote subtotalCents={subtotalCents} />
             <p className="gg-card-meta" style={{ marginTop: 0 }}>
-              Shipping & store credit are calculated at checkout.
+              {qualifiesForFreeShipping(subtotalCents)
+                ? "Store credit is applied at checkout."
+                : "Shipping & store credit are calculated at checkout."}
             </p>
             {ordersPaused && (
               <p className="gg-paused-note" role="status">

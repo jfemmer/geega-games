@@ -3,7 +3,7 @@ import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
 import { Link, useRouter, matchRoute } from "../lib/router";
-import { formatCents } from "../lib/money";
+import { formatCents, orderShippingText } from "../lib/money";
 import { cardDetailPath } from "../lib/cardSlug";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
@@ -1249,7 +1249,7 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
 
       <div style={{ marginTop: "1.25rem", maxWidth: 320, marginLeft: "auto" }}>
         <Row label="Subtotal" value={order.subtotal_cents} />
-        <Row label="Shipping" value={order.shipping_cents} />
+        <Row label="Shipping" value={order.shipping_cents} text={orderShippingText(order)} />
         {order.store_credit_used_cents > 0 && (
           <Row label="Store credit" value={-order.store_credit_used_cents} />
         )}
@@ -1292,10 +1292,13 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
 export function Row({
   label,
   value,
+  text,
   strong,
 }: {
   label: string;
   value: number;
+  /** Shown instead of the formatted amount (e.g. "Free" for $0 shipping). */
+  text?: string;
   strong?: boolean;
 }) {
   return (
@@ -1308,7 +1311,7 @@ export function Row({
       }}
     >
       <span>{label}</span>
-      <span>{formatCents(value)}</span>
+      <span>{text ?? formatCents(value)}</span>
     </div>
   );
 }
