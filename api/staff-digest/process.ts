@@ -23,6 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const [
+      siteVisitorsRes,
       newOrdersRes,
       newLeadsRes,
       newSignupsRes,
@@ -31,6 +32,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       pendingPickupsRes,
       lowStockRes,
     ] = await Promise.all([
+      // Storefront visitors over the same 24 hours as the rest of "since
+      // yesterday" (see migration 20261003170000_site_visitor_counts.sql).
+      db.rpc("site_visitor_counts", { p_start: since, p_end: now.toISOString() }),
       db
         .from("orders")
         .select("total_cents", { count: "exact" })
@@ -63,6 +67,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       0,
     );
 
+    // A failed count is reported as "not available", never as 0 visitors.
+    const visitorCounts = siteVisitorsRes.error ? null : (siteVisitorsRes.data?.[0] ?? null);
+    if (!visitorCounts) {
+      console.error("[staff-digest] visitor counts unavailable", siteVisitorsRes.error?.message ?? "no row");
+    }
+
     const data: StaffDigestEmailData = {
       dateLabel: now.toLocaleDateString("en-US", {
         weekday: "long",
@@ -70,6 +80,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         day: "numeric",
         year: "numeric",
       }),
+      siteVisitors: visitorCounts ? Number(visitorCounts.visitors) : null,
+      sitePageViews: visitorCounts ? Number(visitorCounts.page_views) : null,
       newOrders: newOrdersRes.count ?? 0,
       newOrdersRevenueCents,
       newLeads: newLeadsRes.count ?? 0,
@@ -94,6 +106,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       text: staffDigestText(data),
     });
 
+    // Counts only, for checking a run in the logs. The response stays bare:
+    // this URL is public, and visitor numbers aren't.
+    console.log(
+      "[staff-digest]",
+      JSON.stringify({ status: result.status, siteVisitors: data.siteVisitors, sitePageViews: data.sitePageViews }),
+    );
     return res.status(200).json({ ok: true, status: result.status });
   } catch (err) {
     console.error("[staff-digest] failed", err);

@@ -17,6 +17,13 @@ const h = (
 
 export type StaffDigestEmailData = {
   dateLabel: string;
+  /**
+   * Storefront visitors and page views since yesterday (anonymous daily
+   * ids; staff devices and bots aren't counted). Null when the counts
+   * couldn't be read, so the email says so instead of showing a false 0.
+   */
+  siteVisitors: number | null;
+  sitePageViews: number | null;
   newOrders: number;
   newOrdersRevenueCents: number;
   newLeads: number;
@@ -32,6 +39,15 @@ export type StaffDigestEmailData = {
 };
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/** "14 (52 page views)", or "not available" when the counts couldn't be read. */
+export function siteVisitorsText(d: Pick<StaffDigestEmailData, "siteVisitors" | "sitePageViews">): string {
+  if (d.siteVisitors === null) return "not available";
+  const visitors = d.siteVisitors.toLocaleString("en-US");
+  if (d.sitePageViews === null) return visitors;
+  const views = d.sitePageViews;
+  return `${visitors} (${views.toLocaleString("en-US")} page ${views === 1 ? "view" : "views"})`;
+}
 
 function StatRow(label: string, value: string) {
   return h(
@@ -56,6 +72,7 @@ export function StaffDigest(data: StaffDigestEmailData) {
 
     h(Section, { key: "activity", style: sectionBox },
       h(Text, { style: sectionHeading }, "Since yesterday"),
+      StatRow("Site visitors", siteVisitorsText(data)),
       StatRow("New orders", `${data.newOrders} (${money(data.newOrdersRevenueCents)})`),
       StatRow("New buying leads", String(data.newLeads)),
       StatRow("New accounts", String(data.newSignups)),
@@ -83,6 +100,7 @@ export function staffDigestText(d: StaffDigestEmailData): string {
     `Yesterday at Geega Games — ${d.dateLabel}`,
     "",
     "Since yesterday:",
+    `  Site visitors: ${siteVisitorsText(d)}`,
     `  New orders: ${d.newOrders} (${money(d.newOrdersRevenueCents)})`,
     `  New buying leads: ${d.newLeads}`,
     `  New accounts: ${d.newSignups}`,

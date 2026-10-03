@@ -3252,6 +3252,13 @@ export type Database = {
         Args: { p_range?: string }
         Returns: Json
       }
+      site_visitor_counts: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          page_views: number
+          visitors: number
+        }[]
+      }
       store_ordering_status: {
         Args: never
         Returns: {
