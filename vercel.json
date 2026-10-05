@@ -8,9 +8,37 @@
     { "path": "/api/review-requests/process", "schedule": "41 15 * * *" }
   ],
   "redirects": [
+    { "source": "/((?!api/).*)/", "destination": "/$1", "permanent": true },
     { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true },
     { "source": "/cards", "destination": "/shop", "permanent": true },
-    { "source": "/cards/:id", "destination": "/shop", "permanent": true }
+    { "source": "/cards/:id", "destination": "/shop", "permanent": true },
+    { "source": "/index.html", "destination": "/", "permanent": true },
+    { "source": "/login.html", "destination": "/login", "permanent": true },
+    { "source": "/signup.html", "destination": "/signup", "permanent": true },
+    { "source": "/account.html", "destination": "/account", "permanent": true },
+    { "source": "/wishlist.html", "destination": "/account/wishlist", "permanent": true },
+    { "source": "/cart.html", "destination": "/shop", "permanent": true },
+    { "source": "/checkout.html", "destination": "/shop", "permanent": true },
+    { "source": "/checkout-success.html", "destination": "/track-order", "permanent": true },
+    { "source": "/request.html", "destination": "/contact", "permanent": true },
+    { "source": "/sell.html", "destination": "/sell-my-collection", "permanent": true },
+    { "source": "/tradeIn.html", "destination": "/sell", "permanent": true },
+    { "source": "/admin_dashboard.html", "destination": "/admin_dashboard", "permanent": true },
+    { "source": "/images/logo.png", "destination": "/logo.png", "permanent": true }
+  ],
+  "headers": [
+    { "source": "/login", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/signup", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/forgot-password", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/reset-password", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/checkout", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/sell/offer", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/kiosk", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/account", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/account/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/spa.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/404.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/admin.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] }
   ],
   "rewrites": [
     {
@@ -37,14 +65,25 @@
     { "source": "/admin", "destination": "/admin.html" },
     { "source": "/admin_dashboard", "destination": "/admin.html" },
     { "source": "/admin_dashboard/:path*", "destination": "/admin.html" },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/spa.html"
-    }
+    { "source": "/shop/card/:slug", "destination": "/api/catalog-page?kind=card&slug=:slug" },
+    { "source": "/shop/set/:code", "destination": "/api/catalog-page?kind=set&code=:code" },
+    { "source": "/login", "destination": "/spa.html" },
+    { "source": "/signup", "destination": "/spa.html" },
+    { "source": "/forgot-password", "destination": "/spa.html" },
+    { "source": "/reset-password", "destination": "/spa.html" },
+    { "source": "/checkout", "destination": "/spa.html" },
+    { "source": "/track-order", "destination": "/spa.html" },
+    { "source": "/sell/offer", "destination": "/spa.html" },
+    { "source": "/kiosk", "destination": "/spa.html" },
+    { "source": "/account", "destination": "/spa.html" },
+    { "source": "/account/:path*", "destination": "/spa.html" }
   ],
   "functions": {
     "api/admin/scans/[scanId]/recognize.ts": {
       "includeFiles": "{api/_lib/ocr/data/**,node_modules/tesseract.js-core/**}"
+    },
+    "api/catalog-page.ts": {
+      "includeFiles": "dist/spa.html"
     }
   }
 }

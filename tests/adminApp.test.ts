@@ -84,8 +84,11 @@ describe("vercel.json routing for the admin app", () => {
     }
   });
 
-  it("puts the admin rewrites before the storefront catch-all", () => {
-    const catchAll = rewrites.findIndex((r) => r.destination === "/spa.html");
-    expect(indexOf("/admin_dashboard/:path*")).toBeLessThan(catchAll);
+  it("never hands a dashboard address to the storefront's shell", () => {
+    // The storefront shell has no manifest or home-screen tags; an admin
+    // address served from it couldn't be installed or get push.
+    const storefrontShell = rewrites.filter((r) => r.destination === "/spa.html").map((r) => r.source);
+    expect(storefrontShell.length).toBeGreaterThan(0);
+    expect(storefrontShell.filter((source) => source.startsWith("/admin"))).toEqual([]);
   });
 });

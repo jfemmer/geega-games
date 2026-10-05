@@ -10,12 +10,19 @@
 // Output (all inside dist/):
 //   index.html            the homepage, prerendered
 //   <route>/index.html    each other SEO route (vercel.json rewrites to these)
-//   spa.html              neutral shell for every other path: card/set pages,
-//                         account, checkout, admin… No canonical, so the one
-//                         useSEO sets is the only one Google sees.
-//   404.html              a missing /sell-magic-cards/:area or /guides/:slug
+//   spa.html              neutral shell for the app-only pages (login,
+//                         account, checkout… — src/seo/appRoutes.ts). No
+//                         canonical, so the one useSEO sets is the only one
+//                         Google sees. api/catalog-page.ts also starts from it
+//                         for card and set pages, filling in their own tags.
+//   404.html              what Vercel serves, with a 404 status, for any
+//                         address nothing else answers
 //   admin.html            the admin dashboard's shell: spa.html plus the
 //                         installable-app tags (see scripts/adminShell.ts)
+//
+// Before writing anything it checks that vercel.json serves every one of
+// those pages (scripts/vercelRoutes.ts): vercel.json has no catch-all, so a
+// page it doesn't name would be a 404 on the live site.
 //
 // Fails the build (non-zero exit) rather than ship a partial or broken site.
 
@@ -24,7 +31,9 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { seoRoutes } from "../src/seo/routes.js";
 import { renderSeoHead, type PageSEO } from "../src/seo/head.js";
+import { APP_MARKER, HEAD_END, HEAD_START, fillTemplate } from "../src/seo/template.js";
 import { ADMIN_APP_HEAD, toAdminShell } from "./adminShell.js";
+import { expectedPages, routingProblems, type VercelRoutingConfig } from "./vercelRoutes.js";
 
 interface PrerenderModule {
   siteUrl: string;
@@ -35,34 +44,8 @@ const ROOT = resolve(import.meta.dirname, "..");
 const DIST = join(ROOT, "dist");
 const SSR_ENTRY = join(ROOT, "dist-ssr", "prerender.js");
 
-const HEAD_START = "<!--seo-head-->";
-const HEAD_END = "<!--/seo-head-->";
-const APP_MARKER = "<!--app-html-->";
-
 function outputFile(path: string): string {
   return path === "/" ? join(DIST, "index.html") : join(DIST, path.slice(1), "index.html");
-}
-
-/**
- * React 19 emits resource hints (e.g. <link rel="preload" as="image">) at the
- * start of a render that has no <head>. Move them into the real head.
- */
-function splitLeadingLinks(html: string): { links: string; body: string } {
-  const match = /^(?:\s*<link\b[^>]*>)+/.exec(html);
-  if (!match) return { links: "", body: html };
-  return { links: match[0].trim(), body: html.slice(match[0].length) };
-}
-
-function fillTemplate(template: string, head: string, appHtml: string): string {
-  const start = template.indexOf(HEAD_START);
-  const end = template.indexOf(HEAD_END);
-  const { links, body } = splitLeadingLinks(appHtml);
-  const headHtml = links ? `${head}\n    ${links}` : head;
-  return (
-    template.slice(0, start + HEAD_START.length) +
-    `\n    ${headHtml}\n    ` +
-    template.slice(end)
-  ).replace(APP_MARKER, body);
 }
 
 async function writePage(file: string, html: string): Promise<void> {
@@ -70,7 +53,20 @@ async function writePage(file: string, html: string): Promise<void> {
   await writeFile(file, html, "utf8");
 }
 
+/** Stop the build if vercel.json would leave a real page unserved (or serve unknown addresses). */
+async function checkRouting(): Promise<void> {
+  const config = JSON.parse(await readFile(join(ROOT, "vercel.json"), "utf8")) as VercelRoutingConfig;
+  const problems = routingProblems(config, expectedPages(seoRoutes().map((route) => route.path)));
+  if (problems.length) {
+    throw new Error(
+      `vercel.json doesn't match the site's pages (see src/seo/appRoutes.ts):\n  ${problems.join("\n  ")}`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
+  await checkRouting();
+
   const template = await readFile(join(DIST, "index.html"), "utf8");
   for (const marker of [HEAD_START, HEAD_END, APP_MARKER]) {
     if (!template.includes(marker)) {
@@ -82,13 +78,22 @@ async function main(): Promise<void> {
 
   const { renderPage, siteUrl } = (await import(pathToFileURL(SSR_ENTRY).href)) as PrerenderModule;
 
-  // The neutral shell first: vercel.json's catch-all serves it for every
-  // path that isn't prerendered, so it must exist even if a route fails.
+  // The neutral shell first: vercel.json serves it for every app-only page
+  // and the catalog function builds on it, so it must exist even if a route
+  // fails.
   await writePage(join(DIST, "spa.html"), fillTemplate(template, renderSeoHead(null), ""));
   await writePage(join(DIST, "admin.html"), toAdminShell(fillTemplate(template, ADMIN_APP_HEAD, "")));
 
+  // The not-found page, with its own title and no canonical (it stands in for
+  // any address), always marked noindex.
   const notFound = renderPage("/__not-found__");
-  await writePage(join(DIST, "404.html"), fillTemplate(template, renderSeoHead(null, { noIndex: true }), notFound.html));
+  if (!notFound.html.includes("Page not found")) {
+    throw new Error("The not-found page didn't render — is NotFoundPage still the router's fallback?");
+  }
+  await writePage(
+    join(DIST, "404.html"),
+    fillTemplate(template, renderSeoHead(notFound.seo, { noIndex: true }), notFound.html),
+  );
 
   const failures: string[] = [];
   for (const route of seoRoutes()) {

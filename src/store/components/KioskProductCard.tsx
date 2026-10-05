@@ -2,18 +2,11 @@ import { useState } from "react";
 import type { CatalogCard } from "../lib/useCatalog";
 import { scryfallSrcSet } from "../../cards";
 import { formatCents } from "../lib/money";
+import { CONDITION_LABELS } from "../lib/conditionLabels";
 
 // Visually identical to ProductCard (same brand-grade card grid the real
 // shop uses) but deliberately independent of CartContext — the kiosk never
 // touches a signed-in cart, only its own local pickup list.
-
-const CONDITION_LABELS: Record<string, string> = {
-  NM: "Near Mint",
-  LP: "Lightly Played",
-  MP: "Moderately Played",
-  HP: "Heavily Played",
-  DMG: "Damaged",
-};
 
 export default function KioskProductCard({
   card,

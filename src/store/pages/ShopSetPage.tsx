@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
+import { setPageSeo } from "../../seo/catalog";
+import { SITE } from "../../siteConfig";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import {
   useCatalog,
@@ -56,15 +58,10 @@ export default function ShopSetPage({ code }: { code: string }) {
 
   const setName = setInfo?.set_name ?? code.toUpperCase();
 
-  useSEO({
-    title:
-      setInfo === undefined
-        ? "Loading… | Geega Games"
-        : `Buy ${setName} Singles — Magic: The Gathering | Geega Games`,
-    description: `Shop in-stock Magic: The Gathering singles from ${setName} at Geega Games. Honest condition grading, secure checkout, and fast shipping nationwide.`,
-    path: `/shop/set/${code.toLowerCase()}`,
-    noIndex: setInfo === null,
-  });
+  // The same tags the server already wrote into this page's HTML
+  // (api/catalog-page.ts builds them from the same function). Until we know
+  // whether the set is in stock they're left alone.
+  useSEO(setPageSeo(code, setInfo ?? null, SITE.url), { pending: setInfo === undefined });
 
   if (setInfo === null) {
     return (

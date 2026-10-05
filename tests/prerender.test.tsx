@@ -21,11 +21,24 @@ describe("build-time prerender", () => {
     expect(html).toContain('<footer class="footer"');
   });
 
-  it("renders the not-found page for an unknown area or guide, without SEO metadata", () => {
-    for (const path of ["/sell-magic-cards/atlantis", "/guides/nope"]) {
+  it("renders the not-found page for an address the app doesn't have", () => {
+    // What scripts/prerender.ts writes to dist/404.html comes from this
+    // render: it must say it's not found, ask not to be indexed, and claim no
+    // address (path: null → no canonical), whatever URL it stands in for.
+    for (const path of ["/__not-found__", "/sell-magic-cards/atlantis", "/guides/nope", "/shop/sets/extra"]) {
       const { html, seo } = renderPage(path);
-      expect(seo).toBeNull();
-      expect(html).toContain("Page not found");
+      expect(html, path).toContain("Page not found");
+      expect(seo, path).toMatchObject({ title: "Page Not Found | Geega Games", path: null, noIndex: true });
+    }
+  });
+
+  it("reports nothing for a card or set page, whose tags depend on data it hasn't loaded", () => {
+    // These aren't prerendered (api/catalog-page.ts writes their tags per
+    // request); a placeholder title must never be collected for them.
+    for (const path of ["/shop/card/force-of-will", "/shop/set/mh2"]) {
+      const { html, seo } = renderPage(path);
+      expect(seo, path).toBeNull();
+      expect(html, path).toContain('<header class="gg-header"');
     }
   });
 

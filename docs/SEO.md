@@ -144,9 +144,31 @@ How it works now:
   content, footer, the page's own `<title>`, description, canonical, Open
   Graph and JSON-LD. The output is `dist/<route>/index.html`, and `vercel.json`
   rewrites each route to its file.
-- Every other path (card and set pages, account, checkout, admin) gets
-  `dist/spa.html`, a neutral shell with **no canonical**. The canonical that
-  `useSEO` sets is then the only one, which is what Google recommends.
+- Card and set pages (`/shop/card/:slug`, `/shop/set/:code`) depend on live
+  inventory, so they can't be prerendered. `api/catalog-page.ts` answers them:
+  it looks the card or set up and writes the page's own title, description,
+  canonical, share-preview image (the card's picture) and `Product` JSON-LD
+  into the HTML before sending it, plus a plain summary for readers without
+  JavaScript. The tags come from `src/seo/catalog.ts`, the same builders the
+  React pages pass to `useSEO`, so the two can't disagree. A card that isn't
+  listed, or a set with nothing in stock, is a real **404**. Answers are
+  cached at Vercel's edge for five minutes. If the lookup fails, the page
+  falls back to the plain shell and the app loads it as before.
+- App-only pages (login, account, checkout, order tracking… — the list is
+  `APP_SHELL_ROUTES` in `src/seo/appRoutes.ts`) get `dist/spa.html`, a neutral
+  shell with **no canonical**. The canonical that `useSEO` sets is then the
+  only one, which is what Google recommends. All but `/track-order` are also
+  sent with `X-Robots-Tag: noindex`.
+- **There is no catch-all.** An address nothing above claims gets
+  `dist/404.html` with a real 404 status, so a mistyped or retired URL can't
+  come back "200 OK" looking like the homepage (a "soft 404"). The build
+  fails if `vercel.json` doesn't serve a page in the registries
+  (`scripts/vercelRoutes.ts`), because the local dev server answers every
+  address and would hide the mistake.
+- The addresses of the site that used to be on this domain (`/sell.html`,
+  `/tradeIn.html`, `/images/logo.png`…) redirect permanently to the pages
+  that replaced them, and a trailing slash redirects to the address without
+  one. Both are in `vercel.json` under `redirects`.
 - The page metadata comes from each page's `useSEO(...)` call, so the static
   HTML and the live app can't disagree. The build fails if a registered route
   doesn't call `useSEO`.
@@ -158,7 +180,8 @@ How it works now:
   homepage also gets `WebSite`, which gives Google the site name for results.
 - Sell pages: `Service` + `areaServed`, `BreadcrumbList`, `FAQPage`.
 - Guides: `Article` + `BreadcrumbList`.
-- Card pages: `Product` + `AggregateOffer` (unchanged, client-side).
+- Card pages: `Product` + `AggregateOffer` and `BreadcrumbList`, in the HTML
+  the server sends (`api/catalog-page.ts`). Set pages: `BreadcrumbList`.
 - `LocalBusiness` is deliberately not used: there's no walk-in address.
 
 **Other**
@@ -175,8 +198,18 @@ How it works now:
 ### Adding a page
 1. Build the page and call `useSEO({ title, description, path, jsonLd })`.
 2. Wire the route in `src/App.tsx`.
-3. Add the path to `src/seo/routes.ts`.
-4. Add a matching rewrite in `vercel.json` (the tests fail without one).
+3. Tell the site how to serve it:
+   - a content page: add the path to `src/seo/routes.ts` (it gets prerendered
+     and listed in the sitemap) and a rewrite to its `index.html` in
+     `vercel.json`;
+   - an app-only page (needs sign-in, or has nothing to prerender): add it to
+     `APP_SHELL_ROUTES` in `src/seo/appRoutes.ts` and a rewrite to `/spa.html`
+     in `vercel.json`, plus a `noindex` header rule unless it belongs in
+     `INDEXABLE_APP_SHELL_ROUTES`.
+
+Without step 3 the page works in local dev and is a 404 on the live site.
+The build and `tests/vercelRouting.test.ts` both fail first and say which
+address is missing.
 
 ---
 
@@ -232,10 +265,12 @@ for "st louis" and "near me" searches.
   inventory (for example `/api/merchant-feed`) so in-stock singles appear on
   the Shopping tab and in product results for card-name searches. This is the
   biggest buy-side opportunity.
-- **Server-rendered card pages.** Google's merchant listing docs warn that
-  JavaScript-generated Product markup makes Shopping crawls less reliable.
-  Rendering `/shop/card/:slug` with its Product JSON-LD server-side (a Vercel
-  function that fills `spa.html`) finishes what the prerender started.
+- **Card page content in the HTML.** The tags and `Product` JSON-LD of
+  `/shop/card/:slug` are now written server-side (`api/catalog-page.ts`), which
+  is what Google's merchant listing docs ask for. The visible page is still
+  drawn by the app; only a plain `<noscript>` summary is in the HTML. Rendering
+  the full card page on the server would give crawlers that don't run
+  JavaScript the complete page too.
 - **Buying-trip schedule.** A small admin-managed list ("Kansas City —
   Oct 12") shown on the matching area page. It's real, changing content that
   gives each area page more unique value and gives sellers a reason to act.

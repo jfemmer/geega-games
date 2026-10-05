@@ -74,7 +74,9 @@ src/                 React storefront (browser)
   seo/               SEO route registry, sell-area + guide data, head tags (pure TS)
   prerender.tsx      SSR entry used only by the build-time prerender
 scripts/prerender.ts Writes static HTML per SEO route (+ spa.html shell); see docs/SEO.md
+scripts/vercelRoutes.ts Build check: vercel.json must serve every page (it has no catch-all)
 api/                 Vercel Functions (server-only)
+  catalog-page.ts    GET:  card and set pages, with their own tags written into the HTML
   subscribe.ts       POST: create/refresh a pending subscriber, send confirm email
   confirm.ts         GET:  validate token, activate subscriber (branded HTML)
   unsubscribe.ts     GET:  unsubscribe from marketing (branded HTML)

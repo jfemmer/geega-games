@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
+import { cardPageSeo } from "../../seo/catalog";
 import { useCart } from "../lib/CartContext";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import { storefrontImageUrl, scryfallSrcSet } from "../../cards";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
-import { CONDITION_LABELS } from "../components/ProductCard";
+import { CONDITION_LABELS } from "../lib/conditionLabels";
 import WishlistButton from "../components/WishlistButton";
 import PhotoRequestForm from "../components/PhotoRequestForm";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL, photoRequestAllowed } from "../lib/photoRequestTypes";
@@ -61,20 +62,6 @@ function priceSummary(detail: CardDetail): string {
   return detail.minPriceCents === detail.maxPriceCents
     ? formatCents(detail.minPriceCents)
     : `${formatCents(detail.minPriceCents)} – ${formatCents(detail.maxPriceCents)}`;
-}
-
-function buildDescription(detail: CardDetail): string {
-  const bits: string[] = [];
-  if (detail.typeLine) bits.push(detail.typeLine);
-  bits.push(
-    detail.listings.length > 0
-      ? `From ${formatCents(detail.minPriceCents)}`
-      : "Currently out of stock",
-  );
-  if (detail.listings.length > 0) {
-    bits.push(`${detail.inStockCount} listing${detail.inStockCount === 1 ? "" : "s"} in stock`);
-  }
-  return `Buy ${detail.cardName} — ${bits.join(" · ")}. Honest condition grading, secure checkout, and fast shipping from Geega Games.`;
 }
 
 export default function CardDetailPage({ slug }: { slug: string }) {
@@ -147,63 +134,10 @@ export default function CardDetailPage({ slug }: { slug: string }) {
     }
   }
 
-  const path = `/shop/card/${slug}`;
-  const canonicalUrl = `${SITE.url.replace(/\/+$/, "")}${path}`;
-
-  const jsonLd =
-    detail && !loading
-      ? [
-          {
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Shop", item: `${SITE.url}/shop` },
-              { "@type": "ListItem", position: 2, name: detail.cardName, item: canonicalUrl },
-            ],
-          },
-          {
-            "@context": "https://schema.org",
-            "@type": "Product",
-            name: detail.cardName,
-            description: detail.typeLine || "Magic: The Gathering trading card",
-            ...(detail.listings[0]?.imageUrl
-              ? { image: [storefrontImageUrl(detail.listings[0].imageUrl)] }
-              : {}),
-            category: "Trading Card",
-            brand: { "@type": "Brand", name: "Magic: The Gathering" },
-            offers:
-              detail.listings.length > 0
-                ? {
-                    "@type": "AggregateOffer",
-                    priceCurrency: "USD",
-                    lowPrice: ((detail.minPriceCents ?? 0) / 100).toFixed(2),
-                    highPrice: ((detail.maxPriceCents ?? 0) / 100).toFixed(2),
-                    offerCount: detail.listings.length,
-                    availability: "https://schema.org/InStock",
-                    url: canonicalUrl,
-                  }
-                : {
-                    "@type": "Offer",
-                    priceCurrency: "USD",
-                    price: "0.00",
-                    availability: "https://schema.org/OutOfStock",
-                    url: canonicalUrl,
-                  },
-          },
-        ]
-      : undefined;
-
-  useSEO({
-    title: detail
-      ? `${detail.cardName} — Buy Magic: The Gathering Singles | Geega Games`
-      : "Card Not Found | Geega Games",
-    description: detail
-      ? buildDescription(detail)
-      : "This card isn't currently listed at Geega Games. Browse our full Magic: The Gathering singles catalog instead.",
-    path,
-    jsonLd,
-    noIndex: !loading && (notFound || !detail || detail.listings.length === 0),
-  });
+  // The same tags the server already wrote into this page's HTML
+  // (api/catalog-page.ts builds them from the same function). While the card
+  // is loading they're left alone rather than replaced with placeholders.
+  useSEO(cardPageSeo(slug, detail, SITE.url), { pending: loading });
 
   if (loading) {
     return (

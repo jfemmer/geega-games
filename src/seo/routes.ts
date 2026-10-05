@@ -5,11 +5,14 @@
 //      crawlers that don't run JavaScript still get the page's own title,
 //      canonical URL, structured data and content;
 //   2. listed in /sitemap.xml (api/sitemap.ts); and
-//   3. rewritten to its prerendered file by vercel.json — tests/seoRoutes.test.ts
-//      fails if a route here has no matching rewrite.
+//   3. rewritten to its prerendered file by vercel.json — the build
+//      (scripts/vercelRoutes.ts) and tests/vercelRouting.test.ts fail if a
+//      route here has no matching rewrite.
 //
-// Data-driven pages (/shop/card/:slug, /shop/set/:code) aren't here: they're
-// served by the SPA shell and listed in the sitemap from the database.
+// Data-driven pages (/shop/card/:slug, /shop/set/:code) aren't here: their
+// HTML is filled in per request by api/catalog-page.ts, and they're listed in
+// the sitemap from the database. src/seo/appRoutes.ts covers them and the
+// app-only pages (login, account, checkout…).
 
 import { GUIDES, guidePath } from "./guides.js";
 import { REFERRAL_PAGES } from "./referralPages.js";

@@ -6,14 +6,7 @@ import { formatCents } from "../lib/money";
 import { Link } from "../lib/router";
 import { cardDetailPath } from "../lib/cardSlug";
 import WishlistButton from "./WishlistButton";
-
-export const CONDITION_LABELS: Record<string, string> = {
-  NM: "Near Mint",
-  LP: "Lightly Played",
-  MP: "Moderately Played",
-  HP: "Heavily Played",
-  DMG: "Damaged",
-};
+import { CONDITION_LABELS } from "../lib/conditionLabels";
 
 export default function ProductCard({ card }: { card: CatalogCard }) {
   const { addItem } = useCart();

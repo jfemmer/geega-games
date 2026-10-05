@@ -4,16 +4,16 @@ import { slugifyCardName } from "../src/store/lib/cardSlug.js";
 import { seoRoutes } from "../src/seo/routes.js";
 import { PRODUCTION_ORIGIN } from "../src/seo/site.js";
 
-// GET /sitemap.xml — rewritten here from the site root by vercel.json, which
-// must route this path to this function BEFORE its catch-all SPA rewrite.
+// GET /sitemap.xml — rewritten here from the site root by vercel.json.
 //
 // Every prerendered content page (src/seo/routes.ts — the same registry the
 // build-time prerender and vercel.json rewrites use, so they can't drift)
 // plus one URL per distinct card currently in stock, so individual Magic:
 // The Gathering singles are discoverable/indexable instead of living only
 // behind the /shop browse grid. See src/store/pages/CardDetailPage.tsx for
-// the page these URLs resolve to, and public.get_card_detail for the RPC
-// that page calls — the slug here must match that RPC's own slugify logic.
+// the page these URLs resolve to (api/catalog-page.ts serves its HTML), and
+// public.get_card_detail for the RPC both call — the slug here must match
+// that RPC's own slugify logic.
 //
 // Falls back to the static-only list on any DB error rather than failing
 // the request: an incomplete sitemap is far less harmful to crawlability

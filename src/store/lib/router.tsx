@@ -10,8 +10,11 @@ import {
 
 // A tiny History-API router. We avoid react-router to keep the storefront
 // bundle lean (the task explicitly discourages a large routing dependency).
-// Deep links work because vercel.json rewrites all non-/admin, non-/api paths
-// to index.html, so the browser loads the SPA and we read location.pathname.
+// Deep links work because vercel.json serves the app for every address in
+// the route table (src/App.tsx) — prerendered HTML, the catalog function or
+// the neutral shell; src/seo/appRoutes.ts lists which — so the browser loads
+// the app and we read location.pathname. An address outside that table gets
+// a real 404 from the server.
 
 type RouterContextValue = {
   path: string;

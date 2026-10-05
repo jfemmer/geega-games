@@ -456,6 +456,17 @@ export function ContactPage() {
 }
 
 export function NotFoundPage() {
+  // Never indexed, and with no address of its own to claim (path: null), so a
+  // mistyped or retired URL can't pass itself off as the homepage. The server
+  // answers these with a real 404 status too (see vercel.json).
+  useSEO({
+    title: "Page Not Found | Geega Games",
+    description:
+      "That page doesn't exist. Browse Magic: The Gathering singles or sell your cards at Geega Games.",
+    path: null,
+    noIndex: true,
+  });
+
   return (
     <div className="gg-page gg-empty">
       <h1>Page not found</h1>

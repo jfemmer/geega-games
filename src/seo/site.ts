@@ -16,6 +16,16 @@ export const DEFAULT_SEO = {
     "Buy Magic: The Gathering singles online and sell your MTG cards or whole collection to Geega Games. Based in St. Louis: we meet up locally, travel about 6 hours for collections, and buy by mail nationwide.",
 } as const;
 
+/**
+ * The share-preview image for any page that doesn't name its own
+ * (public/og-image.png). Card pages use the card's picture instead.
+ */
+export const DEFAULT_OG_IMAGE: { url: string; width: number; height: number; alt?: string } = {
+  url: `${PRODUCTION_ORIGIN}/og-image.png`,
+  width: 1200,
+  height: 630,
+};
+
 // ---- Service area -----------------------------------------------------------
 // Geega Games has no public storefront. Sellers can meet up in person in the
 // St. Louis area, the owner travels up to about a 6-hour drive from St. Louis

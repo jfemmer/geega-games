@@ -11,24 +11,26 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#663399" />
 
-    <!-- Per-page SEO tags. scripts/prerender.ts replaces everything between
-         these markers at build time with each page's own title, description,
-         canonical, robots, Open Graph/Twitter text and JSON-LD (from the
-         page's useSEO call and src/seo/site.ts). What's here is only the dev
-         server's fallback — edit src/seo/, not this block. -->
+    <!-- Per-page SEO tags. Everything between these markers is replaced with
+         each page's own title, description, canonical, robots, Open
+         Graph/Twitter text, share-preview image and JSON-LD: at build time by
+         scripts/prerender.ts (from the page's useSEO call and src/seo/site.ts)
+         and, for card and set pages, per request by api/catalog-page.ts.
+         What's here is only the dev server's fallback — edit src/seo/, not
+         this block. -->
     <!--seo-head-->
     <title>Geega Games | Buy & Sell Magic: The Gathering Cards — St. Louis</title>
     <meta name="description" content="Buy Magic: The Gathering singles online and sell your MTG cards or collection to Geega Games." />
+    <meta property="og:image" content="https://geega-games.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:image" content="https://geega-games.com/og-image.png" />
     <!--/seo-head-->
 
     <!-- Site-wide social tags (same on every page) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Geega Games" />
-    <meta property="og:image" content="https://geega-games.com/og-image.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://geega-games.com/og-image.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
