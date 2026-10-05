@@ -35,10 +35,12 @@ export type ParsedCatalogRequest = { source: AddressSource } & (
 );
 
 // public.slugify_card_name only ever produces lower-case words joined by
-// single hyphens; set codes are short and alphanumeric.
+// single hyphens; set codes are short and alphanumeric. The length limits are
+// far above anything real (the longest card name is 141 characters, and a
+// two-faced card's slug holds both names), so a real card is never refused.
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SET_CODE = /^[a-z0-9]{1,12}$/;
-const MAX_SLUG_LENGTH = 160;
+const MAX_SLUG_LENGTH = 300;
 
 const CATALOG_PATH = /^\/shop\/(card|set)\/([^/]+)$/;
 /** What the vercel.json rewrite adds to the query: never part of the visitor's own address. */

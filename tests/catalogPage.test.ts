@@ -94,14 +94,19 @@ describe("parseCatalogRequest", () => {
       "%E0%A4%A", // malformed escape
       "sol%2Fring", // an encoded slash
       "<script>",
-      "a".repeat(161),
+      "a".repeat(301),
     ]) {
       expect(parse(`/shop/card/${slug}`), slug).toEqual({ type: "invalid", kind: "card", source: "path" });
     }
     expect(parse(undefined, { kind: "card" })).toEqual({ type: "invalid", kind: "card", source: "query" });
     expect(parse(undefined, { kind: "card", slug: 42 })).toMatchObject({ type: "invalid", kind: "card" });
-    // 160 characters is still a slug.
-    expect(parse(`/shop/card/${"a".repeat(160)}`).type).toBe("page");
+    // The longest real slugs are well inside the limit: the longest card name
+    // there is, and a two-faced card that carries both of its names.
+    const longest =
+      "our-market-research-shows-that-players-like-really-long-card-names-so-we-made-this-card-to-have-the-absolute-longest-card-name-ever-elemental";
+    expect(parse(`/shop/card/${longest}`).type).toBe("page");
+    expect(parse(`/shop/card/${longest}-${longest}`).type).toBe("page");
+    expect(parse(`/shop/card/${"a".repeat(300)}`).type).toBe("page");
   });
 
   it("rejects anything that could never be a set code", () => {
