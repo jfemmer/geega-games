@@ -9,6 +9,7 @@ import { US_ONLY_MESSAGE, US_STATE_MESSAGE, US_ZIP_MESSAGE } from "../src/store/
 // an address it accepts reaches the database tidied.
 // (The database refuses a foreign address on its own as well:
 // supabase/migrations/20261005150000_us_shipping_only.sql.)
+// Also here, since it is the same endpoint: how big a guest's cart may be.
 
 const calls = vi.hoisted(() => ({
   adminRpc: vi.fn(),
@@ -254,6 +255,40 @@ describe("guest checkout", () => {
     expect(res.statusCode).toBe(503);
     expect(res.body).toEqual({ ok: false, code: "orders_paused", message: "Back Monday." });
     expect(orderArgs(calls.adminRpc, "checkout_create_guest_order")).toBeUndefined();
+  });
+});
+
+describe("a guest's cart size", () => {
+  // A guest's cart travels in the request. The endpoint allows 100 different
+  // cards, so the request must be allowed to be big enough to hold them: it
+  // used to be cut off at about 50, and those guests could not check out.
+  it("can hold 100 different cards", async () => {
+    const res = await guestOrder(
+      { ...US_ADDRESS, recipient: "Jordan Alexander Vega-Martinez", line1: "12345 North Example Boulevard", line2: "Apartment 1234", postalCode: "63011-1234" },
+      100,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const sent = orderArgs(calls.adminRpc, "checkout_create_guest_order")?.p_items as unknown[];
+    expect(sent).toHaveLength(100);
+  });
+
+  it("still stops at 100", async () => {
+    const res = await guestOrder(US_ADDRESS, 101);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toMatch(/cart is empty or couldn.t be read/);
+    expect(calls.adminRpc).not.toHaveBeenCalled();
+  });
+
+  it("still refuses a request far bigger than any cart", async () => {
+    const res = await post({
+      shippingMethod: "tracked",
+      guest: { email: "buyer@example.com", items: [{ inventoryItemId: ITEM_ID, quantity: 1 }] },
+      ship: { ...US_ADDRESS, line2: "x".repeat(20_000) },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ ok: false, message: "Bad request body." });
+    expect(calls.adminRpc).not.toHaveBeenCalled();
   });
 });
 

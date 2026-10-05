@@ -134,6 +134,10 @@ function addressRefused(res: VercelResponse, message: string) {
 
 const ID_RE = /^[0-9a-f-]{36}$/i;
 const MAX_GUEST_LINES = 100;
+// A guest's cart arrives in the request itself: up to MAX_GUEST_LINES lines
+// of about 72 bytes each, plus the address. (readJsonBody's default cap is
+// sized for an email form, and cut guests off at about 50 different cards.)
+const MAX_BODY_BYTES = 16 * 1024;
 // Guest checkout creates a stock hold without an account, so cap how fast one
 // visitor can do it (each hold still expires on its own after 30 minutes).
 const GUEST_CHECKOUTS_PER_WINDOW = 8;
@@ -196,7 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let body: CreateBody;
   try {
-    body = (await readJsonBody(req)) as CreateBody;
+    body = (await readJsonBody(req, MAX_BODY_BYTES)) as CreateBody;
   } catch {
     return sendJson(res, 400, { ok: false, message: "Bad request body." });
   }
