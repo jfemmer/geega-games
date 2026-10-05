@@ -30,6 +30,8 @@ async function recentCardPaths(since: Date): Promise<string[]> {
     .select("card_name, oracle_id")
     .eq("status", "active")
     .gt("quantity", 0)
+    // Only cards that have a page (see the same filter in api/sitemap.ts).
+    .not("oracle_id", "is", null)
     .gte("created_at", since.toISOString())
     .limit(5000);
   if (error) throw new Error(error.message);

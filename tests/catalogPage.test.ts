@@ -21,7 +21,8 @@ import { fillTemplate, hasHeadMarkers, refillShell } from "../src/seo/template";
 // ---- Reading the address ---------------------------------------------------
 
 describe("parseCatalogRequest", () => {
-  const parse = (url: string | undefined, query: Record<string, unknown> = {}) => parseCatalogRequest({ url, query });
+  const parse = (url: string | undefined, query: Record<string, unknown> = {}) =>
+    parseCatalogRequest({ url, query: () => query });
 
   it("reads the card or set from the address the visitor is at", () => {
     expect(parse("/shop/card/sol-ring?kind=card&slug=sol-ring", { kind: "card", slug: "sol-ring" })).toEqual({
@@ -39,6 +40,18 @@ describe("parseCatalogRequest", () => {
       request: { kind: "card", slug: "sol-ring" },
       source: "path",
     });
+  });
+
+  it("doesn't even look at the query when the path says which page it is", () => {
+    const query = () => {
+      throw new Error("the query was read");
+    };
+    expect(parseCatalogRequest({ url: "/shop/card/sol-ring?utm_source=x", query })).toMatchObject({
+      type: "page",
+      request: { kind: "card", slug: "sol-ring" },
+    });
+    expect(parseCatalogRequest({ url: "/shop/set/FIN", query })).toMatchObject({ type: "redirect" });
+    expect(parseCatalogRequest({ url: "/shop/card/bad_slug", query })).toMatchObject({ type: "invalid" });
   });
 
   it("falls back to the rewrite's query when the request URL doesn't show the address", () => {

@@ -110,9 +110,10 @@ function addressFromQuery(query: Record<string, unknown>): RawAddress {
  */
 export function parseCatalogRequest(input: {
   url?: string;
-  query: Record<string, unknown>;
+  /** Read only when the path doesn't say (see api/catalog-page.ts for why it's a function). */
+  query: () => Record<string, unknown>;
 }): ParsedCatalogRequest {
-  const { kind, raw, search, source } = addressFromPath(input.url) ?? addressFromQuery(input.query);
+  const { kind, raw, search, source } = addressFromPath(input.url) ?? addressFromQuery(input.query());
 
   if (kind === "card") {
     const slug = raw.toLowerCase();

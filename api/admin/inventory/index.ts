@@ -9,7 +9,12 @@ import { requireStaff, type StaffContext } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { scryfallResolveExact } from "../../_lib/scryfall.js";
 import { cachePrinting, type InventoryRow } from "../../_lib/inventory.js";
-import { primaryImageUrl } from "../../../src/admin/services/scryfall.js";
+import {
+  primaryImageUrl,
+  scryfallCardName,
+  scryfallOracleId,
+  scryfallTypeLine,
+} from "../../../src/admin/services/scryfall.js";
 import type { Database } from "../../../src/types/database.js";
 
 // POST /api/admin/inventory
@@ -107,13 +112,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // correct values reach Postgres.
     const upsertArgs = {
       p_scryfall_id: scryfallId,
-      p_oracle_id: card?.oracle_id ?? null,
-      p_card_name: card?.name ?? body.cardName ?? "",
+      // Not card.oracle_id / card.name / card.type_line: a reversible card
+      // has no top-level oracle id or type line and a doubled name.
+      p_oracle_id: card ? scryfallOracleId(card) : null,
+      p_card_name: (card ? scryfallCardName(card) : body.cardName) ?? "",
       p_set_code: setCode,
       p_set_name: card?.set_name ?? body.setName ?? null,
       p_collector_number: collectorNumber,
       p_rarity: card?.rarity ?? body.rarity ?? null,
-      p_type_line: card?.type_line ?? body.cardType ?? null,
+      p_type_line: (card ? scryfallTypeLine(card) : null) ?? body.cardType ?? null,
       p_image_url: imageUrl,
       p_condition: condition as InventoryRow["condition"],
       p_finish: finish as InventoryRow["finish"],

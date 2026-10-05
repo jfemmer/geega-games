@@ -19,6 +19,7 @@ import { gunzipSync } from "node:zlib";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../src/types/database.js";
 import type { ScryfallCard } from "../src/admin/services/scryfall.types.js";
+import { scryfallOracleId } from "../src/admin/services/scryfall.js";
 
 const BULK_DATA_INDEX_URL = "https://api.scryfall.com/bulk-data";
 const USER_AGENT = "GeegaGames/1.0 (+https://geega-games.com)";
@@ -104,7 +105,12 @@ function toRow(
   if (!card.id || !card.set || !card.collector_number || !card.name) return null;
   return {
     scryfall_id: card.id,
-    oracle_id: card.oracle_id ?? null,
+    // From the faces for a reversible card, which has none at the top level.
+    // Without it that printing drops out of every "all printings of this
+    // card" lookup.
+    oracle_id: scryfallOracleId(card),
+    // Scryfall's own name ("Steam Vents // Steam Vents" for a reversible
+    // card): this index mirrors Scryfall, and recognition matches against it.
     card_name: card.name,
     printed_name: card.printed_name ?? null,
     set_code: card.set.toUpperCase(),

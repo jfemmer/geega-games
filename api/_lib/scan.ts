@@ -3,6 +3,7 @@ import type { Database } from "../../src/types/database.js";
 import { HttpError } from "./http.js";
 import { scryfallResolveExact } from "./scryfall.js";
 import { cachePrinting } from "./inventory.js";
+import { scryfallCardName, scryfallOracleId, scryfallTypeLine } from "../../src/admin/services/scryfall.js";
 
 // Server-side helpers shared by /api/admin/scan-sessions/* — the real,
 // Supabase-backed replacement for mockScanRepository's in-memory logic. Kept
@@ -200,13 +201,15 @@ export async function commitScanToInventory(
   // see that file's comment for the full explanation.
   const upsertArgs = {
     p_scryfall_id: card.id,
-    p_oracle_id: card.oracle_id ?? null,
-    p_card_name: card.name,
+    // Through the shared helpers, so a reversible card gets its oracle id,
+    // one name and one type line (see src/admin/services/scryfall.ts).
+    p_oracle_id: scryfallOracleId(card),
+    p_card_name: scryfallCardName(card),
     p_set_code: card.set.toUpperCase(),
     p_set_name: card.set_name,
     p_collector_number: card.collector_number,
     p_rarity: card.rarity,
-    p_type_line: card.type_line ?? null,
+    p_type_line: scryfallTypeLine(card),
     p_image_url:
       card.image_uris?.normal ?? card.card_faces?.[0]?.image_uris?.normal ?? "",
     p_condition: scan.confirmed_condition!,

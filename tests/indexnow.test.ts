@@ -52,6 +52,7 @@ vi.mock("../api/_lib/supabaseAdmin.js", () => ({
       select: () => chain,
       eq: () => chain,
       gt: () => chain,
+      not: () => chain,
       gte: () => chain,
       limit: async () => ({ data: cards, error: null }),
     };

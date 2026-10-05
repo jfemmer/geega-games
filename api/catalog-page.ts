@@ -96,7 +96,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).send("Method not allowed");
   }
 
-  const parsed = parseCatalogRequest({ url: req.url, query: req.query });
+  // req.query is a getter that parses the URL with Node's legacy url.parse(),
+  // which prints a deprecation warning into the error log the first time it
+  // runs. The address is normally read from the path, so it's only asked for
+  // when that fails.
+  const parsed = parseCatalogRequest({ url: req.url, query: () => req.query });
   res.setHeader("X-GG-Address", parsed.source);
 
   if (parsed.type === "redirect") {

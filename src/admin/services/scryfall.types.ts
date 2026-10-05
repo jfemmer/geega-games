@@ -20,6 +20,8 @@ export interface ScryfallImageUris {
 /** One face of a multi-faced Scryfall card. */
 export interface ScryfallCardFace {
   name: string;
+  /** Only on the faces of a "reversible_card", which has none at the top level. */
+  oracle_id?: string;
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;

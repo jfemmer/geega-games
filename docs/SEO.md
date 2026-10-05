@@ -165,6 +165,13 @@ How it works now:
   fails if `vercel.json` doesn't serve a page in the registries
   (`scripts/vercelRoutes.ts`), because the local dev server answers every
   address and would hide the mistake.
+- One card, one address. A card page is found by the card's Scryfall oracle
+  id, and its address is the slug of its name. "Reversible" printings (the
+  same card on both sides) come from Scryfall with no top-level oracle id and
+  a doubled name ("Steam Vents // Steam Vents"); `scryfallOracleId` and
+  `scryfallCardName` in `src/admin/services/scryfall.ts` read them from the
+  faces, so such a printing joins the card's one page instead of getting a
+  second, broken one. The sitemap only lists cards that have an oracle id.
 - The addresses of the site that used to be on this domain (`/sell.html`,
   `/tradeIn.html`, `/images/logo.png`…) redirect permanently to the pages
   that replaced them, and a trailing slash redirects to the address without
@@ -275,11 +282,6 @@ for "st louis" and "near me" searches.
   Oct 12") shown on the matching area page. It's real, changing content that
   gives each area page more unique value and gives sellers a reason to act.
 - **Review request emails** (see section 3.2).
-- **Data cleanup.** Some in-stock cards produce doubled slugs in the sitemap
-  (`temple-garden-temple-garden`, `steam-vents-steam-vents`), and one card has
-  two URLs (`ugin-eye-of-the-storms` and `ugin-eye-of-the-storms-ugin-eye-of-the-storms`).
-  The inventory `card_name` for those rows looks like "Name // Name". Fix the
-  rows so each card has one clean URL.
 
 ### What makes sellers convert (seller research, 2026-09-25)
 

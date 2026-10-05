@@ -238,19 +238,68 @@ export function extractPrintingTreatments(card: ScryfallCard): PrintingTreatment
   return Array.from(out);
 }
 
+// ---------------------------------------------------------------------------
+// Identity: oracle id, name and type line
+//
+// Scryfall's "reversible_card" layout is ONE card printed on both sides (two
+// arts of the same borderless land, say). It describes such a printing only
+// through its two faces: there is no top-level oracle_id or type_line, and the
+// name is doubled — "Steam Vents // Steam Vents".
+//
+// Stored as-is, that printing has no oracle id (so its card page, wishlist
+// and deck matching can't find it), a doubled name and a doubled type line.
+// Everything that stores a card goes through these three functions instead of
+// reading card.oracle_id / card.name / card.type_line directly.
+// ---------------------------------------------------------------------------
+
+/** The value every item shares, or null when they differ (or there are none). */
+function shared(values: (string | undefined)[]): string | null {
+  const first = values[0];
+  return first && values.every((value) => value === first) ? first : null;
+}
+
+/**
+ * The oracle id: what every printing of the same card has in common. Read
+ * from the faces when the top level has none (a reversible card).
+ */
+export function scryfallOracleId(card: ScryfallCard): string | null {
+  return card.oracle_id ?? card.card_faces?.find((face) => face.oracle_id)?.oracle_id ?? null;
+}
+
+/**
+ * The name to store and show. A reversible card whose two sides are the same
+ * card is just that card: "Steam Vents", not "Steam Vents // Steam Vents".
+ * Real two-named cards (transform, modal, split…) keep Scryfall's name.
+ */
+export function scryfallCardName(card: ScryfallCard): string {
+  if (card.layout !== "reversible_card") return card.name;
+  return shared((card.card_faces ?? []).map((face) => face.name)) ?? card.name;
+}
+
+/**
+ * The type line. Scryfall gives one for every layout but a reversible card,
+ * where each face has its own: the same one twice when both sides are the
+ * same card.
+ */
+export function scryfallTypeLine(card: ScryfallCard): string | null {
+  if (card.type_line) return card.type_line;
+  const faceLines = (card.card_faces ?? []).map((face) => face.type_line).filter((line): line is string => Boolean(line));
+  if (faceLines.length === 0) return null;
+  return shared(faceLines) ?? faceLines.join(" // ");
+}
+
 /** Normalize a single raw Scryfall card into a Geega CardPrinting. */
 export function normalizeScryfallCard(card: ScryfallCard): CardPrinting {
   const faces = extractCardFaces(card);
   const finishes = extractAvailableFinishes(card);
   const prices = extractPrices(card);
   const images = faces[0]?.images ?? extractImageUris(card.image_uris);
-  const typeLine =
-    card.type_line ?? faces.map((f) => f.typeLine).filter(Boolean).join(" // ");
+  const typeLine = scryfallTypeLine(card);
 
   return {
     // Existing lightweight fields (unchanged shape for back-compat).
     id: card.id,
-    cardName: card.name,
+    cardName: scryfallCardName(card),
     setName: card.set_name,
     setCode: card.set.toUpperCase(),
     collectorNumber: card.collector_number,
@@ -262,7 +311,7 @@ export function normalizeScryfallCard(card: ScryfallCard): CardPrinting {
 
     // Exact-printing metadata.
     scryfallId: card.id,
-    oracleId: card.oracle_id ?? null,
+    oracleId: scryfallOracleId(card),
     images,
     faces,
     layout: card.layout,

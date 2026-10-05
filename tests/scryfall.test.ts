@@ -11,6 +11,9 @@ import {
   normalizeScryfallCard,
   primaryImageUrl,
   priceStringToCents,
+  scryfallCardName,
+  scryfallOracleId,
+  scryfallTypeLine,
 } from "../src/admin/services/scryfall";
 import type { ScryfallCard } from "../src/admin/services/scryfall.types";
 import type { CardImageUris } from "../src/admin/types";
@@ -405,5 +408,180 @@ describe("normalizeScryfallCard — image resilience", () => {
         "full_art",
       ]),
     );
+  });
+});
+
+// Scryfall's "reversible_card": one card printed on both sides. Modelled on
+// the real object for Steam Vents, Lorwyn Eclipsed #348 — note what is NOT
+// there: no top-level oracle_id, type_line or image_uris.
+function reversibleCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
+  const face = (side: "front" | "back") => ({
+    name: "Steam Vents",
+    oracle_id: "17039058-822d-409f-938c-b727a366ba63",
+    type_line: "Land — Island Mountain",
+    oracle_text: "({T}: Add {U} or {R}.)",
+    image_uris: {
+      normal: `https://cards.scryfall.io/normal/${side}/e/b/eb96c335.jpg`,
+      large: `https://cards.scryfall.io/large/${side}/e/b/eb96c335.jpg`,
+    },
+  });
+  return {
+    object: "card",
+    id: "eb96c335-9ed3-4f7d-b07a-185ff4044976",
+    name: "Steam Vents // Steam Vents",
+    lang: "en",
+    released_at: "2026-01-23",
+    layout: "reversible_card",
+    set: "ecl",
+    set_name: "Lorwyn Eclipsed",
+    collector_number: "348",
+    rarity: "rare",
+    border_color: "borderless",
+    finishes: ["nonfoil", "foil"],
+    card_faces: [face("front"), face("back")],
+    prices: { usd: "13.00", usd_foil: "15.00", usd_etched: null, eur: null, tix: null },
+    ...overrides,
+  } as ScryfallCard;
+}
+
+// A real two-named card: Scryfall gives it everything at the top level.
+function transformCard(): ScryfallCard {
+  return baseCard({
+    id: "f150d6e9",
+    oracle_id: "70113003-be5e-406a-9aec-cb480468c36d",
+    name: "Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel",
+    layout: "transform",
+    type_line: "Legendary Creature — Human Avatar Soldier // Legendary Creature — Angel Nightmare Avatar",
+    image_uris: undefined,
+    card_faces: [
+      { name: "Sephiroth, Fabled SOLDIER", type_line: "Legendary Creature — Human Avatar Soldier" },
+      { name: "Sephiroth, One-Winged Angel", type_line: "Legendary Creature — Angel Nightmare Avatar" },
+    ],
+  });
+}
+
+describe("scryfallOracleId", () => {
+  it("is the card's own oracle id", () => {
+    expect(scryfallOracleId(baseCard())).toBe("oracle-1");
+    expect(scryfallOracleId(transformCard())).toBe("70113003-be5e-406a-9aec-cb480468c36d");
+  });
+
+  it("comes from the faces of a reversible card, which has none of its own", () => {
+    expect(reversibleCard().oracle_id).toBeUndefined();
+    expect(scryfallOracleId(reversibleCard())).toBe("17039058-822d-409f-938c-b727a366ba63");
+  });
+
+  it("uses the first face that has one", () => {
+    const card = reversibleCard();
+    card.card_faces = [{ name: "Steam Vents" }, { name: "Steam Vents", oracle_id: "from-the-back" }];
+    expect(scryfallOracleId(card)).toBe("from-the-back");
+  });
+
+  it("is null when Scryfall gives none anywhere", () => {
+    expect(scryfallOracleId(baseCard({ oracle_id: undefined }))).toBeNull();
+    expect(scryfallOracleId(reversibleCard({ card_faces: [] }))).toBeNull();
+    expect(scryfallOracleId(reversibleCard({ card_faces: undefined }))).toBeNull();
+  });
+});
+
+describe("scryfallCardName", () => {
+  it("is Scryfall's name for an ordinary card", () => {
+    expect(scryfallCardName(baseCard())).toBe("Lightning Bolt");
+  });
+
+  it("is the one name of a reversible card, not that name twice", () => {
+    expect(scryfallCardName(reversibleCard())).toBe("Steam Vents");
+    expect(
+      scryfallCardName(
+        reversibleCard({
+          name: "Ugin, Eye of the Storms // Ugin, Eye of the Storms",
+          card_faces: [{ name: "Ugin, Eye of the Storms" }, { name: "Ugin, Eye of the Storms" }],
+        }),
+      ),
+    ).toBe("Ugin, Eye of the Storms");
+  });
+
+  it("keeps both names of a card that really has two", () => {
+    expect(scryfallCardName(transformCard())).toBe("Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel");
+    // Same name on both faces, but not a reversible card: left alone.
+    expect(
+      scryfallCardName(baseCard({ name: "A // A", layout: "split", card_faces: [{ name: "A" }, { name: "A" }] })),
+    ).toBe("A // A");
+  });
+
+  it("keeps Scryfall's name for a reversible card whose sides are named differently", () => {
+    const card = reversibleCard({
+      name: "Zndrsplt, Eye of Wisdom // Okaun, Eye of Chaos",
+      card_faces: [{ name: "Zndrsplt, Eye of Wisdom" }, { name: "Okaun, Eye of Chaos" }],
+    });
+    expect(scryfallCardName(card)).toBe("Zndrsplt, Eye of Wisdom // Okaun, Eye of Chaos");
+  });
+
+  it("falls back to Scryfall's name when a reversible card has no faces to read", () => {
+    expect(scryfallCardName(reversibleCard({ card_faces: [] }))).toBe("Steam Vents // Steam Vents");
+    expect(scryfallCardName(reversibleCard({ card_faces: undefined }))).toBe("Steam Vents // Steam Vents");
+  });
+});
+
+describe("scryfallTypeLine", () => {
+  it("is Scryfall's type line when it gives one", () => {
+    expect(scryfallTypeLine(baseCard())).toBe("Instant");
+    expect(scryfallTypeLine(transformCard())).toBe(
+      "Legendary Creature — Human Avatar Soldier // Legendary Creature — Angel Nightmare Avatar",
+    );
+  });
+
+  it("is the faces' shared type line for a reversible card, once", () => {
+    expect(reversibleCard().type_line).toBeUndefined();
+    expect(scryfallTypeLine(reversibleCard())).toBe("Land — Island Mountain");
+  });
+
+  it("joins the faces' type lines when they differ", () => {
+    const card = reversibleCard({
+      card_faces: [
+        { name: "A", type_line: "Legendary Creature — Homunculus" },
+        { name: "B", type_line: "Legendary Creature — Cyclops Berserker" },
+      ],
+    });
+    expect(scryfallTypeLine(card)).toBe("Legendary Creature — Homunculus // Legendary Creature — Cyclops Berserker");
+  });
+
+  it("is null when there is none anywhere", () => {
+    expect(scryfallTypeLine(baseCard({ type_line: undefined }))).toBeNull();
+    expect(scryfallTypeLine(reversibleCard({ card_faces: [{ name: "Steam Vents" }] }))).toBeNull();
+  });
+});
+
+describe("normalizeScryfallCard — a reversible card", () => {
+  const printing = normalizeScryfallCard(reversibleCard());
+
+  it("gets its oracle id, one name and one type line", () => {
+    expect(printing.oracleId).toBe("17039058-822d-409f-938c-b727a366ba63");
+    expect(printing.cardName).toBe("Steam Vents");
+    expect(printing.cardType).toBe("Land — Island Mountain");
+  });
+
+  it("still has both sides, each with its own picture", () => {
+    expect(printing.layout).toBe("reversible_card");
+    expect(printing.faces).toHaveLength(2);
+    expect(printing.faces[0].images.large).toContain("/front/");
+    expect(printing.faces[1].images.large).toContain("/back/");
+    expect(isMultiFaced(printing)).toBe(true);
+    expect(printing.imageUrl).toContain("/large/front/");
+    expect(printing.setCode).toBe("ECL");
+    expect(printing.collectorNumber).toBe("348");
+  });
+
+  it("leaves every other kind of card exactly as before", () => {
+    const bolt = normalizeScryfallCard(baseCard());
+    expect(bolt).toMatchObject({ cardName: "Lightning Bolt", oracleId: "oracle-1", cardType: "Instant" });
+    const sephiroth = normalizeScryfallCard(transformCard());
+    expect(sephiroth).toMatchObject({
+      cardName: "Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel",
+      oracleId: "70113003-be5e-406a-9aec-cb480468c36d",
+      cardType: "Legendary Creature — Human Avatar Soldier // Legendary Creature — Angel Nightmare Avatar",
+    });
+    // No type line at all stays an empty string, as it always has.
+    expect(normalizeScryfallCard(baseCard({ type_line: undefined })).cardType).toBe("");
   });
 });

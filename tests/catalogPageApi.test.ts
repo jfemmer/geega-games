@@ -324,6 +324,33 @@ describe("the request itself", () => {
     expect(state.calls).toEqual([]);
   });
 
+  it("doesn't touch req.query when the path says which page it is", async () => {
+    // On Vercel, req.query is a getter that parses the URL with Node's legacy
+    // url.parse(), which writes a deprecation warning into the error log.
+    state.rpc.get_card_detail = { data: CARD, error: null };
+    let reads = 0;
+    const reply: Reply = { statusCode: 200, headers: {}, body: undefined };
+    const res = {
+      setHeader: (name: string, value: string) => ((reply.headers[name.toLowerCase()] = value), res),
+      status: (code: number) => ((reply.statusCode = code), res),
+      send: (body: string) => ((reply.body = body), res),
+      end: () => res,
+    };
+    const req = {
+      method: "GET",
+      url: "/shop/card/orcish-bowmasters?kind=card&slug=orcish-bowmasters",
+      headers: { host: "geega-games.com" },
+      get query() {
+        reads += 1;
+        return { kind: "card", slug: "orcish-bowmasters" };
+      },
+    };
+    await handler(req as never, res as never);
+    expect(reply.statusCode).toBe(200);
+    expect(reply.headers["x-gg-address"]).toBe("path");
+    expect(reads).toBe(0);
+  });
+
   it("tells the shell loader which of our hosts the request came in on", async () => {
     state.rpc.get_card_detail = { data: CARD, error: null };
     await call("/shop/card/orcish-bowmasters", { headers: { "x-forwarded-host": "geega-games.vercel.app" } });

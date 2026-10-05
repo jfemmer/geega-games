@@ -55,6 +55,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select("card_name, oracle_id, created_at")
       .eq("status", "active")
       .gt("quantity", 0)
+      // A card page is looked up by oracle id (public.get_card_detail); an
+      // item without one has no page, and a sitemap must not list a 404.
+      .not("oracle_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(MAX_CARD_URLS);
 
