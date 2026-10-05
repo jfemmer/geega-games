@@ -20,6 +20,7 @@ import {
   SELLER_REVIEWS,
   SELLER_REVIEW_SUMMARY,
   TCGPLAYER_SELLER_URL,
+  sellerReviewStats,
 } from "../../seo/sellerReviews";
 
 // Sections shared by the sell landing pages (/sell-my-collection, the St.
@@ -181,25 +182,20 @@ export function HeroPoints({ points }: { points: string[] }) {
   );
 }
 
-/**
- * Real buyer feedback from our TCGplayer seller page (src/seo/sellerReviews.ts).
- * With no reviews loaded it still links to the live page, so visitors can
- * check our record there — never placeholder or invented testimonials.
- */
-/** Reviews shown before "Show all" — enough to read at a glance on a phone. */
+/** Reviews shown before "Show more" — enough to read at a glance on a phone. */
 const REVIEWS_PREVIEW_COUNT = 6;
 
-/** Count and average of the reviews on file, e.g. { total: 13, averageLabel: "5" }. */
-function sellerReviewStats() {
-  const total = SELLER_REVIEWS.length;
-  const average = total ? SELLER_REVIEWS.reduce((sum, r) => sum + r.rating, 0) / total : 0;
-  const averageLabel = Number.isInteger(average) ? String(average) : average.toFixed(1);
-  return { total, average, averageLabel };
+/** "795 reviews", "1 review" — or "1,204 TCGplayer reviews" with a source. */
+function reviewCountLabel(count: number, source?: string): string {
+  const noun = `${source ? `${source} ` : ""}review${count === 1 ? "" : "s"}`;
+  return `${count.toLocaleString("en-US")} ${noun}`;
 }
 
 /**
  * One line of real track record under a sell page's buttons, linking to the
- * reviews section (#reviews). Hidden when no reviews are on file.
+ * reviews section (#reviews). The count is our whole TCGplayer record
+ * (sellerReviewStats), not just the reviews quoted on the site. Hidden when
+ * there is nothing to show.
  */
 export function ShopRatingLine() {
   const { total, average, averageLabel } = sellerReviewStats();
@@ -208,22 +204,36 @@ export function ShopRatingLine() {
     <p className="gg-rating-line">
       <Stars rating={Math.round(average)} />{" "}
       <a href="#reviews">
-        Rated {averageLabel} out of 5 by our TCGplayer customers ({total} review{total === 1 ? "" : "s"})
+        Rated {averageLabel} out of 5 by our TCGplayer customers ({reviewCountLabel(total)})
       </a>
     </p>
   );
 }
 
+/**
+ * Real buyer feedback from our TCGplayer seller page (src/seo/sellerReviews.ts).
+ * With no reviews loaded it still links to the live page, so visitors can
+ * check our record there — never placeholder or invented testimonials.
+ */
 export function SellerReviewsSection() {
   const [showAll, setShowAll] = useState(false);
   const { positivePercent, sales } = SELLER_REVIEW_SUMMARY;
   const withText = SELLER_REVIEWS.filter((r): r is typeof r & { text: string } => Boolean(r.text));
   const shown = showAll ? withText : withText.slice(0, REVIEWS_PREVIEW_COUNT);
-  const { total, average, averageLabel } = sellerReviewStats();
+  const hiddenCount = withText.length - REVIEWS_PREVIEW_COUNT;
+  const { total, average, averageLabel, onFile } = sellerReviewStats();
   const stats = [
     positivePercent ? `${positivePercent} positive feedback` : null,
     sales ? `${sales} sales` : null,
   ].filter(Boolean);
+  // The headline counts our whole TCGplayer record; when that's more than the
+  // reviews on file, say plainly that the quotes below are only some of them.
+  const whereToCheck =
+    total === 0
+      ? "You can check our full record there yourself."
+      : total > onFile
+        ? "Some of those reviews are copied below, word for word, and you can check the full record yourself."
+        : "These are copied word for word, and you can check the full record yourself.";
 
   return (
     <section className="gg-collect-section" id="reviews" aria-labelledby="gg-reviews-heading">
@@ -232,17 +242,14 @@ export function SellerReviewsSection() {
         <p className="gg-reviews-summary">
           <Stars rating={Math.round(average)} />
           <span>
-            <strong>{averageLabel} out of 5</strong> from {total} TCGplayer reviews
+            <strong>{averageLabel} out of 5</strong> from {reviewCountLabel(total, "TCGplayer")}
           </span>
         </p>
       )}
       <p className="gg-collect-lead">
         Geega Games also sells on TCGplayer
         {stats.length > 0 ? <> — {stats.join(" across ")}</> : null}, where buyers leave feedback on
-        their orders.{" "}
-        {total > 0
-          ? "These are copied word for word, and you can check the full record yourself."
-          : "You can check our full record there yourself."}
+        their orders. {whereToCheck}
       </p>
       {shown.length > 0 && (
         <ul className="gg-reviews">
@@ -261,9 +268,9 @@ export function SellerReviewsSection() {
         </ul>
       )}
       <p className="gg-area-note gg-reviews-actions">
-        {withText.length > REVIEWS_PREVIEW_COUNT && (
+        {hiddenCount > 0 && (
           <button type="button" className="gg-reviews-more" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? "Show fewer reviews" : `Show all ${withText.length} reviews`}
+            {showAll ? "Show fewer reviews" : `Show ${hiddenCount} more review${hiddenCount === 1 ? "" : "s"}`}
           </button>
         )}
         <a href={TCGPLAYER_SELLER_URL} target="_blank" rel="noopener noreferrer">
