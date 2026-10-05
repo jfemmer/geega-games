@@ -14,6 +14,13 @@ import { GOOGLE_REVIEW_URL, TCGPLAYER_SELLER_URL } from "../src/seo/site";
 
 afterEach(cleanup);
 
+/** "1,687 five-star reviews" for the count on file. */
+function fiveStarText(): string {
+  const count = SELLER_REVIEW_SUMMARY.fiveStarReviews?.count;
+  if (!count) throw new Error("The headline needs our TCGplayer count (SELLER_REVIEW_SUMMARY.fiveStarReviews).");
+  return `${count.toLocaleString("en-US")} five-star reviews`;
+}
+
 describe("SellerReviewsSection", () => {
   it("links past customers to our Google review form and shows the TCGplayer record", () => {
     render(<SellerReviewsSection />);
@@ -38,17 +45,22 @@ describe("SellerReviewsSection", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(6);
   });
 
-  // The headline is our whole record on TCGplayer. It used to count only the
-  // reviews pasted into the site ("from 13 TCGplayer reviews").
-  it("counts every TCGplayer review in the headline, not just the ones quoted", () => {
-    const { total, averageLabel, onFile } = sellerReviewStats();
-    expect(total).toBe(SELLER_REVIEW_SUMMARY.ratings?.count);
-    expect(total).toBeGreaterThan(onFile);
+  // The headline is our five-star count on TCGplayer. It used to describe
+  // only the reviews pasted into the site ("5 out of 5 from 13 TCGplayer
+  // reviews").
+  it("gives our five-star count on TCGplayer in the headline, not the number quoted", () => {
+    const { fiveStarTotal, onFile } = sellerReviewStats();
+    expect(fiveStarTotal).toBe(SELLER_REVIEW_SUMMARY.fiveStarReviews?.count);
+    expect(fiveStarTotal).toBeGreaterThan(onFile);
 
     render(<SellerReviewsSection />);
-    expect(document.querySelector(".gg-reviews-summary")).toHaveTextContent(
-      `${averageLabel} out of 5 from ${total.toLocaleString("en-US")} TCGplayer reviews`,
-    );
+    const headline = document.querySelector(".gg-reviews-summary");
+    expect(headline).toHaveTextContent(`${fiveStarText()} on TCGplayer`);
+    expect(headline?.querySelector("strong")).toHaveTextContent(fiveStarText());
+    expect(headline?.querySelector('[role="img"]')).toHaveAttribute("aria-label", "5 out of 5 stars");
+    // No average is claimed for the whole record, and the old count is gone.
+    expect(headline).not.toHaveTextContent(/out of 5/);
+    expect(headline).not.toHaveTextContent(`${onFile} TCGplayer reviews`);
   });
 
   it("says the quotes are only some of them, and never offers to show “all”", () => {
@@ -60,67 +72,64 @@ describe("SellerReviewsSection", () => {
 });
 
 describe("ShopRatingLine", () => {
-  it("shows the same count by the sell buttons and links to the reviews", () => {
-    const { total, averageLabel } = sellerReviewStats();
+  it("gives the same count by the sell buttons and links to the reviews", () => {
     render(<ShopRatingLine />);
-    const link = screen.getByRole("link", {
-      name: `Rated ${averageLabel} out of 5 by our TCGplayer customers (${total.toLocaleString("en-US")} reviews)`,
-    });
+    const link = screen.getByRole("link", { name: `${fiveStarText()} from our TCGplayer customers` });
     expect(link).toHaveAttribute("href", "#reviews");
+    expect(screen.getByRole("img", { name: "5 out of 5 stars" })).toBeInTheDocument();
   });
 });
 
 describe("sellerReviewStats", () => {
   const review = (rating: number): SellerReview => ({ buyer: "a****1", date: "2026-01-01", rating, text: null });
-  const summary = (ratings: SellerReviewSummary["ratings"]): SellerReviewSummary => ({
+  const summary = (fiveStarReviews: SellerReviewSummary["fiveStarReviews"]): SellerReviewSummary => ({
     positivePercent: null,
     sales: null,
-    ratings,
+    fiveStarReviews,
   });
 
-  it("uses TCGplayer's own totals when they are on file", () => {
-    const stats = sellerReviewStats(
-      [review(5), review(5)],
-      summary({ count: 795, average: 5, asOf: "2026-10-05" }),
-    );
-    expect(stats).toEqual({ total: 795, average: 5, averageLabel: "5", onFile: 2 });
+  it("gives TCGplayer's five-star count when it is on file", () => {
+    const stats = sellerReviewStats([review(5), review(5)], summary({ count: 1687, asOf: "2026-10-05" }));
+    expect(stats).toEqual({ onFile: 2, average: 5, averageLabel: "5", fiveStarTotal: 1687 });
   });
 
-  it("shows one decimal when the average isn't a whole number", () => {
-    const stats = sellerReviewStats([], summary({ count: 1204, average: 4.86, asOf: "2026-10-05" }));
-    expect(stats.averageLabel).toBe("4.9");
-    expect(stats.total).toBe(1204);
-  });
-
-  it("counts the reviews on file when there are no totals", () => {
+  it("describes the reviews on file when there is no count", () => {
     expect(sellerReviewStats([review(5), review(4)], summary(null))).toEqual({
-      total: 2,
+      onFile: 2,
       average: 4.5,
       averageLabel: "4.5",
-      onFile: 2,
+      fiveStarTotal: null,
     });
-    expect(sellerReviewStats([], summary(null))).toEqual({ total: 0, average: 0, averageLabel: "0", onFile: 0 });
+    expect(sellerReviewStats([review(5), review(5), review(4)], summary(null)).averageLabel).toBe("4.7");
+    expect(sellerReviewStats([], summary(null))).toEqual({
+      onFile: 0,
+      average: 0,
+      averageLabel: "0",
+      fiveStarTotal: null,
+    });
   });
 
-  it("ignores a total smaller than what's on file — that number is out of date", () => {
-    const stats = sellerReviewStats(
-      [review(5), review(5), review(4)],
-      summary({ count: 2, average: 5, asOf: "2026-01-01" }),
-    );
-    expect(stats.total).toBe(3);
-    expect(stats.averageLabel).toBe("4.7");
+  it("keeps the count when a review on file isn't five stars — it only counts the five-star ones", () => {
+    const stats = sellerReviewStats([review(5), review(3)], summary({ count: 1687, asOf: "2026-10-05" }));
+    expect(stats.fiveStarTotal).toBe(1687);
+    expect(stats.averageLabel).toBe("4");
+  });
+
+  it("ignores a count smaller than the five-star reviews on file — that number is out of date", () => {
+    const reviews = [review(5), review(5), review(5), review(4)];
+    expect(sellerReviewStats(reviews, summary({ count: 2, asOf: "2026-01-01" })).fiveStarTotal).toBeNull();
+    expect(sellerReviewStats(reviews, summary({ count: 3, asOf: "2026-01-01" })).fiveStarTotal).toBe(3);
+    expect(sellerReviewStats(reviews, summary({ count: 0, asOf: "2026-01-01" })).fiveStarTotal).toBeNull();
   });
 });
 
-describe("the TCGplayer totals on file", () => {
-  it("are a whole number of reviews, a real average and a real date", () => {
-    const totals = SELLER_REVIEW_SUMMARY.ratings;
-    if (!totals) throw new Error("The headline needs our TCGplayer totals (SELLER_REVIEW_SUMMARY.ratings).");
-    expect(Number.isInteger(totals.count)).toBe(true);
-    expect(totals.count).toBeGreaterThanOrEqual(SELLER_REVIEWS.length);
-    expect(totals.average).toBeGreaterThanOrEqual(1);
-    expect(totals.average).toBeLessThanOrEqual(5);
-    expect(totals.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(Number.isNaN(Date.parse(totals.asOf))).toBe(false);
+describe("the TCGplayer count on file", () => {
+  it("is a whole number of reviews with a real date", () => {
+    const counted = SELLER_REVIEW_SUMMARY.fiveStarReviews;
+    if (!counted) throw new Error("The headline needs our TCGplayer count (SELLER_REVIEW_SUMMARY.fiveStarReviews).");
+    expect(Number.isInteger(counted.count)).toBe(true);
+    expect(counted.count).toBeGreaterThanOrEqual(SELLER_REVIEWS.filter((r) => r.rating === 5).length);
+    expect(counted.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(Number.isNaN(Date.parse(counted.asOf))).toBe(false);
   });
 });

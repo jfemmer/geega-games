@@ -10,13 +10,17 @@
 //   * `buyer` is exactly what TCGplayer shows (it masks names, e.g. "v****1").
 //   * Reviews with no comment are kept (they count toward the record) but
 //     have no text to show, so the section only quotes ones with text.
-//   * The headline ("5 out of 5 from 795 TCGplayer reviews") is TCGplayer's
-//     own total — SELLER_REVIEW_SUMMARY.ratings — not how many reviews are
-//     pasted below. Change its count, average and date together, from the
-//     TCGplayer page. Never estimate or round up.
+//   * The headline ("1,687 five-star reviews on TCGplayer") is TCGplayer's
+//     own count of our five-star reviews —
+//     SELLER_REVIEW_SUMMARY.fiveStarReviews — not how many reviews are pasted
+//     below. It says how many five-star reviews there are and nothing about
+//     an average, so it stays true whatever else is on the record. Change the
+//     count and its date together, from the TCGplayer page. Never estimate
+//     or round up.
 //
 // Source: screenshots of the TCGplayer seller feedback page supplied by the
-// owner, 2026-09-26 (the reviews); the owner's count, 2026-10-05 (the total).
+// owner, 2026-09-26 (the reviews); the owner's count, 2026-10-05 (the
+// five-star total).
 
 export { TCGPLAYER_SELLER_URL } from "./site.js";
 
@@ -31,13 +35,10 @@ export interface SellerReview {
   text: string | null;
 }
 
-/** Every star rating buyers have left us on TCGplayer, as TCGplayer shows it. */
-export interface SellerRatingTotals {
-  /** How many reviews there are in all. */
+/** How many five-star reviews buyers have left us on TCGplayer, as TCGplayer shows it. */
+export interface FiveStarReviewCount {
   count: number;
-  /** Their average, 1–5. */
-  average: number;
-  /** ISO date (YYYY-MM-DD) the figures were read off TCGplayer. */
+  /** ISO date (YYYY-MM-DD) the count was read off TCGplayer. */
   asOf: string;
 }
 
@@ -47,18 +48,20 @@ export interface SellerReviewSummary {
   /** e.g. "1,200+" — the sales count TCGplayer shows. */
   sales: string | null;
   /**
-   * Our whole record on TCGplayer. SELLER_REVIEWS is only the handful quoted
-   * on the site, so its length is not the size of the record. null → the
-   * headline counts the reviews on file instead.
+   * The headline: "1,687 five-star reviews on TCGplayer". SELLER_REVIEWS is
+   * only the handful quoted on the site, so its length is not the size of our
+   * record. null → the headline describes the reviews on file instead
+   * ("5 out of 5 from 13 TCGplayer reviews").
    */
-  ratings: SellerRatingTotals | null;
+  fiveStarReviews: FiveStarReviewCount | null;
 }
 
 export const SELLER_REVIEW_SUMMARY: SellerReviewSummary = {
   positivePercent: null,
   sales: null,
-  // Owner, 2026-10-05: "I have 795 5 star reviews on tcg player."
-  ratings: { count: 795, average: 5, asOf: "2026-10-05" },
+  // Owner, 2026-10-05: "have it say 1687 5 star reviews" (first given as 795
+  // earlier the same morning).
+  fiveStarReviews: { count: 1687, asOf: "2026-10-05" },
 };
 
 /** Newest first. */
@@ -94,36 +97,35 @@ export const SELLER_REVIEWS: SellerReview[] = [
 ];
 
 export interface SellerReviewStats {
-  /** How many reviews the headline counts. */
-  total: number;
-  /** Their average, 1–5; 0 when there are none. */
-  average: number;
-  /** The average as shown: "5", "4.9". */
-  averageLabel: string;
   /** How many reviews are copied onto the site. */
   onFile: number;
-}
-
-function reviewStats(total: number, average: number, onFile: number): SellerReviewStats {
-  const averageLabel = Number.isInteger(average) ? String(average) : average.toFixed(1);
-  return { total, average, averageLabel, onFile };
+  /** Their average, 1–5; 0 when there are none. */
+  average: number;
+  /** That average as shown: "5", "4.9". */
+  averageLabel: string;
+  /**
+   * How many five-star reviews we have on TCGplayer in all — TCGplayer's own
+   * count — or null when it isn't on file.
+   */
+  fiveStarTotal: number | null;
 }
 
 /**
- * The figures behind "5 out of 5 from 795 TCGplayer reviews": TCGplayer's own
- * totals when we have them, otherwise the reviews on file. A total smaller
- * than what's on file is out of date, so it is ignored rather than allowed to
- * shrink the record.
+ * The figures behind the reviews headline. With TCGplayer's count on file it
+ * reads "1,687 five-star reviews on TCGplayer"; without one it describes the
+ * reviews on file ("5 out of 5 from 13 TCGplayer reviews"). A count smaller
+ * than the five-star reviews already on file is out of date, so it is ignored
+ * rather than allowed to shrink the record.
  */
 export function sellerReviewStats(
   reviews: readonly SellerReview[] = SELLER_REVIEWS,
   summary: SellerReviewSummary = SELLER_REVIEW_SUMMARY,
 ): SellerReviewStats {
   const onFile = reviews.length;
-  const totals = summary.ratings;
-  if (totals && totals.count > 0 && totals.count >= onFile) {
-    return reviewStats(totals.count, totals.average, onFile);
-  }
   const average = onFile > 0 ? reviews.reduce((sum, review) => sum + review.rating, 0) / onFile : 0;
-  return reviewStats(onFile, average, onFile);
+  const averageLabel = Number.isInteger(average) ? String(average) : average.toFixed(1);
+  const fiveStarOnFile = reviews.filter((review) => review.rating === 5).length;
+  const counted = summary.fiveStarReviews?.count ?? 0;
+  const fiveStarTotal = counted > 0 && counted >= fiveStarOnFile ? counted : null;
+  return { onFile, average, averageLabel, fiveStarTotal };
 }

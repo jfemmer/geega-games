@@ -185,26 +185,28 @@ export function HeroPoints({ points }: { points: string[] }) {
 /** Reviews shown before "Show more" — enough to read at a glance on a phone. */
 const REVIEWS_PREVIEW_COUNT = 6;
 
-/** "795 reviews", "1 review" — or "1,204 TCGplayer reviews" with a source. */
-function reviewCountLabel(count: number, source?: string): string {
-  const noun = `${source ? `${source} ` : ""}review${count === 1 ? "" : "s"}`;
+/** "13 reviews", "1 review" — or, with a kind, "1,687 five-star reviews". */
+function reviewCountLabel(count: number, kind?: string): string {
+  const noun = `${kind ? `${kind} ` : ""}review${count === 1 ? "" : "s"}`;
   return `${count.toLocaleString("en-US")} ${noun}`;
 }
 
 /**
  * One line of real track record under a sell page's buttons, linking to the
- * reviews section (#reviews). The count is our whole TCGplayer record
- * (sellerReviewStats), not just the reviews quoted on the site. Hidden when
- * there is nothing to show.
+ * reviews section (#reviews). It gives our five-star count on TCGplayer
+ * (sellerReviewStats); without one it describes the reviews quoted on the
+ * site. Hidden when there is nothing to show.
  */
 export function ShopRatingLine() {
-  const { total, average, averageLabel } = sellerReviewStats();
-  if (total === 0) return null;
+  const { onFile, average, averageLabel, fiveStarTotal } = sellerReviewStats();
+  if (fiveStarTotal === null && onFile === 0) return null;
   return (
     <p className="gg-rating-line">
-      <Stars rating={Math.round(average)} />{" "}
+      <Stars rating={fiveStarTotal === null ? Math.round(average) : 5} />{" "}
       <a href="#reviews">
-        Rated {averageLabel} out of 5 by our TCGplayer customers ({reviewCountLabel(total)})
+        {fiveStarTotal === null
+          ? `Rated ${averageLabel} out of 5 by our TCGplayer customers (${reviewCountLabel(onFile)})`
+          : `${reviewCountLabel(fiveStarTotal, "five-star")} from our TCGplayer customers`}
       </a>
     </p>
   );
@@ -221,30 +223,39 @@ export function SellerReviewsSection() {
   const withText = SELLER_REVIEWS.filter((r): r is typeof r & { text: string } => Boolean(r.text));
   const shown = showAll ? withText : withText.slice(0, REVIEWS_PREVIEW_COUNT);
   const hiddenCount = withText.length - REVIEWS_PREVIEW_COUNT;
-  const { total, average, averageLabel, onFile } = sellerReviewStats();
+  const { onFile, average, averageLabel, fiveStarTotal } = sellerReviewStats();
   const stats = [
     positivePercent ? `${positivePercent} positive feedback` : null,
     sales ? `${sales} sales` : null,
   ].filter(Boolean);
-  // The headline counts our whole TCGplayer record; when that's more than the
-  // reviews on file, say plainly that the quotes below are only some of them.
+  // The headline counts every five-star review on TCGplayer; when that's more
+  // than the reviews on file, say plainly that the quotes are only some of them.
   const whereToCheck =
-    total === 0
+    onFile === 0
       ? "You can check our full record there yourself."
-      : total > onFile
+      : fiveStarTotal !== null && fiveStarTotal > onFile
         ? "Some of those reviews are copied below, word for word, and you can check the full record yourself."
         : "These are copied word for word, and you can check the full record yourself.";
 
   return (
     <section className="gg-collect-section" id="reviews" aria-labelledby="gg-reviews-heading">
-      <h2 id="gg-reviews-heading">{total > 0 ? "What our customers say" : "Check our track record"}</h2>
-      {total > 0 && (
+      <h2 id="gg-reviews-heading">{onFile > 0 ? "What our customers say" : "Check our track record"}</h2>
+      {fiveStarTotal !== null ? (
         <p className="gg-reviews-summary">
-          <Stars rating={Math.round(average)} />
+          <Stars rating={5} />
           <span>
-            <strong>{averageLabel} out of 5</strong> from {reviewCountLabel(total, "TCGplayer")}
+            <strong>{reviewCountLabel(fiveStarTotal, "five-star")}</strong> on TCGplayer
           </span>
         </p>
+      ) : (
+        onFile > 0 && (
+          <p className="gg-reviews-summary">
+            <Stars rating={Math.round(average)} />
+            <span>
+              <strong>{averageLabel} out of 5</strong> from {reviewCountLabel(onFile, "TCGplayer")}
+            </span>
+          </p>
+        )
       )}
       <p className="gg-collect-lead">
         Geega Games also sells on TCGplayer
