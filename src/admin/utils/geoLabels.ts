@@ -3,21 +3,7 @@
 // without the country ("MO"). US states get their full name; elsewhere the
 // raw subdivision code is shown next to the country name.
 
-const US_STATES: Record<string, string> = {
-  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
-  CO: "Colorado", CT: "Connecticut", DE: "Delaware", DC: "District of Columbia",
-  FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
-  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
-  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
-  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada",
-  NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York",
-  NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon",
-  PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
-  TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia",
-  WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
-  PR: "Puerto Rico", GU: "Guam", VI: "U.S. Virgin Islands", AS: "American Samoa",
-  MP: "Northern Mariana Islands",
-};
+import { usStateName } from "../../store/lib/usAddress";
 
 const countryNames = (() => {
   try {
@@ -39,7 +25,8 @@ export function countryLabel(code: string | null): string {
 
 /** ("MO", "US") → "Missouri"; ("ON", "CA") → "ON, Canada". */
 export function regionLabel(region: string, country: string | null): string {
-  if (country === "US" && US_STATES[region]) return US_STATES[region];
+  const usName = country === "US" ? usStateName(region) : null;
+  if (usName) return usName;
   return country ? `${region}, ${countryLabel(country)}` : region;
 }
 

@@ -10,6 +10,7 @@ import { releaseHold, releaseUserHolds } from "../_lib/checkoutHolds.js";
 import { normalizeEmail } from "../_lib/tokens.js";
 import { guestTokensAvailable, signGuestToken, verifyGuestToken } from "../_lib/guestAccess.js";
 import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
+import { checkUsAddress, US_ONLY_MESSAGE } from "../../src/store/lib/usAddress.js";
 
 // POST /api/checkout/create-payment-intent
 //
@@ -22,6 +23,11 @@ import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
 //      Stripe PaymentIntents first), so going back and checking out again
 //      never finds their own cards "sold out". Guests prove the earlier
 //      hold is theirs with its signed guest token.
+//   1c. Check where it ships. Orders go to US addresses only
+//      (src/store/lib/usAddress.ts): anything else is refused here, before
+//      an order exists or stock is held, with a message the customer can
+//      act on. The database refuses it too (checkout_place_order_core), so
+//      this isn't the only lock on the door.
 //   2. Create the canonical order in the DB, which atomically revalidates
 //      SELLABLE stock (physical minus active reservations) and computes
 //      canonical totals:
@@ -72,6 +78,60 @@ type CreatedOrder = {
   amount_due_cents: number;
 };
 
+/** Where an order ships, tidied: state as its USPS code, ZIP normalized, country "US". */
+type ShipTo = {
+  recipient: string | null;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+};
+
+type ShipToResult = { ok: true; address: ShipTo } | { ok: false; message: string };
+
+const trimmed = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+
+/**
+ * The address the browser sent, checked: it must be complete and in the
+ * United States. A guest has no profile to name the package after, so their
+ * recipient name is required too.
+ */
+function shipToFrom(ship: ShipBody | undefined, opts: { recipientRequired: boolean }): ShipToResult {
+  const recipient = trimmed(ship?.recipient);
+  const line1 = trimmed(ship?.line1);
+  const city = trimmed(ship?.city);
+  const postalCode = trimmed(ship?.postalCode);
+  if (!line1 || !city || !postalCode || (opts.recipientRequired && !recipient)) {
+    return {
+      ok: false,
+      message: opts.recipientRequired
+        ? "Please provide your name and a complete shipping address."
+        : "Please provide a complete shipping address.",
+    };
+  }
+  const check = checkUsAddress({ state: ship?.state, postalCode, country: ship?.country });
+  if (!check.ok) return { ok: false, message: check.message };
+  return {
+    ok: true,
+    address: {
+      recipient: recipient || null,
+      line1,
+      line2: trimmed(ship?.line2) || null,
+      city,
+      state: check.state,
+      postalCode: check.postalCode,
+      country: check.country,
+    },
+  };
+}
+
+/** A shipping address we can't use: the page shows `message` as it is. */
+function addressRefused(res: VercelResponse, message: string) {
+  return sendJson(res, 400, { ok: false, code: "shipping_address", message });
+}
+
 const ID_RE = /^[0-9a-f-]{36}$/i;
 const MAX_GUEST_LINES = 100;
 // Guest checkout creates a stock hold without an account, so cap how fast one
@@ -105,7 +165,11 @@ function checkoutErrorResponse(res: VercelResponse, rawMessage: string) {
     return sendJson(res, 400, { ok: false, message: "Please enter a valid email address." });
   }
   if (msg.includes("shipping address required")) {
-    return sendJson(res, 400, { ok: false, message: "Please provide a complete shipping address." });
+    return addressRefused(res, "Please provide a complete shipping address.");
+  }
+  if (msg.includes("us shipping only")) {
+    // The database's own check. shipToFrom() should have caught it first.
+    return addressRefused(res, `${US_ONLY_MESSAGE} Please check the state and ZIP code.`);
   }
   return sendJson(res, 400, { ok: false, message: "Could not create order." });
 }
@@ -170,6 +234,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return sendJson(res, 401, { ok: false, message: "Session expired. Please sign in again." });
   }
 
+  // A signed-in customer's package is named after their profile when they
+  // give no recipient.
+  const shipTo = shipToFrom(body.ship, { recipientRequired: false });
+  if (!shipTo.ok) return addressRefused(res, shipTo.message);
+
   // Vacation mode. Checked before releasing the customer's earlier holds so
   // a paused store doesn't drop a hold they could still pay for.
   // checkout_create_order enforces the same rule in the DB.
@@ -198,13 +267,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       0,
       Math.floor(body.storeCreditRequestedCents ?? 0),
     ),
-    p_ship_recipient: body.ship?.recipient || undefined,
-    p_ship_line1: body.ship?.line1 || undefined,
-    p_ship_line2: body.ship?.line2 || undefined,
-    p_ship_city: body.ship?.city || undefined,
-    p_ship_state: body.ship?.state || undefined,
-    p_ship_postal_code: body.ship?.postalCode || undefined,
-    p_ship_country: body.ship?.country || "US",
+    p_ship_recipient: shipTo.address.recipient ?? undefined,
+    p_ship_line1: shipTo.address.line1,
+    p_ship_line2: shipTo.address.line2 ?? undefined,
+    p_ship_city: shipTo.address.city,
+    p_ship_state: shipTo.address.state,
+    p_ship_postal_code: shipTo.address.postalCode,
+    p_ship_country: shipTo.address.country,
   });
 
   if (error) return checkoutErrorResponse(res, error.message);
@@ -246,10 +315,9 @@ async function guestCheckout(req: VercelRequest, res: VercelResponse, body: Crea
   if (!items) {
     return sendJson(res, 400, { ok: false, message: "Your cart is empty or couldn’t be read. Please refresh and try again." });
   }
-  const ship = body.ship ?? {};
-  if (!ship.recipient?.trim() || !ship.line1?.trim() || !ship.city?.trim() || !ship.state?.trim() || !ship.postalCode?.trim()) {
-    return sendJson(res, 400, { ok: false, message: "Please provide your name and a complete shipping address." });
-  }
+  const shipTo = shipToFrom(body.ship, { recipientRequired: true });
+  if (!shipTo.ok) return addressRefused(res, shipTo.message);
+  const ship = shipTo.address;
 
   const admin = getSupabaseAdmin() as any;
 
@@ -284,13 +352,13 @@ async function guestCheckout(req: VercelRequest, res: VercelResponse, body: Crea
     p_email: email,
     p_items: items,
     p_shipping_method: body.shippingMethod,
-    p_ship_recipient: ship.recipient.trim(),
-    p_ship_line1: ship.line1.trim(),
-    p_ship_line2: ship.line2?.trim() || null,
-    p_ship_city: ship.city.trim(),
-    p_ship_state: ship.state.trim(),
-    p_ship_postal_code: ship.postalCode.trim(),
-    p_ship_country: ship.country?.trim() || "US",
+    p_ship_recipient: ship.recipient,
+    p_ship_line1: ship.line1,
+    p_ship_line2: ship.line2,
+    p_ship_city: ship.city,
+    p_ship_state: ship.state,
+    p_ship_postal_code: ship.postalCode,
+    p_ship_country: ship.country,
   });
   if (error) return checkoutErrorResponse(res, error.message);
 

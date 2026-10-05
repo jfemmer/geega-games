@@ -10,6 +10,9 @@ import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { MyDecksSection } from "./MyDecksPage";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { UsStateSelect } from "../components/UsStateSelect";
+import { useReveal } from "../lib/useReveal";
+import { SHIPS_TO_SUMMARY, SHIP_TO_COUNTRY, checkUsAddress } from "../lib/usAddress";
 import {
   ORDER_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -1334,7 +1337,9 @@ type Address = {
   is_default: boolean;
 };
 
-const EMPTY_ADDRESS: Partial<Address> = { country: "US" };
+// Addresses are US addresses: we ship within the United States only
+// (../lib/usAddress.ts), so the form has no country to choose.
+const EMPTY_ADDRESS: Partial<Address> = { country: SHIP_TO_COUNTRY };
 
 function AddressesSection() {
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -1342,6 +1347,9 @@ function AddressesSection() {
   const [editing, setEditing] = useState<Partial<Address> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // The message sits above the form and "Save address" below it: on a phone
+  // it has to be brought into view, or the tap seems to do nothing.
+  const [formErrorRef, revealFormError] = useReveal<HTMLDivElement>();
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -1363,8 +1371,22 @@ function AddressesSection() {
   const save = async () => {
     if (!editing) return;
     setFormError(null);
+    const fail = (message: string) => {
+      setFormError(message);
+      revealFormError();
+    };
     if (!editing.line1?.trim() || !editing.city?.trim() || !editing.state?.trim() || !editing.postal_code?.trim()) {
-      setFormError("Please fill in address line 1, city, state, and postal code.");
+      fail("Please fill in address line 1, city, state, and ZIP code.");
+      return;
+    }
+    // The form only offers US states, so what's saved is a US address.
+    const check = checkUsAddress({
+      state: editing.state,
+      postalCode: editing.postal_code,
+      country: SHIP_TO_COUNTRY,
+    });
+    if (!check.ok) {
+      fail(check.message);
       return;
     }
     const { data: userData } = await supabase.auth.getUser();
@@ -1378,9 +1400,9 @@ function AddressesSection() {
       line1: editing.line1.trim(),
       line2: editing.line2?.trim() || null,
       city: editing.city.trim(),
-      state: editing.state.trim(),
-      postal_code: editing.postal_code.trim(),
-      country: editing.country?.trim() || "US",
+      state: check.state,
+      postal_code: check.postalCode,
+      country: check.country,
       phone: editing.phone?.trim() || null,
       is_default: editing.is_default ?? false,
     };
@@ -1388,7 +1410,7 @@ function AddressesSection() {
       ? await supabase.from("addresses").update(payload).eq("id", editing.id)
       : await supabase.from("addresses").insert(payload);
     setSaving(false);
-    if (res.error) setFormError(res.error.message);
+    if (res.error) fail(res.error.message);
     else {
       setEditing(null);
       await load();
@@ -1460,7 +1482,7 @@ function AddressesSection() {
         <div className="gg-form" style={{ margin: "1rem 0 0", maxWidth: "none" }}>
           <h3 style={{ marginTop: 0 }}>{editing.id ? "Edit address" : "New address"}</h3>
           {formError && (
-            <div className="gg-alert gg-alert-error" role="alert">
+            <div ref={formErrorRef} className="gg-alert gg-alert-error" role="alert">
               {formError}
             </div>
           )}
@@ -1500,7 +1522,7 @@ function AddressesSection() {
                 onChange={(e) => setEditing((s) => ({ ...s, line2: e.target.value }))}
               />
             </div>
-            <div className="gg-field">
+            <div className="gg-field gg-field-span2">
               <label htmlFor="a-city">City</label>
               <input
                 id="a-city"
@@ -1511,32 +1533,24 @@ function AddressesSection() {
             </div>
             <div className="gg-field">
               <label htmlFor="a-state">State</label>
-              <input
+              <UsStateSelect
                 id="a-state"
-                autoComplete="address-level1"
-                value={editing.state ?? ""}
-                onChange={(e) => setEditing((s) => ({ ...s, state: e.target.value }))}
+                value={editing.state}
+                onChange={(code) => setEditing((s) => ({ ...s, state: code }))}
               />
             </div>
             <div className="gg-field">
-              <label htmlFor="a-postal">Postal code</label>
+              <label htmlFor="a-postal">ZIP code</label>
               <input
                 id="a-postal"
                 autoComplete="postal-code"
                 inputMode="numeric"
+                maxLength={10}
                 value={editing.postal_code ?? ""}
                 onChange={(e) => setEditing((s) => ({ ...s, postal_code: e.target.value }))}
               />
             </div>
-            <div className="gg-field">
-              <label htmlFor="a-country">Country</label>
-              <input
-                id="a-country"
-                autoComplete="country"
-                value={editing.country ?? ""}
-                onChange={(e) => setEditing((s) => ({ ...s, country: e.target.value }))}
-              />
-            </div>
+            <p className="gg-card-meta gg-ship-note gg-field-span2">{SHIPS_TO_SUMMARY}</p>
             <div className="gg-field gg-field-span2">
               <label htmlFor="a-phone">Phone</label>
               <input

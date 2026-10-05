@@ -20,6 +20,18 @@ import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
 import { formatReopenDate, refreshStoreStatus, useStoreStatus } from "../lib/storeStatus";
 import { ShippingMethodPicker } from "../components/ShippingMethodPicker";
+import { UsStateSelect } from "../components/UsStateSelect";
+import { useReveal } from "../lib/useReveal";
+import {
+  SHIPS_TO_SUMMARY,
+  SHIP_TO_COUNTRY,
+  US_ONLY_MESSAGE,
+  US_ZIP_MESSAGE,
+  checkUsAddress,
+  isUsCountry,
+  usStateFor,
+  usZip,
+} from "../lib/usAddress";
 import {
   effectiveShippingMethod,
   formatCents,
@@ -33,6 +45,9 @@ import {
 //     atomically revalidates SELLABLE stock (physical minus active
 //     reservations) and computes the canonical amount due. The totals shown
 //     below are display-only previews, never trusted for money.
+//   - Orders ship within the United States only (../lib/usAddress.ts). The
+//     form offers only US states, territories and military mail, the server
+//     refuses anything else, and so does the database.
 //   - Free shipping is the server's rule too: an order with enough cards
 //     (SHIPPING.freeShippingThresholdCents) is created tracked with $0
 //     shipping whatever this page sends. The page mirrors that so the
@@ -163,16 +178,28 @@ export default function CheckoutPage() {
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | "new">("new");
-  const [form, setForm] = useState<Partial<Address>>({ country: "US" });
+  const [form, setForm] = useState<Partial<Address>>({ country: SHIP_TO_COUNTRY });
+  // Said when the address lookup is given somewhere we don't ship.
+  const [lookupNotice, setLookupNotice] = useState<string | null>(null);
+  // The ZIP hint waits until the customer has left the field.
+  const [zipTouched, setZipTouched] = useState(false);
   const handleAddressSelect = useCallback((address: ShippingAddressFields) => {
+    if (!isUsCountry(address.country)) {
+      // Not somewhere we ship: say so and leave the form as it was.
+      setLookupNotice(US_ONLY_MESSAGE);
+      return;
+    }
+    setLookupNotice(null);
     setForm((f) => ({
       ...f,
       line1: address.line1,
       line2: address.line2 || f.line2 || "",
       city: address.city,
-      state: address.state,
-      postal_code: address.postalCode,
-      country: address.country || "US",
+      // Google lists the territories as countries ("PR"); to the Postal
+      // Service they are states.
+      state: usStateFor(address.state, address.country) ?? "",
+      postal_code: usZip(address.postalCode) ?? address.postalCode,
+      country: SHIP_TO_COUNTRY,
     }));
   }, []);
   const [method, setMethod] = useState<ShippingMethod>("tracked");
@@ -180,6 +207,9 @@ export default function CheckoutPage() {
   const [useCredit, setUseCredit] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The message is at the top of the page and the button at the bottom: on a
+  // phone it has to be brought into view, or the tap seems to do nothing.
+  const [errorRef, revealError] = useReveal<HTMLDivElement>();
 
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [paidComplete, setPaidComplete] = useState(false); // zero-balance (store credit) order
@@ -310,29 +340,69 @@ export default function CheckoutPage() {
       ? form
       : addresses.find((a) => a.id === selectedAddr) ?? null;
 
-  const addressValid =
+  const addressComplete =
     !!chosenAddress &&
-    !!chosenAddress.line1 &&
-    !!chosenAddress.city &&
+    !!chosenAddress.line1?.trim() &&
+    !!chosenAddress.city?.trim() &&
     !!chosenAddress.state &&
-    !!chosenAddress.postal_code &&
+    !!chosenAddress.postal_code?.trim() &&
     // Guests have no profile to name the package after.
     (!isGuest || !!chosenAddress.recipient?.trim());
+  // Is it somewhere we ship? (US only: see ../lib/usAddress.ts.)
+  const addressCheck = chosenAddress
+    ? checkUsAddress({
+        state: chosenAddress.state,
+        postalCode: chosenAddress.postal_code,
+        country: chosenAddress.country,
+      })
+    : null;
+  const addressValid = addressComplete && addressCheck?.ok === true;
+  // The address as it is sent and saved: trimmed, state as its USPS code.
+  const shipTo =
+    chosenAddress && addressCheck?.ok
+      ? {
+          recipient: chosenAddress.recipient?.trim() || null,
+          line1: (chosenAddress.line1 ?? "").trim(),
+          line2: chosenAddress.line2?.trim() || null,
+          city: (chosenAddress.city ?? "").trim(),
+          state: addressCheck.state,
+          postalCode: addressCheck.postalCode,
+          country: addressCheck.country,
+        }
+      : null;
+  // Typing in the form: also clears a "we don't ship there" note left by the
+  // address lookup, which is no longer about what's in the fields.
+  const editAddress = (patch: Partial<Address>) => {
+    setLookupNotice(null);
+    setForm((s) => ({ ...s, ...patch }));
+  };
+  // A saved address from before the US-only rule that can't be shipped to.
+  const savedAddressProblem =
+    selectedAddr !== "new" && addressComplete && addressCheck && !addressCheck.ok ? addressCheck.message : null;
+  const zipInvalid = zipTouched && !!form.postal_code?.trim() && usZip(form.postal_code) === null;
   const guestEmailValid = EMAIL_RE.test(guestEmail.trim());
   const canPayOnline = isStripeConfigured || isPayPalConfigured;
 
   const placeOrder = async () => {
     setError(null);
+    const fail = (message: string) => {
+      setError(message);
+      revealError();
+    };
     if (isGuest && !guestEmailValid) {
-      setError("Please enter your email so we can send your receipt and tracking.");
+      fail("Please enter your email so we can send your receipt and tracking.");
       return;
     }
-    if (!addressValid) {
-      setError(
+    if (!addressComplete) {
+      fail(
         isGuest
           ? "Please enter the recipient's name and a complete shipping address."
           : "Please provide a complete shipping address.",
       );
+      return;
+    }
+    if (!shipTo) {
+      fail(addressCheck && !addressCheck.ok ? addressCheck.message : US_ONLY_MESSAGE);
       return;
     }
     setPlacing(true);
@@ -345,13 +415,13 @@ export default function CheckoutPage() {
       if (selectedAddr === "new" && user) {
         await supabase.from("addresses").insert({
           user_id: user.id,
-          recipient: form.recipient ?? null,
-          line1: form.line1 ?? "",
-          line2: form.line2 ?? null,
-          city: form.city ?? "",
-          state: form.state ?? "",
-          postal_code: form.postal_code ?? "",
-          country: form.country ?? "US",
+          recipient: shipTo.recipient,
+          line1: shipTo.line1,
+          line2: shipTo.line2,
+          city: shipTo.city,
+          state: shipTo.state,
+          postal_code: shipTo.postalCode,
+          country: shipTo.country,
           // Signup no longer asks for an address, so the first one saved
           // here becomes the default for next time.
           is_default: addresses.length === 0,
@@ -362,14 +432,14 @@ export default function CheckoutPage() {
       // Stripe PaymentIntent, when Stripe is configured) and first releases
       // this customer's earlier unpaid checkout holds.
       if (canPayOnline) {
-        await placeOrderViaServer();
+        await placeOrderViaServer(shipTo);
       } else if (user) {
-        await placeOrderLegacy();
+        await placeOrderLegacy(shipTo);
       } else {
         throw new Error("Please sign in to place this order.");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed.");
+      fail(e instanceof Error ? e.message : "Checkout failed.");
     } finally {
       setPlacing(false);
     }
@@ -380,7 +450,7 @@ export default function CheckoutPage() {
   // that amount, in one call. The cart is NOT emptied here — the order only
   // holds its cards for a limited time, and the cart is cleared once the
   // order is actually paid (mark_order_paid).
-  const placeOrderViaServer = async () => {
+  const placeOrderViaServer = async (to: NonNullable<typeof shipTo>) => {
     const token = user ? await getAccessToken() : null;
     if (user && !token) throw new Error("Your session expired. Please sign in again.");
     const email = guestEmail.trim();
@@ -405,13 +475,13 @@ export default function CheckoutPage() {
               previousOrder: previous ? { id: previous.orderId, token: previous.token } : undefined,
             },
         ship: {
-          recipient: chosenAddress?.recipient ?? undefined,
-          line1: chosenAddress?.line1 ?? undefined,
-          line2: chosenAddress?.line2 ?? undefined,
-          city: chosenAddress?.city ?? undefined,
-          state: chosenAddress?.state ?? undefined,
-          postalCode: chosenAddress?.postal_code ?? undefined,
-          country: chosenAddress?.country ?? "US",
+          recipient: to.recipient ?? undefined,
+          line1: to.line1,
+          line2: to.line2 ?? undefined,
+          city: to.city,
+          state: to.state,
+          postalCode: to.postalCode,
+          country: to.country,
         },
       }),
     });
@@ -443,6 +513,10 @@ export default function CheckoutPage() {
         await refreshStoreStatus(); // shows the banner/notice with the store's message
         throw new Error(body.message || friendlyCheckoutError("orders paused"));
       }
+      if (body?.code === "shipping_address" && typeof body.message === "string") {
+        // The server's own words: which part of the address it can't ship to.
+        throw new Error(body.message);
+      }
       throw new Error(friendlyCheckoutError(body?.message || ""));
     }
 
@@ -465,17 +539,17 @@ export default function CheckoutPage() {
 
   // Legacy path (no online payment configured at all): create the order
   // directly; any balance due stays pending_payment.
-  const placeOrderLegacy = async () => {
+  const placeOrderLegacy = async (to: NonNullable<typeof shipTo>) => {
     const { data, error: rpcError } = await supabase.rpc("checkout_create_order", {
       p_shipping_method: shipMethod,
       p_store_credit_requested_cents: useCredit ? creditBalance : 0,
-      p_ship_recipient: chosenAddress?.recipient ?? null,
-      p_ship_line1: chosenAddress?.line1 ?? null,
-      p_ship_line2: chosenAddress?.line2 ?? null,
-      p_ship_city: chosenAddress?.city ?? null,
-      p_ship_state: chosenAddress?.state ?? null,
-      p_ship_postal_code: chosenAddress?.postal_code ?? null,
-      p_ship_country: chosenAddress?.country ?? "US",
+      p_ship_recipient: to.recipient,
+      p_ship_line1: to.line1,
+      p_ship_line2: to.line2,
+      p_ship_city: to.city,
+      p_ship_state: to.state,
+      p_ship_postal_code: to.postalCode,
+      p_ship_country: to.country,
     });
     if (rpcError) throw new Error(friendlyCheckoutError(rpcError.message));
     const result = Array.isArray(data) ? data[0] : data;
@@ -669,7 +743,7 @@ export default function CheckoutPage() {
     <div className="gg-page">
       <h1 style={{ color: "var(--gg-ink)" }}>Checkout</h1>
       {error && (
-        <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
+        <div ref={errorRef} className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
           {error}
         </div>
       )}
@@ -743,18 +817,26 @@ export default function CheckoutPage() {
               </select>
             </div>
           )}
+          {savedAddressProblem && (
+            <div className="gg-alert gg-alert-warn" role="alert">
+              We can&rsquo;t ship to this saved address. {savedAddressProblem} Choose another
+              address or enter a new one.
+            </div>
+          )}
           {selectedAddr === "new" && (
             <div className="gg-form" style={{ margin: "0.5rem 0 0", maxWidth: "none" }}>
               <GoogleAddressAutocomplete label="Find your address" onSelect={handleAddressSelect} />
+              {lookupNotice && (
+                <div className="gg-alert gg-alert-warn" role="alert">
+                  {lookupNotice}
+                </div>
+              )}
               {(
                 [
                   ["recipient", "Recipient", "shipping name"],
                   ["line1", "Address line 1", "shipping address-line1"],
                   ["line2", "Address line 2 (optional)", "shipping address-line2"],
                   ["city", "City", "shipping address-level2"],
-                  ["state", "State", "shipping address-level1"],
-                  ["postal_code", "Postal code", "shipping postal-code"],
-                  ["country", "Country", "shipping country"],
                 ] as const
               ).map(([field, label, autoComplete]) => (
                 <div className="gg-field" key={field}>
@@ -763,12 +845,41 @@ export default function CheckoutPage() {
                     id={`co-${field}`}
                     autoComplete={autoComplete}
                     value={(form[field] as string) ?? ""}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, [field]: e.target.value }))
-                    }
+                    onChange={(e) => editAddress({ [field]: e.target.value })}
                   />
                 </div>
               ))}
+              {/* No country to choose: we ship within the United States only,
+                  so the state list is the whole choice. */}
+              <div className="gg-field">
+                <label htmlFor="co-state">State</label>
+                <UsStateSelect
+                  id="co-state"
+                  autoComplete="shipping address-level1"
+                  value={form.state}
+                  onChange={(code) => editAddress({ state: code })}
+                />
+              </div>
+              <div className="gg-field">
+                <label htmlFor="co-postal_code">ZIP code</label>
+                <input
+                  id="co-postal_code"
+                  autoComplete="shipping postal-code"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={form.postal_code ?? ""}
+                  onChange={(e) => editAddress({ postal_code: e.target.value })}
+                  onBlur={() => setZipTouched(true)}
+                  aria-invalid={zipInvalid || undefined}
+                  aria-describedby={zipInvalid ? "co-zip-hint" : undefined}
+                />
+                {zipInvalid && (
+                  <p id="co-zip-hint" className="gg-field-error" role="alert">
+                    {US_ZIP_MESSAGE}
+                  </p>
+                )}
+              </div>
+              <p className="gg-card-meta gg-ship-note">{SHIPS_TO_SUMMARY}</p>
             </div>
           )}
 
@@ -1259,6 +1370,8 @@ function friendlyCheckoutError(msg: string): string {
   if (m.includes("no price"))
     return "One of your items isn’t priced and can’t be purchased right now.";
   if (m.includes("cart is empty")) return "Your cart is empty.";
+  if (m.includes("shipping address required")) return "Please provide a complete shipping address.";
+  if (m.includes("us shipping only")) return `${US_ONLY_MESSAGE} Please check the state and ZIP code.`;
   if (m.includes("not authenticated") || m.includes("session expired"))
     return "Please sign in to check out.";
   return "Checkout could not be completed. Please try again.";

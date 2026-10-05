@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { US_LOOKUP_REGION_CODES } from "../lib/usAddress";
 
 export type ShippingAddressFields = {
   line1: string;
@@ -161,6 +162,18 @@ export default function GoogleAddressAutocomplete({
         ) => HTMLElement & { placeholder?: string };
 
         autocompleteElement = new PlaceAutocompleteElement();
+        // Suggest only places we ship: the US and its territories
+        // (../lib/usAddress.ts). Set as a property rather than passed to the
+        // constructor, so a Maps version that doesn't know it still builds
+        // the box. Suggestions are a convenience, not the rule: the form and
+        // the server refuse an address outside the US either way.
+        try {
+          (autocompleteElement as HTMLElement & { includedRegionCodes?: string[] }).includedRegionCodes = [
+            ...US_LOOKUP_REGION_CODES,
+          ];
+        } catch {
+          // Suggestions stay worldwide.
+        }
         autocompleteElement.style.width = "100%";
         autocompleteElement.setAttribute("aria-label", "Search for your shipping address");
         autocompleteElement.setAttribute("autocomplete", "shipping street-address");

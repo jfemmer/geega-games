@@ -22,6 +22,7 @@ import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { SHIPPING, formatCents, formatCentsShort } from "../lib/money";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
+import { SHIPS_TO_SUMMARY } from "../lib/usAddress";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -206,6 +207,9 @@ export function ShippingPage() {
         orders), and you can check on it any time on{" "}
         <Link to="/track-order">Track your order</Link>.
       </p>
+
+      <h2>Where we ship</h2>
+      <p>{SHIPS_TO_SUMMARY} We don&rsquo;t ship to other countries.</p>
 
       <h2>How we pack your cards</h2>
       <ul>

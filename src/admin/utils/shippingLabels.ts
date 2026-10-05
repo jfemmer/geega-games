@@ -2,6 +2,7 @@
 // helpers for LabelPrintView and the Orders page.
 
 import type { Order } from "../types";
+import { isUsCountry } from "../../store/lib/usAddress";
 
 /**
  * Every label prints on a standard 4×6 label printer label. A Plain White
@@ -35,8 +36,6 @@ export const PAGE_SIZE_IN: Record<LabelPage, { width: number; height: number }> 
   "postage-4x6": { width: 4, height: 6 },
 };
 
-const DOMESTIC = new Set(["", "US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"]);
-
 function clean(value: string | null | undefined): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
 }
@@ -44,7 +43,8 @@ function clean(value: string | null | undefined): string {
 /**
  * The delivery address as printed lines: name, street (and unit), "City, ST
  * ZIP", and the country only when it isn't the US (USPS wants it last, in
- * capitals, for international mail).
+ * capitals, for international mail). Checkout only takes US addresses
+ * (src/store/lib/usAddress.ts), so today no order has a country line.
  */
 export function recipientLines(
   order: Pick<
@@ -68,7 +68,7 @@ export function recipientLines(
     clean(order.shipLine1),
     clean(order.shipLine2),
     cityLine,
-    DOMESTIC.has(country) ? "" : country,
+    isUsCountry(order.shipCountry) ? "" : country,
   ].filter(Boolean);
 }
 

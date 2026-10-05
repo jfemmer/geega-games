@@ -103,7 +103,7 @@ function fillGuestDetails() {
   fireEvent.change(screen.getByLabelText("Address line 1"), { target: { value: "123 Main St" } });
   fireEvent.change(screen.getByLabelText("City"), { target: { value: "Ballwin" } });
   fireEvent.change(screen.getByLabelText("State"), { target: { value: "MO" } });
-  fireEvent.change(screen.getByLabelText("Postal code"), { target: { value: "63011" } });
+  fireEvent.change(screen.getByLabelText("ZIP code"), { target: { value: "63011" } });
 }
 
 async function placeOrder(): Promise<{ shippingMethod: string }> {

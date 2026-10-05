@@ -886,6 +886,30 @@
   outline: 3px solid var(--gg-gold);
   outline-offset: 1px;
 }
+/* The State dropdown in an address form (UsStateSelect): the same size,
+   border and type as the inputs beside it (.gg-field input above). */
+.gg-state-select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 1rem;
+}
+.gg-state-select:focus-visible {
+  outline: 3px solid var(--gg-gold);
+  outline-offset: 1px;
+}
+/* Under a field: what's wrong with what was typed. */
+.gg-field-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--gg-danger);
+}
+/* Under an address form: where we ship. */
+.gg-ship-note {
+  margin: 0.25rem 0 0;
+}
 .gg-alert {
   padding: 0.6rem 0.85rem;
   border-radius: 8px;
