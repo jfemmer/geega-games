@@ -378,8 +378,6 @@ These change what the pages should say. Update the copy once they're settled:
   match your real trips in `src/seo/sellAreas.ts`.
 - **Public phone number and social profiles:** add them to Google Business
   Profile, and to `SITE_JSON_LD.sameAs` in `src/seo/site.ts`.
-- The homepage newsletter box still says "Get the launch notice… the moment
-  checkout goes live", but checkout is live. It needs new copy.
 - **PayPal fee:** PayPal usually charges the person *receiving* a Goods &
   Services payment, which here is the seller. The where-to-sell guide says a
   collection buyer means "no fees". Either cover the fee or disclose it.

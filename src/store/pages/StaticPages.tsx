@@ -86,17 +86,8 @@ export function HomePage() {
         </p>
       </section>
 
-      <section style={{ marginTop: "2rem" }}>
-        <div className="gg-prose">
-          <h2 style={{ color: "var(--gg-purple)" }}>Stay in the loop</h2>
-          <p>
-            Get notified about new arrivals, restocks, and exclusive deals. No
-            spam, unsubscribe any time.
-          </p>
-        </div>
-        <div style={{ maxWidth: 520, margin: "1rem auto 0" }}>
-          <SignupForm />
-        </div>
+      <section id="email-list" className="gg-email-list">
+        <SignupForm />
       </section>
     </div>
   );

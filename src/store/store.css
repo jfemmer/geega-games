@@ -2437,6 +2437,11 @@
 .gg-home-actions {
   margin-top: 1.25rem;
 }
+/* Home page: the email list signup (SignupForm). */
+.gg-email-list {
+  max-width: 560px;
+  margin: 2.5rem auto 0;
+}
 .gg-collect-lead {
   max-width: 720px;
   margin: 0.9rem auto;

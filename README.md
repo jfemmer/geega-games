@@ -69,7 +69,7 @@ server-only and must never be prefixed with `VITE_`.
 src/                 React storefront (browser)
   supabase.ts        Browser Supabase client (publishable key only)
   cards.ts           Catalog fetch
-  SignupForm.tsx     Newsletter signup -> POST /api/subscribe
+  SignupForm.tsx     Email list signup on the home page -> POST /api/subscribe
   types/database.ts  Generated Supabase types (regenerate on schema change)
   seo/               SEO route registry, sell-area + guide data, head tags (pure TS)
   prerender.tsx      SSR entry used only by the build-time prerender

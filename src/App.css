@@ -256,13 +256,7 @@
    cropping). The previous duplicate rule here used object-fit: cover, which
    cropped card edges/text and made art look wrong — removed intentionally. */
 
-/* ===== Launch / signup section ===== */
-.launch {
-  background: linear-gradient(180deg, #fff, #f3eaff);
-  border-top: 1px solid var(--line);
-  padding: 48px 20px;
-}
-.launch-inner { max-width: 560px; margin: 0 auto; }
+/* ===== Email list signup (SignupForm) ===== */
 .signup {
   background: #fff; border: 2px solid #ece8f6; border-radius: 18px;
   padding: 28px; box-shadow: 0 10px 30px rgba(76,42,133,.10);
@@ -271,7 +265,15 @@
   font-family: var(--sans); font-weight: 700; font-size: 22px; letter-spacing: -0.015em; color: var(--brand-deep);
   margin: 0 0 6px;
 }
-.signup-sub { font-size: 14px; color: var(--violet-grey); margin: 0 0 18px; }
+.signup-sub { font-size: 14px; color: var(--violet-grey); margin: 0 0 14px; }
+/* What subscribers hear about: a short checklist above the email field. */
+.signup-points {
+  list-style: none; padding: 0; margin: 0 0 18px;
+  display: grid; gap: 8px;
+  font-size: 14px; line-height: 1.45; color: var(--ink);
+}
+.signup-points li { display: flex; gap: 8px; }
+.signup-points li::before { content: "✓"; flex: none; font-weight: 700; color: var(--brand); }
 .signup .field { display: flex; gap: 10px; flex-wrap: wrap; }
 .signup input[type="email"] {
   flex: 1; min-width: 200px; padding: 12px 14px; font-size: 16px;
@@ -292,8 +294,21 @@
 .signup button[type="submit"]:disabled { opacity: .7; cursor: default; }
 .signup button[type="submit"]:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .signup .note { min-height: 20px; font-size: 13px; color: var(--violet-grey); margin: 10px 0 0; }
+/* With nothing to say the note takes no room (it stays in the page so screen
+   readers still announce a message when one arrives). */
+.signup .note:empty { min-height: 0; margin: 0; }
 .signup .note.error { color: #b3261e; }
+.signup-fine { font-size: 12.5px; line-height: 1.5; color: var(--violet-grey); margin: 12px 0 0; }
+/* Phones: the button goes under the field at full width, tall enough to tap. */
+@media (max-width: 480px) {
+  .signup .field { flex-direction: column; }
+  .signup input[type="email"] { flex: none; min-width: 0; width: 100%; }
+  .signup button[type="submit"] { width: 100%; min-height: 46px; }
+}
 .signup .confirmed { display: flex; gap: 14px; align-items: flex-start; }
+/* Focus is moved here after signing up so screen readers read it out; it
+   isn't something to click, so it gets no focus ring. */
+.signup .confirmed:focus { outline: none; }
 .signup .confirmed .check {
   flex: none; width: 40px; height: 40px; border-radius: 50%;
   background: #2e7d5b; color: #fff; font-size: 20px; font-weight: 700;

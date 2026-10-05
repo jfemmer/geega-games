@@ -135,9 +135,6 @@ body {
   color: #f7efff;
 }
 .ribbon-dot { background: #b84cff; }
-.launch {
-  background: linear-gradient(180deg, #fff, #f4edfa);
-}
 .footer {
   border-top: 2px solid #7900c9;
   box-shadow: 0 -8px 28px rgba(64,0,96,.12);

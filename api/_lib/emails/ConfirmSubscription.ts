@@ -2,6 +2,10 @@ import * as React from "react";
 import { Button, Heading, Link, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
 
+// The first email a new subscriber gets: confirm the address (double opt-in).
+// It repeats what the signup box promised (src/SignupForm.tsx) and what the
+// welcome email says (SubscriptionConfirmed.ts). Change them together.
+
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
 const h = (
@@ -33,7 +37,7 @@ export function ConfirmSubscription({
   return h(
     BaseLayout,
     {
-      previewText: "Confirm your email to get the Geega Games launch notice.",
+      previewText: "One click to join the Geega Games email list.",
       siteUrl,
       logoUrl,
       supportEmail,
@@ -44,7 +48,7 @@ export function ConfirmSubscription({
     h(
       Text,
       { style: p },
-      "Thanks for your interest in Geega Games. Confirm this address and we\u2019ll email you the moment the shop \u2014 and checkout \u2014 go live.",
+      "Thanks for joining the Geega Games email list. Confirm this address and we\u2019ll email you about new arrivals, discounts and the occasional crazy deal.",
     ),
     h(Button, { href: confirmUrl, style: button }, "Confirm my email"),
     h(
@@ -56,7 +60,7 @@ export function ConfirmSubscription({
     ),
     h(
       Text,
-      { style: small },
+      { style: note },
       `This link expires in ${expiresInHours} hours. If you didn\u2019t sign up, you can safely ignore this email \u2014 nothing will be sent.`,
     ),
   );
@@ -66,8 +70,8 @@ export function confirmSubscriptionText(p: ConfirmSubscriptionProps): string {
   return [
     "Confirm your email \u2014 Geega Games",
     "",
-    "Thanks for your interest in Geega Games. Confirm this address and we'll",
-    "email you the moment the shop and checkout go live.",
+    "Thanks for joining the Geega Games email list. Confirm this address and",
+    "we'll email you about new arrivals, discounts and the occasional crazy deal.",
     "",
     "Confirm your email:",
     p.confirmUrl,
@@ -108,6 +112,9 @@ const small: React.CSSProperties = {
   margin: "20px 0 0",
   wordBreak: "break-all",
 };
+// Ordinary sentences keep their words whole; only the pasted link above may
+// break mid-word (it has to, to fit a phone).
+const note: React.CSSProperties = { ...small, wordBreak: "normal" };
 const link: React.CSSProperties = {
   color: brand.purple,
   textDecoration: "underline",
