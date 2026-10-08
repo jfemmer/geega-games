@@ -229,13 +229,12 @@ How it works now:
   card's page, so it asks not to be indexed and the sitemap leaves it out (the
   same rule in both places). It's indexable again as soon as a second listing
   arrives.
-- **One host.** `geega-games.vercel.app` redirects permanently (308) to the
-  same page on `geega-games.com` (`vercel.json`, a host-scoped redirect, as
-  Vercel recommends). The API, the admin app and `/kiosk` are left alone
-  there: cron jobs and webhooks call the API, and the admin app and kiosk keep
-  their sign-in on the address they were opened at. `www.geega-games.com` is
-  redirected by the domain settings in Vercel, not by `vercel.json` (see
-  section 4b).
+- **One host.** Vercel itself answers every address on
+  `geega-games.vercel.app` with a permanent (301) redirect to the same address
+  on `geega-games.com`, query string included (checked 2026-10-08), so the
+  duplicate host needs nothing in `vercel.json`. `www.geega-games.com` is
+  redirected by the domain settings in Vercel too, but with a temporary 307
+  (see section 4b).
 - **Speed.** The fingerprinted files in `/assets/` are cached for a year
   (`immutable`; a changed file gets a new name). The logo is 600×480 and about
   60 KB (it was 1.7 MB, and it's on every page and in every email). The

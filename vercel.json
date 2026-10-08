@@ -8,12 +8,6 @@
     { "path": "/api/review-requests/process", "schedule": "41 15 * * *" }
   ],
   "redirects": [
-    {
-      "source": "/:path((?!api/|admin|kiosk).*)",
-      "has": [{ "type": "host", "value": "geega-games.vercel.app" }],
-      "destination": "https://geega-games.com/:path",
-      "permanent": true
-    },
     { "source": "/((?!api/).*)/", "destination": "/$1", "permanent": true },
     { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true },
     { "source": "/cards", "destination": "/shop", "permanent": true },

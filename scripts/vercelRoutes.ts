@@ -14,20 +14,9 @@
 import { pathToRegexp, type Key } from "path-to-regexp";
 import { APP_SHELL_ROUTES, CATALOG_ROUTES } from "../src/seo/appRoutes.js";
 
-/**
- * A condition on a rule (vercel.json "has"). Only "host" is modelled: a rule
- * with any other kind of condition is treated as never matching, so the
- * check can't credit a rule with more than it is sure the rule does.
- */
-export interface RuleCondition {
-  type: string;
-  key?: string;
-  value?: string;
-}
 export interface RewriteRule {
   source: string;
   destination: string;
-  has?: RuleCondition[];
 }
 export interface RedirectRule extends RewriteRule {
   permanent?: boolean;
@@ -36,7 +25,6 @@ export interface RedirectRule extends RewriteRule {
 export interface HeaderRule {
   source: string;
   headers: { key: string; value: string }[];
-  has?: RuleCondition[];
 }
 /** The parts of vercel.json that decide where a request goes. */
 export interface VercelRoutingConfig {
@@ -64,14 +52,6 @@ function compile(source: string): Compiled {
   return { matcher, keys };
 }
 
-/** The site's own address: what a request is for when a test or the build check names no host. */
-export const PRODUCTION_HOST = "geega-games.com";
-
-/** Whether a rule's "has" conditions hold for a request to `host`. */
-function conditionsHold(conditions: RuleCondition[] | undefined, host: string): boolean {
-  return (conditions ?? []).every((condition) => condition.type === "host" && condition.value === host);
-}
-
 /** Put what a source pattern captured into a destination: ":name" by name, "$1" by position. */
 function fill(destination: string, match: RegExpExecArray, keys: Key[]): string {
   return destination.replace(/\$(\d+)|:([A-Za-z_]\w*)\*?/g, (token, position: string, name: string) => {
@@ -88,20 +68,14 @@ function fill(destination: string, match: RegExpExecArray, keys: Key[]): string 
  *
  * `exists` says whether a file or function is at a path. Leave it out to ask
  * only what vercel.json itself says (every rewrite target is taken to exist).
- *
- * `route(path, { host })` asks about a request to another host name (the
- * vercel.app address, say); the site's own address is the default.
  */
 export function createRouter(config: VercelRoutingConfig, exists?: (path: string) => boolean) {
   const redirects = (config.redirects ?? []).map((rule) => ({ rule, ...compile(rule.source) }));
   const headerRules = (config.headers ?? []).map((rule) => ({ rule, ...compile(rule.source) }));
   const rewrites = (config.rewrites ?? []).map((rule) => ({ rule, ...compile(rule.source) }));
 
-  return function route(path: string, request: { host?: string } = {}): RouteResult {
-    const host = request.host ?? PRODUCTION_HOST;
-
+  return function route(path: string): RouteResult {
     for (const { rule, matcher, keys } of redirects) {
-      if (!conditionsHold(rule.has, host)) continue;
       const match = matcher.exec(path);
       if (!match) continue;
       const status = rule.statusCode ?? (rule.permanent ? 308 : 307);
@@ -110,7 +84,7 @@ export function createRouter(config: VercelRoutingConfig, exists?: (path: string
 
     const headers: Record<string, string> = {};
     for (const { rule, matcher } of headerRules) {
-      if (!conditionsHold(rule.has, host) || !matcher.test(path)) continue;
+      if (!matcher.test(path)) continue;
       for (const { key, value } of rule.headers) headers[key.toLowerCase()] = value;
     }
 
@@ -118,7 +92,6 @@ export function createRouter(config: VercelRoutingConfig, exists?: (path: string
 
     let current = path;
     for (const { rule, matcher, keys } of rewrites) {
-      if (!conditionsHold(rule.has, host)) continue;
       const match = matcher.exec(current);
       if (!match) continue;
       const destination = fill(rule.destination, match, keys);

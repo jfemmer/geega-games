@@ -235,43 +235,6 @@ describe("the old site's addresses", () => {
   });
 });
 
-describe("the vercel.app address", () => {
-  // Vercel gives the project geega-games.vercel.app as well as the real
-  // domain. Two addresses for the same pages split their search signals, so
-  // pages there move permanently to geega-games.com, as Vercel recommends:
-  // https://vercel.com/kb/guide/avoiding-duplicate-content-with-vercel-app-urls
-  const onVercelApp = (path: string) => route(path, { host: "geega-games.vercel.app" });
-
-  it("sends every page to the same page on geega-games.com, in one permanent hop", () => {
-    const cases: [string, string][] = [
-      ["/", "https://geega-games.com/"],
-      ["/shop", "https://geega-games.com/shop"],
-      ["/shop/card/force-of-will", "https://geega-games.com/shop/card/force-of-will"],
-      ["/sell-magic-cards/st-louis", "https://geega-games.com/sell-magic-cards/st-louis"],
-      ["/sitemap.xml", "https://geega-games.com/sitemap.xml"],
-    ];
-    for (const [from, to] of cases) {
-      expect(onVercelApp(from), from).toEqual({ type: "redirect", status: 308, location: to });
-    }
-  });
-
-  it("leaves alone what must keep answering there: the API, the admin app and the in-store kiosk", () => {
-    // Cron jobs and payment webhooks call the API; a redirect would break
-    // them. The admin app and the kiosk keep their sign-in on the address
-    // they were opened at (and the admin app its notifications).
-    for (const path of ["/api/indexnow", "/api/stripe/webhook", "/admin", "/admin_dashboard/orders", "/admin-sw.js", "/admin.webmanifest", "/kiosk"]) {
-      expect(onVercelApp(path).type, path).not.toBe("redirect");
-    }
-  });
-
-  it("changes nothing on geega-games.com itself", () => {
-    for (const path of ["/", "/shop", "/shop/card/force-of-will", "/sitemap.xml"]) {
-      expect(route(path).type, path).not.toBe("redirect");
-      expect(route(path, { host: "geega-games.com" }).type, path).not.toBe("redirect");
-    }
-  });
-});
-
 describe("caching", () => {
   it("keeps the app's fingerprinted files for a year: a changed file gets a new name", () => {
     // Vite names every file in /assets after a hash of its contents.
