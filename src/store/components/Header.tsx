@@ -145,7 +145,7 @@ export default function Header() {
     <header className="gg-header">
       <div className="gg-header-row">
         <Link to="/" aria-label="Geega Games home">
-          <img className="gg-logo" src="/logo.png" alt="Geega Games" />
+          <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />
         </Link>
 
         <div className="gg-header-search">

@@ -147,13 +147,24 @@ How it works now:
 - Card and set pages (`/shop/card/:slug`, `/shop/set/:code`) depend on live
   inventory, so they can't be prerendered. `api/catalog-page.ts` answers them:
   it looks the card or set up and writes the page's own title, description,
-  canonical, share-preview image (the card's picture) and `Product` JSON-LD
+  canonical, share-preview image (the card's picture) and product JSON-LD
   into the HTML before sending it, plus a plain summary for readers without
-  JavaScript. The tags come from `src/seo/catalog.ts`, the same builders the
-  React pages pass to `useSEO`, so the two can't disagree. A card that isn't
-  listed, or a set with nothing in stock, is a real **404**. Answers are
-  cached at Vercel's edge for five minutes. If the lookup fails, the page
-  falls back to the plain shell and the app loads it as before.
+  JavaScript (with the card's picture). The tags come from
+  `src/seo/catalog.ts`, the same builders the React pages pass to `useSEO`,
+  so the two can't disagree. A card that isn't listed, or a set with nothing
+  in stock, is a real **404**. Answers are cached at Vercel's edge for five
+  minutes. If the lookup fails, the page falls back to the plain shell and
+  the app loads it as before.
+- **Every copy for sale has its own address:** `/shop/card/<slug>?listing=<id>`
+  (the inventory item's id). It opens the card's page with that copy listed
+  first, marked "Selected", and its picture shown — what Google asks of a
+  product variant's address. The canonical address is still the card's own
+  page. The structured data and the product feed link each copy there.
+- A card page's HTML also tells the browser to start fetching the card's
+  picture straight away (`<link rel="preload">`, the same files the page's
+  `<img>` asks for), and the `<img>` has `fetchpriority="high"`: the picture
+  is the largest thing on a phone screen, so this is what makes it appear
+  sooner (Largest Contentful Paint).
 - App-only pages (login, account, checkout, order tracking… — the list is
   `APP_SHELL_ROUTES` in `src/seo/appRoutes.ts`) get `dist/spa.html`, a neutral
   shell with **no canonical**. The canonical that `useSEO` sets is then the
@@ -187,13 +198,50 @@ How it works now:
   homepage also gets `WebSite`, which gives Google the site name for results.
 - Sell pages: `Service` + `areaServed`, `BreadcrumbList`, `FAQPage`.
 - Guides: `Article` + `BreadcrumbList`.
-- Card pages: `Product` + `AggregateOffer` and `BreadcrumbList`, in the HTML
-  the server sends (`api/catalog-page.ts`). Set pages: `BreadcrumbList`.
+- Site-wide, on the same `OnlineStore`: **shipping** (`hasShippingService`:
+  plain envelope $1.50 and tracked $5.50 below $75, tracked free from $75,
+  handled within 2 business days, Monday–Saturday, US only) and **returns**
+  (`hasMerchantReturnPolicy`, a link to `/returns`: returns are for our
+  mistakes only, which none of the markup's return categories can say without
+  overstating it). Built from the same constants checkout and the policy pages
+  use (`src/store/lib/money.ts`, `src/store/lib/storePolicies.ts`). Google
+  shows these with products ("Free shipping"). Settings entered in Merchant
+  Center or Search Console outrank this markup; keep them identical.
+- Card pages: one **`Offer` per listing**, in the HTML the server sends
+  (`api/catalog-page.ts`) — a `Product` when one copy is for sale, a
+  `ProductGroup` with one variant `Product` per copy (own SKU, picture, price
+  and `?listing=` address) when there are several — plus `BreadcrumbList`.
+  Prices are numbers; condition is `UsedCondition` (see section 6). There is
+  no `AggregateOffer` (a price range): Google's merchant listings require an
+  `Offer` and say not to describe variants with `AggregateOffer`. A sold-out
+  card has no product markup (its page is `noindex`). Set pages:
+  `BreadcrumbList`.
 - `LocalBusiness` is deliberately not used: there's no walk-in address.
 
 **Other**
 - The sitemap is generated from the same route registry, and area pages and
-  guides carry `<lastmod>`.
+  guides carry `<lastmod>`. Card and set pages carry it too: the last time one
+  of their listings changed (`inventory_items.updated_at` — added, repriced,
+  sold down), never "now". Bump a content page's `lastmod` in
+  `src/seo/routes.ts` when its copy changes meaningfully.
+- **Thin set pages are `noindex`.** A set with fewer than 2 in-stock listings
+  (`MIN_INDEXABLE_SET_LISTINGS` in `src/seo/catalog.ts`) only repeats that
+  card's page, so it asks not to be indexed and the sitemap leaves it out (the
+  same rule in both places). It's indexable again as soon as a second listing
+  arrives.
+- **One host.** `geega-games.vercel.app` redirects permanently (308) to the
+  same page on `geega-games.com` (`vercel.json`, a host-scoped redirect, as
+  Vercel recommends). The API, the admin app and `/kiosk` are left alone
+  there: cron jobs and webhooks call the API, and the admin app and kiosk keep
+  their sign-in on the address they were opened at. `www.geega-games.com` is
+  redirected by the domain settings in Vercel, not by `vercel.json` (see
+  section 4b).
+- **Speed.** The fingerprinted files in `/assets/` are cached for a year
+  (`immutable`; a changed file gets a new name). The logo is 600×480 and about
+  60 KB (it was 1.7 MB, and it's on every page and in every email). The
+  favicons are PNGs of the dog head (16 to 192 pixels, plus `/favicon.ico`):
+  the old 3.8 MB SVG was downloaded by every browser that supports SVG icons,
+  and Google Search doesn't show SVG favicons at all.
 - `robots.txt` also blocks `/admin` and `/sell/offer` (private offer links).
 - The footer has a **Sell** column (collection, St. Louis, guides), so every
   page links to the sell pages.
@@ -266,14 +314,71 @@ for "st louis" and "near me" searches.
 
 ---
 
-## 4. Next technical steps (not done yet)
+## 4. Product feed: free listings on Google and Bing
 
-- **Google Merchant Center free listings.** Serve a product feed from
-  inventory (for example `/api/merchant-feed`) so in-stock singles appear on
-  the Shopping tab and in product results for card-name searches. This is the
-  biggest buy-side opportunity.
-- **Card page content in the HTML.** The tags and `Product` JSON-LD of
-  `/shop/card/:slug` are now written server-side (`api/catalog-page.ts`), which
+`https://geega-games.com/feeds/products.xml` (`api/merchant-feed.ts`,
+`api/_lib/merchantFeed.ts`) lists every copy for sale in the format Google
+Merchant Center reads (RSS 2.0, Google's `g:` attributes), and Microsoft
+Merchant Center reads the same file. With it, in-stock singles can show in
+the **free** product listings: Google Search, the Shopping tab, Images, and
+Bing's Shopping tab. It costs nothing; expect a little traffic at first, mostly
+for specific printings and older sets rather than popular card names.
+
+What's in each item: the listing's id, a title (card — Magic: The Gathering —
+set #number, condition, finish), a plain description of the card, the
+`?listing=` link, the Scryfall picture at the large size (672×936; Google's
+500×500 minimum applies from 2027-01-31), `in stock`, the price checkout
+charges, `condition` `used`, brand "Magic: The Gathering", `identifier_exists`
+`no` (singles have no barcode), and `item_group_id` (the card's oracle id)
+when a card has several copies for sale. Shipping and tax are **not** in the
+file: they're set once in each account. If the inventory can't be read in
+full the feed answers 503 rather than a short list, because Merchant Center
+removes every product missing from a fetched file.
+
+**Owner setup (one time):**
+1. **Search Console first**, if it isn't set up: add a *Domain* property for
+   `geega-games.com` (DNS verification), submit `/sitemap.xml`. Merchant
+   Center can then claim the site without another verification.
+2. **Google Merchant Center** (merchants.google.com): create the account for
+   Geega Games LLC; verify and claim `https://geega-games.com`; enter the
+   business details with the **real business address** (Google's
+   misrepresentation policy bans a false or virtual address; the site and the
+   Business Profile can still keep it hidden — check what Merchant Center
+   makes public before saving).
+3. **Shipping** (Settings → Shipping and returns): US only; handling 0–2
+   business days, Monday–Saturday; two services — "Plain white envelope" $1.50
+   for orders under $75, and "Tracked" $5.50 under $75 / free from $75. Add a
+   transit time only if you're comfortable promising it.
+4. **Returns:** return policy URL `https://geega-games.com/returns`, and the
+   "defective items only" option with the 14-day window if offered.
+5. **Tax:** add Missouri (and any other state where checkout collects sales
+   tax), matching what checkout charges.
+6. **Products → Add products → From a file → scheduled fetch** of
+   `https://geega-games.com/feeds/products.xml`, daily (choose an early-morning
+   hour). Check *Diagnostics* after the first fetch.
+7. **Microsoft Merchant Center** (in Microsoft Advertising): create a store
+   for `geega-games.com` (verify through Bing Webmaster Tools), then add a
+   feed by *scheduled download* of the same URL. Approved products show free
+   in Bing's Shopping tab.
+
+**Keeping it honest:** Merchant Center fetches at most once a day, so a single
+that sells can show as available until the next fetch. Google's "automatic
+item updates" (on by default) read each page's markup to correct price and
+availability in between; leave them on. If listings start getting
+"mismatched availability" warnings, the next step is the Merchant API (it
+replaces the Content API for Shopping, which reached its sunset on
+2026-08-18): update a product the moment it sells. That needs a Google Cloud
+project the owner creates.
+
+## 4b. Next technical steps (not done yet)
+
+- **www redirect status.** `www.geega-games.com` redirects to
+  `geega-games.com` with a *temporary* 307, which Google doesn't treat as a
+  canonical signal. In Vercel → Project → Settings → Domains →
+  `www.geega-games.com` → Edit, set the redirect to **308 Permanent**. (No
+  code can change this: domain redirects run before `vercel.json`.)
+- **Card page content in the HTML.** The tags and product JSON-LD of
+  `/shop/card/:slug` are written server-side (`api/catalog-page.ts`), which
   is what Google's merchant listing docs ask for. The visible page is still
   drawn by the app; only a plain `<noscript>` summary is in the HTML. Rendering
   the full card page on the server would give crawlers that don't run
@@ -363,6 +468,21 @@ turnaround or reply-time promises, until the owner confirms them (section 6).
 ## 6. Decisions for the owner
 
 These change what the pages should say. Update the copy once they're settled:
+
+- **Condition in Google's terms.** Listings are described to Google as
+  `used` (feed) / `UsedCondition` (page markup). Google's `new` means "in its
+  original packaging, and has not been opened", which a loose single isn't,
+  whatever its grade; the grade (Near Mint…) is in every listing's title. One
+  constant changes both: `LISTING_CONDITION` in `src/seo/catalog.ts`.
+- **Card pictures.** Listings use Scryfall's scans, which show the card, not
+  the copy. Google asks for "the exact item being sold"; for Near Mint copies
+  that's close, for played copies and foils less so. Real photos of played or
+  expensive copies would be the safer choice over time. Scryfall's terms
+  cover "community content" and say nothing about shops.
+- **TCGplayer stays separate.** TCGplayer's seller agreement bars steering
+  marketplace buyers to another site and marketing to them (inserts, emails),
+  on pain of suspension. Don't put the website in TCGplayer orders, and don't
+  add TCGplayer buyers to the email list.
 
 - **Cash at meetups?** Pages say PayPal Goods & Services or store credit,
   because that's what the offer flow supports. "Sell magic cards for cash" is

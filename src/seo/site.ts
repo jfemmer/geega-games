@@ -2,6 +2,9 @@
 // prerender (scripts/prerender.ts) and /api/sitemap. Keep this module pure —
 // no React, no DOM, no import.meta.env — so all three can import it.
 
+import { SHIPPING } from "../store/lib/money.js";
+import { SHIPPING_DAYS, SHIPS_WITHIN_BUSINESS_DAYS } from "../store/lib/storePolicies.js";
+
 /** Canonical production origin. Canonical URLs and the sitemap always use this. */
 export const PRODUCTION_ORIGIN = "https://geega-games.com";
 
@@ -105,6 +108,96 @@ export const SAME_AS: string[] = [GOOGLE_MAPS_URL, TCGPLAYER_SELLER_URL];
 
 export const PUBLIC_EMAIL = "support@geega-games.com";
 
+// ---- Shipping and returns, for search engines -------------------------------
+// Google reads a store's shipping rates, handling time and return policy from
+// its Organization markup and shows them with its products ("Free shipping",
+// "$1.50 shipping"):
+//   https://developers.google.com/search/docs/appearance/structured-data/shipping-policy
+//   https://developers.google.com/search/docs/appearance/structured-data/return-policy
+// Built from the same constants checkout and the policy pages use
+// (src/store/lib/money.ts, src/store/lib/storePolicies.ts), so they can't
+// disagree. Settings entered in Merchant Center or Search Console take
+// precedence over this markup; keep them the same.
+
+const dollars = (cents: number): number => Number((cents / 100).toFixed(2));
+
+const SHIPS_TO = { "@type": "DefinedRegion", addressCountry: "US" };
+
+/** Orders go out within SHIPS_WITHIN_BUSINESS_DAYS, Monday to Saturday. No transit time is promised on the site, so none is stated here. */
+const HANDLING_TIME = {
+  "@type": "ServicePeriod",
+  businessDays: {
+    "@type": "OpeningHoursSpecification",
+    dayOfWeek: SHIPPING_DAYS.map((day) => `https://schema.org/${day}`),
+  },
+  duration: { "@type": "QuantitativeValue", minValue: 0, maxValue: SHIPS_WITHIN_BUSINESS_DAYS, unitCode: "DAY" },
+};
+
+/** Card subtotals below the free-shipping line, and at or above it. */
+const BELOW_FREE_SHIPPING = {
+  "@type": "MonetaryAmount",
+  minValue: 0,
+  maxValue: dollars(SHIPPING.freeShippingThresholdCents - 1),
+  currency: "USD",
+};
+const FREE_SHIPPING_FROM = {
+  "@type": "MonetaryAmount",
+  minValue: dollars(SHIPPING.freeShippingThresholdCents),
+  currency: "USD",
+};
+
+const rate = (cents: number) => ({ "@type": "MonetaryAmount", value: dollars(cents), currency: "USD" });
+
+/**
+ * The two ways an order ships (checkout_place_order_core decides the charge):
+ * a plain white envelope, offered below the free-shipping line, and tracked
+ * shipping, which is free at or above it. Google shows the lowest rate that
+ * applies to a product's price.
+ */
+export const SHIPPING_SERVICES_JSON_LD: object[] = [
+  {
+    "@type": "ShippingService",
+    name: "Plain white envelope (untracked)",
+    handlingTime: HANDLING_TIME,
+    shippingConditions: {
+      "@type": "ShippingConditions",
+      shippingDestination: SHIPS_TO,
+      orderValue: BELOW_FREE_SHIPPING,
+      shippingRate: rate(SHIPPING.pweCents),
+    },
+  },
+  {
+    "@type": "ShippingService",
+    name: "Tracked shipping",
+    handlingTime: HANDLING_TIME,
+    shippingConditions: [
+      {
+        "@type": "ShippingConditions",
+        shippingDestination: SHIPS_TO,
+        orderValue: BELOW_FREE_SHIPPING,
+        shippingRate: rate(SHIPPING.trackedCents),
+      },
+      {
+        "@type": "ShippingConditions",
+        shippingDestination: SHIPS_TO,
+        orderValue: FREE_SHIPPING_FROM,
+        shippingRate: rate(0),
+      },
+    ],
+  },
+];
+
+/**
+ * Returns are for our mistakes only (wrong condition, wrong or missing card,
+ * damage in transit), which none of the markup's return categories can say
+ * without overstating it — so the policy is given as a link to the page that
+ * explains it, the form Google accepts for that.
+ */
+export const RETURN_POLICY_JSON_LD: object = {
+  "@type": "MerchantReturnPolicy",
+  merchantReturnLink: `${PRODUCTION_ORIGIN}/returns`,
+};
+
 /**
  * Site-wide business entity, emitted on every prerendered page and the SPA
  * shell. Only verified business facts: add telephone once it's real and
@@ -131,6 +224,8 @@ export const SITE_JSON_LD: object = {
     "Trading card collections",
     "Trading card grading and condition",
   ],
+  hasShippingService: SHIPPING_SERVICES_JSON_LD,
+  hasMerchantReturnPolicy: RETURN_POLICY_JSON_LD,
 };
 
 /**

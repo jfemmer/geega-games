@@ -34,7 +34,8 @@ export interface SeoRoute {
 const SEO_REFRESH = "2026-09-26";
 
 const STATIC_ROUTES: SeoRoute[] = [
-  { path: "/", changefreq: "daily", priority: "1.0", lastmod: SEO_REFRESH },
+  // 2026-10-05: the email-list signup replaced the launch notice.
+  { path: "/", changefreq: "daily", priority: "1.0", lastmod: "2026-10-05" },
   { path: "/shop", changefreq: "daily", priority: "0.9" },
   { path: "/shop/sets", changefreq: "weekly", priority: "0.7" },
   { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: SEO_REFRESH },
@@ -43,7 +44,8 @@ const STATIC_ROUTES: SeoRoute[] = [
   { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: SEO_REFRESH },
   { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: SEO_REFRESH },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
-  { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: "2026-10-02" },
+  // 2026-10-05: "Where we ship" (the United States only).
+  { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: "2026-10-05" },
   { path: "/returns", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/contact", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/privacy", changefreq: "yearly", priority: "0.1" },

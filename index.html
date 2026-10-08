@@ -4,8 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Favicons (files exist in /public) -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Favicons (files exist in /public). PNG, not SVG: Google Search shows
+         a site's icon only in BMP, GIF, ICO, PNG, JPEG, PPM or TIFF, and
+         prefers one larger than 48x48. /favicon.ico (16, 32 and 48) is
+         there for clients that ask for it without a link. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

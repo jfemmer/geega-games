@@ -23,6 +23,7 @@ import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { SHIPPING, formatCents, formatCentsShort } from "../lib/money";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
 import { SHIPS_TO_SUMMARY } from "../lib/usAddress";
+import { REPLY_WITHIN_HOURS, RETURN_WINDOW_DAYS, SHIPS_WITHIN_BUSINESS_DAYS } from "../lib/storePolicies";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -94,15 +95,9 @@ export function HomePage() {
   );
 }
 
-// Store policies (owner-approved 2026-09-26): 14-day window to report a
-// problem; Geega pays return shipping when a card's condition was listed
-// wrong; orders ship within 2 business days (Mon–Sat — no Sunday post);
-// email replies within 24 hours; photos of the actual card on request for
-// cards $5 and up (2026-09-27; see PHOTO_REQUEST_MIN_PRICE_CENTS).
-// Change these constants, not the page copy, if a policy changes.
-export const RETURN_WINDOW_DAYS = 14;
-export const SHIPS_WITHIN_BUSINESS_DAYS = 2;
-export const REPLY_WITHIN_HOURS = 24;
+// Store policies (return window, handling time, reply time) live in
+// src/store/lib/storePolicies.ts, so the site's structured data can state the
+// same numbers these pages show. Change them there, not in the page copy.
 
 export function ConditionGuidePage() {
   useSEO({

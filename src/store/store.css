@@ -4853,6 +4853,20 @@
   border-radius: 10px;
   background: #fdfcfe;
 }
+/* The copy a ?listing= address asked for (a link from Google Shopping, say). */
+.gg-card-detail__listing--selected {
+  border-color: var(--gg-purple-2);
+  box-shadow: 0 0 0 1px var(--gg-purple-2);
+  background: #faf7ff;
+}
+.gg-card-detail__selectedtag {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gg-purple-2);
+}
 .gg-card-detail__listingmeta {
   display: flex;
   flex-direction: column;

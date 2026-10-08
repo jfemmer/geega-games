@@ -8,6 +8,12 @@
     { "path": "/api/review-requests/process", "schedule": "41 15 * * *" }
   ],
   "redirects": [
+    {
+      "source": "/:path((?!api/|admin|kiosk).*)",
+      "has": [{ "type": "host", "value": "geega-games.vercel.app" }],
+      "destination": "https://geega-games.com/:path",
+      "permanent": true
+    },
     { "source": "/((?!api/).*)/", "destination": "/$1", "permanent": true },
     { "source": "/sell-magic-cards", "destination": "/sell-my-collection", "permanent": true },
     { "source": "/cards", "destination": "/shop", "permanent": true },
@@ -27,6 +33,10 @@
     { "source": "/images/logo.png", "destination": "/logo.png", "permanent": true }
   ],
   "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
     { "source": "/login", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/signup", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/forgot-password", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
@@ -45,6 +55,7 @@
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },
+    { "source": "/feeds/products.xml", "destination": "/api/merchant-feed" },
     { "source": "/shop", "destination": "/shop/index.html" },
     { "source": "/shop/sets", "destination": "/shop/sets/index.html" },
     { "source": "/sell", "destination": "/sell/index.html" },

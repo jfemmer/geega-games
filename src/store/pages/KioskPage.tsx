@@ -422,7 +422,7 @@ export default function KioskPage() {
 function KioskTopBar() {
   return (
     <div className="gg-kiosk-topbar">
-      <img className="gg-logo" src="/logo.png" alt="Geega Games" />
+      <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />
       <div>
         <h1>Find your cards</h1>
         <p className="gg-card-meta">

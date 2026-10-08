@@ -195,6 +195,44 @@ describe("a card page", () => {
     expect(res.headers["x-gg-address"]).toBe("query");
     expect(res.body).toContain("<title>Orcish Bowmasters — Buy");
   });
+
+  it("opens at the copy a ?listing= address names, under the card's own canonical address", async () => {
+    const FOIL = "c031c54e-8b7d-4a52-a0e3-6f2d9c4b7a22";
+    state.rpc.get_card_detail = {
+      data: {
+        ...CARD,
+        oracleId: "ea5103f5-27e0-4eb1-902c-7f34652d6bf3",
+        inStockCount: 2,
+        maxPriceCents: 4700,
+        listings: [
+          { ...CARD.listings[0], id: "07e03967-5c4a-4f0e-9d1b-2a7c1f0e9b11" },
+          {
+            ...CARD.listings[0],
+            id: FOIL,
+            collectorNumber: "433",
+            finish: "foil",
+            imageUrl: "https://cards.scryfall.io/large/front/d/e/de2de055.jpg?2",
+            priceCents: 4700,
+          },
+        ],
+      },
+      error: null,
+    };
+    const res = await call(`/shop/card/orcish-bowmasters?listing=${FOIL}&kind=card&slug=orcish-bowmasters`);
+
+    expect(res.statusCode).toBe(200);
+    // One page, whichever copy is chosen: the card's own address and the same lookup.
+    expect(res.body).toContain('<link rel="canonical" href="https://geega-games.com/shop/card/orcish-bowmasters" />');
+    expect(state.calls.map((c) => [c.name, c.args])).toEqual([["get_card_detail", { p_slug: "orcish-bowmasters" }]]);
+    // The chosen copy's picture is fetched early, and it's listed first.
+    expect(res.body).toContain('<link rel="preload" as="image" href="https://cards.scryfall.io/large/front/d/e/de2de055.jpg?2"');
+    const summary = res.body?.slice(res.body.indexOf("<noscript>")) ?? "";
+    expect(summary.indexOf("#433")).toBeGreaterThan(-1);
+    expect(summary.indexOf("#433")).toBeLessThan(summary.indexOf("#103"));
+    // Every copy is offered in the structured data, each at its own address.
+    expect(res.body).toContain(`"url":"https://geega-games.com/shop/card/orcish-bowmasters?listing=${FOIL}"`);
+    expect(res.body).not.toContain("AggregateOffer");
+  });
 });
 
 describe("a set page", () => {

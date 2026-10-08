@@ -20,7 +20,7 @@ export default function Footer() {
             src="/logo.png"
             alt="Geega Games"
             width={140}
-            height={124}
+            height={112}
             className="footer-logo"
           />
           <p className="footer-tagline">{SITE.tagline}</p>

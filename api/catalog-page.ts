@@ -26,9 +26,13 @@ import {
 //
 // So this fills the shell in per request: the page's own title, description,
 // canonical URL, share-preview image and structured data (from the same
-// builders the React pages use — src/seo/catalog.ts), plus a plain summary
-// for readers without JavaScript. The app then starts exactly as before and
-// renders the page; nothing about how it looks or works changes.
+// builders the React pages use — src/seo/catalog.ts), an early fetch of the
+// card's picture, plus a plain summary for readers without JavaScript. The
+// app then starts exactly as before and renders the page; nothing about how
+// it looks or works changes.
+//
+//   * A card page's ?listing=<id> address (one per copy for sale, used by
+//     the structured data and the product feed) puts that copy first.
 //
 //   * A card that isn't listed, or a set with nothing in stock, is a real 404.
 //   * It reads through the publishable key — the same public functions, under
@@ -56,7 +60,7 @@ async function lookUp(request: CatalogRequest): Promise<CatalogPage> {
   if (request.kind === "card") {
     const { data, error } = await db.rpc("get_card_detail", { p_slug: request.slug }).abortSignal(signal);
     if (error) throw new Error(error.message);
-    return buildCardPage(request.slug, toCardDetail(data));
+    return buildCardPage(request.slug, toCardDetail(data), request.listing ?? null);
   }
 
   // The same two calls the set page makes in the browser (ShopSetPage.tsx).

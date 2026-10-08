@@ -1,8 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
-import { slugifyCardName } from "../src/store/lib/cardSlug.js";
+import {
+  SITE_URL,
+  catalogEntries,
+  urlEntry,
+  type SitemapInventoryRow,
+  type SitemapSetRow,
+} from "./_lib/sitemapCatalog.js";
 import { seoRoutes } from "../src/seo/routes.js";
-import { PRODUCTION_ORIGIN } from "../src/seo/site.js";
 
 // GET /sitemap.xml — rewritten here from the site root by vercel.json.
 //
@@ -15,29 +20,19 @@ import { PRODUCTION_ORIGIN } from "../src/seo/site.js";
 // public.get_card_detail for the RPC both call — the slug here must match
 // that RPC's own slugify logic.
 //
+// Card and set pages carry <lastmod>: when one of their listings last
+// changed (added, repriced, sold down — inventory_items.updated_at). Bing
+// calls lastmod a key signal and asks that it be the page's real
+// modification time, and Google uses it once it's consistently accurate, so
+// it is never "now":
+//   https://blogs.bing.com/webmaster/2025/7/Keeping-Content-Discoverable-with-Sitemaps-in-AI-Powered-Search
+//   https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap
+//
 // Falls back to the static-only list on any DB error rather than failing
 // the request: an incomplete sitemap is far less harmful to crawlability
 // than an unreachable one.
 
-const SITE_URL = PRODUCTION_ORIGIN;
-const MAX_CARD_URLS = 5000;
-
-function xmlEscape(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function urlEntry(loc: string, changefreq: string, priority: string, lastmod?: string): string {
-  return [
-    "  <url>",
-    `    <loc>${xmlEscape(loc)}</loc>`,
-    lastmod ? `    <lastmod>${lastmod}</lastmod>` : "",
-    `    <changefreq>${changefreq}</changefreq>`,
-    `    <priority>${priority}</priority>`,
-    "  </url>",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
+const MAX_INVENTORY_ROWS = 10000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -48,50 +43,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const entries = seoRoutes().map((p) => urlEntry(`${SITE_URL}${p.path}`, p.changefreq, p.priority, p.lastmod));
 
+  let rows: SitemapInventoryRow[] = [];
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("inventory_items")
-      .select("card_name, oracle_id, created_at")
+      .select("card_name, oracle_id, set_code, quantity, updated_at")
       .eq("status", "active")
-      .gt("quantity", 0)
-      // A card page is looked up by oracle id (public.get_card_detail); an
-      // item without one has no page, and a sitemap must not list a 404.
       .not("oracle_id", "is", null)
       .order("created_at", { ascending: false })
-      .limit(MAX_CARD_URLS);
-
+      .limit(MAX_INVENTORY_ROWS);
     if (error) throw error;
-
-    const seen = new Set<string>();
-    for (const row of data ?? []) {
-      const cardName = row.card_name;
-      if (!cardName) continue;
-      const dedupeKey = row.oracle_id ?? cardName;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-      const slug = slugifyCardName(cardName);
-      if (!slug) continue;
-      entries.push(urlEntry(`${SITE_URL}/shop/card/${slug}`, "weekly", "0.6"));
-    }
+    rows = (data ?? []) as SitemapInventoryRow[];
   } catch (err) {
     console.error("[/sitemap.xml] DB lookup failed, serving static pages only:", err);
   }
 
-  // Set pages: only ones with real depth (2+ cards) are worth asking Google
-  // to crawl on their own — a single-card set page is still reachable from
-  // /shop/sets for a real visitor, just not submitted as a dedicated URL.
+  let sets: SitemapSetRow[] | null = null;
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.rpc("shop_sets_with_counts");
     if (error) throw error;
-    for (const row of (data ?? []) as { set_code: string; card_count: number }[]) {
-      if (row.card_count < 2) continue;
-      entries.push(urlEntry(`${SITE_URL}/shop/set/${row.set_code.toLowerCase()}`, "weekly", "0.5"));
-    }
+    sets = (data ?? []) as SitemapSetRow[];
   } catch (err) {
     console.error("[/sitemap.xml] set lookup failed, omitting set pages:", err);
   }
+
+  entries.push(...catalogEntries(rows, sets));
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>\n`;
 

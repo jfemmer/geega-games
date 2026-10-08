@@ -92,6 +92,38 @@ describe("parseCatalogRequest", () => {
     });
   });
 
+  it("reads which copy a card's address asks for (?listing=), and nothing else from the query", () => {
+    const id = "07e03967-5c4a-4f0e-9d1b-2a7c1f0e9b11";
+    expect(parse(`/shop/card/sol-ring?listing=${id}&kind=card&slug=sol-ring`)).toEqual({
+      type: "page",
+      request: { kind: "card", slug: "sol-ring", listing: id },
+      source: "path",
+    });
+    expect(parse(`/shop/card/sol-ring?utm_source=x&listing=${id.toUpperCase()}`)).toMatchObject({
+      request: { listing: id },
+    });
+    // Anything that isn't a listing id: the card's own page, as if it weren't there.
+    for (const junk of ["<script>", "1", "", `${id}x`]) {
+      expect(parse(`/shop/card/sol-ring?listing=${encodeURIComponent(junk)}`), junk).toEqual({
+        type: "page",
+        request: { kind: "card", slug: "sol-ring" },
+        source: "path",
+      });
+    }
+    // Read from the rewrite's query when the path doesn't show the address.
+    expect(parse("/api/catalog-page", { kind: "card", slug: "sol-ring", listing: id })).toMatchObject({
+      request: { kind: "card", slug: "sol-ring", listing: id },
+      source: "query",
+    });
+    // A set page has no copies to choose between.
+    expect(parse(`/shop/set/ltr?listing=${id}`)).toEqual({ type: "page", request: { kind: "set", code: "ltr" }, source: "path" });
+    // And it survives the move to the lower-case address.
+    expect(parse(`/shop/card/Sol-Ring?listing=${id}`)).toMatchObject({
+      type: "redirect",
+      location: `/shop/card/sol-ring?listing=${id}`,
+    });
+  });
+
   it("understands a percent-encoded address", () => {
     expect(parse("/shop/card/sol%2Dring")).toMatchObject({ type: "page", request: { kind: "card", slug: "sol-ring" } });
   });
@@ -180,6 +212,7 @@ describe("toCardDetail", () => {
   it("keeps what a page needs from a real answer", () => {
     const detail = toCardDetail(DETAIL_JSON);
     expect(detail).toMatchObject({
+      oracleId: "ea5103f5-27e0-4eb1-902c-7f34652d6bf3",
       cardName: "Orcish Bowmasters",
       typeLine: "Creature — Orc Archer",
       inStockCount: 2,
@@ -188,7 +221,7 @@ describe("toCardDetail", () => {
     });
     expect(detail?.listings).toHaveLength(2);
     // An empty string from the database is "nothing", not a label to print.
-    expect(detail?.listings[0]).toMatchObject({ setCode: "LTR", variantType: null, priceCents: 4100 });
+    expect(detail?.listings[0]).toMatchObject({ id: "07e03967", setCode: "LTR", variantType: null, priceCents: 4100 });
     expect(detail?.listings[1]).toMatchObject({ finish: "foil", variantType: "Borderless" });
   });
 
@@ -202,7 +235,7 @@ describe("toCardDetail", () => {
     const detail = toCardDetail({ cardName: "Sol Ring", listings: [null, "x", { priceCents: "12" }, { priceCents: 150.4 }] });
     expect(detail).toMatchObject({ cardName: "Sol Ring", inStockCount: 2, minPriceCents: null, typeLine: null });
     expect(detail?.listings).toEqual([
-      expect.objectContaining({ condition: "NM", finish: "nonfoil", priceCents: null, imageUrl: null }),
+      expect.objectContaining({ id: null, condition: "NM", finish: "nonfoil", priceCents: null, imageUrl: null }),
       expect.objectContaining({ priceCents: 150 }),
     ]);
     expect(toCardDetail({ cardName: "Sol Ring", listings: "nope" })?.listings).toEqual([]);
@@ -276,6 +309,52 @@ describe("buildCardPage", () => {
     );
   });
 
+  it("starts fetching the card's picture with the HTML — the same files the page's <img> asks for", () => {
+    expect(page.headHtml).toBe(
+      '<link rel="preload" as="image" href="https://cards.scryfall.io/large/front/7/c/7c024bae.jpg?1783916299"' +
+        ' imagesrcset="https://cards.scryfall.io/normal/front/7/c/7c024bae.jpg?1783916299 488w, https://cards.scryfall.io/large/front/7/c/7c024bae.jpg?1783916299 672w"' +
+        ' imagesizes="(max-width: 640px) 80vw, 360px" fetchpriority="high" />',
+    );
+  });
+
+  it("shows the picture to readers without JavaScript", () => {
+    expect(page.summaryHtml).toContain(
+      '<h1>Orcish Bowmasters</h1><p><img src="https://cards.scryfall.io/large/front/7/c/7c024bae.jpg?1783916299" alt="Orcish Bowmasters" width="244" height="340" /></p>',
+    );
+  });
+
+  it("lists the copy a ?listing= address asks for first, with its picture", () => {
+    const chosen = buildCardPage("orcish-bowmasters", toCardDetail(DETAIL_JSON), "c031c54e");
+    const html = chosen.summaryHtml;
+    expect(html.indexOf("#433")).toBeGreaterThan(-1);
+    expect(html.indexOf("#433")).toBeLessThan(html.indexOf("#103"));
+    expect(html).toContain('<img src="https://cards.scryfall.io/large/front/d/e/de2de055.jpg?1783916154"');
+    expect(chosen.headHtml).toContain('href="https://cards.scryfall.io/large/front/d/e/de2de055.jpg?1783916154"');
+    // The same tags as the card's own page: it is one page, whichever copy is chosen.
+    expect(chosen.seo).toEqual(page.seo);
+    // A copy that has since sold: the card's own page.
+    expect(buildCardPage("orcish-bowmasters", toCardDetail(DETAIL_JSON), "sold-one")).toEqual(page);
+  });
+
+  it("fetches nothing early when there's no picture to show", () => {
+    const noPicture = toCardDetail({ ...DETAIL_JSON, listings: [{ ...DETAIL_JSON.listings[0], imageUrl: null }] });
+    expect(buildCardPage("orcish-bowmasters", noPicture).headHtml).toBe("");
+    expect(buildCardPage("orcish-bowmasters", noPicture).summaryHtml).not.toContain("<img");
+    const soldOut = toCardDetail({ ...DETAIL_JSON, listings: [], inStockCount: 0 });
+    expect(buildCardPage("orcish-bowmasters", soldOut).headHtml).toBe("");
+    expect(buildCardPage("not-a-card", null).headHtml).toBeUndefined();
+  });
+
+  it("describes each copy for sale to search engines, at its own address", () => {
+    const group = (page.seo.jsonLd as Record<string, unknown>[])[1];
+    expect(group).toMatchObject({ "@type": "ProductGroup", productGroupID: "ea5103f5-27e0-4eb1-902c-7f34652d6bf3" });
+    const offers = (group.hasVariant as { offers: { url: string; price: number } }[]).map((v) => v.offers);
+    expect(offers.map((o) => [o.url, o.price])).toEqual([
+      ["https://geega-games.com/shop/card/orcish-bowmasters?listing=07e03967", 41],
+      ["https://geega-games.com/shop/card/orcish-bowmasters?listing=c031c54e", 47],
+    ]);
+  });
+
   it("links to the set page once per set, and to the shop", () => {
     const html = page.summaryHtml;
     expect(html.match(/href="\/shop\/set\/ltr"/g)).toHaveLength(1);
@@ -336,6 +415,15 @@ describe("buildCardPage", () => {
     );
     const html = hostile.summaryHtml;
     expect(html).not.toMatch(/<script|<b>|<i>|<u>|<em>|<s>|<a>variant/);
+    const pictured = buildCardPage(
+      "x",
+      toCardDetail({ cardName: '"><script>', listings: [{ id: "1", imageUrl: 'https://x.example/a.jpg?"><script>', priceCents: 100 }] }),
+    );
+    // A picture address can't end the attribute it's written into.
+    expect(pictured.headHtml).toContain('href="https://x.example/a.jpg?&quot;&gt;&lt;script&gt;"');
+    expect(pictured.summaryHtml).toContain('src="https://x.example/a.jpg?&quot;&gt;&lt;script&gt;"');
+    expect(pictured.summaryHtml).toContain('alt="&quot;&gt;&lt;script&gt;"');
+    for (const part of [pictured.headHtml, pictured.summaryHtml]) expect(part).not.toContain("<script");
     expect(html.match(/<\/noscript>/g)).toHaveLength(1);
     expect(html).toContain("&lt;script&gt;alert(&quot;name&quot;)&lt;/script&gt;");
     // A set code that isn't a real code never becomes a link.
@@ -372,6 +460,11 @@ describe("buildSetPage", () => {
     expect(page.status).toBe(200);
     expect(page.summaryHtml).toContain("<p>1 listing in stock.</p>");
     expect(page.summaryHtml).not.toContain("<ul>");
+  });
+
+  it("asks not to be indexed while only one listing from the set is in stock", () => {
+    expect(buildSetPage("ltr", { ...SET, card_count: 1 }, []).seo).toMatchObject({ path: "/shop/set/ltr", noIndex: true });
+    expect(buildSetPage("ltr", SET, CARDS).seo.noIndex).toBe(false);
   });
 
   it("lists at most the first hundred cards", () => {
@@ -450,6 +543,12 @@ describe("renderCatalogHtml", () => {
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
     const outsideHead = (page: string) => page.slice(page.indexOf("<!--/seo-head-->"));
     expect(outsideHead(html).replace(/<div id="root">.*<\/div>\n/s, '<div id="root"></div>\n')).toBe(outsideHead(SHELL));
+  });
+
+  it("starts the card's picture early from the head, once", () => {
+    const head = html.slice(html.indexOf("<!--seo-head-->"), html.indexOf("<!--/seo-head-->"));
+    expect(head.match(/<link rel="preload" as="image"/g)).toHaveLength(1);
+    expect(html.match(/<link rel="preload" as="image" href="https:\/\/cards\.scryfall\.io/g)).toHaveLength(1);
   });
 
   it("puts the summary inside the app's root, where the app replaces it on start", () => {

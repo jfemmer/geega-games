@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "../lib/router";
+import { Link, useRouter } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
-import { cardPageSeo } from "../../seo/catalog";
+import { LISTING_PARAM, cardPageSeo, readListingId, withSelectedFirst } from "../../seo/catalog";
 import { useCart } from "../lib/CartContext";
 import { supabase, isSupabaseConfigured } from "../../supabase";
-import { storefrontImageUrl, scryfallSrcSet } from "../../cards";
+import { CARD_HERO_SIZES, cardHeroImage } from "../lib/cardImages";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
@@ -20,6 +20,10 @@ import { authLinkWithReturn } from "../lib/authRedirect";
 // in-stock printing/condition — see public.get_card_detail), distinct from
 // /shop's single browse-everything grid. This is what lets a specific-card
 // search ("buy <card name>") land somewhere more useful than the homepage.
+//
+// Each copy for sale also has its own address, ?listing=<id> (the structured
+// data and the product feed link to it): that copy is listed first,
+// highlighted, and its picture is the one shown.
 
 type CardListing = {
   id: string;
@@ -76,6 +80,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   const [notifyError, setNotifyError] = useState<string | null>(null);
   const [photoRequestFor, setPhotoRequestFor] = useState<string | null>(null);
   const { user } = useAuth();
+  const selectedId = readListingId(useRouter().query.get(LISTING_PARAM));
 
   useEffect(() => {
     let active = true;
@@ -159,7 +164,9 @@ export default function CardDetailPage({ slug }: { slug: string }) {
     );
   }
 
-  const hero = detail.listings[0] ?? null;
+  const listings = withSelectedFirst(detail.listings, selectedId);
+  const hero = listings[0] ?? null;
+  const heroImage = cardHeroImage(hero?.imageUrl ?? null);
 
   return (
     <div className="gg-page gg-card-detail">
@@ -170,14 +177,17 @@ export default function CardDetailPage({ slug }: { slug: string }) {
 
       <div className="gg-card-detail__layout">
         <div className="gg-card-detail__image">
-          {hero?.imageUrl ? (
+          {heroImage ? (
+            // The server starts fetching this exact picture with the page's
+            // HTML (api/_lib/catalogPage.ts); it's the largest thing on screen.
             <img
-              src={storefrontImageUrl(hero.imageUrl) ?? hero.imageUrl}
-              srcSet={scryfallSrcSet(hero.imageUrl) ?? undefined}
-              sizes="(max-width: 640px) 80vw, 360px"
+              src={heroImage.src}
+              srcSet={heroImage.srcSet ?? undefined}
+              sizes={CARD_HERO_SIZES}
               alt={detail.cardName}
               width={488}
               height={680}
+              fetchPriority="high"
             />
           ) : (
             <div
@@ -242,13 +252,22 @@ export default function CardDetailPage({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {detail.listings.length > 0 ? (
+      {listings.length > 0 ? (
         <div className="gg-card-detail__listings">
           <h2>Available listings</h2>
           <ul className="gg-card-detail__listinglist">
-            {detail.listings.map((l) => (
-              <li key={l.id} className="gg-card-detail__listing">
+            {listings.map((l) => (
+              <li
+                key={l.id}
+                className={
+                  l.id === selectedId
+                    ? "gg-card-detail__listing gg-card-detail__listing--selected"
+                    : "gg-card-detail__listing"
+                }
+                aria-current={l.id === selectedId ? "true" : undefined}
+              >
                 <span className="gg-card-detail__listingmeta">
+                  {l.id === selectedId && <span className="gg-card-detail__selectedtag">Selected</span>}
                   <span className="gg-card-detail__listingset">
                     {l.setName ?? l.setCode?.toUpperCase()}
                     {l.collectorNumber ? ` · #${l.collectorNumber}` : ""}

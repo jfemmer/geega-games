@@ -1,6 +1,15 @@
-import { cardPagePath, cardPageSeo, setPagePath, setPageSeo } from "../../src/seo/catalog.js";
+import {
+  LISTING_PARAM,
+  cardPagePath,
+  cardPageSeo,
+  readListingId,
+  setPagePath,
+  setPageSeo,
+  withSelectedFirst,
+} from "../../src/seo/catalog.js";
 import { escapeHtml, renderSeoHead, type PageSEO } from "../../src/seo/head.js";
 import { refillShell } from "../../src/seo/template.js";
+import { CARD_HERO_SIZES, cardHeroImage } from "../../src/store/lib/cardImages.js";
 import { slugifyCardName } from "../../src/store/lib/cardSlug.js";
 import { CONDITION_LABELS } from "../../src/store/lib/conditionLabels.js";
 import { formatCents } from "../../src/store/lib/money.js";
@@ -16,7 +25,10 @@ import { formatCents } from "../../src/store/lib/money.js";
 // ---- The address -----------------------------------------------------------
 
 export type CatalogKind = "card" | "set";
-export type CatalogRequest = { kind: "card"; slug: string } | { kind: "set"; code: string };
+export type CatalogRequest =
+  // `listing`: the copy a ?listing= address asks to see first (see src/seo/catalog.ts).
+  | { kind: "card"; slug: string; listing?: string }
+  | { kind: "set"; code: string };
 
 /**
  * Where the address was read from: the request's own path ("path"), or the
@@ -70,6 +82,8 @@ interface RawAddress {
   raw: string;
   /** The visitor's own query string ("?utm_source=…" or ""), kept across a redirect. */
   search: string;
+  /** The ?listing= value, if the visitor's address has one. */
+  listing: string | null;
   source: AddressSource;
 }
 
@@ -84,7 +98,14 @@ function addressFromPath(url: string | undefined): RawAddress | null {
   }
   const match = CATALOG_PATH.exec(parsed.pathname);
   if (!match) return null;
-  return { kind: match[1], raw: decodeSegment(match[2]), search: searchFrom(parsed.searchParams), source: "path" };
+  const listing = parsed.searchParams.get(LISTING_PARAM);
+  return {
+    kind: match[1],
+    raw: decodeSegment(match[2]),
+    search: searchFrom(parsed.searchParams),
+    listing,
+    source: "path",
+  };
 }
 
 /** The address as the rewrite describes it (?kind=card&slug=… or ?kind=set&code=…). */
@@ -96,7 +117,13 @@ function addressFromQuery(query: Record<string, unknown>): RawAddress {
       if (typeof item === "string") params.append(name, item);
     }
   }
-  return { kind, raw: first(kind === "set" ? query.code : query.slug), search: searchFrom(params), source: "query" };
+  return {
+    kind,
+    raw: first(kind === "set" ? query.code : query.slug),
+    search: searchFrom(params),
+    listing: first(query[LISTING_PARAM]) || null,
+    source: "query",
+  };
 }
 
 /**
@@ -113,13 +140,16 @@ export function parseCatalogRequest(input: {
   /** Read only when the path doesn't say (see api/catalog-page.ts for why it's a function). */
   query: () => Record<string, unknown>;
 }): ParsedCatalogRequest {
-  const { kind, raw, search, source } = addressFromPath(input.url) ?? addressFromQuery(input.query());
+  const { kind, raw, search, listing, source } = addressFromPath(input.url) ?? addressFromQuery(input.query());
 
   if (kind === "card") {
     const slug = raw.toLowerCase();
     if (slug.length > MAX_SLUG_LENGTH || !SLUG.test(slug)) return { type: "invalid", kind, source };
     if (raw !== slug) return { type: "redirect", location: cardPagePath(slug) + search, source };
-    return { type: "page", request: { kind, slug }, source };
+    // Anything in ?listing= that isn't a listing id is ignored: the page is
+    // the card's own page either way.
+    const listingId = readListingId(listing);
+    return { type: "page", request: listingId ? { kind, slug, listing: listingId } : { kind, slug }, source };
   }
 
   if (kind === "set") {
@@ -135,6 +165,8 @@ export function parseCatalogRequest(input: {
 // ---- The data --------------------------------------------------------------
 
 export interface CardListing {
+  /** The inventory item's id; null only in an answer that's missing it. */
+  id: string | null;
   setCode: string | null;
   setName: string | null;
   collectorNumber: string | null;
@@ -147,6 +179,7 @@ export interface CardListing {
 
 /** The parts of public.get_card_detail's answer a server-rendered page uses. */
 export interface CardDetail {
+  oracleId: string | null;
   cardName: string;
   listings: CardListing[];
   inStockCount: number;
@@ -191,6 +224,7 @@ export function toCardDetail(value: unknown): CardDetail | null {
     if (!item || typeof item !== "object") continue;
     const l = item as Record<string, unknown>;
     listings.push({
+      id: text(l.id),
       setCode: text(l.setCode),
       setName: text(l.setName),
       collectorNumber: text(l.collectorNumber),
@@ -203,6 +237,7 @@ export function toCardDetail(value: unknown): CardDetail | null {
   }
 
   return {
+    oracleId: text(row.oracleId),
     cardName,
     listings,
     inStockCount: whole(row.inStockCount) ?? listings.length,
@@ -251,6 +286,8 @@ export interface CatalogPage {
   seo: PageSEO;
   /** Shown only without JavaScript; the app replaces it when it starts. */
   summaryHtml: string;
+  /** More tags for the head: on a card page, the early fetch of the card's picture. */
+  headHtml?: string;
 }
 
 const SHOP_LINK = '<a href="/shop">All Magic: The Gathering singles</a>';
@@ -301,7 +338,34 @@ function setLinks(detail: CardDetail): string[] {
   return links;
 }
 
-export function buildCardPage(slug: string, detail: CardDetail | null): CatalogPage {
+/**
+ * Starts fetching the card's picture as soon as the HTML arrives, rather than
+ * after the app has loaded and asked for the card — the picture is the
+ * largest thing on the page, so this is what makes it appear sooner on a
+ * phone (https://web.dev/articles/optimize-lcp). It names exactly the files
+ * the page's <img> will ask for (cardHeroImage), so nothing is fetched twice.
+ */
+function heroPreload(imageUrl: string | null): string {
+  const hero = cardHeroImage(imageUrl);
+  if (!hero) return "";
+  const srcset = hero.srcSet
+    ? ` imagesrcset="${escapeHtml(hero.srcSet)}" imagesizes="${escapeHtml(CARD_HERO_SIZES)}"`
+    : "";
+  return `<link rel="preload" as="image" href="${escapeHtml(hero.src)}"${srcset} fetchpriority="high" />`;
+}
+
+/** The card's picture for readers without JavaScript (the app draws its own). */
+function summaryImage(cardName: string, imageUrl: string | null): string {
+  const hero = cardHeroImage(imageUrl);
+  if (!hero) return "";
+  return `<p><img src="${escapeHtml(hero.src)}" alt="${escapeHtml(cardName)}" width="244" height="340" /></p>`;
+}
+
+/**
+ * A card's page. `listingId` is the copy its address asked for
+ * (?listing=…): listed first, with its picture, as the app shows it.
+ */
+export function buildCardPage(slug: string, detail: CardDetail | null, listingId: string | null = null): CatalogPage {
   const seo = cardPageSeo(slug, detail);
   if (!detail) {
     return {
@@ -315,17 +379,19 @@ export function buildCardPage(slug: string, detail: CardDetail | null): CatalogP
     };
   }
 
+  const listings = withSelectedFirst(detail.listings, listingId);
+  const heroUrl = listings[0]?.imageUrl ?? null;
   return {
     status: 200,
     seo,
+    headHtml: heroPreload(heroUrl),
     summaryHtml: noscript([
       `<h1>${escapeHtml(detail.cardName)}</h1>`,
+      summaryImage(detail.cardName, heroUrl),
       detail.typeLine ? `<p>${escapeHtml(detail.typeLine)}</p>` : "",
       detail.oracleText ? `<p>${escapeHtml(detail.oracleText).replace(/\r?\n/g, "<br />")}</p>` : "",
       `<p><strong>${escapeHtml(cardPriceLine(detail))}</strong></p>`,
-      detail.listings.length > 0
-        ? `<ul>${detail.listings.map((l) => `<li>${escapeHtml(listingLine(l))}</li>`).join("")}</ul>`
-        : "",
+      listings.length > 0 ? `<ul>${listings.map((l) => `<li>${escapeHtml(listingLine(l))}</li>`).join("")}</ul>` : "",
       NEEDS_JAVASCRIPT,
       `<p>${[...setLinks(detail), SHOP_LINK].join(" · ")}</p>`,
     ]),
@@ -397,5 +463,6 @@ export function buildInvalidPage(kind: CatalogKind | null): CatalogPage {
 
 /** The shell with this page's head tags and summary in place. */
 export function renderCatalogHtml(shell: string, page: CatalogPage): string {
-  return refillShell(shell, renderSeoHead(page.seo), page.summaryHtml);
+  const head = renderSeoHead(page.seo);
+  return refillShell(shell, page.headHtml ? `${head}\n    ${page.headHtml}` : head, page.summaryHtml);
 }

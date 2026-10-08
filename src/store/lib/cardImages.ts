@@ -93,3 +93,18 @@ export function scryfallSrcSet(url: string | null): string | null {
   // Scryfall's documented widths: normal = 488px, large = 672px.
   return `${normal} 488w, ${large} 672w`;
 }
+
+/** How wide a card page draws its main picture, for choosing a size from the srcSet. */
+export const CARD_HERO_SIZES = "(max-width: 640px) 80vw, 360px";
+
+/**
+ * A card page's main picture, exactly as its <img> asks for it
+ * (CardDetailPage). The server names the same files in the page's HTML
+ * (api/_lib/catalogPage.ts) so the browser starts fetching the picture while
+ * the app is still loading; if the two asked for different files, the early
+ * fetch would be wasted. Null when there's no picture.
+ */
+export function cardHeroImage(imageUrl: string | null): { src: string; srcSet: string | null } | null {
+  if (!imageUrl) return null;
+  return { src: storefrontImageUrl(imageUrl) ?? imageUrl, srcSet: scryfallSrcSet(imageUrl) };
+}
