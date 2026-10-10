@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/AuthContext";
+import { useCart } from "../lib/CartContext";
 import { isStaffDevice } from "../lib/pageViews";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link, useRouter } from "../lib/router";
-import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
-import { AccountPerksList } from "./AccountPerks";
+import { MEMBER_DISCOUNT_PERCENT, formatCents, memberDiscountCents } from "../lib/money";
 import { Icon } from "./Icon";
 
-// A small, dismissible "create a free account" card for signed-out visitors
-// who are clearly browsing (a few pages in), never on first landing. It is a
-// corner card, not a modal: it doesn't block the page, steal focus, or
-// reappear for a month once closed.
+// The "create a free account" card for signed-out shoppers. It appears at the
+// moment an account is worth the most to them: right after they put a card
+// in their cart, when signing in would take MEMBER_DISCOUNT_PERCENT off that
+// very order (checkout carries its own, in-page version of the same offer).
+// It is a corner card, not a modal: it doesn't block the page or steal focus,
+// and once closed it stays away for a month.
 
-const VIEWS_KEY = "gg_nudge_views";
 const DISMISSED_KEY = "gg_nudge_dismissed_at";
-const SHOW_AFTER_VIEWS = 3;
 const DISMISS_FOR_MS = 30 * 24 * 60 * 60 * 1000;
 
-// Places where it would get in the way or make no sense.
+// Places where it would get in the way or make no sense. Checkout has its
+// own offer in the page.
 function isExcluded(path: string): boolean {
   return (
     path === "/login" ||
@@ -26,6 +27,7 @@ function isExcluded(path: string): boolean {
     path === "/reset-password" ||
     path === "/checkout" ||
     path === "/sell/offer" ||
+    path === "/kiosk" ||
     path === "/account" ||
     path.startsWith("/account/")
   );
@@ -48,35 +50,39 @@ function rememberDismissed(): void {
   }
 }
 
-/** Count page views for this browsing session; returns the new total. */
-function bumpViews(): number {
-  try {
-    const n = (Number(sessionStorage.getItem(VIEWS_KEY)) || 0) + 1;
-    sessionStorage.setItem(VIEWS_KEY, String(n));
-    return n;
-  } catch {
-    return 0; // storage blocked — never show rather than show every page
-  }
+/**
+ * True once a card has been added to the cart since the page loaded. The
+ * cart's first load (a returning shopper's saved cart) doesn't count — only
+ * an add does.
+ */
+function useAddedToCart(): boolean {
+  const { itemCount, loading } = useCart();
+  const before = useRef<number | null>(null);
+  const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+    if (before.current !== null && itemCount > before.current) setAdded(true);
+    before.current = itemCount;
+  }, [itemCount, loading]);
+
+  return added;
 }
 
 export default function SignupNudge() {
   const { user, loading } = useAuth();
   const { path } = useRouter();
-  const [views, setViews] = useState(0);
+  const { subtotalCents } = useCart();
+  const added = useAddedToCart();
   const [closed, setClosed] = useState(false);
-  const lastPath = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (lastPath.current === path) return;
-    lastPath.current = path;
-    setViews(bumpViews());
-  }, [path]);
+  const savingsCents = memberDiscountCents(subtotalCents);
 
   const visible =
     !loading &&
     !user &&
     !closed &&
-    views >= SHOW_AFTER_VIEWS &&
+    added &&
+    savingsCents > 0 &&
     !isExcluded(path) &&
     !recentlyDismissed() &&
     !isStaffDevice();
@@ -99,12 +105,12 @@ export default function SignupNudge() {
       >
         <Icon name="close" size={18} />
       </button>
-      <h2 id="gg-nudge-title">Save {MEMBER_DISCOUNT_PERCENT}% on every order</h2>
+      <p className="gg-nudge-kicker">Added to your cart</p>
+      <h2 id="gg-nudge-title">Save {formatCents(savingsCents)} on this order</h2>
       <p className="gg-nudge-sub">
-        Create a free account: signed-in orders are {MEMBER_DISCOUNT_PERCENT}% off, plus restock
-        &amp; price-drop alerts and order tracking.
+        Create a free account or sign in before you check out: your cards are{" "}
+        {MEMBER_DISCOUNT_PERCENT}% off, on this order and every one after. Your cart comes with you.
       </p>
-      <AccountPerksList compact />
       <div className="gg-nudge-actions">
         <Link
           to={authLinkWithReturn("/signup")}
@@ -112,7 +118,7 @@ export default function SignupNudge() {
           // Signing up is a yes — don't pester them again on the way back.
           onClick={rememberDismissed}
         >
-          Create account
+          Create free account
         </Link>
         <Link to={authLinkWithReturn("/login")} className="gg-nudge-signin" onClick={rememberDismissed}>
           Sign in

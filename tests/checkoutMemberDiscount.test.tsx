@@ -136,6 +136,7 @@ describe("checkout for a signed-in customer", () => {
     expect(summaryRow("Shipping")).toBe("Shipping$5.50");
     expect(summaryRow("Amount due")).toBe("Amount due$15.56");
     // Nothing to sell them on: they're already signed in.
+    expect(document.querySelector(".gg-member-offer")).toBeNull();
     expect(document.querySelector(".gg-member-nudge")).toBeNull();
   });
 
@@ -160,23 +161,32 @@ describe("checkout for a signed-in customer", () => {
 });
 
 describe("checkout as a guest", () => {
-  it("charges full price, and says what signing in would save on this order", () => {
+  it("opens with the offer: what an account saves on this order, before anything is filled in", () => {
+    render(<CheckoutPage />);
+    const offer = screen.getByRole("region", { name: "Save $0.53 on this order" });
+    expect(offer).toHaveTextContent(
+      "Create a free account or sign in and your cards are 5% off, on this order and every one after. It takes about a minute, and your cart comes with you.",
+    );
+    // Both bring them back here, cart intact.
+    expect(screen.getByRole("link", { name: "Create free account" })).toHaveAttribute("href", "/signup?next=%2F");
+    expect(screen.getAllByRole("link", { name: "Sign in" })[0]).toHaveAttribute("href", "/login?next=%2F");
+    // It comes first: before the contact details.
+    const contact = screen.getByRole("heading", { name: "Contact" });
+    expect(offer.compareDocumentPosition(contact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("charges full price, and shows by the total what they'd pay signed in", () => {
     render(<CheckoutPage />);
     expect(screen.queryByText("Member discount (5%)")).toBeNull();
     expect(summaryRow("Amount due")).toBe("Amount due$16.09");
 
     const nudge = document.querySelector(".gg-member-nudge") as HTMLElement;
-    expect(nudge).toHaveTextContent(
-      "Sign in or create a free account to save $0.53 on this order — 5% off every order when you’re signed in.",
-    );
-    const links = [...nudge.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(links).toEqual(["/login?next=%2F", "/signup?next=%2F"]);
+    expect(nudge).toHaveTextContent("Sign in and pay $15.56 instead — 5% off your cards.");
+    expect(nudge.querySelector("a")?.getAttribute("href")).toBe("/login?next=%2F");
   });
 
-  it("mentions the discount where it offers sign-in", () => {
+  it("keeps the guest form plain: the offer above does the asking", () => {
     render(<CheckoutPage />);
-    expect(screen.getByText(/Checking out as a guest/)).toHaveTextContent(
-      "Checking out as a guest — no account needed. Sign in to save 5% and use saved addresses and store credit.",
-    );
+    expect(screen.getByText(/Checking out as a guest/)).toHaveTextContent("Checking out as a guest — no account needed.");
   });
 });

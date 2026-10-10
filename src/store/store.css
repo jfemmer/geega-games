@@ -1133,6 +1133,68 @@
   font-size: 0.9rem;
   line-height: 1.45;
 }
+/* Checkout: the form gets the room and the summary sits beside it (it used
+   to borrow the shop page's 240px filter column, which squeezed the form). */
+.gg-checkout-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 1.75rem;
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .gg-checkout-layout {
+    grid-template-columns: 1fr;
+  }
+}
+/* Checkout, top of the page for a guest: the member discount on this order. */
+.gg-member-offer {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #d9c6fb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #faf6ff 0%, #f2e9ff 100%);
+  color: var(--gg-ink);
+}
+.gg-member-offer h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1.1rem;
+  color: var(--gg-ink);
+}
+.gg-member-offer p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #4a4152;
+}
+.gg-member-offer__icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--gg-purple-2);
+  box-shadow: 0 2px 8px rgba(76, 29, 149, 0.12);
+}
+.gg-member-offer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.gg-member-offer__actions .gg-btn {
+  text-decoration: none;
+}
+@media (max-width: 640px) {
+  .gg-member-offer__icon {
+    display: none;
+  }
+}
 /* Checkout / cart: what signing in would save a guest (members get
    MEMBER_DISCOUNT_PERCENT off every order). */
 .gg-member-nudge {
@@ -4939,7 +5001,7 @@
   }
 }
 
-/* ---- Account perks: home "join" section, signup page, signup nudge ---- */
+/* ---- Account perks: home "join" section and signup page ---- */
 .gg-perks {
   list-style: none;
   margin: 0;
@@ -4975,22 +5037,6 @@
   border-radius: 10px;
   background: #f4eaff;
   color: #663399;
-}
-.gg-perks--compact {
-  gap: 0.45rem;
-}
-.gg-perks--compact .gg-perk {
-  align-items: center;
-  gap: 0.55rem;
-}
-.gg-perks--compact .gg-perk strong {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-.gg-perks--compact .gg-perk-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
 }
 
 .gg-join {
@@ -5132,15 +5178,23 @@
     animation: none;
   }
 }
+/* "Added to your cart": what just happened, above the offer. */
+.gg-nudge-kicker {
+  margin: 0 2rem 0.2rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gg-ok);
+}
 .gg-nudge h2 {
-  font-size: 1rem;
-  margin: 0 2rem 0.7rem 0;
+  font-size: 1.05rem;
+  margin: 0 2rem 0.45rem 0;
   color: var(--gg-ink);
 }
 .gg-nudge-sub {
-  display: none;
-  margin: 0 0 0.7rem;
-  font-size: 0.85rem;
+  margin: 0;
+  font-size: 0.86rem;
   color: #5b5362;
   line-height: 1.45;
 }
@@ -5180,19 +5234,12 @@
 .gg-nudge-signin {
   font-size: 0.88rem;
 }
-/* Phones: a slim card across the bottom — one line of copy instead of the
-   perk list, so it never covers much of the page. */
+/* Phones: a slim card across the bottom, so it never covers much of the page. */
 @media (max-width: 640px) {
   .gg-nudge {
     left: 16px;
     right: 16px;
     width: auto;
-  }
-  .gg-nudge .gg-perks {
-    display: none;
-  }
-  .gg-nudge-sub {
-    display: block;
   }
 }
 @media print {

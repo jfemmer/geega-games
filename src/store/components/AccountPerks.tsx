@@ -37,17 +37,17 @@ const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
   },
 ];
 
-export function AccountPerksList({ compact = false }: { compact?: boolean }) {
+export function AccountPerksList() {
   return (
-    <ul className={`gg-perks${compact ? " gg-perks--compact" : ""}`}>
+    <ul className="gg-perks">
       {ACCOUNT_PERKS.map((perk) => (
         <li key={perk.title} className="gg-perk">
           <span className="gg-perk-icon">
-            <Icon name={perk.icon} size={compact ? 18 : 22} />
+            <Icon name={perk.icon} size={22} />
           </span>
           <span>
             <strong>{perk.title}</strong>
-            {!compact && <span className="gg-perk-body">{perk.body}</span>}
+            <span className="gg-perk-body">{perk.body}</span>
           </span>
         </li>
       ))}

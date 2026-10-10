@@ -15,6 +15,7 @@ import GoogleAddressAutocomplete, {
 import { useCart } from "../lib/CartContext";
 import { rememberClaim } from "../lib/guestClaims";
 import { authLinkWithReturn } from "../lib/authRedirect";
+import { Icon } from "../components/Icon";
 import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
@@ -341,8 +342,13 @@ export default function CheckoutPage() {
       }),
     [subtotalCents, shipMethod, user, creditBalance, useCredit],
   );
-  // What signing in would take off this order, for a guest.
+  // What signing in would take off this order, for a guest, and what they'd
+  // pay then.
   const guestSavingsCents = isGuest ? memberDiscountCents(subtotalCents) : 0;
+  const memberAmountDueCents = useMemo(
+    () => previewOrderTotals({ subtotalCents, method: shipMethod, member: true }).amountDueCents,
+    [subtotalCents, shipMethod],
+  );
 
   const chosenAddress: Partial<Address> | null =
     selectedAddr === "new"
@@ -757,8 +763,33 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <div className="gg-shop">
+      <div className="gg-checkout-layout">
         <div>
+          {guestSavingsCents > 0 && (
+            // The offer, before a guest fills anything in: signing in takes
+            // MEMBER_DISCOUNT_PERCENT off this very order.
+            <section className="gg-member-offer" aria-labelledby="gg-member-offer-h">
+              <span className="gg-member-offer__icon" aria-hidden="true">
+                <Icon name="percent" size={22} />
+              </span>
+              <div>
+                <h2 id="gg-member-offer-h">Save {formatCents(guestSavingsCents)} on this order</h2>
+                <p>
+                  Create a free account or sign in and your cards are {MEMBER_DISCOUNT_PERCENT}% off,
+                  on this order and every one after. It takes about a minute, and your cart comes
+                  with you.
+                </p>
+                <div className="gg-member-offer__actions">
+                  <Link to={authLinkWithReturn("/signup")} className="gg-btn gg-btn-sm">
+                    Create free account
+                  </Link>
+                  <Link to={authLinkWithReturn("/login")} className="gg-btn gg-btn-sm gg-btn-ghost">
+                    Sign in
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )}
           {isGuest && (
             <section className="gg-guest-checkout" aria-labelledby="gg-guest-h">
               <h2 id="gg-guest-h" style={{ marginTop: 0 }}>Contact</h2>
@@ -775,9 +806,7 @@ export default function CheckoutPage() {
                 />
               </div>
               <p className="gg-card-meta" style={{ margin: "0.25rem 0 0" }}>
-                Checking out as a guest — no account needed.{" "}
-                <Link to={authLinkWithReturn("/login")}>Sign in</Link> to save{" "}
-                {MEMBER_DISCOUNT_PERCENT}% and use saved addresses and store credit.
+                Checking out as a guest — no account needed.
               </p>
             </section>
           )}
@@ -907,14 +936,6 @@ export default function CheckoutPage() {
               value={-totals.discountCents}
             />
           )}
-          {guestSavingsCents > 0 && (
-            <p className="gg-member-nudge">
-              <Link to={authLinkWithReturn("/login")}>Sign in</Link> or{" "}
-              <Link to={authLinkWithReturn("/signup")}>create a free account</Link> to save{" "}
-              <strong>{formatCents(guestSavingsCents)}</strong> on this order —{" "}
-              {MEMBER_DISCOUNT_PERCENT}% off every order when you&rsquo;re signed in.
-            </p>
-          )}
           <SummaryRow
             label="Shipping"
             value={totals.shippingCents}
@@ -945,6 +966,15 @@ export default function CheckoutPage() {
           >
             <SummaryRow label="Amount due" value={totals.amountDueCents} strong />
           </div>
+          {guestSavingsCents > 0 && (
+            // Next to the total, where the decision is made (and, on a phone,
+            // the reminder of the offer at the top of the page).
+            <p className="gg-member-nudge">
+              <Link to={authLinkWithReturn("/login")}>Sign in</Link> and pay{" "}
+              <strong>{formatCents(memberAmountDueCents)}</strong> instead —{" "}
+              {MEMBER_DISCOUNT_PERCENT}% off your cards.
+            </p>
+          )}
 
           {totals.amountDueCents > 0 && (isStripeConfigured || isPayPalConfigured) && (
             <p className="gg-card-meta" style={{ margin: "0.5rem 0 0" }}>
