@@ -83,6 +83,54 @@ describe("email templates render to HTML", () => {
     expect(html).toContain("1 Main St");
   });
 
+  it("OrderConfirmation shows a member's discount, and offers a guest 5% off their next order", async () => {
+    const base = {
+      orderNumber: "GG-ABC12345",
+      firstName: "Jordan",
+      createdAtISO: new Date("2026-10-10").toISOString(),
+      paymentStatus: "paid",
+      items: [
+        {
+          card_name: "Faerie Mastermind",
+          set_name: "March of the Machine",
+          condition: "NM",
+          finish: "nonfoil",
+          quantity: 1,
+          unit_price_cents: 1059,
+          line_total_cents: 1059,
+        },
+      ],
+      subtotalCents: 1059,
+      shippingCents: 550,
+      taxCents: 0,
+      ship: { recipient: "Jordan", line1: "1 Main St", line2: null, city: "Ballwin", state: "MO", postalCode: "63011", country: "US" },
+      siteUrl: "https://geega-games.com",
+      logoUrl: "https://geega-games.com/logo.png",
+      supportEmail: "support@geega-games.com",
+    };
+
+    const member = await render(
+      React.createElement(OrderConfirmation, { ...base, discountCents: 53, totalCents: 1556 }),
+    );
+    expect(member).toContain("Member discount");
+    expect(member).toContain("-$0.53");
+    expect(member).toContain("$15.56");
+    expect(member).not.toContain("Save 5% on your next order");
+
+    const guest = await render(
+      React.createElement(OrderConfirmation, {
+        ...base,
+        discountCents: 0,
+        totalCents: 1609,
+        createAccountUrl: "https://geega-games.com/signup?claim=abc&email=jordan%40example.com",
+      }),
+    );
+    expect(guest).not.toContain("Member discount");
+    expect(guest).toContain("Save 5% on your next order");
+    expect(guest).toContain("every order you place signed in is 5% off");
+    expect(guest).toContain("https://geega-games.com/signup?claim=abc&amp;email=jordan%40example.com");
+  });
+
   it("SellSubmissionConfirmation renders the reference number and never promises a guaranteed offer", async () => {
     const html = await render(
       React.createElement(SellSubmissionConfirmation, {

@@ -1,6 +1,7 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
+import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
 
 const EFFECTIVE_DATE = "September 27, 2026";
 
@@ -78,6 +79,14 @@ export function TermsPage() {
         reserve the right, at our sole discretion, to refuse or cancel the order. If your order is
         canceled after payment, we will issue a full refund of the amount charged for the
         canceled item(s); that refund is your sole and exclusive remedy for such a cancellation.
+      </p>
+      <p>
+        <strong>Member discount.</strong> Online orders placed while you are signed in to a Geega
+        Games account get {MEMBER_DISCOUNT_PERCENT}% off the price of the cards, on top of any sale
+        price; it doesn&rsquo;t apply to shipping. It is applied automatically at checkout and
+        shown in your order summary. It isn&rsquo;t applied to orders placed as a guest, to
+        in-person purchases, or to orders already placed, and we may change or end it at any
+        time. A refund is of the amount you actually paid.
       </p>
       <p>
         Your submission of an order is an offer to purchase, which we may accept or decline. A

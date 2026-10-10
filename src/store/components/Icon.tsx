@@ -12,6 +12,7 @@ export type StoreIconName =
   | "bell"
   | "truck"
   | "tag"
+  | "percent"
   | "close";
 
 const PATHS: Record<StoreIconName, string> = {
@@ -25,6 +26,7 @@ const PATHS: Record<StoreIconName, string> = {
   truck:
     "M1 4h14v12H1zM15 8h4l3 3v5h-7M5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
   tag: "M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8ZM7 7h.01",
+  percent: "M19 5 5 19M6.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM17.5 20a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
   close: "M18 6 6 18M6 6l12 12",
 };
 

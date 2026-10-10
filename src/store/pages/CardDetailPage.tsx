@@ -6,7 +6,7 @@ import { useCart } from "../lib/CartContext";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import { CARD_HERO_SIZES, cardHeroImage } from "../lib/cardImages";
 import { SUPPORT_EMAIL } from "./StaticPages";
-import { formatCents } from "../lib/money";
+import { MEMBER_DISCOUNT_PERCENT, formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 import WishlistButton from "../components/WishlistButton";
@@ -255,6 +255,17 @@ export default function CardDetailPage({ slug }: { slug: string }) {
       {listings.length > 0 ? (
         <div className="gg-card-detail__listings">
           <h2>Available listings</h2>
+          <p className="gg-card-detail__membernote">
+            {user ? (
+              <>Your {MEMBER_DISCOUNT_PERCENT}% member discount comes off at checkout.</>
+            ) : (
+              <>
+                Signed-in orders are {MEMBER_DISCOUNT_PERCENT}% off.{" "}
+                <Link to={authLinkWithReturn("/login")}>Sign in</Link> or{" "}
+                <Link to={authLinkWithReturn("/signup")}>create a free account</Link>.
+              </>
+            )}
+          </p>
           <ul className="gg-card-detail__listinglist">
             {listings.map((l) => (
               <li

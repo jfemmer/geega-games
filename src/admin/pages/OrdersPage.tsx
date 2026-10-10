@@ -623,8 +623,11 @@ function OrderDetail({
                   <dd>{formatCents(order.subtotalCents)}</dd>
                 </div>
                 {order.discountCents > 0 && (
+                  // Online orders placed signed in: 5% off the cards
+                  // (checkout_place_order_core). Refunds come from the
+                  // amount paid, which is net of it.
                   <div>
-                    <dt>Discount</dt>
+                    <dt>Member discount</dt>
                     <dd>−{formatCents(order.discountCents)}</dd>
                   </div>
                 )}

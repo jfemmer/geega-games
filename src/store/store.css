@@ -796,6 +796,10 @@
   height: 100dvh;
   width: min(420px, 100vw);
   background: #fff;
+  /* The drawer is rendered inside .gg-header, whose text is white: without
+     its own color, text with no color of its own (the subtotal) was white
+     on white. */
+  color: var(--gg-ink);
   z-index: 51;
   display: flex;
   flex-direction: column;
@@ -816,6 +820,15 @@
 .gg-drawer-foot {
   border-top: 1px solid var(--gg-line);
   padding: 1rem;
+}
+/* A signed-in customer's member discount, under the subtotal. */
+.gg-drawer-member {
+  display: flex;
+  justify-content: space-between;
+  margin: -0.4rem 0 0.75rem;
+  color: var(--gg-purple-2);
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 .gg-line {
   display: flex;
@@ -1119,6 +1132,22 @@
   padding: 0 1rem 0.6rem;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+/* Checkout / cart: what signing in would save a guest (members get
+   MEMBER_DISCOUNT_PERCENT off every order). */
+.gg-member-nudge {
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ddd0f7;
+  border-radius: 8px;
+  background: #f7f2ff;
+  color: var(--gg-ink);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.gg-member-nudge a {
+  color: var(--gg-purple-2);
+  font-weight: 600;
 }
 /* Checkout / cart notice while paused */
 .gg-paused-note {
@@ -4852,6 +4881,16 @@
   border: 1px solid var(--gg-line);
   border-radius: 10px;
   background: #fdfcfe;
+}
+/* "Signed-in orders are 5% off", under the listings heading. */
+.gg-card-detail__membernote {
+  margin: -0.35rem 0 0.75rem;
+  color: #555;
+  font-size: 0.9rem;
+}
+.gg-card-detail__membernote a {
+  color: var(--gg-purple-2);
+  font-weight: 600;
 }
 /* The copy a ?listing= address asked for (a link from Google Shopping, say). */
 .gg-card-detail__listing--selected {

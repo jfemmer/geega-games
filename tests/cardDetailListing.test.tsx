@@ -91,7 +91,7 @@ async function openAt(address: string) {
 
 /** The listing rows, top to bottom, by collector number. */
 function rowOrder(): string[] {
-  const list = screen.getByRole("heading", { name: "Available listings" }).nextElementSibling as HTMLElement;
+  const list = screen.getByRole("heading", { name: "Available listings" }).parentElement!.querySelector("ul") as HTMLElement;
   return within(list)
     .getAllByRole("listitem")
     .map((li) => /#(\d+)/.exec(li.textContent ?? "")?.[1] ?? "?");
@@ -133,6 +133,16 @@ describe("a card page opened at a listing's own address", () => {
       expect(screen.queryByText("Selected")).toBeNull();
       cleanup();
     }
+  });
+
+  it("tells a signed-out shopper that signed-in orders are 5% off", async () => {
+    await openAt("/shop/card/orcish-bowmasters");
+    const note = document.querySelector(".gg-card-detail__membernote") as HTMLElement;
+    expect(note).toHaveTextContent("Signed-in orders are 5% off. Sign in or create a free account.");
+    expect([...note.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      `/login?next=${encodeURIComponent("/shop/card/orcish-bowmasters")}`,
+      `/signup?next=${encodeURIComponent("/shop/card/orcish-bowmasters")}`,
+    ]);
   });
 
   it("asks for the card's picture first, the same files the server told the browser to fetch early", async () => {

@@ -104,8 +104,9 @@ describe("SignupNudge", () => {
     await visit("/shop");
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
     await visit("/shop/sets");
-    const nudge = await screen.findByRole("complementary", { name: /free account/i });
-    expect(nudge).toBeInTheDocument();
+    // It leads with what an account saves: 5% off every order signed in.
+    const nudge = await screen.findByRole("complementary", { name: "Save 5% on every order" });
+    expect(nudge).toHaveTextContent("Create a free account: signed-in orders are 5% off");
     expect(screen.getByRole("link", { name: /create account/i })).toHaveAttribute(
       "href",
       `/signup?next=${encodeURIComponent("/shop/sets")}`,

@@ -45,6 +45,8 @@ type GuestOrder = {
   status: OrderStatus;
   payment_status: PaymentStatus;
   subtotal_cents: number;
+  /** The member discount (signed-in orders); 0 otherwise. */
+  discount_cents?: number | null;
   shipping_cents: number;
   store_credit_used_cents: number;
   total_cents: number;
@@ -227,6 +229,9 @@ export default function TrackOrderPage() {
 
         <div style={{ marginTop: "1.25rem", maxWidth: 320, marginLeft: "auto" }}>
           <Row label="Subtotal" value={order.subtotal_cents} />
+          {(order.discount_cents ?? 0) > 0 && (
+            <Row label="Member discount" value={-(order.discount_cents ?? 0)} />
+          )}
           <Row label="Shipping" value={order.shipping_cents} text={orderShippingText(order)} />
           {order.store_credit_used_cents > 0 && (
             <Row label="Store credit" value={-order.store_credit_used_cents} />

@@ -2,13 +2,19 @@ import { useAuth } from "../lib/AuthContext";
 import { Link } from "../lib/router";
 import { Icon, type StoreIconName } from "./Icon";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
 
 // What a free account actually unlocks. Every line here must describe a
-// feature that exists today (checkout, /account/*, the deck builder's
-// restock watch, the wishlist, the store-credit sell bonus) — this is a
-// promise to the customer, so no perks we haven't built (discounts, points,
-// early access).
+// feature that exists today (the member discount, which the database applies
+// at checkout; /account/*, the deck builder's restock watch, the wishlist,
+// the store-credit sell bonus) — this is a promise to the customer, so no
+// perks we haven't built (points, early access).
 const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
+  {
+    icon: "percent",
+    title: `${MEMBER_DISCOUNT_PERCENT}% off every order`,
+    body: `Sign in when you check out and your cards are ${MEMBER_DISCOUNT_PERCENT}% off, on top of sale prices.`,
+  },
   {
     icon: "deck",
     title: "Build decks, get restock alerts",
@@ -56,8 +62,11 @@ export function JoinSection() {
   return (
     <section className="gg-join" aria-labelledby="gg-join-title">
       <div className="gg-join-head">
-        <h2 id="gg-join-title">Get more out of Geega Games — it&rsquo;s free</h2>
-        <p>One account for buying, tracking, and selling cards. Takes about a minute.</p>
+        <h2 id="gg-join-title">Save {MEMBER_DISCOUNT_PERCENT}% on every order — free account</h2>
+        <p>
+          Signed-in orders are {MEMBER_DISCOUNT_PERCENT}% off, and one account covers buying,
+          tracking and selling cards. Takes about a minute.
+        </p>
       </div>
       <AccountPerksList />
       <div className="gg-join-actions">

@@ -22,6 +22,24 @@ export const SHIPPING = {
 
 export type ShippingMethod = "tracked" | "pwe";
 
+/**
+ * Signed-in customers save this percentage on the cards of every online order,
+ * on top of sale and deal prices (c_member_discount_percent in
+ * checkout_place_order_core). Not on shipping. It's the reason the site gives
+ * for creating an account.
+ */
+export const MEMBER_DISCOUNT_PERCENT = 5;
+
+/**
+ * The member discount on a card subtotal, in cents: MEMBER_DISCOUNT_PERCENT,
+ * rounded to the nearest cent with halves going to the customer — the same
+ * integer arithmetic as checkout_place_order_core, so the two agree exactly.
+ */
+export function memberDiscountCents(subtotalCents: number): number {
+  if (!Number.isFinite(subtotalCents) || subtotalCents <= 0) return 0;
+  return Math.floor((Math.round(subtotalCents) * MEMBER_DISCOUNT_PERCENT + 50) / 100);
+}
+
 /** True when an order ships free (and tracked) with nothing to choose. */
 export function qualifiesForFreeShipping(subtotalCents: number): boolean {
   return subtotalCents >= SHIPPING.freeShippingThresholdCents;
@@ -93,29 +111,36 @@ export function shippingCents(
 
 /**
  * Preview the full order math the same way the server will. Returns cents.
- * storeCreditRequestedCents is clamped to [0, balance] ∩ [0, total] just like
- * the RPC, so the preview cannot show a nonsensical negative amount due.
+ *   * `member`: the customer is signed in, so the cards are MEMBER_DISCOUNT_PERCENT
+ *     off. Free shipping is still decided on the cards' full price, so the
+ *     discount can never cost an order its free shipping.
+ *   * storeCreditRequestedCents is clamped to [0, balance] ∩ [0, total] just
+ *     like the RPC, so the preview cannot show a negative amount due.
  */
 export function previewOrderTotals(input: {
   subtotalCents: number;
   method: ShippingMethod;
+  member?: boolean;
   storeCreditBalanceCents?: number;
   storeCreditRequestedCents?: number;
 }): {
   subtotalCents: number;
+  discountCents: number;
   shippingCents: number;
   totalCents: number;
   storeCreditUsedCents: number;
   amountDueCents: number;
 } {
   const ship = shippingCents(input.method, input.subtotalCents);
-  const total = input.subtotalCents + ship;
+  const discount = input.member ? memberDiscountCents(input.subtotalCents) : 0;
+  const total = input.subtotalCents - discount + ship;
   const balance = Math.max(0, input.storeCreditBalanceCents ?? 0);
   const requested = Math.max(0, input.storeCreditRequestedCents ?? 0);
   const creditUsed = Math.min(requested, balance, total);
   const amountDue = total - creditUsed;
   return {
     subtotalCents: input.subtotalCents,
+    discountCents: discount,
     shippingCents: ship,
     totalCents: total,
     storeCreditUsedCents: creditUsed,

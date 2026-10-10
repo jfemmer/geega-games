@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Column, Heading, Hr, Link, Row, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
+import { MEMBER_DISCOUNT_PERCENT } from "../../../src/store/lib/money.js";
 
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
@@ -194,7 +195,7 @@ export function OrderConfirmation(data: OrderEmailData) {
       ? h(
           "div",
           { key: "disc" },
-          TotalsRow("Discount", `-${money(data.discountCents)}`),
+          TotalsRow("Member discount", `-${money(data.discountCents)}`),
         )
       : null,
     h("div", { key: "ship" }, TotalsRow("Shipping", shippingText(data))),
@@ -235,9 +236,9 @@ export function OrderConfirmation(data: OrderEmailData) {
       ? h(
           Text,
           { key: "join", style: joinBox },
-          h("strong", null, "Save this order to a free account"),
+          h("strong", null, `Save ${MEMBER_DISCOUNT_PERCENT}% on your next order`),
           h("br", null),
-          "See all your orders in one place, check out faster next time, and get an email when cards on your wishlist restock or drop in price. ",
+          `Create a free account and every order you place signed in is ${MEMBER_DISCOUNT_PERCENT}% off. This order is saved to it too, and you'll get an email when cards on your wishlist restock or drop in price. `,
           h(Link, { href: data.createAccountUrl, style: ctaLink }, "Create your account \u2192"),
         )
       : null,
@@ -275,7 +276,7 @@ export function orderConfirmationText(d: OrderEmailData): string {
     ),
     "",
     `Subtotal: ${money(d.subtotalCents)}`,
-    d.discountCents > 0 ? `Discount: -${money(d.discountCents)}` : "",
+    d.discountCents > 0 ? `Member discount: -${money(d.discountCents)}` : "",
     `Shipping: ${shippingText(d)}`,
     d.taxCents > 0 ? `Tax: ${money(d.taxCents)}` : "",
     `Total: ${money(d.totalCents)}`,
@@ -288,7 +289,7 @@ export function orderConfirmationText(d: OrderEmailData): string {
     orderNextSteps(d) ?? "",
     d.trackUrl ? `Track this order: ${d.trackUrl}` : "",
     d.createAccountUrl
-      ? `Save this order to a free account (faster checkout, wishlist restock & price-drop alerts): ${d.createAccountUrl}`
+      ? `Save ${MEMBER_DISCOUNT_PERCENT}% on your next order: create a free account and every order you place signed in is ${MEMBER_DISCOUNT_PERCENT}% off. This order is saved to it too: ${d.createAccountUrl}`
       : "",
     `Questions? ${d.supportEmail}`,
   ];

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
-import { formatCents, qualifiesForFreeShipping } from "../lib/money";
+import { MEMBER_DISCOUNT_PERCENT, formatCents, memberDiscountCents, qualifiesForFreeShipping } from "../lib/money";
 import { formatReopenDate, useStoreStatus } from "../lib/storeStatus";
 import { FreeShippingNote } from "./FreeShippingNote";
 
@@ -73,9 +73,9 @@ export default function CartDrawer({
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
             Your cart ({itemCount})
           </h2>
+          {/* The head is dark: .gg-iconbtn's white ✕ and light ring show on it. */}
           <button
             className="gg-iconbtn"
-            style={{ color: "var(--gg-ink)", borderColor: "var(--gg-line)" }}
             onClick={onClose}
             data-autofocus
             aria-label="Close cart"
@@ -195,6 +195,13 @@ export default function CartDrawer({
               <strong>Subtotal</strong>
               <strong>{formatCents(subtotalCents)}</strong>
             </div>
+            {user && memberDiscountCents(subtotalCents) > 0 && (
+              // Signed in: the database takes this off at checkout.
+              <div className="gg-drawer-member">
+                <span>Member discount ({MEMBER_DISCOUNT_PERCENT}%)</span>
+                <span>−{formatCents(memberDiscountCents(subtotalCents))}</span>
+              </div>
+            )}
             <FreeShippingNote subtotalCents={subtotalCents} />
             <p className="gg-card-meta" style={{ marginTop: 0 }}>
               {qualifiesForFreeShipping(subtotalCents)
@@ -220,7 +227,7 @@ export default function CartDrawer({
             </button>
             {!user && !ordersPaused && (
               <p className="gg-card-meta" style={{ textAlign: "center", margin: "0 0 0.5rem" }}>
-                No account needed.{" "}
+                No account needed — but{" "}
                 <button
                   type="button"
                   className="gg-linklike"
@@ -229,9 +236,10 @@ export default function CartDrawer({
                     navigate("/login?next=/checkout");
                   }}
                 >
-                  Sign in
+                  sign in
                 </button>{" "}
-                for saved addresses &amp; store credit.
+                and you&rsquo;ll save {formatCents(memberDiscountCents(subtotalCents))} (
+                {MEMBER_DISCOUNT_PERCENT}%) on this order.
               </p>
             )}
             <button

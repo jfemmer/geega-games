@@ -4,6 +4,7 @@ import { Link, useRouter } from "../lib/router";
 import { rememberSignupNext, safeNextPath, takeSignupNext } from "../lib/authRedirect";
 import { AccountPerksList } from "../components/AccountPerks";
 import { parseClaimParam } from "../lib/guestClaims";
+import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
 
 function AuthShell({
   title,
@@ -60,7 +61,14 @@ export function LoginPage() {
   };
 
   return (
-    <AuthShell title="Sign in">
+    <AuthShell
+      title="Sign in"
+      subtitle={
+        rawNext === "/checkout"
+          ? `Signed-in orders are ${MEMBER_DISCOUNT_PERCENT}% off — we'll bring you right back to checkout.`
+          : undefined
+      }
+    >
       <form className="gg-form" onSubmit={submit} noValidate>
         {err && (
           <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
@@ -163,7 +171,7 @@ export function SignupPage() {
           : claimKind === "sell"
             ? "Create your account and we'll add your sell submission to it."
             : rawNext === "/checkout"
-              ? "Saves your address for next time — we'll bring you right back to your cart."
+              ? `Save ${MEMBER_DISCOUNT_PERCENT}% on this order — we'll bring you right back to your cart.`
               : "Takes about a minute. Here's what you get:"
       }
     >

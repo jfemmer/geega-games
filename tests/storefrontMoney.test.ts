@@ -1,7 +1,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
+  MEMBER_DISCOUNT_PERCENT,
   SHIPPING,
+  memberDiscountCents,
   shippingCents,
   previewOrderTotals,
   amountUntilFreeShipping,
@@ -77,6 +79,19 @@ describe("the browser's shipping numbers match the server's", () => {
     expect(constant("c_free_shipping_threshold")).toBe(SHIPPING.freeShippingThresholdCents);
   });
 
+  it("and the member discount: the same percentage, the same rounding, for signed-in orders only", () => {
+    expect(constant("c_member_discount_percent")).toBe(MEMBER_DISCOUNT_PERCENT);
+    // Half up, in whole cents: memberDiscountCents uses the same arithmetic.
+    expect(sql).toContain("((v_subtotal::bigint * c_member_discount_percent + 50) / 100)::integer");
+    // Only for a signed-in customer (guest checkout passes no user).
+    expect(sql).toMatch(/if p_uid is not null\s+and not exists \(select 1 from auth\.users u where u\.id = p_uid and u\.is_anonymous\) then\s+v_discount :=/);
+    // Free shipping is decided before the discount, on the cards' full price,
+    // and the total takes the discount off the cards only.
+    expect(sql.indexOf("if v_subtotal >= c_free_shipping_threshold then")).toBeLessThan(sql.indexOf("v_discount := (("));
+    expect(sql).toContain("v_total := v_subtotal - v_discount + v_shipping;");
+    expect(sql).toContain("discount_cents = v_discount,");
+  });
+
   it("and the server makes a free-shipping order tracked", () => {
     expect(sql).toMatch(/if v_subtotal >= c_free_shipping_threshold then\s+(--[^\n]*\n\s*)?v_method := 'tracked';\s+v_shipping := 0;/);
     expect(sql).toContain("shipping_method = v_method,");
@@ -144,6 +159,61 @@ describe("previewOrderTotals clamps store credit like the RPC", () => {
     const t = previewOrderTotals({ subtotalCents: 7499, method: "tracked" });
     expect(t.shippingCents).toBe(550);
     expect(t.totalCents).toBe(8049);
+  });
+});
+
+describe("the member discount", () => {
+  it("is 5% of the cards, to the nearest cent, halves to the customer", () => {
+    expect(MEMBER_DISCOUNT_PERCENT).toBe(5);
+    expect(memberDiscountCents(1059)).toBe(53); // 52.95 cents
+    expect(memberDiscountCents(1010)).toBe(51); // 50.5 cents
+    expect(memberDiscountCents(1999)).toBe(100); // 99.95 cents
+    expect(memberDiscountCents(7600)).toBe(380);
+    expect(memberDiscountCents(10)).toBe(1); // 0.5 cents
+    expect(memberDiscountCents(9)).toBe(0); // 0.45 cents
+  });
+
+  it("is nothing on an empty or nonsensical subtotal", () => {
+    expect(memberDiscountCents(0)).toBe(0);
+    expect(memberDiscountCents(-500)).toBe(0);
+    expect(memberDiscountCents(Number.NaN)).toBe(0);
+  });
+
+  it("comes off a signed-in customer's cards, not their shipping", () => {
+    const t = previewOrderTotals({ subtotalCents: 1059, method: "tracked", member: true });
+    expect(t).toEqual({
+      subtotalCents: 1059,
+      discountCents: 53,
+      shippingCents: SHIPPING.trackedCents,
+      totalCents: 1059 - 53 + SHIPPING.trackedCents,
+      storeCreditUsedCents: 0,
+      amountDueCents: 1059 - 53 + SHIPPING.trackedCents,
+    });
+  });
+
+  it("isn't given to a guest", () => {
+    const t = previewOrderTotals({ subtotalCents: 1059, method: "tracked" });
+    expect(t.discountCents).toBe(0);
+    expect(t.totalCents).toBe(1059 + SHIPPING.trackedCents);
+  });
+
+  it("never costs an order its free shipping: that's judged on the cards' full price", () => {
+    // $76 of cards: $72.20 after the discount, and still free shipping.
+    const t = previewOrderTotals({ subtotalCents: 7600, method: "pwe", member: true });
+    expect(t).toMatchObject({ discountCents: 380, shippingCents: 0, totalCents: 7220, amountDueCents: 7220 });
+    // A guest with the same cart pays more.
+    expect(previewOrderTotals({ subtotalCents: 7600, method: "pwe" }).totalCents).toBeGreaterThan(t.totalCents);
+  });
+
+  it("lets store credit pay toward the discounted total, never beyond it", () => {
+    const t = previewOrderTotals({
+      subtotalCents: 2000,
+      method: "pwe",
+      member: true,
+      storeCreditBalanceCents: 5000,
+      storeCreditRequestedCents: 5000,
+    });
+    expect(t).toMatchObject({ discountCents: 100, totalCents: 2050, storeCreditUsedCents: 2050, amountDueCents: 0 });
   });
 });
 

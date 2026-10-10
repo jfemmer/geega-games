@@ -3,6 +3,7 @@ import { useAuth } from "../lib/AuthContext";
 import { isStaffDevice } from "../lib/pageViews";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link, useRouter } from "../lib/router";
+import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
 import { AccountPerksList } from "./AccountPerks";
 import { Icon } from "./Icon";
 
@@ -98,8 +99,11 @@ export default function SignupNudge() {
       >
         <Icon name="close" size={18} />
       </button>
-      <h2 id="gg-nudge-title">Make it yours — free account</h2>
-      <p className="gg-nudge-sub">Restock &amp; price-drop alerts, order tracking and faster checkout.</p>
+      <h2 id="gg-nudge-title">Save {MEMBER_DISCOUNT_PERCENT}% on every order</h2>
+      <p className="gg-nudge-sub">
+        Create a free account: signed-in orders are {MEMBER_DISCOUNT_PERCENT}% off, plus restock
+        &amp; price-drop alerts and order tracking.
+      </p>
       <AccountPerksList compact />
       <div className="gg-nudge-actions">
         <Link

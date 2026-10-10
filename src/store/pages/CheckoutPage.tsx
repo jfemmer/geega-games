@@ -33,9 +33,11 @@ import {
   usZip,
 } from "../lib/usAddress";
 import {
+  MEMBER_DISCOUNT_PERCENT,
   effectiveShippingMethod,
   formatCents,
   formatShipping,
+  memberDiscountCents,
   previewOrderTotals,
   type ShippingMethod,
 } from "../lib/money";
@@ -52,6 +54,10 @@ import {
 //     (SHIPPING.freeShippingThresholdCents) is created tracked with $0
 //     shipping whatever this page sends. The page mirrors that so the
 //     customer sees it before paying (ShippingMethodPicker, `shipMethod`).
+//   - So is the member discount: a signed-in customer's cards are
+//     MEMBER_DISCOUNT_PERCENT off, taken by the database from whoever's
+//     session placed the order. The page shows it (and, to a guest, what
+//     signing in would save) but never sends it.
 //   - A zero-balance order (fully covered by store credit) is marked paid by
 //     that trusted DB path — no Stripe involved.
 //   - A balance-due order gets a Stripe PaymentIntent for EXACTLY the
@@ -329,11 +335,14 @@ export default function CheckoutPage() {
       previewOrderTotals({
         subtotalCents,
         method: shipMethod,
+        member: !!user,
         storeCreditBalanceCents: creditBalance,
         storeCreditRequestedCents: useCredit ? creditBalance : 0,
       }),
-    [subtotalCents, shipMethod, creditBalance, useCredit],
+    [subtotalCents, shipMethod, user, creditBalance, useCredit],
   );
+  // What signing in would take off this order, for a guest.
+  const guestSavingsCents = isGuest ? memberDiscountCents(subtotalCents) : 0;
 
   const chosenAddress: Partial<Address> | null =
     selectedAddr === "new"
@@ -767,8 +776,8 @@ export default function CheckoutPage() {
               </div>
               <p className="gg-card-meta" style={{ margin: "0.25rem 0 0" }}>
                 Checking out as a guest — no account needed.{" "}
-                <Link to={authLinkWithReturn("/login")}>Sign in</Link> to use saved addresses
-                and store credit.
+                <Link to={authLinkWithReturn("/login")}>Sign in</Link> to save{" "}
+                {MEMBER_DISCOUNT_PERCENT}% and use saved addresses and store credit.
               </p>
             </section>
           )}
@@ -892,6 +901,20 @@ export default function CheckoutPage() {
         <aside className="gg-filters" style={{ alignSelf: "start" }}>
           <h2 style={{ marginTop: 0 }}>Summary</h2>
           <SummaryRow label="Subtotal" value={totals.subtotalCents} />
+          {totals.discountCents > 0 && (
+            <SummaryRow
+              label={`Member discount (${MEMBER_DISCOUNT_PERCENT}%)`}
+              value={-totals.discountCents}
+            />
+          )}
+          {guestSavingsCents > 0 && (
+            <p className="gg-member-nudge">
+              <Link to={authLinkWithReturn("/login")}>Sign in</Link> or{" "}
+              <Link to={authLinkWithReturn("/signup")}>create a free account</Link> to save{" "}
+              <strong>{formatCents(guestSavingsCents)}</strong> on this order —{" "}
+              {MEMBER_DISCOUNT_PERCENT}% off every order when you&rsquo;re signed in.
+            </p>
+          )}
           <SummaryRow
             label="Shipping"
             value={totals.shippingCents}
@@ -1048,10 +1071,11 @@ function SaveOrderToAccount({ guest, recipient }: { guest: GuestOrderAccess; rec
 
   return (
     <form className="gg-save-order gg-form" onSubmit={submit}>
-      <h2>Save this order to a free account</h2>
+      <h2>Save {MEMBER_DISCOUNT_PERCENT}% on your next order</h2>
       <p className="gg-card-meta">
-        Track it and every future order in one place, check out faster, and get emailed when
-        cards on your wishlist restock or drop in price.
+        Create a free account and every order you place signed in is {MEMBER_DISCOUNT_PERCENT}%
+        off. This order is saved to it, and you&rsquo;ll get emailed when cards on your wishlist
+        restock or drop in price.
       </p>
       <p className="gg-card-meta" style={{ margin: 0 }}>
         Account email: <strong>{guest.email}</strong>
