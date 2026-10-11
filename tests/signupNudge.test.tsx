@@ -3,14 +3,18 @@
 // Coverage for the "create a free account" prompts: the ?next= redirect
 // helpers, and when the corner SignupNudge does and doesn't appear: right
 // after a signed-out shopper adds a card to their cart. Mocks the Supabase
-// module (auth.getSession decides signed-in/out), like
+// module (auth.getSession decides signed-in/out at load, and the captured
+// onAuthStateChange listener signs out mid-test), like
 // storefrontWishlist.test.tsx, and the cart, whose count the test moves.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const mocked = vi.hoisted(() => ({ signedIn: false }));
+const mocked = vi.hoisted(() => ({
+  signedIn: false,
+  onAuthChange: null as null | ((event: string, session: unknown) => void),
+}));
 
 // The cart, as the nudge sees it: a tiny store the test can change.
 type CartState = { itemCount: number; subtotalCents: number; loading: boolean };
@@ -49,9 +53,10 @@ vi.mock("../src/supabase", () => ({
             : null,
         },
       }),
-      onAuthStateChange: () => ({
-        data: { subscription: { unsubscribe() {} } },
-      }),
+      onAuthStateChange: (listener: (event: string, session: unknown) => void) => {
+        mocked.onAuthChange = listener;
+        return { data: { subscription: { unsubscribe() {} } } };
+      },
     },
   },
 }));
@@ -92,8 +97,13 @@ async function addToCart(priceCents = 1059) {
   await act(async () => cart.set({ itemCount: itemCount + 1, subtotalCents: subtotalCents + priceCents }));
 }
 
+async function signOut() {
+  await act(async () => mocked.onAuthChange?.("SIGNED_OUT", null));
+}
+
 beforeEach(() => {
   mocked.signedIn = false;
+  mocked.onAuthChange = null;
   cart.reset();
   localStorage.clear();
   sessionStorage.clear();
@@ -209,5 +219,29 @@ describe("SignupNudge", () => {
     await visit("/shop");
     await addToCart();
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+
+  it("only counts cards added while signed out", async () => {
+    mocked.signedIn = true;
+    renderNudge();
+    await visit("/shop");
+    await addToCart();
+    // Signing out with that card still in the cart isn't an add.
+    await signOut();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    // Adding one as a guest is.
+    await addToCart(1000);
+    expect(await screen.findByRole("complementary", { name: "Save $1.03 on this order" })).toBeInTheDocument();
+  });
+
+  it("shows on a device remembered as a staff device once signed out, as it would for any guest", async () => {
+    // Set once a staff or admin account has been signed in here (pageViews.ts).
+    localStorage.setItem("gg_staff_device", "1");
+    mocked.signedIn = true;
+    renderNudge();
+    await visit("/shop");
+    await signOut();
+    await addToCart(1059);
+    expect(await screen.findByRole("complementary", { name: "Save $0.53 on this order" })).toBeInTheDocument();
   });
 });

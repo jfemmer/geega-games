@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
-import { isStaffDevice } from "../lib/pageViews";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link, useRouter } from "../lib/router";
 import { MEMBER_DISCOUNT_PERCENT, formatCents, memberDiscountCents } from "../lib/money";
@@ -13,6 +12,11 @@ import { Icon } from "./Icon";
 // very order (checkout carries its own, in-page version of the same offer).
 // It is a corner card, not a modal: it doesn't block the page or steal focus,
 // and once closed it stays away for a month.
+//
+// Devices remembered as staff devices (lib/pageViews.ts) see it too, once
+// signed out: it only appears after someone adds a card while signed out, so
+// a staff member doing that is shopping or testing as a guest and should see
+// what a guest sees. (Their page views are still left out of visitor stats.)
 
 const DISMISSED_KEY = "gg_nudge_dismissed_at";
 const DISMISS_FOR_MS = 30 * 24 * 60 * 60 * 1000;
@@ -51,20 +55,21 @@ function rememberDismissed(): void {
 }
 
 /**
- * True once a card has been added to the cart since the page loaded. The
- * cart's first load (a returning shopper's saved cart) doesn't count — only
- * an add does.
+ * True once a card has been added to the cart while signed out, since the
+ * page loaded. The cart's first load (a returning shopper's saved cart)
+ * doesn't count, and neither does anything that happens while signed in
+ * (adds, or a guest cart merging into the account) — only a signed-out add.
  */
-function useAddedToCart(): boolean {
+function useAddedWhileSignedOut(signedOut: boolean): boolean {
   const { itemCount, loading } = useCart();
   const before = useRef<number | null>(null);
   const [added, setAdded] = useState(false);
 
   useEffect(() => {
     if (loading) return;
-    if (before.current !== null && itemCount > before.current) setAdded(true);
+    if (signedOut && before.current !== null && itemCount > before.current) setAdded(true);
     before.current = itemCount;
-  }, [itemCount, loading]);
+  }, [itemCount, loading, signedOut]);
 
   return added;
 }
@@ -73,19 +78,18 @@ export default function SignupNudge() {
   const { user, loading } = useAuth();
   const { path } = useRouter();
   const { subtotalCents } = useCart();
-  const added = useAddedToCart();
+  const signedOut = !loading && !user;
+  const added = useAddedWhileSignedOut(signedOut);
   const [closed, setClosed] = useState(false);
   const savingsCents = memberDiscountCents(subtotalCents);
 
   const visible =
-    !loading &&
-    !user &&
+    signedOut &&
     !closed &&
     added &&
     savingsCents > 0 &&
     !isExcluded(path) &&
-    !recentlyDismissed() &&
-    !isStaffDevice();
+    !recentlyDismissed();
 
   if (!visible) return null;
 
