@@ -7,6 +7,11 @@ import { TextField, SelectField, TextArea } from "../components/ui/Field";
 import { useToast } from "../hooks/useToast";
 import { buyingLeadsRepository } from "../repositories/buyingLeads.supabase";
 import { DeleteLeadSection } from "../components/leads/DeleteLeadSection";
+import {
+  LeadSourcePanel,
+  PartnerReferralPanel,
+  ReferralRewardPanel,
+} from "../components/partners/LeadPartnerPanels";
 import { formatCents, formatDateTime } from "../utils/format";
 import {
   BUYING_LEAD_PRIORITY_LABELS,
@@ -200,7 +205,6 @@ export function BuyingLeadDetailDrawer({
               <strong>Seller notes:</strong> {lead.notes}
             </p>
           )}
-          {lead.referralSource && <p className="gg-card-meta">Heard about us via: {lead.referralSource}</p>}
           {lead.estimatedValueCents != null && (
             <div className="gg-inline-note gg-inline-note--info">
               <Icon name="dollar" size={16} />
@@ -303,6 +307,27 @@ export function BuyingLeadDetailDrawer({
             )
           );
         })()}
+
+        <LeadSourcePanel source={lead.source} />
+
+        {lead.partnerConsentAt ? (
+          <PartnerReferralPanel
+            key={lead.id}
+            kind="sell_submission"
+            leadId={lead.id}
+            leadReference={lead.referenceNumber}
+            leadCategories={["magic"]}
+            onChanged={onChanged}
+          />
+        ) : null}
+
+        <ReferralRewardPanel
+          key={`reward-${lead.id}-${lead.status}`}
+          kind="sell_submission"
+          leadId={lead.id}
+          refCode={lead.source.refCode ?? null}
+          soldToUs={lead.status === "completed"}
+        />
 
         <section className="gg-leaddetail__section gg-leaddetail__internal">
           <h3>Internal tools</h3>

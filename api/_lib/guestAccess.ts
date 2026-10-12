@@ -14,8 +14,12 @@ import { ServerEnv } from "./env.js";
 //   * attach the record to an account they create or sign in to later
 //     (api/account/claim.ts -> claim_guest_record).
 // It deliberately does NOT depend on Supabase's email-confirmation setting.
+//
+// "checkin" tokens sign a partner referral id: they let the seller answer the
+// "did the store get in touch?" email (api/partner-referrals/checkin.ts) and
+// nothing else.
 
-export type GuestRecordKind = "order" | "sell";
+export type GuestRecordKind = "order" | "sell" | "checkin";
 
 const ID_RE = /^[0-9a-f-]{36}$/i;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;

@@ -42,12 +42,35 @@ describe("build-time prerender", () => {
     }
   });
 
-  it("tells sellers on every referral page that our buying partner buys very competitively", () => {
+  it("tells sellers on every partner-store page who makes the offer and that the store may pay us a fee", () => {
     for (const path of ["/sell-pokemon-cards", "/sell-one-piece-cards", "/sell-video-games"]) {
       const { html, seo } = renderPage(path);
-      expect(html, path).toContain("buys very competitively");
-      expect(seo?.description, path).toContain("buys very competitively");
+      expect(html, path).toContain("vetted partner store");
+      expect(html, path).toMatch(/may pay (Geega Games|us) a referral fee/);
+      expect(seo?.description, path).toContain("partner store");
+      // Retired 2026-10-11: it described one buyer, and leads now go to several stores.
+      expect(html, path).not.toContain("very competitively");
+      expect(seo?.description, path).not.toContain("very competitively");
     }
+  });
+
+  it("lists only the partner categories we have pages for on the sell hub", () => {
+    const { html } = renderPage("/sell-cards-and-games");
+    for (const path of ["/sell-my-collection", "/sell-pokemon-cards", "/sell-one-piece-cards", "/sell-video-games"]) {
+      expect(html, path).toContain(`href="${path}"`);
+    }
+    expect(html).not.toMatch(/Yu-Gi-Oh|Lorcana|sports cards/i);
+  });
+
+  it("renders the partner program pages with their standards, fees and application forms", () => {
+    const stores = renderPage("/for-stores").html;
+    expect(stores).toContain("Collection leads for card and video game stores");
+    expect(stores).toContain("What we ask of partner stores");
+    expect(stores).toContain("finder’s fee only when you buy");
+    expect(stores).toContain('id="apply"');
+    const referrers = renderPage("/referral-partners").html;
+    expect(referrers).toContain("Become a referral partner");
+    expect(referrers).toContain("referral fee");
   });
 
   it("keeps the meetup and ship options on every area page", () => {

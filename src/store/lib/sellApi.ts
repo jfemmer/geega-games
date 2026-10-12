@@ -1,4 +1,5 @@
 import { supabase } from "../../supabase";
+import { getAttribution } from "./attributionStore";
 import type { SellCardLine, SellPhoto, SellPrinting } from "./sellTypes";
 
 // Thin fetch wrappers around /api/sell/*. Deliberately independent of
@@ -150,6 +151,8 @@ export async function submitSellForm(payload: {
   agreedToTerms: boolean;
   /** "quick_quote" from the one-screen photo form; omitted by the full /sell flow. */
   source?: "quick_quote";
+  /** The optional "if Geega Games passes, share it with a partner store" box. */
+  partnerConsent?: boolean;
 }): Promise<SubmitSellFormResult> {
   const { data } = await supabase.auth.getSession();
   const accessToken = data.session?.access_token;
@@ -184,6 +187,9 @@ export async function submitSellForm(payload: {
       photos: payload.photos,
       agreedToTerms: payload.agreedToTerms,
       source: payload.source,
+      partnerConsent: payload.partnerConsent === true,
+      // Where the seller came from (tagged link, referral code) — see attributionStore.
+      attribution: getAttribution() ?? undefined,
     }),
   });
   const body = await res.json().catch(() => null);

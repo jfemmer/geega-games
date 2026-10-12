@@ -348,7 +348,8 @@ export function AboutPage() {
           </li>
           <li>
             <strong>Help with everything else.</strong> For Pokémon, One Piece and video games, we
-            connect sellers with a trusted buyer we work with, who buys very competitively:{" "}
+            connect sellers with a vetted partner store that buys
+            them:{" "}
             {REFERRAL_PAGES.map((p, i) => (
               <span key={p.path}>
                 {i > 0 ? " · " : ""}

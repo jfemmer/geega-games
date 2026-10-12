@@ -40,7 +40,15 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: "Sell Pokémon cards", href: "/sell-pokemon-cards" },
       { label: "Sell One Piece cards", href: "/sell-one-piece-cards" },
       { label: "Sell video games", href: "/sell-video-games" },
+      { label: "All cards & games", href: "/sell-cards-and-games" },
       { label: "Seller guides", href: "/guides" },
+    ],
+  },
+  {
+    title: "Partners",
+    links: [
+      { label: "For stores: get collection leads", href: "/for-stores" },
+      { label: "Referral partners", href: "/referral-partners" },
     ],
   },
   {

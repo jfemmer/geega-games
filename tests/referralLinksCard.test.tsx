@@ -30,6 +30,23 @@ afterEach(() => {
 });
 
 describe("ReferralLinksCard", () => {
+  it("points to Marketing for QR codes and flyers when it can navigate", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    render(
+      <ToastProvider>
+        <ReferralLinksCard onNavigate={onNavigate} />
+      </ToastProvider>,
+    );
+    await user.click(screen.getByRole("link", { name: "Marketing" }));
+    expect(onNavigate).toHaveBeenCalledWith("/admin_dashboard/marketing");
+  });
+
+  it("leaves the Marketing pointer out when it can't navigate", () => {
+    renderCard();
+    expect(screen.queryByRole("link", { name: "Marketing" })).toBeNull();
+  });
+
   it("lists every referral page at its live geega-games.com address", () => {
     renderCard();
     expect(REFERRAL_PAGES.length).toBeGreaterThan(0);

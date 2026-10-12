@@ -4,6 +4,8 @@ import { useSEO } from "../lib/useSEO";
 import { NotFoundPage } from "./StaticPages";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import { GUIDES, findGuide, guidePath, type GuideMeta, type GuideTopic } from "../../seo/guides";
+import { REFERRAL_PAGES } from "../../seo/referralPages";
+import { SELL_HUB_PATH } from "../lib/partnerTypes";
 import { ST_LOUIS_PATH, ST_LOUIS_SAFE_SPOTS, sellFormPath } from "../../seo/sellAreas";
 import { MAX_DRIVE_HOURS, ORGANIZATION_ID, absoluteUrl, breadcrumbJsonLd } from "../../seo/site";
 
@@ -33,61 +35,30 @@ function GuideCta({ topic }: { topic: GuideTopic }) {
         <h2>Selling cards in St. Louis?</h2>
         <p>
           We buy Magic cards at meetups across the metro, Missouri or Illinois side. For Pokémon, One
-          Piece and video games, we&rsquo;ll connect you with a trusted buyer who pays very
-          competitively.
+          Piece and video games, we&rsquo;ll connect you with a vetted partner store that buys them.
         </p>
         <div className="gg-guide-cta-links">
           <Link to={ST_LOUIS_PATH} className="gg-btn">
             Sell Magic cards in St. Louis
           </Link>
-          <Link to="/sell-pokemon-cards" className="gg-btn gg-btn-ghost">
-            Sell Pokémon cards
-          </Link>
-          <Link to="/sell-one-piece-cards" className="gg-btn gg-btn-ghost">
-            Sell One Piece cards
+          <Link to={SELL_HUB_PATH} className="gg-btn gg-btn-ghost">
+            Sell other cards or games
           </Link>
         </div>
       </aside>
     );
   }
-  if (topic === "pokemon") {
+  const referralPage = REFERRAL_PAGES.find((p) => p.category === topic);
+  if (referralPage) {
     return (
       <aside className="gg-collect-cta">
-        <h2>Ready to sell your Pokémon cards?</h2>
+        <h2>Ready to sell your {referralPage.noun}?</h2>
         <p>
-          We&rsquo;ll connect you with the trusted buyer we work with, who buys very competitively —
-          meet up around St. Louis, or ship from anywhere in the US.
+          We&rsquo;ll connect you with a vetted partner store that buys them, to meet up or ship.
+          Free to ask, with no obligation to sell.
         </p>
-        <Link to="/sell-pokemon-cards" className="gg-btn">
-          Sell your Pokémon cards
-        </Link>
-      </aside>
-    );
-  }
-  if (topic === "one_piece") {
-    return (
-      <aside className="gg-collect-cta">
-        <h2>Ready to sell your One Piece cards?</h2>
-        <p>
-          We&rsquo;ll connect you with the trusted buyer we work with, who buys very competitively —
-          meet up around St. Louis, or ship from anywhere in the US.
-        </p>
-        <Link to="/sell-one-piece-cards" className="gg-btn">
-          Sell your One Piece cards
-        </Link>
-      </aside>
-    );
-  }
-  if (topic === "video_games") {
-    return (
-      <aside className="gg-collect-cta">
-        <h2>Ready to sell your video games?</h2>
-        <p>
-          We&rsquo;ll connect you with the trusted buyer we work with, who buys very competitively —
-          meet up around St. Louis, or ship from anywhere in the US.
-        </p>
-        <Link to="/sell-video-games" className="gg-btn">
-          Sell your video games
+        <Link to={referralPage.path} className="gg-btn">
+          Sell your {referralPage.noun}
         </Link>
       </aside>
     );
@@ -1127,8 +1098,9 @@ function StLouisWhereToSellGuide() {
       <p>
         For <Link to="/sell-pokemon-cards">Pokémon cards</Link>,{" "}
         <Link to="/sell-one-piece-cards">One Piece cards</Link> and{" "}
-        <Link to="/sell-video-games">video games</Link>, we connect you with a trusted buyer we work
-        with, who buys very competitively and meets up around St. Louis or buys by mail.
+        <Link to="/sell-video-games">video games</Link>, we connect you with a vetted partner store
+        that buys them and meets up or buys by mail.{" "}
+        <Link to={SELL_HUB_PATH}>See everything we can help you sell</Link>.
       </p>
 
       <h2>By game</h2>

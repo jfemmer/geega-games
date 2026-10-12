@@ -3,6 +3,7 @@ import { CollectionPhotoUpload, MAX_PHOTO_BYTES } from "./sell/CollectionPhotoUp
 import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
 import { rememberClaim } from "../lib/guestClaims";
 import { emptyCollection, newLocalId, type SellContactInfo, type SellPhoto } from "../lib/sellTypes";
+import { MAGIC_PARTNER_CONSENT_LABEL } from "../lib/partnerTypes";
 
 // One-screen "send photos, get an offer" form for Magic sellers — the way most
 // collection buyers quote now (seller research, 2026-09-25). It creates a
@@ -38,6 +39,7 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
   const [zip, setZip] = useState("");
   const [handoff, setHandoff] = useState<Handoff>(defaultHandoff);
   const [agreed, setAgreed] = useState(false);
+  const [partnerConsent, setPartnerConsent] = useState(false);
   const [hpRef, setHpRef] = useState(""); // honeypot
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -148,6 +150,7 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         photos: uploaded.map((p) => ({ path: p.uploadedPath!, originalFilename: p.originalFilename })),
         agreedToTerms: agreed,
         source: "quick_quote",
+        partnerConsent,
       });
       if (!res.ok) throw new Error(res.message);
       if (res.claim) rememberClaim({ kind: "sell", id: res.claim.id, token: res.claim.token });
@@ -286,13 +289,21 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         </span>
       </label>
 
+      <label className="gg-check gg-referral-consent gg-referral-consent--optional">
+        <input type="checkbox" checked={partnerConsent} onChange={(e) => setPartnerConsent(e.target.checked)} />
+        <span>{MAGIC_PARTNER_CONSENT_LABEL}</span>
+      </label>
+
       {error && (
         <p className="gg-alert gg-alert-error" role="alert">
           {error}
         </p>
       )}
 
-      <p className="gg-referral-assure">Free, with no obligation to sell. We never sell your details.</p>
+      <p className="gg-referral-assure">
+        Free, with no obligation to sell. Your details stay with us unless you tick the optional box
+        above.
+      </p>
 
       <button type="submit" className="gg-btn" disabled={submitting}>
         {submitting ? "Sending…" : "Get my free offer"}

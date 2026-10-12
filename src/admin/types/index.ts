@@ -9,6 +9,14 @@
 // error rather than a runtime surprise.
 
 import type { ReferralLeadStatus } from "../../store/lib/referralTypes.js";
+import type { LeadSourceFields } from "../../store/lib/attribution.js";
+import type {
+  CheckinAnswer,
+  FeeStatus,
+  PartnerKind,
+  PartnerReferralOutcome,
+  PartnerStatus,
+} from "../../store/lib/partnerTypes.js";
 
 /* ------------------------------------------------------------------ *
  * Shared enums (kept in sync with public.Enums in database.ts)
@@ -1173,6 +1181,10 @@ export interface BuyingLeadDetail extends BuyingLeadSummary {
   closedAt: string | null;
   cards: BuyingLeadCard[];
   photos: BuyingLeadPhoto[];
+  /** The seller ticked "if Geega Games passes, share it with a partner store". Null: never send it on. */
+  partnerConsentAt: string | null;
+  /** Where the seller came from: tagged link, referral code, first page, what they said. */
+  source: LeadSourceFields;
 }
 
 export interface BuyingLeadsQuery {
@@ -1183,8 +1195,8 @@ export interface BuyingLeadsQuery {
   largeCollection?: boolean;
 }
 /* ------------------------------------------------------------------ *
- * Partner Leads — Pokémon / One Piece / video game sellers referred to
- * the buying partner (referral_leads)
+ * Partner Leads — Pokémon / One Piece / video game sellers who asked to
+ * be passed to a partner store (referral_leads)
  * ------------------------------------------------------------------ */
 
 export type { ReferralLeadStatus };
@@ -1207,6 +1219,88 @@ export interface ReferralLead {
   sourcePath: string | null;
   consentToShareAt: string;
   status: ReferralLeadStatus;
+  /** Where the seller came from: tagged link, referral code, first page, what they said. */
+  source: LeadSourceFields;
+}
+
+/* ------------------------------------------------------------------ *
+ * Partner program — partner stores, referral partners, leads sent to
+ * stores, referral rewards (see src/store/lib/partnerTypes.ts)
+ * ------------------------------------------------------------------ */
+
+export type { PartnerKind, PartnerStatus, PartnerReferralOutcome, FeeStatus, CheckinAnswer };
+
+export interface Partner {
+  id: string;
+  createdAt: string;
+  kind: PartnerKind;
+  status: PartnerStatus;
+  businessName: string;
+  contactName: string;
+  email: string;
+  phone: string | null;
+  website: string | null;
+  city: string | null;
+  state: string | null;
+  categories: string[];
+  coverage: string | null;
+  buysByMail: boolean;
+  profession: string | null;
+  notes: string | null;
+  internalNotes: string | null;
+  feePercent: number;
+  approvedAt: string | null;
+  agreedToStandardsAt: string;
+  /** Referral partners: their personal code, once approved. */
+  referralCode: string | null;
+  source: LeadSourceFields;
+}
+
+export interface PartnerReferral {
+  id: string;
+  createdAt: string;
+  partnerId: string;
+  referralLeadId: string | null;
+  sellSubmissionId: string | null;
+  leadReference: string;
+  sentAt: string;
+  outcome: PartnerReferralOutcome;
+  outcomeAt: string | null;
+  saleAmountCents: number | null;
+  feePercent: number;
+  feeCents: number | null;
+  feeStatus: FeeStatus;
+  feePaidAt: string | null;
+  checkinSentAt: string | null;
+  checkinResponse: CheckinAnswer | null;
+  checkinAmountCents: number | null;
+  checkinRespondedAt: string | null;
+  notes: string | null;
+}
+
+export interface ReferralReward {
+  id: string;
+  createdAt: string;
+  referralLeadId: string | null;
+  sellSubmissionId: string | null;
+  leadReference: string;
+  refCode: string;
+  userId: string | null;
+  partnerId: string | null;
+  kind: "store_credit" | "cash";
+  amountCents: number;
+  status: "owed" | "paid";
+  paidAt: string | null;
+}
+
+/** Who a referral code belongs to, named for staff. */
+export interface ReferralCodeOwner {
+  code: string;
+  userId: string | null;
+  partnerId: string | null;
+  /** "Jane Doe (customer)" / "Acme Estate Sales (referral partner)". */
+  label: string;
+  email: string | null;
 }
 
 /* ------------------------------------------------------------------ *

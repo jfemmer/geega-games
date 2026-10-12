@@ -2,7 +2,7 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
-const EFFECTIVE_DATE = "September 25, 2026";
+const EFFECTIVE_DATE = "October 11, 2026";
 
 export function PrivacyPage() {
   useSEO({
@@ -52,11 +52,27 @@ export function PrivacyPage() {
           this information is used and protected.
         </li>
         <li>
-          <strong>Pokémon, One Piece and video game selling requests:</strong> when you ask us to
-          connect you with a buyer for these items, we collect your name, email, phone number
-          (optional), general location (optional), preferred contact method, the description you
-          provide, and any photographs you upload. With your consent, given on that form, we share
-          this information with our buying partner so they can contact you about an offer.
+          <strong>Partner store selling requests:</strong> when you ask us to connect you with a
+          partner store for Pokémon or One Piece cards, or video games,
+          we collect your name, email, phone number (optional), general location (optional),
+          preferred contact method, the description you provide, and any photographs you upload.
+          At your request, given on that form, we share this information with one partner store so
+          it can contact you about an offer (see Section 3).
+        </li>
+        <li>
+          <strong>How you found us:</strong> if you arrive through a tagged link or QR code (for
+          example, from a flyer, a card show or a social media post) or through someone&rsquo;s
+          personal referral link, your browser remembers that link&rsquo;s tags or referral code,
+          the first page you visited and the site that sent you, for up to 30 days, in its local
+          storage. When you submit a selling request, we store that with it, along with your
+          optional answer to &ldquo;How did you hear about us?&rdquo;, so we know which of our
+          outreach works and whom to thank for a referral.
+        </li>
+        <li>
+          <strong>Partner program information:</strong> if you apply to be a partner store or
+          referral partner, we collect your business name, your name, email, phone number
+          (optional), website (optional), city and state, what your business buys or does, and
+          anything else you tell us, and we keep records of leads we send you and fees.
         </li>
         <li>
           <strong>Marketing/newsletter information:</strong> if you subscribe to our newsletter or
@@ -86,6 +102,9 @@ export function PrivacyPage() {
         <li>create and manage your account;</li>
         <li>process, fulfill, and ship your orders, and communicate with you about them;</li>
         <li>evaluate, respond to, and process Sell Your Cards / Sell Your Collection submissions, including contacting you about them;</li>
+        <li>connect you with a partner store when you ask us to, and check in with you afterwards to see how it went;</li>
+        <li>understand which of our outreach brings sellers to us, and reward people who referred them;</li>
+        <li>run our partner program, including reviewing applications, sending leads, and keeping fee and referral-reward records;</li>
         <li>provide customer support and respond to your requests;</li>
         <li>send transactional communications (order confirmations, shipping updates, account notices);</li>
         <li>send marketing communications where you have opted in, and let you opt out at any time;</li>
@@ -96,9 +115,9 @@ export function PrivacyPage() {
 
       <h2>3. How We Share Information</h2>
       <p>
-        <strong>We do not sell your personal information to third parties, and we do not share it
-        with third parties for their own independent marketing purposes.</strong> We share
-        information only as follows:
+        <strong>We do not sell lists of our customers&rsquo; or sellers&rsquo; personal information,
+        and we do not share it with third parties for their own independent marketing
+        purposes.</strong> We share information only as follows:
       </p>
       <ul>
         <li>
@@ -121,10 +140,20 @@ export function PrivacyPage() {
           arrangements; and
         </li>
         <li>
-          <strong>Our buying partner,</strong> only when you ask us to connect you with a buyer
-          for Pokémon cards, One Piece cards or video games and consent to it on that form. We share
-          the details and photos you submit there so the partner can contact you about an offer;
-          the partner handles any purchase directly with you.
+          <strong>A partner store, only when you ask us to.</strong> When you ask us to connect you
+          with a partner store — on one of our partner-store selling pages, or by ticking the
+          optional box on our Magic selling forms — we share the details and photos you submitted
+          with the one partner store we match you with, so it can contact you about an offer. We
+          tell you which store it is. That store handles any purchase directly with you, and we
+          require it to use your details only for that offer. If you sell to that store, it may pay
+          us a referral fee; you are never charged anything. We share your information with a
+          partner store only at your direction.
+        </li>
+        <li>
+          <strong>Whoever referred you:</strong> if you came to us through someone&rsquo;s personal
+          referral link and you sell, we may let that person know that a referral sold — and, for a
+          business referral partner, the referral fee, which is a percentage of the sale — so we can
+          pay their reward. We don&rsquo;t share your contact details with them.
         </li>
         <li>
           <strong>With your consent</strong> or at your direction.
@@ -156,7 +185,8 @@ export function PrivacyPage() {
         Photographs and information you submit through the Sell Your Cards / Sell Your Collection
         tool are stored in a private file storage location that is not publicly accessible and is
         never displayed on the public storefront. Access is limited to authorized Geega Games
-        staff for the purpose of reviewing and evaluating your submission. We retain submission
+        staff for the purpose of reviewing and evaluating your submission — and, only if you
+        ticked the optional box asking us to, the one partner store we pass it to. We retain submission
         information and photographs for our business records (including for cases where a
         submission does not result in a completed sale) unless you request deletion under Section
         8 below and we are not otherwise required or permitted to retain it (for example, for

@@ -1620,6 +1620,187 @@ export type Database = {
           },
         ]
       }
+      partner_referrals: {
+        Row: {
+          checkin_amount_cents: number | null
+          checkin_responded_at: string | null
+          checkin_response: string | null
+          checkin_sent_at: string | null
+          created_at: string
+          fee_cents: number | null
+          fee_paid_at: string | null
+          fee_percent: number
+          fee_status: string
+          id: string
+          lead_reference: string
+          notes: string | null
+          outcome: string
+          outcome_at: string | null
+          partner_id: string
+          referral_lead_id: string | null
+          sale_amount_cents: number | null
+          sell_submission_id: string | null
+          sent_at: string
+          sent_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          checkin_amount_cents?: number | null
+          checkin_responded_at?: string | null
+          checkin_response?: string | null
+          checkin_sent_at?: string | null
+          created_at?: string
+          fee_cents?: number | null
+          fee_paid_at?: string | null
+          fee_percent: number
+          fee_status?: string
+          id?: string
+          lead_reference: string
+          notes?: string | null
+          outcome?: string
+          outcome_at?: string | null
+          partner_id: string
+          referral_lead_id?: string | null
+          sale_amount_cents?: number | null
+          sell_submission_id?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          checkin_amount_cents?: number | null
+          checkin_responded_at?: string | null
+          checkin_response?: string | null
+          checkin_sent_at?: string | null
+          created_at?: string
+          fee_cents?: number | null
+          fee_paid_at?: string | null
+          fee_percent?: number
+          fee_status?: string
+          id?: string
+          lead_reference?: string
+          notes?: string | null
+          outcome?: string
+          outcome_at?: string | null
+          partner_id?: string
+          referral_lead_id?: string | null
+          sale_amount_cents?: number | null
+          sell_submission_id?: string | null
+          sent_at?: string
+          sent_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_referrals_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_referrals_referral_lead_id_fkey"
+            columns: ["referral_lead_id"]
+            isOneToOne: false
+            referencedRelation: "referral_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_referrals_sell_submission_id_fkey"
+            columns: ["sell_submission_id"]
+            isOneToOne: false
+            referencedRelation: "sell_submissions"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      partners: {
+        Row: {
+          agreed_to_standards_at: string
+          approved_at: string | null
+          business_name: string
+          buys_by_mail: boolean
+          categories: string[]
+          city: string | null
+          contact_name: string
+          coverage: string | null
+          created_at: string
+          email: string
+          fee_percent: number
+          id: string
+          internal_notes: string | null
+          kind: string
+          landing_path: string | null
+          notes: string | null
+          phone: string | null
+          profession: string | null
+          referrer_host: string | null
+          state: string | null
+          status: string
+          updated_at: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          website: string | null
+        }
+        Insert: {
+          agreed_to_standards_at: string
+          approved_at?: string | null
+          business_name: string
+          buys_by_mail?: boolean
+          categories?: string[]
+          city?: string | null
+          contact_name: string
+          coverage?: string | null
+          created_at?: string
+          email: string
+          fee_percent?: number
+          id?: string
+          internal_notes?: string | null
+          kind: string
+          landing_path?: string | null
+          notes?: string | null
+          phone?: string | null
+          profession?: string | null
+          referrer_host?: string | null
+          state?: string | null
+          status?: string
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          website?: string | null
+        }
+        Update: {
+          agreed_to_standards_at?: string
+          approved_at?: string | null
+          business_name?: string
+          buys_by_mail?: boolean
+          categories?: string[]
+          city?: string | null
+          contact_name?: string
+          coverage?: string | null
+          created_at?: string
+          email?: string
+          fee_percent?: number
+          id?: string
+          internal_notes?: string | null
+          kind?: string
+          landing_path?: string | null
+          notes?: string | null
+          phone?: string | null
+          profession?: string | null
+          referrer_host?: string | null
+          state?: string | null
+          status?: string
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
       payment_events: {
         Row: {
           event_id: string
@@ -1952,6 +2133,13 @@ export type Database = {
           reference_number: string
           source_path: string | null
           status: string
+          landing_path: string | null
+          ref_code: string | null
+          referrer_host: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          referral_source: string | null
         }
         Insert: {
           categories: string[]
@@ -1971,6 +2159,13 @@ export type Database = {
           reference_number?: string
           source_path?: string | null
           status?: string
+          landing_path?: string | null
+          ref_code?: string | null
+          referrer_host?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          referral_source?: string | null
         }
         Update: {
           categories?: string[]
@@ -1990,8 +2185,132 @@ export type Database = {
           reference_number?: string
           source_path?: string | null
           status?: string
+          landing_path?: string | null
+          ref_code?: string | null
+          referrer_host?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          referral_source?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "referral_leads_ref_code_fkey"
+            columns: ["ref_code"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["code"]
+          }
+        ]
+      }
+      referral_codes: {
+        Row: {
+          code: string
+          created_at: string
+          partner_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          partner_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          partner_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_codes_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: true
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      referral_rewards: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          lead_reference: string
+          paid_at: string | null
+          partner_id: string | null
+          ref_code: string
+          referral_lead_id: string | null
+          sell_submission_id: string | null
+          status: string
+          store_credit_transaction_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          lead_reference: string
+          paid_at?: string | null
+          partner_id?: string | null
+          ref_code: string
+          referral_lead_id?: string | null
+          sell_submission_id?: string | null
+          status?: string
+          store_credit_transaction_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          lead_reference?: string
+          paid_at?: string | null
+          partner_id?: string | null
+          ref_code?: string
+          referral_lead_id?: string | null
+          sell_submission_id?: string | null
+          status?: string
+          store_credit_transaction_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_rewards_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_rewards_referral_lead_id_fkey"
+            columns: ["referral_lead_id"]
+            isOneToOne: true
+            referencedRelation: "referral_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_rewards_sell_submission_id_fkey"
+            columns: ["sell_submission_id"]
+            isOneToOne: true
+            referencedRelation: "sell_submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_rewards_store_credit_transaction_id_fkey"
+            columns: ["store_credit_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "store_credit_transactions"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       scan_sessions: {
         Row: {
@@ -2576,6 +2895,13 @@ export type Database = {
           user_id: string | null
           valuable_cards_notes: string | null
           zip: string | null
+          landing_path: string | null
+          ref_code: string | null
+          referrer_host: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          partner_consent_at: string | null
         }
         Insert: {
           city?: string | null
@@ -2624,6 +2950,13 @@ export type Database = {
           user_id?: string | null
           valuable_cards_notes?: string | null
           zip?: string | null
+          landing_path?: string | null
+          ref_code?: string | null
+          referrer_host?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          partner_consent_at?: string | null
         }
         Update: {
           city?: string | null
@@ -2672,8 +3005,23 @@ export type Database = {
           user_id?: string | null
           valuable_cards_notes?: string | null
           zip?: string | null
+          landing_path?: string | null
+          ref_code?: string | null
+          referrer_host?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          partner_consent_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sell_submissions_ref_code_fkey"
+            columns: ["ref_code"]
+            isOneToOne: false
+            referencedRelation: "referral_codes"
+            referencedColumns: ["code"]
+          }
+        ]
       }
       staff_push_log: {
         Row: {
@@ -3424,6 +3772,22 @@ export type Database = {
           status: Database["public"]["Enums"]["sell_submission_status"]
         }[]
       }
+      grant_referral_reward: {
+        Args: {
+          p_amount_cents: number
+          p_created_by: string | null
+          p_kind: string
+          p_lead_reference: string
+          p_partner_id: string | null
+          p_ref_code: string
+          p_referral_lead_id: string | null
+          p_sell_submission_id: string | null
+          p_user_id: string | null
+        }
+        Returns: string
+      }
+      my_referral_code: { Args: never; Returns: string }
+      my_referral_summary: { Args: never; Returns: Json }
       my_store_credit_balance: { Args: never; Returns: number }
       my_wishlist: {
         Args: never
@@ -3836,6 +4200,7 @@ export type Database = {
         | "order_spend"
         | "order_refund"
         | "trade_in_payout"
+        | "referral_reward"
       subscriber_status:
         | "pending"
         | "active"
@@ -4127,6 +4492,7 @@ export const Constants = {
         "order_spend",
         "order_refund",
         "trade_in_payout",
+        "referral_reward",
       ],
       subscriber_status: [
         "pending",

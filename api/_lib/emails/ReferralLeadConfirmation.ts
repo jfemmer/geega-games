@@ -2,9 +2,10 @@ import * as React from "react";
 import { Heading, Hr, Link, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
 
-// Seller-facing receipt for a Pokémon / One Piece / video game referral.
-// Says plainly that the offer comes from Geega Games' buying partner, not
-// Geega Games — the same thing the landing page and consent checkbox say.
+// Seller-facing receipt for a partner lead. Says plainly that the offer comes
+// from one of Geega Games' partner stores, not Geega Games, and that the store
+// may pay us a referral fee — the same thing the page and the consent
+// checkbox say. The seller gets a second email naming the store once it's sent.
 
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
@@ -47,7 +48,7 @@ export function ReferralLeadConfirmation(data: ReferralLeadConfirmationData) {
     h(
       Text,
       { key: "p1", style: p },
-      `Thanks, ${data.firstName}! We're passing the details you sent about your ${data.categoriesLabel} to the buying partner we work with, who buys very competitively. They'll contact you directly (by ${data.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
+      `Thanks, ${data.firstName}! We'll pass the details you sent about your ${data.categoriesLabel} to one of our partner stores that buys them, and email you its name. The store will contact you directly (by ${data.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
     ),
     h(
       Section,
@@ -58,7 +59,7 @@ export function ReferralLeadConfirmation(data: ReferralLeadConfirmationData) {
     h(
       Text,
       { key: "p2", style: p },
-      "Sending this request doesn't commit you to anything — you're free to say no to any offer.",
+      "Sending this request doesn't commit you to anything — you're free to say no to any offer. If you do sell to the store, it may pay Geega Games a referral fee; you're never charged anything.",
     ),
     h(Hr, { key: "hr", style: hr }),
     h(
@@ -75,11 +76,11 @@ export function referralLeadConfirmationText(d: ReferralLeadConfirmationData): s
   return [
     "We got your request! — Geega Games",
     "",
-    `Thanks, ${d.firstName}! We're passing the details you sent about your ${d.categoriesLabel} to the buying partner we work with, who buys very competitively. They'll contact you directly (by ${d.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
+    `Thanks, ${d.firstName}! We'll pass the details you sent about your ${d.categoriesLabel} to one of our partner stores that buys them, and email you its name. The store will contact you directly (by ${d.preferredContact.toLowerCase()}, as you asked) to talk about an offer.`,
     "",
     `Reference number: ${d.referenceNumber}`,
     "",
-    "Sending this request doesn't commit you to anything — you're free to say no to any offer.",
+    "Sending this request doesn't commit you to anything — you're free to say no to any offer. If you do sell to the store, it may pay Geega Games a referral fee; you're never charged anything.",
     "",
     `Have Magic: The Gathering cards too? We buy those ourselves: ${d.siteUrl}/sell-my-collection`,
     "",

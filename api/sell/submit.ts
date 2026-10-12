@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/http.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
+import { leadAttribution } from "../_lib/attribution.js";
 import { guestTokensAvailable, signGuestToken } from "../_lib/guestAccess.js";
 import { normalizeEmail } from "../_lib/tokens.js";
 import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
@@ -153,6 +154,13 @@ interface SubmitBody {
   agreedToTerms?: unknown;
   /** Which storefront form sent this: the full /sell flow or the one-screen quick photo quote. */
   source?: unknown;
+  /**
+   * The seller ticked "if Geega Games passes, share my submission with one
+   * partner store" (which may pay us a referral fee). Optional; never assumed.
+   */
+  partnerConsent?: unknown;
+  /** Where the seller came from (src/store/lib/attribution.ts). */
+  attribution?: unknown;
 }
 
 // sell_submissions.source values the storefront may set (column default:
@@ -355,6 +363,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (userData?.user) userId = userData.user.id;
     }
 
+    // Tagged link / referral code / first page. A referral code is kept only
+    // if someone other than this seller can earn from it.
+    const attribution = await leadAttribution(admin, body.attribution, { email, userId });
+
     const totalCards = cards.reduce((sum, c) => sum + (c.quantity ?? 1), 0);
     const matchedValueCents = cards
       .filter((c) => c.match_status === "matched" && c.scryfall_price_cents != null)
@@ -387,6 +399,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_cards: totalCards,
       photo_count: photoRows.length,
       estimated_value_cents: hasPriceData ? matchedValueCents : null,
+      partner_consent_at: body.partnerConsent === true ? new Date().toISOString() : null,
+      ...attribution,
     };
 
     const { data: submission, error: insertError } = await admin

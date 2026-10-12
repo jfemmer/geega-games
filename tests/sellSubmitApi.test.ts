@@ -195,6 +195,54 @@ describe("POST /api/sell/submit", () => {
     expect(state.insertedSubmission).toBeNull();
   });
 
+  it("records the optional OK to share with a partner store only when the seller gives it", async () => {
+    await invoke({ contact: validContact, collection: validCollection, cards: [validCard], agreedToTerms: true });
+    expect(state.insertedSubmission?.partner_consent_at).toBeNull();
+
+    await invoke({
+      contact: validContact,
+      collection: validCollection,
+      cards: [validCard],
+      agreedToTerms: true,
+      partnerConsent: "yes",
+    });
+    expect(state.insertedSubmission?.partner_consent_at).toBeNull();
+
+    await invoke({
+      contact: validContact,
+      collection: validCollection,
+      cards: [validCard],
+      agreedToTerms: true,
+      partnerConsent: true,
+    });
+    expect(typeof state.insertedSubmission?.partner_consent_at).toBe("string");
+  });
+
+  it("stores where the seller came from, cleaned (no code lookup without a ?ref=)", async () => {
+    await invoke({
+      contact: validContact,
+      collection: validCollection,
+      cards: [validCard],
+      agreedToTerms: true,
+      attribution: {
+        utmSource: "flyer",
+        utmMedium: "print",
+        utmCampaign: "Laundromat Oct",
+        landingPath: "/sell-my-collection?utm_source=flyer",
+        referrerHost: "www.google.com",
+        ref: "bad code!",
+      },
+    });
+    expect(state.insertedSubmission).toMatchObject({
+      utm_source: "flyer",
+      utm_medium: "print",
+      utm_campaign: "laundromat-oct",
+      landing_path: "/sell-my-collection",
+      referrer_host: "www.google.com",
+      ref_code: null,
+    });
+  });
+
   it("rejects when the seller agreement checkbox isn't confirmed", async () => {
     const res = await invoke({
       contact: validContact,

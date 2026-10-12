@@ -92,6 +92,15 @@ describe("Sidebar", () => {
     expect(screen.getByRole("button", { name: "Users, 4 new since you last looked" })).toHaveTextContent("4");
   });
 
+  it("counts partner applications waiting for a decision on Partners, and in the total", () => {
+    renderSidebar({ new_partner_applications: 2 });
+    expect(screen.getByRole("button", { name: "Partners, 2 applications waiting" })).toHaveTextContent("2");
+    expect(navBadgeTotal({ ...EMPTY_NAV_BADGES, new_partner_applications: 2, new_leads: 1 })).toBe(3);
+    expect(parseNavBadges({ new_partner_applications: "1" }).new_partner_applications).toBe(1);
+    // Marketing has no badge.
+    expect(screen.getByRole("button", { name: "Marketing" })).toBeInTheDocument();
+  });
+
   it("keeps the existing Orders and Inventory badges", () => {
     renderSidebar({ needs_packing: 5, open_photo_requests: 1 });
     expect(screen.getByRole("button", { name: "Orders, 5 to pack" })).toBeInTheDocument();

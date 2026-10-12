@@ -7,7 +7,11 @@ export const STAFF_PUSH_KINDS = [
   { value: "order", label: "New online orders", hint: "Paid orders waiting to be packed." },
   { value: "buying_lead", label: "New buying leads", hint: "Sell Your Cards submissions and quick photo quotes." },
   { value: "offer_response", label: "Offer responses", hint: "A seller accepts, declines or counters your offer." },
-  { value: "partner_lead", label: "Partner leads", hint: "Pokémon, One Piece and video game sellers." },
+  {
+    value: "partner_lead",
+    label: "Partner leads",
+    hint: "Sellers for partner stores, partner applications and seller check-ins.",
+  },
   { value: "pickup", label: "Pickup requests", hint: "Kiosk requests to pull cards for pickup." },
   { value: "photo_request", label: "Photo requests", hint: "A shopper wants a photo of a card before buying." },
 ] as const;

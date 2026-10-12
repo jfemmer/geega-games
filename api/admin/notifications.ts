@@ -10,6 +10,7 @@ type NotificationKind =
   | "pickup"
   | "buying_lead"
   | "partner_lead"
+  | "partner_application"
   | "scan"
   | "inventory"
   | "photo_request";
@@ -53,7 +54,16 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 async function buildCandidates(): Promise<NotificationCandidate[]> {
   const admin = getSupabaseAdmin();
 
-  const [ordersRes, pickupsRes, leadsRes, scansRes, inventoryRes, partnerLeadsRes, photoRequestsRes] = await Promise.all([
+  const [
+    ordersRes,
+    pickupsRes,
+    leadsRes,
+    scansRes,
+    inventoryRes,
+    partnerLeadsRes,
+    photoRequestsRes,
+    partnerApplicationsRes,
+  ] = await Promise.all([
     admin
       .from("orders")
       .select("id, status, paid_at, ready_at, updated_at, created_at, email, ship_recipient")
@@ -110,6 +120,13 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
       .eq("status", "new")
       .order("created_at", { ascending: true })
       .limit(20),
+    // Stores and referral partners waiting for a yes or no.
+    admin
+      .from("partners")
+      .select("id, kind, business_name, city, state, created_at")
+      .eq("status", "applied")
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   const firstError =
@@ -119,7 +136,8 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
     scansRes.error ??
     inventoryRes.error ??
     partnerLeadsRes.error ??
-    photoRequestsRes.error;
+    photoRequestsRes.error ??
+    partnerApplicationsRes.error;
   if (firstError) {
     throw new HttpError(500, "Could not load live notification data.");
   }
@@ -246,9 +264,22 @@ async function buildCandidates(): Promise<NotificationCandidate[]> {
       title: `New partner lead · ${lead.reference_number}`,
       detail: `${safeName(lead.first_name, lead.last_name)} is selling ${lead.categories
         .map(referralCategoryLabel)
-        .join(", ")}. Pass it on to the buying partner.`,
+        .join(", ")}. Send it to a partner store.`,
       at: lead.created_at,
       href: `/admin_dashboard/partner-leads?lead=${lead.id}`,
+    });
+  }
+
+  for (const partner of partnerApplicationsRes.data ?? []) {
+    const where = [partner.city, partner.state].filter(Boolean).join(", ");
+    notifications.push({
+      key: `partner_application:new:${partner.id}`,
+      kind: "partner_application",
+      tone: "info",
+      title: `New ${partner.kind === "store" ? "partner store" : "referral partner"} application`,
+      detail: `${partner.business_name}${where ? ` (${where})` : ""} wants to join. Approve or decline it.`,
+      at: partner.created_at,
+      href: `/admin_dashboard/partners?partner=${partner.id}`,
     });
   }
 

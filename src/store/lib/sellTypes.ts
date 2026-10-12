@@ -5,6 +5,8 @@
 // downloaded by a storefront visitor), so this file defines its own
 // lightweight shapes rather than importing from ../../admin/*.
 
+import { HEARD_ABOUT_OPTIONS } from "./attribution.js";
+
 /** A single exact Scryfall printing, as returned by /api/sell/scryfall-search. */
 export interface SellPrinting {
   scryfallId: string;
@@ -199,14 +201,8 @@ export const SELL_TRANSACTION_PREFERENCE_OPTIONS: { value: string; label: string
   { value: "not_sure", label: "Not sure yet" },
 ];
 
-export const SELL_REFERRAL_OPTIONS: string[] = [
-  "Facebook",
-  "Google",
-  "Friend/referral",
-  "Previous customer",
-  "Local event",
-  "Other",
-];
+/** "How did you hear about Geega Games?" — the same list on every sell form. */
+export const SELL_REFERRAL_OPTIONS: string[] = [...HEARD_ABOUT_OPTIONS];
 
 export const SELL_CONDITION_OPTIONS: { value: SellCondition; label: string }[] = [
   { value: "NM", label: "Near Mint" },

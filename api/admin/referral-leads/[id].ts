@@ -17,7 +17,7 @@ import { isReferralLeadStatus } from "../../../src/store/lib/referralTypes.js";
 // DELETE /api/admin/referral-leads/:id
 //
 // Owner-only (app role "admin"). Permanently deletes the lead and the
-// seller's photos in Storage. A copy already passed to the buying partner is
+// seller's photos in Storage. A copy already passed to a partner store is
 // theirs; this only removes ours. Recorded in the audit log without the
 // seller's personal details.
 

@@ -14,6 +14,7 @@ import { SellerContactForm } from "../components/sell/SellerContactForm";
 import { SellReview } from "../components/sell/SellReview";
 import { emptyDraft, loadDraft, saveDraft, clearDraft } from "../lib/sellDraft";
 import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
+import { MAGIC_PARTNER_CONSENT_LABEL } from "../lib/partnerTypes";
 import {
   cardPhotoRequirementMet,
   conditionNeedsPhotos,
@@ -70,6 +71,8 @@ export default function SellPage() {
   const [draft, setDraft] = useState<SellDraft>(() => loadDraft() ?? emptyDraft());
   const [photos, setPhotos] = useState<SellPhoto[]>([]);
   const [honeypot, setHoneypot] = useState("");
+  // Optional, never remembered between visits: the seller ticks it fresh each time.
+  const [partnerConsent, setPartnerConsent] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -307,6 +310,7 @@ export default function SellPage() {
           side: p.side,
         })),
         agreedToTerms: draft.agreedToTerms,
+        partnerConsent,
       });
       if (!res.ok) {
         setSubmitError(res.message ?? "Something went wrong. Please try again.");
@@ -524,6 +528,15 @@ export default function SellPage() {
             />
             I confirm that I own these items or am authorized to sell them, and I understand that
             submitting this form does not guarantee an offer or purchase.
+          </label>
+
+          <label className="gg-check gg-referral-consent--optional" style={{ marginTop: "0.75rem" }}>
+            <input
+              type="checkbox"
+              checked={partnerConsent}
+              onChange={(e) => setPartnerConsent(e.target.checked)}
+            />
+            {MAGIC_PARTNER_CONSENT_LABEL}
           </label>
 
           <div className="gg-sellstep__nav">

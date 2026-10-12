@@ -178,6 +178,16 @@ export const buyingLeadsRepository = {
       purchaseAmountCents: row.purchase_amount_cents,
       contactedAt: row.contacted_at,
       closedAt: row.closed_at,
+      partnerConsentAt: row.partner_consent_at ?? null,
+      source: {
+        utmSource: row.utm_source ?? null,
+        utmMedium: row.utm_medium ?? null,
+        utmCampaign: row.utm_campaign ?? null,
+        refCode: row.ref_code ?? null,
+        landingPath: row.landing_path ?? null,
+        referrerHost: row.referrer_host ?? null,
+        heardAbout: row.referral_source ?? null,
+      },
       cards: ((cardRows ?? []) as CardRow[]).map(mapCard),
       photos: photos.map((p) => ({
         id: p.id,

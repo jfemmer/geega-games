@@ -3,9 +3,9 @@ import { adminFetch } from "./apiClient";
 import type { ReferralLead, ReferralLeadStatus } from "../types";
 import type { Database } from "../../types/database";
 
-// LIVE repository for the admin Partner Leads page — Pokémon / One Piece /
-// video game sellers who asked to be connected with the buying partner
-// (public.referral_leads). Same split as buyingLeads.supabase.ts:
+// LIVE repository for the admin Partner Leads page — sellers of Pokémon and
+// One Piece cards, and video games, who asked to be connected with a partner
+// store (public.referral_leads). Same split as buyingLeads.supabase.ts:
 //   * reads use the browser client directly (staff-only SELECT policy);
 //   * the one write, status, goes through /api/admin/referral-leads/:id
 //     (service_role — `authenticated` has no write grant on the table);
@@ -16,7 +16,7 @@ import type { Database } from "../../types/database";
 const SELL_PHOTOS_BUCKET = "sell-photos";
 /** Viewing photos in the drawer. */
 const VIEW_LINK_TTL_SECONDS = 60 * 30;
-/** Links copied for the buying partner — same lifetime as the new-lead email's. */
+/** Links copied for a partner store — same lifetime as the photo links in lead emails. */
 export const PARTNER_LINK_DAYS = 7;
 
 type Row = Database["public"]["Tables"]["referral_leads"]["Row"];
@@ -40,6 +40,15 @@ function mapLead(row: Row): ReferralLead {
     sourcePath: row.source_path,
     consentToShareAt: row.consent_to_share_at,
     status: row.status as ReferralLeadStatus,
+    source: {
+      utmSource: row.utm_source,
+      utmMedium: row.utm_medium,
+      utmCampaign: row.utm_campaign,
+      refCode: row.ref_code,
+      landingPath: row.landing_path,
+      referrerHost: row.referrer_host,
+      heardAbout: row.referral_source,
+    },
   };
 }
 

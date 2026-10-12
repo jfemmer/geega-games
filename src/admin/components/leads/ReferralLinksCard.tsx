@@ -1,13 +1,16 @@
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { useToast } from "../../hooks/useToast";
+import { ADMIN_BASE } from "../../hooks/useRouter";
 import { REFERRAL_PAGES } from "../../../seo/referralPages";
 import { PRODUCTION_ORIGIN } from "../../../seo/site";
 import { referralCategoryLabel } from "../../../store/lib/referralTypes";
 
 // "Referral links" at the top of Partner Leads: the public pages for people
-// selling Pokémon cards, One Piece cards or video games, ready to copy into a
-// text or a Marketplace reply, or to send from the phone's share sheet.
+// selling cards Geega Games doesn't buy itself (Pokémon, One Piece) or video
+// games, ready to copy into a text or a Marketplace reply, or to send from the
+// phone's share sheet. QR codes,
+// tagged links and printable flyers for the same pages are on Marketing.
 //
 // Always the live geega-games.com address, even when the dashboard is opened
 // from a preview deployment, since these are for sending to people. The list
@@ -41,7 +44,7 @@ function canShare(): boolean {
   return typeof navigator !== "undefined" && typeof navigator.share === "function";
 }
 
-export function ReferralLinksCard() {
+export function ReferralLinksCard({ onNavigate }: { onNavigate?: (to: string) => void } = {}) {
   const toast = useToast();
   const shareable = canShare();
 
@@ -68,6 +71,22 @@ export function ReferralLinksCard() {
     <SectionCard title="Referral links">
       <p className="gg-reflinks__intro">
         Send sellers to these pages. What they submit shows up in Leads below.
+        {onNavigate && (
+          <>
+            {" "}
+            For a QR code or a printable flyer, use{" "}
+            <a
+              href={`${ADMIN_BASE}/marketing`}
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate(`${ADMIN_BASE}/marketing`);
+              }}
+            >
+              Marketing
+            </a>
+            .
+          </>
+        )}
       </p>
       <ul className="gg-reflinks">
         {REFERRAL_LINKS.map((link) => (

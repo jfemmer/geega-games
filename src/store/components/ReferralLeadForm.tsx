@@ -11,11 +11,14 @@ import {
   type ReferralCategory,
   type ReferralContactMethod,
 } from "../lib/referralTypes";
+import { HEARD_ABOUT_OPTIONS } from "../lib/attribution";
+import { getAttribution } from "../lib/attributionStore";
 
-// Lead form for Pokémon / One Piece / video game sellers (POST
-// /api/referral-leads). Geega Games doesn't buy these itself — the consent
-// checkbox says plainly that the details go to our buying partner, and the
-// API refuses a lead without it.
+// Lead form for the partner-store pages (POST /api/referral-leads). Geega
+// Games doesn't buy these itself — the consent checkbox says plainly that the
+// details go to one partner store, which may pay us a referral fee, and the
+// API refuses a lead without it. Where the seller came from (a tagged link,
+// a referral code) rides along from attributionStore.
 //
 // Photos reuse the sell flow's private-bucket upload (/api/sell/photo-uploads
 // under a random draft id); the API only keeps paths Storage confirms exist.
@@ -54,6 +57,7 @@ export default function ReferralLeadForm({
   const [contactMethod, setContactMethod] = useState<ReferralContactMethod>("email");
   const [location, setLocation] = useState("");
   const [consent, setConsent] = useState(false);
+  const [heardAbout, setHeardAbout] = useState("");
   const [website, setWebsite] = useState(""); // honeypot
   const [photos, setPhotos] = useState<SellPhoto[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +145,7 @@ export default function ReferralLeadForm({
     if (contactMethod !== "email" && !phone.trim()) {
       return setError("Please add a phone number, or choose email as your contact method.");
     }
-    if (!consent) return setError("Please confirm we can share your details with our buying partner.");
+    if (!consent) return setError("Please confirm we can share your details with a partner store.");
     if (photos.some((p) => p.status === "uploading" || p.status === "pending")) {
       return setError("Your photos are still uploading — give it a moment and try again.");
     }
@@ -168,6 +172,8 @@ export default function ReferralLeadForm({
           photos: photos.filter((p) => p.status === "uploaded" && p.uploadedPath).map((p) => ({ path: p.uploadedPath })),
           consent,
           sourcePath,
+          referralSource: heardAbout || undefined,
+          attribution: getAttribution() ?? undefined,
           website,
         }),
       });
@@ -191,7 +197,7 @@ export default function ReferralLeadForm({
         <h3>Thanks{firstName ? `, ${firstName}` : ""} — we got it!</h3>
         <p>What happens next:</p>
         <ol className="gg-referral-next">
-          <li>We pass your details to our buying partner.</li>
+          <li>We pass your details to one partner store that buys what you have, and email you its name.</li>
           <li>
             They contact you {CONTACT_PHRASE[contactMethod]} to talk about an offer. They may ask a
             few questions or for more photos first.
@@ -347,6 +353,18 @@ export default function ReferralLeadForm({
         </div>
       </fieldset>
 
+      <div className="gg-field">
+        <label htmlFor="rl-heard">How did you hear about us? (optional)</label>
+        <select id="rl-heard" value={heardAbout} onChange={(e) => setHeardAbout(e.target.value)}>
+          <option value="">Select one</option>
+          {HEARD_ABOUT_OPTIONS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Honeypot — hidden from people and screen readers. */}
       <div className="gg-referral-hp" aria-hidden="true">
         <label htmlFor="rl-website">Website</label>
@@ -362,9 +380,10 @@ export default function ReferralLeadForm({
       <label className="gg-check gg-referral-consent">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
         <span>
-          I own these items (or am allowed to sell them), and I agree that Geega Games can share what
-          I&rsquo;ve entered here — including my contact details and photos — with its buying
-          partner so they can contact me about an offer.
+          I own these items (or am allowed to sell them), and I ask Geega Games to share what
+          I&rsquo;ve entered here — including my contact details and photos — with one partner store
+          that buys them, so they can contact me about an offer. If I sell to that store, it may pay
+          Geega Games a referral fee; I&rsquo;m never charged anything.
         </span>
       </label>
 
@@ -375,8 +394,8 @@ export default function ReferralLeadForm({
       )}
 
       <p className="gg-referral-assure">
-        Free, with no obligation to sell. We share what you send only with our buying partner, and we
-        never sell your details.
+        Free, with no obligation to sell. We share what you send only with the one partner store we
+        match you with — never with anyone else.
       </p>
 
       <button type="submit" className="gg-btn" disabled={submitting}>

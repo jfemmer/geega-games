@@ -2,10 +2,10 @@ import * as React from "react";
 import { Column, Heading, Hr, Link, Row, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
 
-// Staff notification for a Pokémon / One Piece / video game referral lead.
-// Written to be forwarded to the buying partner as-is: everything the partner
-// needs (what it is, how much, meet or ship, contact details, photo links)
-// is in the body, and replyTo is the seller, so "Reply" reaches them directly.
+// Staff notification for a partner lead (a seller of Pokémon or One Piece
+// cards, or video games). Everything a store needs is in the body, and
+// replyTo is the seller, so "Reply" reaches them directly. Leads go to a partner store from the admin's Partner Leads page
+// ("Send to a partner store"), which emails the store and the seller.
 
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
@@ -64,7 +64,7 @@ export function ReferralLeadAdminNotification(data: ReferralLeadAdminEmailData) 
     h(
       Text,
       { key: "p1", style: p },
-      `${data.sellerName} is selling ${data.categoriesLabel} and agreed to have their details shared with our buying partner. Forward this email to the partner, or reply to reach the seller.`,
+      `${data.sellerName} is selling ${data.categoriesLabel} and asked to be connected with a partner store. Send it to a store from Partner Leads in the dashboard, or reply to reach the seller.`,
     ),
     h(
       Section,
@@ -103,7 +103,7 @@ export function ReferralLeadAdminNotification(data: ReferralLeadAdminEmailData) 
     h(
       Text,
       { key: "p2", style: muted },
-      "Geega Games doesn't buy these categories itself — the buying partner contacts the seller and makes any offer.",
+      "Geega Games doesn't buy these categories itself — the partner store contacts the seller and makes any offer.",
     ),
   );
 }
@@ -112,7 +112,7 @@ export function referralLeadAdminText(d: ReferralLeadAdminEmailData): string {
   return [
     `New referral lead — ${d.referenceNumber}`,
     "",
-    `${d.sellerName} is selling ${d.categoriesLabel} and agreed to have their details shared with our buying partner.`,
+    `${d.sellerName} is selling ${d.categoriesLabel} and asked to be connected with a partner store. Send it to a store from Partner Leads in the dashboard.`,
     "",
     `Selling: ${d.categoriesLabel}`,
     d.sizeLabel ? `Size: ${d.sizeLabel}` : "",

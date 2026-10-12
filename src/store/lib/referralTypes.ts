@@ -1,8 +1,10 @@
-// Shared shapes for the Pokémon / One Piece / video game referral form
-// (ReferralLeadForm) and POST /api/referral-leads. Geega Games doesn't buy
-// these itself: with the seller's consent it passes their details to a
-// trusted buying partner. Pure module — the API imports it too.
+// Shared shapes for the partner-store referral form (ReferralLeadForm) and
+// POST /api/referral-leads: people selling Pokémon or One Piece cards, or
+// video games. Geega Games doesn't buy these itself: at the seller's request
+// it passes their details to one vetted partner store, which may pay Geega
+// Games a referral fee if they sell. Pure module — the API imports it too.
 
+/** Mirrors the referral_leads.categories check constraint. */
 export const REFERRAL_CATEGORIES = [
   { value: "pokemon", label: "Pokémon cards" },
   { value: "one_piece", label: "One Piece cards" },
@@ -29,7 +31,7 @@ export const REFERRAL_SIZE_OPTIONS = [
 export type ReferralSize = (typeof REFERRAL_SIZE_OPTIONS)[number]["value"];
 
 export const REFERRAL_HANDOFF_OPTIONS = [
-  { value: "local", label: "Meet up in the St. Louis area" },
+  { value: "local", label: "Meet up in person" },
   { value: "ship", label: "Ship it" },
   { value: "either", label: "Either works" },
 ] as const;
@@ -54,7 +56,9 @@ export function optionLabel(
 
 /**
  * Staff workflow for a referral lead (admin Partner Leads page). Mirrors the
- * referral_leads.status check constraint.
+ * referral_leads.status check constraint. Sending a lead to a partner store
+ * marks it "Sent to partner"; recording that it sold (or didn't) closes it,
+ * and a store passing on it puts it back to "New" for another store.
  */
 export const REFERRAL_LEAD_STATUSES = [
   { value: "new", label: "New" },

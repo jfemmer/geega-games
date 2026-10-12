@@ -124,12 +124,12 @@ export function TrustSection() {
 }
 
 /**
- * "What you can count on" for the partner-referral pages (Pokémon, One Piece,
- * video games). Only claims that hold for every referral: the owner-approved
- * "buys very competitively", a buyer we know (not a stranger — sellers' main
- * safety worry about Marketplace), consent-only sharing, free and no
- * obligation. Nothing about how the partner pays or how fast — those are the
- * partner's.
+ * "What you can count on" for the partner-store pages. Only claims that hold
+ * for every referral: a vetted store (not a stranger — sellers' main safety
+ * worry about Marketplace) that has agreed to our partner standards, sharing
+ * only at the seller's request, the referral fee said plainly, free and no
+ * obligation. Nothing about how much a store pays or how fast — each store
+ * makes its own offer.
  */
 export function PartnerTrustSection() {
   return (
@@ -137,10 +137,10 @@ export function PartnerTrustSection() {
       <h2>What you can count on</h2>
       <div className="gg-collect-grid gg-collect-grid--2">
         <div className="gg-collect-card">
-          <h3>A buyer we know, not a stranger</h3>
+          <h3>A vetted store, not a stranger</h3>
           <p>
-            We send sellers to one buyer we know personally — not an anonymous Marketplace profile —
-            because they buy very competitively.
+            We send your details to one partner store that buys what you&rsquo;re selling — not an
+            anonymous Marketplace profile. Every partner store agrees to make fair, no-pressure offers.
           </p>
         </div>
         <div className="gg-collect-card">
@@ -152,15 +152,15 @@ export function PartnerTrustSection() {
         <div className="gg-collect-card">
           <h3>Your details, only with your OK</h3>
           <p>
-            Nothing is passed along until you tick the consent box. Then it goes only to our buying
-            partner, and we never sell your details.
+            Nothing is passed along until you tick the consent box, and then only to that one store.
+            If you sell to them, the store may pay us a referral fee — you&rsquo;re never charged.
           </p>
         </div>
         <div className="gg-collect-card">
           <h3>Meet up or ship</h3>
           <p>
-            Meet up around St. Louis — somewhere public, like a police safe-exchange spot — or ship
-            from anywhere in the US.
+            Meet up in person somewhere public — like a police safe-exchange spot — or ship it to a
+            store that buys by mail.
           </p>
         </div>
       </div>
@@ -563,10 +563,10 @@ export function TravelAreasSection({ heading, exclude }: { heading?: string; exc
 }
 
 /**
- * Cross-links from the Magic sell pages to the partner-referral pages
- * (Pokémon, One Piece, video games). The partner meets up around St. Louis
- * and buys by mail from anywhere in the US, so pages outside St. Louis say
- * "ship" rather than implying the partner travels there.
+ * Cross-links from the Magic sell pages to the partner-store pages (Pokémon,
+ * One Piece, video games). Partner stores meet up or buy by mail from
+ * anywhere in the US, so pages outside St. Louis say "ship" rather than
+ * implying a store travels there.
  */
 export function PartnerCategoriesSection({ local = true }: { local?: boolean }) {
   return (
@@ -574,10 +574,9 @@ export function PartnerCategoriesSection({ local = true }: { local?: boolean }) 
       <h2>Selling Pokémon, One Piece or video games too?</h2>
       <p className="gg-collect-lead">
         Plenty of Magic collections come with other things. We buy the Magic cards ourselves, and
-        for the rest we connect you with a trusted buyer we work with — one who{" "}
-        <strong>buys very competitively</strong>.{" "}
+        for the rest we connect you with a <strong>vetted partner store</strong> that buys them.{" "}
         {local
-          ? "Same easy process: tell us what you have, then meet up around St. Louis or ship."
+          ? "Same easy process: tell us what you have, then meet up or ship."
           : "Same easy process: tell us what you have and ship it from anywhere in the US."}
       </p>
       <ul className="gg-area-links">

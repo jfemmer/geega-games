@@ -420,7 +420,7 @@ describe("email templates render to HTML", () => {
     expect(text).toContain(data.photoUrls[0]);
   });
 
-  it("ReferralLeadConfirmation says the offer comes from the buying partner, not Geega Games", async () => {
+  it("ReferralLeadConfirmation says a partner store makes the offer and discloses the referral fee", async () => {
     const { ReferralLeadConfirmation } = await import("../api/_lib/emails/ReferralLeadConfirmation.js");
     const html = await render(
       React.createElement(ReferralLeadConfirmation, {
@@ -434,8 +434,10 @@ describe("email templates render to HTML", () => {
       }),
     );
     expect(html).toContain("GG-R-100001");
-    expect(html).toContain("buying partner");
-    expect(html).toContain("buys very competitively");
+    expect(html).toContain("one of our partner stores that buys them");
+    expect(html).toContain("it may pay Geega Games a referral fee");
+    // Retired 2026-10-11: it described one partner, and leads now go to several stores.
+    expect(html).not.toContain("very competitively");
     expect(html).toContain("One Piece cards");
     expect(html).toContain("https://geega-games.com/sell-my-collection");
   });

@@ -11,6 +11,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+/** The required "I own these items" box (the partner-store box next to it is optional). */
+const AGREEMENT = /I confirm that I own these items/i;
+
 vi.mock("../src/supabase", () => ({
   isSupabaseConfigured: true,
   supabase: {
@@ -300,7 +303,7 @@ describe("submission is blocked until required photos are attached", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
 
     await screen.findByRole("heading", { name: /review & submit/i });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: AGREEMENT }));
 
     expect(
       await screen.findByText(/front & back photos required/i),
@@ -342,7 +345,7 @@ describe("submission is blocked until required photos are attached", () => {
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
 
     await screen.findByRole("heading", { name: /review & submit/i });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: AGREEMENT }));
 
     expect(
       await screen.findByText(/front & back photos required/i),
@@ -381,7 +384,7 @@ describe("bulk list auto-add — uploading or pasting shouldn't require a separa
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
 
     await screen.findByRole("heading", { name: /review & submit/i });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: AGREEMENT }));
     fireEvent.click(screen.getByRole("button", { name: /submit my collection/i }));
 
     await waitFor(() => {
@@ -451,7 +454,7 @@ describe("full submission", () => {
 
     // Step 4: review & submit.
     await screen.findByRole("heading", { name: /review & submit/i });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: AGREEMENT }));
     fireEvent.click(screen.getByRole("button", { name: /submit my collection/i }));
 
     await waitFor(() => {
@@ -465,6 +468,37 @@ describe("full submission", () => {
     expect(sentBody.contact.firstName).toBe("Jordan");
     expect(sentBody.cards).toHaveLength(1);
     expect(sentBody.agreedToTerms).toBe(true);
+    // Sharing with a partner store is opt-in: left unticked, it isn't asked for.
+    expect(sentBody.partnerConsent).toBe(false);
+  });
+
+  it("sends the seller's OK to share with a partner store only when they tick the optional box", async () => {
+    mockFetch();
+    const { container } = render(<App />);
+    await addSampleCard(container);
+    fireEvent.click(screen.getByRole("button", { name: /start your submission/i }));
+    await screen.findByText(/tell us about the collection/i);
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    await screen.findByText(/your contact information/i);
+    fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: "Jordan" } });
+    fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: "Vega" } });
+    fireEvent.change(screen.getByLabelText(/^email$/i, { selector: "input[type='email']" }), { target: { value: "jordan@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    await screen.findByRole("heading", { name: /review & submit/i });
+
+    const partnerBox = screen.getByRole("checkbox", { name: /partner store that buys Magic cards/i });
+    expect(partnerBox).not.toBeChecked();
+    // The box says plainly that the store may pay Geega Games a referral fee.
+    expect(partnerBox.closest("label")?.textContent).toMatch(/may pay Geega Games a referral fee/i);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: AGREEMENT }));
+    fireEvent.click(partnerBox);
+    fireEvent.click(screen.getByRole("button", { name: /submit my collection/i }));
+    await waitFor(() => expect(screen.getByText("GG-S-100099")).toBeInTheDocument());
+
+    const submitCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/sell/submit"));
+    const sentBody = JSON.parse((submitCall![1] as RequestInit).body as string);
+    expect(sentBody.partnerConsent).toBe(true);
   });
 
   it("shows a server error and keeps the seller's entered data intact on failure", async () => {
@@ -478,7 +512,7 @@ describe("full submission", () => {
     fireEvent.change(screen.getByLabelText(/^email$/i, { selector: "input[type='email']" }), { target: { value: "jordan@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
     await screen.findByRole("heading", { name: /review & submit/i });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: AGREEMENT }));
     fireEvent.click(screen.getByRole("button", { name: /submit my collection/i }));
 
     expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument();

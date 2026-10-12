@@ -48,7 +48,9 @@ export type IconName =
   | "pause"
   | "camera"
   | "share"
-  | "printer";
+  | "printer"
+  | "store"
+  | "qr";
 
 const PATHS: Record<IconName, string> = {
   overview:
@@ -114,6 +116,9 @@ const PATHS: Record<IconName, string> = {
   // The box-and-arrow share glyph iPhone users know from the share sheet.
   share: "M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13",
   printer: "M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6v-8Z",
+  // A shopfront with an awning: partner stores.
+  store: "M3 9l1.6-5h14.8L21 9M3 9v11h18V9M3 9h18M3 9a3 3 0 0 0 6 0m0 0a3 3 0 0 0 6 0m0 0a3 3 0 0 0 6 0M9 20v-6h6v6",
+  qr: "M3 3h7v7H3V3Zm11 0h7v7h-7V3ZM3 14h7v7H3v-7Zm11 0h3v3h-3v-3Zm4 4h3v3h-3v-3Zm-4 3h1M6 6h1v1H6V6Zm11 0h1v1h-1V6ZM6 17h1v1H6v-1Z",
 };
 
 interface IconProps {

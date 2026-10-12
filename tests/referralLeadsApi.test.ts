@@ -14,11 +14,41 @@ const state: {
   insertShouldFail: boolean;
   inserted: Record<string, unknown> | null;
   storageObjects: { name: string; id: string; metadata: { size: number; mimetype: string } }[];
-} = { recentCountForEmail: 0, insertShouldFail: false, inserted: null, storageObjects: [] };
+  /** referral_codes rows, for crediting ?ref= codes. */
+  codes: { code: string; user_id: string | null; partner_id: string | null }[];
+  partners: { id: string; kind: string; status: string; email: string }[];
+  users: Record<string, { id: string; email: string }>;
+} = {
+  recentCountForEmail: 0,
+  insertShouldFail: false,
+  inserted: null,
+  storageObjects: [],
+  codes: [],
+  partners: [],
+  users: {},
+};
+
+/** `.select().eq(col, value).maybeSingle()` over an array. */
+function lookup<T extends Record<string, unknown>>(rows: T[]) {
+  return {
+    select: () => ({
+      eq: (col: string, value: unknown) => ({
+        maybeSingle: async () => ({ data: rows.find((r) => r[col] === value) ?? null, error: null }),
+      }),
+    }),
+  };
+}
 
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({
   getSupabaseAdmin: () => ({
+    auth: {
+      admin: {
+        getUserById: async (id: string) => ({ data: { user: state.users[id] ?? null }, error: null }),
+      },
+    },
     from: (table: string) => {
+      if (table === "referral_codes") return lookup(state.codes);
+      if (table === "partners") return lookup(state.partners);
       if (table !== "referral_leads") throw new Error(`unexpected table ${table}`);
       return {
         select: () => ({
@@ -103,6 +133,9 @@ beforeEach(() => {
   state.insertShouldFail = false;
   state.inserted = null;
   state.storageObjects = [];
+  state.codes = [];
+  state.partners = [];
+  state.users = {};
   emailCalls.admin = [];
   emailCalls.confirmation = [];
 });
@@ -133,11 +166,69 @@ describe("POST /api/referral-leads", () => {
     expect(emailCalls.confirmation).toEqual(["lead-1"]);
   });
 
-  it("refuses a lead without consent to share with the partner", async () => {
+  it("refuses a lead without consent to share with a partner store", async () => {
     const res = await invoke({ ...valid, consent: false });
     expect(res.statusCode).toBe(400);
-    expect(res.body.message).toMatch(/buying partner/);
+    expect(res.body.message).toMatch(/partner store/);
     expect(state.inserted).toBeNull();
+  });
+
+  it("stores where the seller came from and what they said, cleaned", async () => {
+    await invoke({
+      ...valid,
+      referralSource: "Card show or event",
+      attribution: {
+        utmSource: "Card Show",
+        utmMedium: "QR",
+        utmCampaign: "Nov 1",
+        landingPath: "/sell-pokemon-cards?utm_source=card_show",
+        referrerHost: "L.Facebook.com",
+      },
+    });
+    expect(state.inserted).toMatchObject({
+      referral_source: "Card show or event",
+      utm_source: "card-show",
+      utm_medium: "qr",
+      utm_campaign: "nov-1",
+      landing_path: "/sell-pokemon-cards",
+      referrer_host: "l.facebook.com",
+      ref_code: null,
+    });
+  });
+
+  it("drops a 'how did you hear about us' answer that isn't one of the choices", async () => {
+    await invoke({ ...valid, referralSource: "<script>alert(1)</script>" });
+    expect(state.inserted?.referral_source).toBeNull();
+  });
+
+  it("credits an active referral partner's code, but not the partner referring themselves", async () => {
+    state.partners = [{ id: "p1", kind: "referrer", status: "active", email: "jo@heirloom.example" }];
+    state.codes = [{ code: "heirloom", user_id: null, partner_id: "p1" }];
+    await invoke({ ...valid, attribution: { ref: "HEIRLOOM" } });
+    expect(state.inserted?.ref_code).toBe("heirloom");
+
+    await invoke({ ...valid, contact: { ...valid.contact, email: "Jo@Heirloom.example" }, attribution: { ref: "heirloom" } });
+    expect(state.inserted?.ref_code).toBeNull();
+
+    state.partners[0].status = "paused";
+    await invoke({ ...valid, attribution: { ref: "heirloom" } });
+    expect(state.inserted?.ref_code).toBeNull();
+  });
+
+  it("credits a customer's code unless it's the seller's own, and ignores unknown codes", async () => {
+    state.users = { u1: { id: "u1", email: "friend@example.com" } };
+    state.codes = [{ code: "friend22", user_id: "u1", partner_id: null }];
+    await invoke({ ...valid, attribution: { ref: "friend22" } });
+    expect(state.inserted?.ref_code).toBe("friend22");
+
+    await invoke({ ...valid, contact: { ...valid.contact, email: "friend@example.com" }, attribution: { ref: "friend22" } });
+    expect(state.inserted?.ref_code).toBeNull();
+
+    await invoke({ ...valid, attribution: { ref: "nobody99" } });
+    expect(state.inserted?.ref_code).toBeNull();
+    // A malformed code never reaches the database lookup.
+    await invoke({ ...valid, attribution: { ref: "x'; drop table--" } });
+    expect(state.inserted?.ref_code).toBeNull();
   });
 
   it("pretends to succeed for bots that fill the honeypot, and stores nothing", async () => {

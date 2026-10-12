@@ -13,12 +13,14 @@ import {
 import type { ReferralCategory } from "../lib/referralTypes";
 import { REFERRAL_PAGES, referralPageFor, type ReferralPage } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
+import { FOR_STORES_PATH, SELL_HUB_PATH } from "../lib/partnerTypes";
 import { ORGANIZATION_ID, faqJsonLd } from "../../seo/site";
 
-// /sell-pokemon-cards, /sell-one-piece-cards, /sell-video-games.
-// Geega Games is a Magic: The Gathering shop; for these categories it passes
-// sellers to a trusted buying partner (with their consent). Every page says
-// that plainly — in the intro, the steps, the FAQ and the consent checkbox.
+// The partner-store pages: /sell-pokemon-cards, /sell-one-piece-cards and
+// /sell-video-games. Geega Games is a Magic: The Gathering shop; for these
+// categories it passes sellers to one vetted partner store, at their request.
+// Every page says that plainly — in the intro, the steps, the FAQ and the
+// consent checkbox — including that the store may pay us a referral fee.
 // Content lives in src/seo/referralPages.ts (see its content rules).
 //
 // Order (seller research, 2026-09-27): the promises and the partner setup
@@ -30,15 +32,25 @@ const CTA_LABEL = "Get my free offer";
 const HERO_POINTS = [
   "Free to ask — no obligation to sell",
   "No sorting or price-checking needed",
-  "Meet up around St. Louis, or ship from anywhere in the US",
-  "Shared only with our buying partner, and only with your OK",
+  "Meet up in person, or ship from anywhere in the US",
+  "Shared with one vetted partner store, only with your OK",
 ];
 
 function sharedFaq(page: ReferralPage): { question: string; answer: string }[] {
   return [
     {
       question: `Does Geega Games buy ${page.noun}?`,
-      answer: `Not directly — our own specialty is Magic: The Gathering. For ${page.noun} we work with a trusted buyer we know personally, who buys very competitively. You tell us what you have, and with your OK we pass it along; they contact you and make the offer.`,
+      answer: `Not directly — our own specialty is Magic: The Gathering. For ${page.noun} we work with vetted partner stores that buy them. You tell us what you have, and with your OK we pass it to one store; they contact you and make the offer.`,
+    },
+    {
+      question: "Who are your partner stores?",
+      answer:
+        "Card and game stores we've vetted that buy what you're selling. Every one agrees to our standards: contact you within one business day, make a fair, no-pressure offer, and use your details only for that offer. We'll email you the store's name when we pass your details on.",
+    },
+    {
+      question: "Does Geega Games get paid for this?",
+      answer:
+        "If you sell to the partner store, the store may pay us a referral fee. You're never charged anything — the store pays it, not you — and you're always free to say no to an offer.",
     },
     {
       question: "Is it free? Do I have to sell?",
@@ -53,7 +65,7 @@ function sharedFaq(page: ReferralPage): { question: string; answer: string }[] {
     {
       question: "Can we meet in person?",
       answer:
-        "Yes, around St. Louis — somewhere public, like a police safe-exchange spot, a coffee shop or a bank lobby. If you're farther away, shipping works from anywhere in the US. Choose whichever suits you in the form.",
+        "Yes — partner stores meet up locally, somewhere public like a police safe-exchange spot, a coffee shop or a bank lobby. If you're farther away, shipping works from anywhere in the US. Choose whichever suits you in the form.",
     },
     ...page.faq,
     {
@@ -76,7 +88,7 @@ function pageJsonLd(page: ReferralPage, faq: { question: string; answer: string 
         { "@type": "City", name: "St. Louis", containedInPlace: { "@type": "State", name: "Missouri" } },
         { "@type": "Country", name: "United States" },
       ],
-      description: `Geega Games connects people selling ${page.noun} with a trusted buying partner who makes an offer — in person around St. Louis, or by mail from anywhere in the US.`,
+      description: `Geega Games connects people selling ${page.noun} with a vetted partner store that makes an offer — in person, or by mail from anywhere in the US.`,
     },
     faqJsonLd(faq),
   ];
@@ -101,7 +113,7 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         <p className="gg-collect-hero-sub">{page.intro}</p>
         <HeroPoints points={HERO_POINTS} />
         <p className="gg-credit-badge">
-          Our buying partner <strong>buys very competitively</strong>
+          Every partner store agrees to <strong>fair, no-pressure offers</strong>
         </p>
         <div className="gg-collect-hero-actions">
           <a href="#tell-us" className="gg-btn">
@@ -115,8 +127,7 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
         <h2>How it works</h2>
         <p className="gg-collect-lead">
           Geega Games is a St. Louis Magic: The Gathering shop. For {page.noun}, we introduce you to
-          a buyer we know personally, who buys very competitively — we handle the introduction, they
-          make the offer.
+          a vetted partner store that buys them — we handle the introduction, they make the offer.
         </p>
         <ol className="gg-collect-steps">
           <li>
@@ -124,15 +135,16 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
             sorting or pricing needed.
           </li>
           <li>
-            <strong>We pass it to our buying partner</strong> — only with your OK.
+            <strong>We pass it to one vetted partner store</strong> that buys it — only with your OK,
+            and we&rsquo;ll email you who it is.
           </li>
           <li>
             <strong>They contact you about an offer</strong> by email, phone or text, whichever you
             prefer.
           </li>
           <li>
-            <strong>You decide.</strong> Like the offer? Meet up around St. Louis or ship it. If not,
-            just say no — no hard feelings.
+            <strong>You decide.</strong> Like the offer? Meet up or ship it. If not, just say no — no
+            hard feelings.
           </li>
         </ol>
       </section>
@@ -148,7 +160,7 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
           ))}
         </div>
         <p className="gg-area-note">
-          Include everything — our buying partner will tell you what they can make an offer on.
+          Include everything — the partner store will tell you what they can make an offer on.
         </p>
       </section>
 
@@ -179,7 +191,7 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
           ))}
         </ul>
         <p className="gg-collect-lead">
-          Or tell us what you have once, and a buyer we know personally takes it from there. You can
+          Or tell us what you have once, and a vetted partner store takes it from there. You can
           still compare their offer with anything else — you&rsquo;re never obligated.
         </p>
       </section>
@@ -247,7 +259,14 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
           <li>
             <Link to={ST_LOUIS_PATH}>Sell Magic cards in St. Louis</Link>
           </li>
+          <li>
+            <Link to={SELL_HUB_PATH}>Everything we can help you sell</Link>
+          </li>
         </ul>
+        <p className="gg-area-note">
+          Run a card or video game store that buys {page.noun}?{" "}
+          <Link to={FOR_STORES_PATH}>Get collection leads as a partner store</Link>.
+        </p>
       </section>
 
       <StickySellCta label={CTA_LABEL} to="#tell-us" targetId="tell-us" />

@@ -5,11 +5,14 @@
 // Bump `updated` whenever a guide's content materially changes — it feeds
 // the sitemap's <lastmod> and the Article structured data.
 
+import type { ReferralCategory } from "../store/lib/referralTypes.js";
+
 /**
  * Which sell page a guide leads to: Magic (we buy), a partner-referral
- * category, or "st_louis" for local guides that cover several games.
+ * category, or "st_louis" for local guides that cover several games. A topic
+ * with no guides yet just shows none.
  */
-export type GuideTopic = "mtg" | "pokemon" | "one_piece" | "video_games" | "st_louis";
+export type GuideTopic = "mtg" | ReferralCategory | "st_louis";
 
 export interface GuideMeta {
   slug: string;

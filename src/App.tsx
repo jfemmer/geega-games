@@ -5,6 +5,7 @@ import Footer from "./Footer";
 import { RouterProvider, useRouter, matchRoute } from "./store/lib/router";
 import { AuthProvider } from "./store/lib/AuthContext";
 import { PageViewTracker } from "./store/lib/pageViews";
+import { AttributionTracker } from "./store/lib/attributionStore";
 import { CartProvider } from "./store/lib/CartContext";
 import { WishlistProvider } from "./store/lib/WishlistContext";
 import Header from "./store/components/Header";
@@ -37,6 +38,8 @@ import SellStLouisPage from "./store/pages/SellStLouisPage";
 import SellAreaPage from "./store/pages/SellAreaPage";
 import { GuidePage, GuidesIndexPage } from "./store/pages/GuidePages";
 import SellReferralPage from "./store/pages/SellReferralPage";
+import { ForStoresPage, ReferralPartnersPage, SellHubPage } from "./store/pages/PartnerProgramPages";
+import { FOR_STORES_PATH, REFERRAL_PARTNERS_PATH, SELL_HUB_PATH } from "./store/lib/partnerTypes";
 import { REFERRAL_PAGES } from "./seo/referralPages";
 import { ST_LOUIS_PATH } from "./seo/sellAreas";
 import { AccountPage } from "./store/pages/AccountPages";
@@ -68,6 +71,9 @@ function Routes() {
   if (areaMatch) return <SellAreaPage slug={areaMatch.slug} />;
   const referralPage = REFERRAL_PAGES.find((p) => p.path === path);
   if (referralPage) return <SellReferralPage category={referralPage.category} />;
+  if (path === SELL_HUB_PATH) return <SellHubPage />;
+  if (path === FOR_STORES_PATH) return <ForStoresPage />;
+  if (path === REFERRAL_PARTNERS_PATH) return <ReferralPartnersPage />;
   if (path === "/guides") return <GuidesIndexPage />;
   const guideMatch = matchRoute("/guides/:slug", path);
   if (guideMatch) return <GuidePage slug={guideMatch.slug} />;
@@ -108,6 +114,7 @@ export function Storefront({ initialPath }: { initialPath?: string }) {
         <WishlistProvider>
           <RouterProvider initialPath={initialPath}>
             <PageViewTracker />
+            <AttributionTracker />
             <div className="app">
               <a className="skip-link" href="#main">
                 Skip to content

@@ -3,7 +3,7 @@ import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
 
-const EFFECTIVE_DATE = "September 27, 2026";
+const EFFECTIVE_DATE = "October 11, 2026";
 
 export function TermsPage() {
   useSEO({
@@ -143,6 +143,15 @@ export function TermsPage() {
         program, or to void store credit obtained through fraud, error, or abuse of these Terms,
         at any time.
       </p>
+      <p>
+        <strong>Referral rewards.</strong> If you share the personal referral link in your account
+        and a seller you referred sells their collection — to us, or to one of our partner stores —
+        we may add a referral reward to your store credit. Rewards are issued at our discretion
+        once the sale is complete, at most one per referred seller. You can&rsquo;t refer yourself,
+        and rewards earned through fake or duplicate accounts, spam, or misleading claims may be
+        voided. Referral rewards are store credit under this Section, and we may change or end the
+        referral program at any time.
+      </p>
 
       <h2>9. Sell Your Cards / Sell Your Collection Submissions</h2>
       <p>
@@ -175,6 +184,18 @@ export function TermsPage() {
         unless we separately agree otherwise, and we may dispose of unclaimed items after a
         reasonable period (at least 60 days) following written notice to the email address on the
         Submission if we are unable to reach you or you do not respond.
+      </p>
+      <p>
+        <strong>Partner stores.</strong> For items we don&rsquo;t buy ourselves (Pokémon and One
+        Piece cards, and video games), and for a Magic Submission when you
+        tick the optional box asking us to, we may pass your request to one independent partner
+        store at your direction. A partner store is not Geega Games and does not act for us: it
+        makes its own offer, and any sale is between you and that store, on its terms. We vet
+        partner stores and require them to follow our seller standards, but we are not a party to,
+        and are not responsible for, any offer, purchase, payment, or shipment between you and a
+        partner store. A partner store may pay us a referral fee if you sell to it; you are never
+        charged for the introduction. Partner stores and referral partners agree separate terms
+        with us.
       </p>
       <p>
         We do not accept unsolicited shipments sent outside of a Submission created through the

@@ -8,6 +8,8 @@ import {
   sendReferralLeadAdminNotification,
   sendReferralLeadConfirmation,
 } from "./_lib/referralLeadEmails.js";
+import { leadAttribution } from "./_lib/attribution.js";
+import { cleanHeardAbout } from "../src/store/lib/attribution.js";
 import {
   REFERRAL_CONTACT_METHODS,
   REFERRAL_HANDOFF_OPTIONS,
@@ -20,17 +22,22 @@ import type { Database } from "../src/types/database.js";
 
 // POST /api/referral-leads
 //
-// PUBLIC, guest-submittable lead form for people selling Pokémon cards, One
-// Piece cards or video games (/sell-pokemon-cards, /sell-one-piece-cards,
-// /sell-video-games). Geega Games doesn't buy these itself: it stores the
-// lead, emails staff everything needed to forward it to the buying partner,
-// and sends the seller a receipt.
+// PUBLIC, guest-submittable lead form for people selling Pokémon or One Piece
+// cards, or video games (the pages in src/seo/referralPages.ts). Geega Games
+// doesn't buy these itself: it stores the lead, tells staff, and sends the
+// seller a receipt; staff then send it to one partner store from the admin
+// (api/admin/partner-referrals).
 //
 // Trust boundaries (same as /api/sell/submit):
 //   - no anon INSERT policy exists on referral_leads — every write is here,
 //     with the service_role key;
-//   - consent to share with the partner is REQUIRED (privacy policy: third
-//     parties only with consent) and is recorded as a timestamp;
+//   - the seller's request to be passed to a partner store is REQUIRED
+//     (privacy policy: third parties only at the seller's direction, and the
+//     checkbox says the store may pay us a referral fee), recorded as a
+//     timestamp;
+//   - where the seller came from (tagged link, referral code, first page) is
+//     cleaned server-side, and a referral code only kept if someone can earn
+//     from it (api/_lib/attribution.ts);
 //   - photo paths are only stored if Storage confirms the object exists under
 //     the submitted draft prefix — a client can't attach files it never
 //     uploaded, or someone else's.
@@ -63,6 +70,10 @@ interface Body {
   photos?: unknown;
   consent?: unknown;
   sourcePath?: unknown;
+  /** "How did you hear about us?" — one of HEARD_ABOUT_OPTIONS. */
+  referralSource?: unknown;
+  /** Where the seller came from (src/store/lib/attribution.ts). */
+  attribution?: unknown;
   /** Honeypot: hidden from people, filled in by bots. */
   website?: unknown;
 }
@@ -97,7 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.consent !== true) {
       throw new HttpError(
         400,
-        "Please confirm we can share your details with our buying partner so they can contact you.",
+        "Please confirm we can share your details with a partner store so they can contact you.",
       );
     }
 
@@ -152,6 +163,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
 
+    const attribution = await leadAttribution(admin, body.attribution, { email });
+
     const insert: ReferralLeadInsert = {
       categories,
       description,
@@ -166,6 +179,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       photo_paths: photoPaths,
       source_path: cleanString(body.sourcePath, 200),
       consent_to_share_at: new Date().toISOString(),
+      referral_source: cleanHeardAbout(body.referralSource),
+      ...attribution,
     };
 
     const { data: lead, error } = await admin

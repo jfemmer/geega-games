@@ -10,6 +10,8 @@ import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { MyDecksSection } from "./MyDecksPage";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { SELLER_REFERRAL_REWARD_CENTS, SELL_HUB_PATH } from "../lib/partnerTypes";
+import { PRODUCTION_ORIGIN } from "../../seo/site";
 import { UsStateSelect } from "../components/UsStateSelect";
 import { useReveal } from "../lib/useReveal";
 import { SHIPS_TO_SUMMARY, SHIP_TO_COUNTRY, checkUsAddress } from "../lib/usAddress";
@@ -57,6 +59,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
+  { to: "/account/refer", label: "Refer a seller" },
   { to: "/account/notifications", label: "Notifications" },
   { to: "/account/security", label: "Password & security" },
 ];
@@ -1620,6 +1623,138 @@ function StoreCreditSection() {
         — you get {STORE_CREDIT_BONUS_PERCENT}% more.{" "}
         <Link to="/sell">Sell your cards</Link>
       </p>
+      <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>
+        <strong>Or refer a seller:</strong> get {formatCents(SELLER_REFERRAL_REWARD_CENTS)} in store
+        credit when someone you send our way sells their collection.{" "}
+        <Link to="/account/refer">Get your link</Link>
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Refer a seller — the customer's personal ?ref= link. my_referral_code()
+ * makes the code on first visit; my_referral_summary() returns counts only
+ * (never who was referred). Rewards are granted by the owner once a referred
+ * seller's sale is complete (admin, /api/admin/referral-rewards).
+ * ------------------------------------------------------------------ */
+
+interface ReferralSummary {
+  referred: number;
+  rewarded: number;
+  creditEarnedCents: number;
+}
+
+function ReferSellerSection() {
+  const [code, setCode] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ReferralSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: madeCode, error: codeErr } = await supabase.rpc("my_referral_code");
+      if (cancelled) return;
+      if (codeErr || typeof madeCode !== "string") {
+        setError("We couldn't load your referral link. Please refresh the page to try again.");
+        return;
+      }
+      setCode(madeCode);
+      const { data } = await supabase.rpc("my_referral_summary");
+      if (cancelled || !data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+      setSummary({
+        referred: Number(d.referred) || 0,
+        rewarded: Number(d.rewarded) || 0,
+        creditEarnedCents: Number(d.credit_earned_cents) || 0,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const link = code ? `${PRODUCTION_ORIGIN}${SELL_HUB_PATH}?ref=${code}` : "";
+  const reward = formatCents(SELLER_REFERRAL_REWARD_CENTS);
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — the link is still selectable text */
+    }
+  }
+
+  async function share() {
+    try {
+      await navigator.share({
+        title: "Sell your cards or video games",
+        text: "Get a free, no-obligation offer on your cards or video games from Geega Games:",
+        url: link,
+      });
+    } catch {
+      /* cancelled */
+    }
+  }
+
+  return (
+    <div className="gg-dash-card gg-refer-card">
+      <h2>Earn {reward} for every seller you send us</h2>
+      <p>
+        Know someone with a card or video game collection to sell — a friend, a relative, someone
+        clearing out a closet? Send them your link. When they sell, to us or to one of our partner
+        stores, you get <strong>{reward} in store credit</strong>.
+      </p>
+
+      {error ? (
+        <p className="gg-alert gg-alert-error" role="alert">
+          {error}
+        </p>
+      ) : (
+        <>
+          <label className="gg-refer-label" htmlFor="gg-refer-link">
+            Your link
+          </label>
+          <div className="gg-refer-link">
+            <input id="gg-refer-link" readOnly value={link || "Loading…"} onFocus={(e) => e.target.select()} />
+            <button type="button" className="gg-btn gg-btn-sm" onClick={copy} disabled={!code}>
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+            {canShare && (
+              <button type="button" className="gg-btn gg-btn-sm gg-btn-ghost" onClick={share} disabled={!code}>
+                Share
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {summary && (
+        <dl className="gg-refer-stats">
+          <div>
+            <dt>Sellers referred</dt>
+            <dd>{summary.referred}</dd>
+          </div>
+          <div>
+            <dt>Rewards earned</dt>
+            <dd>{summary.rewarded}</dd>
+          </div>
+          <div>
+            <dt>Store credit earned</dt>
+            <dd>{formatCents(summary.creditEarnedCents)}</dd>
+          </div>
+        </dl>
+      )}
+
+      <p className="gg-card-meta">
+        One reward per seller, added once their sale is complete. You can&rsquo;t refer yourself.
+        Rewards are store credit — see our <Link to="/terms">Terms</Link>. We never tell you who
+        signed up through your link, only how many.
+      </p>
     </div>
   );
 }
@@ -1891,6 +2026,10 @@ export function AccountPage() {
   } else if (path === "/account/credit") {
     title = "Store credit";
     body = <StoreCreditSection />;
+  } else if (path === "/account/refer") {
+    title = "Refer a seller";
+    subtitle = "Earn store credit when people you send our way sell their collection.";
+    body = <ReferSellerSection />;
   } else if (path === "/account") {
     subtitle = "A quick look at your orders, address, and store credit.";
   }

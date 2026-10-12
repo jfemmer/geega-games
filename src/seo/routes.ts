@@ -16,6 +16,7 @@
 
 import { GUIDES, guidePath } from "./guides.js";
 import { REFERRAL_PAGES } from "./referralPages.js";
+import { FOR_STORES_PATH, REFERRAL_PARTNERS_PATH, SELL_HUB_PATH } from "../store/lib/partnerTypes.js";
 import { SELL_AREAS, ST_LOUIS_PATH, sellAreaPath } from "./sellAreas.js";
 
 export type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
@@ -32,6 +33,9 @@ export interface SeoRoute {
 // it once it's consistently accurate), and /api/indexnow pings Bing about
 // pages whose lastmod is recent — so bump it when you change a page.
 const SEO_REFRESH = "2026-09-26";
+// 2026-10-11: the partner program — partner stores, three new categories,
+// the referral fee said plainly on every partner-store page.
+const PARTNER_PROGRAM = "2026-10-11";
 
 const STATIC_ROUTES: SeoRoute[] = [
   // 2026-10-05: the email-list signup replaced the launch notice.
@@ -41,6 +45,9 @@ const STATIC_ROUTES: SeoRoute[] = [
   { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: SEO_REFRESH },
   { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: SEO_REFRESH },
   { path: "/sell", changefreq: "monthly", priority: "0.7" },
+  { path: SELL_HUB_PATH, changefreq: "monthly", priority: "0.8", lastmod: PARTNER_PROGRAM },
+  { path: FOR_STORES_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
+  { path: REFERRAL_PARTNERS_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: SEO_REFRESH },
   { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: SEO_REFRESH },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
@@ -48,8 +55,8 @@ const STATIC_ROUTES: SeoRoute[] = [
   { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: "2026-10-05" },
   { path: "/returns", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/contact", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
-  { path: "/privacy", changefreq: "yearly", priority: "0.1" },
-  { path: "/terms", changefreq: "yearly", priority: "0.1" },
+  { path: "/privacy", changefreq: "yearly", priority: "0.1", lastmod: PARTNER_PROGRAM },
+  { path: "/terms", changefreq: "yearly", priority: "0.1", lastmod: PARTNER_PROGRAM },
 ];
 
 export function seoRoutes(): SeoRoute[] {
@@ -65,7 +72,7 @@ export function seoRoutes(): SeoRoute[] {
       path: page.path,
       changefreq: "monthly" as const,
       priority: "0.8",
-      lastmod: SEO_REFRESH,
+      lastmod: PARTNER_PROGRAM,
     })),
     ...GUIDES.map((guide) => ({
       path: guidePath(guide.slug),

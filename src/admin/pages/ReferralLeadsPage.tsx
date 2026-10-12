@@ -14,6 +14,12 @@ import { useToast } from "../hooks/useToast";
 import { PARTNER_LINK_DAYS, referralLeadsRepository } from "../repositories/referralLeads.supabase";
 import { DeleteLeadSection } from "../components/leads/DeleteLeadSection";
 import { ReferralLinksCard } from "../components/leads/ReferralLinksCard";
+import {
+  LeadSourcePanel,
+  PartnerReferralPanel,
+  ReferralRewardPanel,
+} from "../components/partners/LeadPartnerPanels";
+import { leadPartnerCategories } from "../../store/lib/partnerTypes";
 import { formatDateTime } from "../utils/format";
 import { REFERRAL_LEAD_STATUS_TONE } from "../utils/labels";
 import type { ReferralLead, ReferralLeadStatus } from "../types";
@@ -26,13 +32,13 @@ import {
   referralCategoryLabel,
 } from "../../store/lib/referralTypes";
 
-// Partner Leads: Pokémon / One Piece / video game sellers from
-// /sell-pokemon-cards, /sell-one-piece-cards and /sell-video-games, who
-// asked to be connected with the buying partner. Each one also arrives as a
-// "New referral lead" email written to be forwarded as-is; this page is the
-// record of what has been passed on (New → Sent to partner → Closed). The
-// Referral links card above the list has those pages' addresses to copy or
-// share.
+// Partner Leads: sellers of Pokémon and One Piece cards, and video games, from
+// the partner-store pages, who asked to be connected with a partner store.
+// Each lead goes to one store from its drawer
+// ("Partner store": the store and the seller are emailed, and the outcome and
+// finder's fee are recorded there). New → Sent to partner → Closed (or back
+// to New when a store passes). The Referral links card above the list has
+// those pages' addresses to copy or share.
 
 type TabKey = "all" | ReferralLeadStatus;
 
@@ -57,7 +63,7 @@ function contactLabel(method: string): string {
   return optionLabel(REFERRAL_CONTACT_METHODS, method) ?? method;
 }
 
-/** Plain-text summary to paste into a text or email to the buying partner. */
+/** Plain-text summary to paste into a text or email, when sending by hand. */
 function partnerText(lead: ReferralLead, photoUrls: string[]): string {
   const lines = [
     `${lead.categories.map(referralCategoryLabel).join(", ")} — ${lead.referenceNumber}`,
@@ -79,7 +85,13 @@ function partnerText(lead: ReferralLead, photoUrls: string[]): string {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-export function ReferralLeadsPage({ query }: { query: URLSearchParams }) {
+export function ReferralLeadsPage({
+  query,
+  onNavigate,
+}: {
+  query: URLSearchParams;
+  onNavigate?: (to: string) => void;
+}) {
   const [tab, setTab] = useState<TabKey>("all");
   const [search, setSearch] = useState("");
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -152,10 +164,10 @@ export function ReferralLeadsPage({ query }: { query: URLSearchParams }) {
     <div className="gg-page">
       <PageHeader
         title="Partner Leads"
-        description="Pokémon, One Piece and video game sellers to pass on to our buying partner."
+        description="Sellers of Pokémon cards, One Piece cards and video games — send each one to a partner store."
       />
 
-      <ReferralLinksCard />
+      <ReferralLinksCard onNavigate={onNavigate} />
 
       <SectionCard title="Leads">
         <div className="gg-toolbar">
@@ -181,7 +193,7 @@ export function ReferralLeadsPage({ query }: { query: URLSearchParams }) {
           <EmptyState
             icon="users"
             title="No leads match this filter"
-            message="Sellers from the Pokémon, One Piece and video game pages will appear here."
+            message="Sellers from the partner-store pages (Pokémon, One Piece and video games) will appear here."
           />
         ) : (
           <DataTable
@@ -205,6 +217,10 @@ export function ReferralLeadsPage({ query }: { query: URLSearchParams }) {
           if (openLead) setSelected({ ...openLead, status });
           leads.reload();
         }}
+        onReferralChanged={() => {
+          // Sending or recording an outcome moves the lead's status on the server.
+          leads.reload();
+        }}
         onDeleted={() => {
           setSelected(null);
           setDeepLinkId(null);
@@ -219,11 +235,14 @@ function ReferralLeadDrawer({
   lead,
   onClose,
   onStatusChanged,
+  onReferralChanged,
   onDeleted,
 }: {
   lead: ReferralLead | null;
   onClose: () => void;
   onStatusChanged: (status: ReferralLeadStatus) => void;
+  /** A referral was sent or updated (which can change the lead's status): refresh the list. */
+  onReferralChanged: () => void;
   /** The lead was deleted: close the drawer and refresh the list. */
   onDeleted: () => void;
 }) {
@@ -232,6 +251,8 @@ function ReferralLeadDrawer({
   const [photosLoading, setPhotosLoading] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
   const [copying, setCopying] = useState(false);
+  // Bumped when a referral changes, so the reward panel re-reads whether they sold.
+  const [referralVersion, setReferralVersion] = useState(0);
 
   const leadId = lead?.id;
   const photoPaths = lead?.photoPaths;
@@ -281,11 +302,7 @@ function ReferralLeadDrawer({
       // Longer-lived links than the drawer's, since the partner may open them later.
       const urls = await referralLeadsRepository.photoUrls(lead.photoPaths, PARTNER_LINK_DAYS * 24 * 60 * 60);
       await navigator.clipboard.writeText(partnerText(lead, urls));
-      toast.success(
-        lead.status === "new"
-          ? "Copied. Mark it “Sent to partner” once you've passed it on."
-          : "Copied lead details.",
-      );
+      toast.success("Copied lead details.");
     } catch {
       toast.error("Couldn't copy to the clipboard. Forward the new-lead email instead.");
     } finally {
@@ -362,13 +379,33 @@ function ReferralLeadDrawer({
           </section>
         )}
 
-        <section className="gg-leaddetail__section gg-leaddetail__internal">
-          <h3>Pass it on</h3>
+        <PartnerReferralPanel
+          kind="referral_lead"
+          leadId={lead.id}
+          leadReference={lead.referenceNumber}
+          leadCategories={leadPartnerCategories({ kind: "referral_lead", categories: lead.categories })}
+          onChanged={() => {
+            setReferralVersion((v) => v + 1);
+            onReferralChanged();
+          }}
+        />
+
+        <LeadSourcePanel source={lead.source} />
+
+        <ReferralRewardPanel
+          key={referralVersion}
+          kind="referral_lead"
+          leadId={lead.id}
+          refCode={lead.source.refCode ?? null}
+        />
+
+        <section className="gg-leaddetail__section">
+          <h3>Status &amp; consent</h3>
           <div className="gg-inline-note gg-inline-note--info">
             <Icon name="checkCircle" size={16} />
             <div>
-              Agreed to have their details shared with our buying partner on{" "}
-              {formatDateTime(lead.consentToShareAt)}
+              Asked to be connected with a partner store (and told the store may pay us a referral fee)
+              on {formatDateTime(lead.consentToShareAt)}
               {lead.sourcePath ? ` (from ${lead.sourcePath})` : ""}.
             </div>
           </div>
@@ -388,22 +425,12 @@ function ReferralLeadDrawer({
           </div>
           <div className="gg-drawer-actions__buttons">
             <Button variant="secondary" size="sm" icon="copy" loading={copying} onClick={copyForPartner}>
-              Copy details for partner
+              Copy details (to send by hand)
             </Button>
-            {lead.status === "new" && (
-              <Button
-                variant="primary"
-                size="sm"
-                loading={savingStatus}
-                onClick={() => void changeStatus("sent_to_partner")}
-              >
-                Mark sent to partner
-              </Button>
-            )}
           </div>
           <p className="gg-card-meta">
-            The new-lead email is written to be forwarded as-is, or copy the details here to text them.
-            Photo links in the copied text work for {PARTNER_LINK_DAYS} days.
+            Sending from &ldquo;Partner store&rdquo; above emails the store and the seller and keeps the
+            fee record. Copied photo links work for {PARTNER_LINK_DAYS} days.
           </p>
         </section>
 
@@ -411,7 +438,7 @@ function ReferralLeadDrawer({
           referenceNumber={lead.referenceNumber}
           warning={
             lead.status === "sent_to_partner"
-              ? "If you already sent it to our buying partner, their copy isn't affected."
+              ? "If you already sent it to a partner store, their copy isn't affected. Fee records are kept."
               : null
           }
           onDelete={async () => {
