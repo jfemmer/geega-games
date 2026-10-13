@@ -31,6 +31,15 @@ export const FINGERPRINT_MODEL: ModelSpec = {
   inputSize: 224,
 };
 
+/** The most specific reason a network or file operation failed: "ENOTFOUND", "ECONNRESET", … */
+export function failureReason(err: unknown): string {
+  const e = err as { code?: unknown; message?: unknown; cause?: { code?: unknown; message?: unknown } } | null;
+  const code = e?.cause?.code ?? e?.code;
+  if (typeof code === "string" && code) return code;
+  const message = e?.cause?.message ?? e?.message;
+  return typeof message === "string" && message ? message : String(err);
+}
+
 async function sha256File(file: string): Promise<string> {
   const hash = createHash("sha256");
   await pipeline(createReadStream(file), hash);
@@ -66,8 +75,16 @@ export async function ensureModel(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const res = await fetchImpl(spec.url, { headers: { "User-Agent": "GeegaScannerBridge/1.0" } });
-  if (!res.ok || !res.body) throw new Error(`Couldn't download the ${spec.id} model (HTTP ${res.status}).`);
+  const host = new URL(spec.url).host;
+  let res: Response;
+  try {
+    res = await fetchImpl(spec.url, { headers: { "User-Agent": "GeegaScannerBridge/1.0" } });
+  } catch (err) {
+    throw new Error(
+      `Couldn't reach ${host} to download the card-recognition model (${failureReason(err)}). Check this PC's internet connection.`,
+    );
+  }
+  if (!res.ok || !res.body) throw new Error(`Couldn't download the card-recognition model from ${host} (HTTP ${res.status}).`);
   const total = Number(res.headers.get("content-length")) || null;
   const tmp = `${target}.download`;
   let received = 0;
@@ -78,7 +95,17 @@ export async function ensureModel(
     hash.update(chunk);
     options.onProgress?.({ receivedBytes: received, totalBytes: total });
   });
-  await pipeline(body, createWriteStream(tmp));
+  try {
+    await pipeline(body, createWriteStream(tmp));
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => undefined);
+    const reason = failureReason(err);
+    throw new Error(
+      reason === "ENOSPC"
+        ? `There isn't enough free disk space for the card-recognition model (88 MB) in ${modelsDir}.`
+        : `The card-recognition model download from ${host} was interrupted (${reason}).`,
+    );
+  }
   const digest = hash.digest("hex");
   if (digest !== spec.sha256) {
     await rm(tmp, { force: true });

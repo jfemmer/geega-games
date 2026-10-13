@@ -20,3 +20,6 @@ coverage
 # images, never committed (copyrighted card art). See benchmark/README.md.
 benchmark/fixtures/*
 !benchmark/fixtures/manifest.example.json
+
+# Scanner bridge: why it last stopped (written on the scanning PC)
+scanner-bridge/bridge-error.log

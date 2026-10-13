@@ -9,9 +9,22 @@ import type { BridgeConfig } from "./config.js";
 // calls already requires requireStaff() to pass a valid access token —
 // there is no separate/wider bridge-only API surface.
 
-export async function createAuthedClient(
-  config: BridgeConfig,
-): Promise<{ supabase: SupabaseClient; getAccessToken: () => Promise<string> }> {
+/** A failed sign-in. `network` when Supabase couldn't be reached (worth retrying soon). */
+export class SignInError extends Error {
+  readonly network: boolean;
+  constructor(message: string, network: boolean) {
+    super(message);
+    this.name = "SignInError";
+    this.network = network;
+  }
+}
+
+export interface AuthedClient {
+  supabase: SupabaseClient;
+  getAccessToken: () => Promise<string>;
+}
+
+export async function createAuthedClient(config: BridgeConfig): Promise<AuthedClient> {
   const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: {
       persistSession: false,
@@ -25,8 +38,17 @@ export async function createAuthedClient(
     password: config.staffPassword,
   });
   if (error) {
-    throw new Error(
-      `Could not sign in as ${config.staffEmail}: ${error.message}. Confirm this account exists, has a staff role, and the password is correct.`,
+    // Supabase reports "couldn't reach the server" (no connection, DNS, an
+    // outage) as a retryable fetch error with status 0 or 5xx.
+    const network =
+      error.name === "AuthRetryableFetchError" ||
+      error.status === 0 ||
+      (typeof error.status === "number" && error.status >= 500);
+    throw new SignInError(
+      network
+        ? `Couldn't reach Supabase to sign in as ${config.staffEmail} (${error.message}). Check this PC's internet connection.`
+        : `Could not sign in as ${config.staffEmail}: ${error.message}. Confirm this account exists, has a staff role, and the password in .env is correct, then restart the bridge.`,
+      network,
     );
   }
 

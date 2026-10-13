@@ -1,7 +1,20 @@
 import "dotenv/config";
 import { loadConfig } from "../config.js";
 import { createAuthedClient } from "../auth.js";
-import { RecognizerRuntime } from "../recognizer/runtime.js";
+import { explainRecognizerLoadFailure } from "../recognizer/loadFailure.js";
+
+/** The recognizer's code, or a plain-English reason it can't run on this PC. */
+async function loadRuntime() {
+  try {
+    return (await import("../recognizer/runtime.js")).RecognizerRuntime;
+  } catch (err) {
+    const why = explainRecognizerLoadFailure(err);
+    console.error(why.message.replace(/ Until then.*$/, ""));
+    if (why.help) console.error(`${why.help.label}: ${why.help.url}`);
+    console.error(`(${why.detail})`);
+    process.exit(1);
+  }
+}
 
 // `npm run benchmark [samples]` — runs the self-test against the card library
 // already on this PC (see src/recognizer/selfTest.ts) and prints the misses.
@@ -11,11 +24,13 @@ async function main() {
   const samples = Number.parseInt(process.argv[2] ?? "", 10);
   const config = loadConfig();
   const { supabase } = await createAuthedClient(config);
+  const RecognizerRuntime = await loadRuntime();
   const runtime = new RecognizerRuntime({
     config: { ...config.recognizer, enabled: true, autoUpdate: false },
     supabase,
     isBusy: () => false,
     log: (m) => console.log(m),
+    retryFailedStart: false,
   });
   await runtime.start();
   if (runtime.status.state !== "ready") {

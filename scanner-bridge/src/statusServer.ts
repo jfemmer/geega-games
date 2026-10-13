@@ -2,7 +2,7 @@ import http from "node:http";
 import { existsSync, unlinkSync } from "node:fs";
 import type { WatcherControl } from "./watcher.js";
 import { listScanDevices, runScan } from "./naps2Scan.js";
-import { createRecognizerStatus, type RecognizerStatus } from "./recognizer/runtime.js";
+import { createRecognizerStatus, type RecognizerStatus } from "./recognizer/status.js";
 import type { BatchFinish } from "./recognizer/types.js";
 
 // A local status + control endpoint — bound to 127.0.0.1 ONLY, never
@@ -31,6 +31,12 @@ import type { BatchFinish } from "./recognizer/types.js";
 // block, POST /settings (the foil / non-foil switch next to "Scan now"),
 // POST /library/update, POST /library/self-test, and POST /recognize
 // (re-run recognition for one stored scan on this PC).
+//
+// This server starts before anything else in the bridge (bridge.ts), so the
+// dashboard can always see what's going on: still signing in, a sign-in
+// that failed and why, or a card recognizer that can't run on this PC. Until
+// the bridge has signed in and is watching the folder, `watcherControl` is
+// null and "Scan now" answers 503 with the reason.
 //
 // GET /scan/devices and POST /scan/start (Phase 2) drive the scanner
 // directly via NAPS2 (naps2Scan.ts, NAPS2.Console.exe) — no PaperStream IP
@@ -165,12 +171,43 @@ export interface StatusServerOptions {
    * a PaperStream-driven one. */
   duplex: boolean;
   /** Returned by startWatcher() — lets a direct scan hold off the
-   * watcher's own auto-processing for its duration. */
-  watcherControl: WatcherControl;
+   * watcher's own auto-processing for its duration. Null until the bridge
+   * has signed in and started watching (scans are refused until then). */
+  watcherControl: WatcherControl | null;
   /** config.scanDpi — resolution for "Scan now". */
   scanDpi?: number;
   /** The card recognizer's controls; null when it's turned off. */
   recognizer?: RecognizerControl | null;
+}
+
+/**
+ * Resolves once the server is listening; rejects with a plain-English
+ * reason when it can't (the usual one: another copy of the bridge already
+ * has the port).
+ */
+export function whenListening(server: http.Server, port: number): Promise<void> {
+  if (server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    const onError = (err: NodeJS.ErrnoException) => {
+      server.off("listening", onListening);
+      reject(
+        Object.assign(
+          new Error(
+            err.code === "EADDRINUSE"
+              ? `Port ${port} on this PC is already in use.`
+              : `Couldn't open the status port 127.0.0.1:${port}: ${err.message}`,
+          ),
+          { code: err.code },
+        ),
+      );
+    };
+    server.once("listening", onListening);
+    server.once("error", onError);
+  });
 }
 
 export function startStatusServer(
@@ -229,14 +266,24 @@ export function startStatusServer(
     }
 
     if (req.method === "POST" && req.url === "/library/update") {
-      if (!options.recognizer) {
-        sendJson(res, 409, { ok: false, message: "The card recognizer is turned off on this PC." });
+      if (!options.recognizer || status.recognizer.state === "off") {
+        sendJson(res, 409, { ok: false, message: "The card recognizer is turned off on this PC (RECOGNIZER=off)." });
         return;
       }
+      if (status.recognizer.state === "unavailable") {
+        // Needs something installed on this PC and a restart; nothing to retry here.
+        sendJson(res, 409, { ok: false, message: status.recognizer.message });
+        return;
+      }
+      const retrying = status.recognizer.state === "error";
       const started = options.recognizer.requestUpdate();
       sendJson(res, started ? 202 : 409, {
         ok: started,
-        message: started ? "Updating the card library in the background." : "The card library is already updating (or the recognizer isn't ready yet).",
+        message: started
+          ? retrying
+            ? "Trying again — this can take a minute."
+            : "Updating the card library in the background."
+          : "The card library is already updating (or the recognizer is still starting).",
       });
       return;
     }
@@ -323,6 +370,16 @@ export function startStatusServer(
     }
 
     if (req.method === "POST" && req.url === "/scan/start") {
+      const watcherControl = options.watcherControl;
+      if (!watcherControl) {
+        sendJson(res, 503, {
+          ok: false,
+          message: status.lastError
+            ? `The scanner bridge can't scan yet: ${status.lastError}`
+            : "The scanner bridge is still starting up — try again in a few seconds.",
+        });
+        return;
+      }
       if (status.state === "scanning") {
         res.writeHead(409, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, message: "A scan is already running." }));
@@ -341,7 +398,7 @@ export function startStatusServer(
           if (body.batchFinish === "foil" || body.batchFinish === "nonfoil") status.batchFinish = body.batchFinish;
           res.writeHead(202, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ started: true }));
-          startDirectScan(status, options);
+          startDirectScan(status, options, watcherControl);
         });
       return;
     }
@@ -354,18 +411,25 @@ export function startStatusServer(
       }),
     );
   });
+  // Errors before listening (the port is taken) are whenListening()'s to
+  // report; any later one is logged rather than taking the bridge down.
+  server.on("error", (err) => {
+    if (server.listening) console.error(`[geega-scanner-bridge] Status server error: ${err.message}`);
+  });
   server.listen(port, "127.0.0.1", () => {
-    console.log(`[geega-scanner-bridge] Status: http://127.0.0.1:${port}/status`);
+    const address = server.address();
+    const actualPort = address && typeof address === "object" ? address.port : port;
+    console.log(`[geega-scanner-bridge] Status: http://127.0.0.1:${actualPort}/status`);
   });
   return server;
 }
 
 /** Runs one NAPS2 scan into the watch folder, holding off the watcher's own processing meanwhile. */
-function startDirectScan(status: BridgeStatus, options: StatusServerOptions): void {
+function startDirectScan(status: BridgeStatus, options: StatusServerOptions, watcherControl: WatcherControl): void {
   // Unique per run so a direct-scan batch's files can never collide
   // with leftover PaperStream-written ones sitting in the same folder.
   const filePrefix = `scan_${Date.now()}`;
-  options.watcherControl.suppressAutoProcess();
+  watcherControl.suppressAutoProcess();
 
   runScan({
     consolePath: options.naps2ConsolePath,
@@ -401,6 +465,6 @@ function startDirectScan(status: BridgeStatus, options: StatusServerOptions): vo
       // runs (i.e. whenever anything WAS saved), so this only matters
       // when pending stays empty and resumeAndProcessNow() is a no-op.
       status.state = "watching";
-      options.watcherControl.resumeAndProcessNow();
+      watcherControl.resumeAndProcessNow();
     });
 }

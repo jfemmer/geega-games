@@ -43,3 +43,45 @@ export async function postToBridge<T = { ok?: boolean; message?: string }>(
   const data = (await res.json().catch(() => ({}))) as T;
   return { status: res.status, ok: res.ok, data };
 }
+
+/**
+ * Why the bridge didn't answer, as far as this page can tell:
+ *
+ * - "browser_blocked": Chrome's local network access permission is denied
+ *   for this site, so it won't let the page reach the bridge (and won't ask
+ *   again by itself).
+ * - "wrong_site": something answers at the bridge's address but won't share
+ *   its status with this page. That's the bridge set up for a different
+ *   address of the site (its GEEGA_API_BASE_URL is the only origin it
+ *   answers).
+ * - "not_running": nothing answers. Normal when this isn't the scanning PC.
+ */
+export type BridgeProblem = "browser_blocked" | "wrong_site" | "not_running";
+
+/** Chrome 145+ calls it "loopback-network" ("Apps on device" in site settings); 142–144 "local-network-access". */
+const LOCAL_ACCESS_PERMISSIONS = ["loopback-network", "local-network-access"];
+
+async function localAccessDenied(): Promise<boolean> {
+  const permissions = typeof navigator === "undefined" ? undefined : navigator.permissions;
+  if (!permissions?.query) return false;
+  for (const name of LOCAL_ACCESS_PERMISSIONS) {
+    try {
+      const result = await permissions.query({ name: name as PermissionName });
+      return result.state === "denied";
+    } catch {
+      // This browser doesn't know that permission name; try the next one.
+    }
+  }
+  return false;
+}
+
+export async function diagnoseUnreachableBridge(): Promise<BridgeProblem> {
+  if (await localAccessDenied()) return "browser_blocked";
+  try {
+    // An opaque "no-cors" response still proves something answered.
+    await fetch(`${SCANNER_BRIDGE_URL}/status`, { mode: "no-cors", cache: "no-store" });
+    return "wrong_site";
+  } catch {
+    return "not_running";
+  }
+}

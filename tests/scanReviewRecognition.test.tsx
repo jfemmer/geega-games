@@ -278,6 +278,19 @@ describe("Scan Review with scanner-PC results", () => {
     expect(repo.recognize).not.toHaveBeenCalled();
   });
 
+  it("says so when the scanner PC answers but its recognizer isn't ready, without falling back to the cloud", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ok: false, message: "The card recognizer on this PC isn't ready yet." }), { status: 503 })),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#002"));
+    await user.click(await screen.findByRole("button", { name: "Re-run" }));
+    expect(await screen.findByText(/card recognizer isn't ready right now/)).toBeInTheDocument();
+    expect(repo.recognize).not.toHaveBeenCalled();
+  });
+
   it("falls back to the cloud reader for cards it read in the first place", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       throw new TypeError("Failed to fetch");

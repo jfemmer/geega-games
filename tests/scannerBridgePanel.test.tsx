@@ -68,9 +68,31 @@ function renderPanel() {
   );
 }
 
+/** No bridge answers this page: optionally something answers a no-cors probe, and Chrome's local-access permission state. */
+function stubUnreachable({ answersProbe = false, permission }: { answersProbe?: boolean; permission?: PermissionState } = {}) {
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.mode === "no-cors" && answersProbe) return new Response(null, { status: 200 });
+    throw new TypeError("Failed to fetch");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  if (permission) {
+    Object.defineProperty(window.navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: vi.fn(async ({ name }: { name: string }) => {
+          if (name !== "loopback-network") throw new TypeError(`Unknown permission ${name}`);
+          return { state: permission };
+        }),
+      },
+    });
+  }
+  return fetchMock;
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  delete (window.navigator as unknown as Record<string, unknown>).permissions;
 });
 
 describe("ScannerBridgePanel", () => {
@@ -132,5 +154,119 @@ describe("ScannerBridgePanel", () => {
     expect(calls.find((c) => c.url === `${BRIDGE}/scan/start`)?.body).toBeUndefined();
     expect(screen.queryByRole("radio", { name: "Foil" })).toBeNull();
     expect(screen.queryByText("Card recognition on this PC")).toBeNull();
+  });
+
+  it("says the bridge isn't connected from this computer when nothing answers", async () => {
+    stubUnreachable();
+    renderPanel();
+    expect(await screen.findByText("Not connected from this computer")).toBeInTheDocument();
+    expect(screen.getByText(/bridge-error\.log/)).toBeInTheDocument();
+  });
+
+  it("tells staff how to unblock Chrome when it denies this site local access", async () => {
+    stubUnreachable({ permission: "denied" });
+    renderPanel();
+    expect(await screen.findByText("Chrome is blocking the scanner bridge")).toBeInTheDocument();
+    expect(screen.getByText(/"Apps on device"/)).toBeInTheDocument();
+  });
+
+  it("spots a bridge that's running but set up for another address of the site", async () => {
+    stubUnreachable({ answersProbe: true, permission: "granted" });
+    renderPanel();
+    expect(await screen.findByText("Scanner bridge is set up for a different address")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`GEEGA_API_BASE_URL=${window.location.origin}`))).toBeInTheDocument();
+  });
+
+  it("explains a recognizer that can't run on the scanning PC, with a link to the fix", async () => {
+    const calls = stubBridge(
+      bridgeStatus({
+        recognizer: {
+          ...bridgeStatus().recognizer,
+          state: "unavailable",
+          message:
+            "Card recognition can't start on this PC: Windows is missing the Microsoft Visual C++ Redistributable it needs (MSVCP140_1.dll not found). Install it (free, from Microsoft), then restart the scanner bridge. Until then, scans still upload and are identified online, as before.",
+          help: { label: "Download the Visual C++ Redistributable", url: "https://aka.ms/vs/17/release/vc_redist.x64.exe" },
+          library: null,
+          selfTest: null,
+        },
+      }),
+    );
+    renderPanel();
+    expect(await screen.findByText("Needs setup")).toBeInTheDocument();
+    expect(screen.getByText(/Windows is missing the Microsoft Visual C\+\+ Redistributable/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Download the Visual C++ Redistributable" });
+    expect(link).toHaveAttribute("href", "https://aka.ms/vs/17/release/vc_redist.x64.exe");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.queryByRole("button", { name: "Update card library" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run self-test" })).toBeNull();
+    // Scanning itself is unaffected.
+    expect(screen.getByRole("button", { name: "Scan now" })).toBeEnabled();
+    expect(calls.some((c) => c.url === `${BRIDGE}/library/update`)).toBe(false);
+  });
+
+  it("never links anywhere but https", async () => {
+    stubBridge(
+      bridgeStatus({
+        recognizer: { ...bridgeStatus().recognizer, state: "unavailable", message: "x", help: { label: "Fix it", url: "javascript:alert(1)" } },
+      }),
+    );
+    renderPanel();
+    expect(await screen.findByText("Needs setup")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Fix it" })).toBeNull();
+  });
+
+  it("offers Try again when the recognizer couldn't start", async () => {
+    const calls = stubBridge(
+      bridgeStatus({
+        recognizer: {
+          ...bridgeStatus().recognizer,
+          state: "error",
+          message: "Card recognizer couldn't start: Couldn't reach huggingface.co to download the card-recognition model (ENOTFOUND).",
+          library: null,
+          selfTest: null,
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(calls.some((c) => c.url === `${BRIDGE}/library/update`)).toBe(true));
+  });
+
+  it("holds Scan now while the bridge signs in or can't sign in, saying why", async () => {
+    const status: Record<string, unknown> = bridgeStatus({ state: "starting" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(status), { status: 200 })),
+    );
+    const view = renderPanel();
+    expect(await screen.findByRole("button", { name: "Scan now" })).toBeDisabled();
+    expect(screen.getByText(/signing in/)).toBeInTheDocument();
+
+    status.state = "error";
+    status.lastError = "Could not sign in as scanner@example.com: Invalid login credentials.";
+    view.unmount();
+    renderPanel();
+    expect(await screen.findByText(/Could not sign in as scanner@example.com/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Scan now" })).toBeDisabled();
+    expect(screen.getByText(/Scanning is paused until the problem above is fixed/)).toBeInTheDocument();
+  });
+
+  it("shows the bridge's own reason when it turns a scan down", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === `${BRIDGE}/status`) return new Response(JSON.stringify(bridgeStatus()), { status: 200 });
+      if (url === `${BRIDGE}/scan/start`) {
+        return new Response(JSON.stringify({ ok: false, message: "The scanner bridge is still starting up — try again in a few seconds." }), {
+          status: 503,
+        });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Scan now" }));
+    expect(await screen.findByText(/still starting up — try again in a few seconds/)).toBeInTheDocument();
   });
 });

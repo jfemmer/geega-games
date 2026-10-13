@@ -251,6 +251,7 @@ export function ScanReviewPage({
     async (scan: CardScan) => {
       setRecognizingId(scan.id);
       try {
+        let bridgeNotReady = false;
         try {
           const reply = await postToBridge<{ ok?: boolean; message?: string }>("/recognize", { scanId: scan.id });
           if (reply.ok) {
@@ -259,12 +260,18 @@ export function ScanReviewPage({
             return;
           }
           if (reply.status !== 503) throw new Error(reply.data.message ?? "The scanner PC couldn't re-run this card.");
-          // 503: the bridge is up but its card library isn't ready — fall through.
+          // 503: the bridge is up but its card recognizer isn't ready (or
+          // can't run on that PC) — fall through.
+          bridgeNotReady = true;
         } catch (err) {
           if (!(err instanceof BridgeUnreachableError)) throw err;
         }
         if (scan.recognitionData?.engine === "scanner_pc") {
-          toast.error("This card was identified on the scanner PC — re-run it from that computer (its bridge isn't reachable from here).");
+          toast.error(
+            bridgeNotReady
+              ? "This card was identified on the scanner PC, whose card recognizer isn't ready right now — re-run it once the Scanner panel shows it ready."
+              : "This card was identified on the scanner PC — re-run it from that computer (its bridge isn't reachable from here).",
+          );
           return;
         }
         await recognitionProvider.recognize(scan);

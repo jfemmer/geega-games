@@ -3,7 +3,15 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import http, { type Server } from "node:http";
-import { createStatus, startStatusServer, type BridgeStatus, type RecognizerControl } from "./statusServer.js";
+import {
+  createStatus,
+  startStatusServer,
+  whenListening,
+  type BridgeStatus,
+  type RecognizerControl,
+  type StatusServerOptions,
+} from "./statusServer.js";
+import { createRecognizerStatus, unavailableRecognizerStatus } from "./recognizer/status.js";
 import type { WatcherControl } from "./watcher.js";
 import type { ScanDeviceCheckResult, ScanResult } from "./naps2Scan.js";
 
@@ -39,6 +47,7 @@ describe("startStatusServer", () => {
   let sessionStateFile: string;
   let status: BridgeStatus;
   let server: Server;
+  let serverOptions: StatusServerOptions;
   let baseUrl: string;
   let suppressAutoProcess: ReturnType<typeof vi.fn>;
   let resumeAndProcessNow: ReturnType<typeof vi.fn>;
@@ -64,7 +73,7 @@ describe("startStatusServer", () => {
       selfTest: vi.fn(async () => null),
       rerun: vi.fn(async () => ({ ok: true, status: 200, message: "Re-recognized on the scanner PC." })),
     };
-    server = startStatusServer(0, status, {
+    serverOptions = {
       allowedOrigin: ALLOWED_ORIGIN,
       sessionStateFile,
       watchFolder: dir,
@@ -75,7 +84,8 @@ describe("startStatusServer", () => {
       watcherControl,
       scanDpi: 300,
       recognizer: recognizerControl as unknown as RecognizerControl,
-    });
+    };
+    server = startStatusServer(0, status, serverOptions);
     await new Promise<void>((resolve) => server.once("listening", resolve));
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("no port");
@@ -280,11 +290,46 @@ describe("startStatusServer", () => {
   });
 
   it("POST /library/update starts a background update", async () => {
+    status.recognizer = createRecognizerStatus(true);
     const res = await fetch(`${baseUrl}/library/update`, { method: "POST" });
     expect(res.status).toBe(202);
     expect(recognizerControl.requestUpdate).toHaveBeenCalledTimes(1);
     recognizerControl.requestUpdate.mockReturnValueOnce(false);
     expect((await fetch(`${baseUrl}/library/update`, { method: "POST" })).status).toBe(409);
+  });
+
+  it("POST /library/update retries a recognizer that failed to start", async () => {
+    status.recognizer = { ...createRecognizerStatus(true), state: "error", message: "Card recognizer couldn't start: no internet." };
+    const res = await fetch(`${baseUrl}/library/update`, { method: "POST" });
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { message: string }).message).toMatch(/Trying again/);
+    expect(recognizerControl.requestUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /library/update explains, rather than retries, when the recognizer can't run on this PC", async () => {
+    status.recognizer = unavailableRecognizerStatus(
+      "Card recognition can't start on this PC: Windows is missing the Microsoft Visual C++ Redistributable it needs.",
+      { label: "Download the Visual C++ Redistributable", url: "https://aka.ms/vs/17/release/vc_redist.x64.exe" },
+      "The specified module could not be found.",
+    );
+    const res = await fetch(`${baseUrl}/library/update`, { method: "POST" });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { message: string }).message).toMatch(/Visual C\+\+ Redistributable/);
+    expect(recognizerControl.requestUpdate).not.toHaveBeenCalled();
+    const body = (await (await fetch(`${baseUrl}/status`)).json()) as BridgeStatus;
+    expect(body.recognizer).toMatchObject({ state: "unavailable", help: { url: "https://aka.ms/vs/17/release/vc_redist.x64.exe" } });
+  });
+
+  it("POST /scan/start is refused with the reason until the bridge is signed in and watching", async () => {
+    serverOptions.watcherControl = null;
+    const starting = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
+    expect(starting.status).toBe(503);
+    expect(((await starting.json()) as { message: string }).message).toMatch(/still starting up/);
+    status.lastError = "Could not sign in as scanner@example.com: Invalid login credentials.";
+    const failed = await fetch(`${baseUrl}/scan/start`, { method: "POST" });
+    expect(((await failed.json()) as { message: string }).message).toMatch(/can't scan yet: Could not sign in/);
+    expect(mockRunScan).not.toHaveBeenCalled();
+    expect(status.state).not.toBe("scanning");
   });
 
   it("POST /library/self-test only runs with a ready library, one at a time", async () => {
@@ -313,5 +358,29 @@ describe("startStatusServer", () => {
     const body = (await (await fetch(`${baseUrl}/status`)).json()) as BridgeStatus;
     expect(body).toMatchObject({ batchFinish: "nonfoil", scanDpi: 300, totalCardsRecognizedOnPc: 0 });
     expect(body.recognizer).toMatchObject({ state: "off", library: null });
+  });
+});
+
+describe("whenListening", () => {
+  it("rejects with EADDRINUSE when another copy already has the port", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "geega-bridge-port-"));
+    const options = {
+      allowedOrigin: ALLOWED_ORIGIN,
+      sessionStateFile: path.join(dir, ".geega-session-id"),
+      watchFolder: dir,
+      naps2ConsolePath: "NAPS2.Console.exe",
+      scannerDriver: "twain",
+      scannerDeviceNameMatch: "8170",
+      duplex: true,
+      watcherControl: null,
+    } satisfies StatusServerOptions;
+    const first = startStatusServer(0, createStatus(dir), options);
+    await whenListening(first, 0);
+    const address = first.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const second = startStatusServer(address.port, createStatus(dir), options);
+    await expect(whenListening(second, address.port)).rejects.toMatchObject({ code: "EADDRINUSE" });
+    await new Promise<void>((resolve) => first.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true });
   });
 });

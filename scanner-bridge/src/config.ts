@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { defaultDataDir, type RecognizerRuntimeConfig } from "./recognizer/runtime.js";
+import { defaultDataDir, type RecognizerRuntimeConfig } from "./recognizer/status.js";
 
 // All configuration is read from environment variables (.env in this
 // folder, loaded by index.ts) — nothing is hardcoded, so the same build

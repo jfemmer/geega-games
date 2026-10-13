@@ -1,7 +1,20 @@
 import "dotenv/config";
 import { loadConfig } from "../config.js";
 import { createAuthedClient } from "../auth.js";
-import { RecognizerRuntime } from "../recognizer/runtime.js";
+import { explainRecognizerLoadFailure } from "../recognizer/loadFailure.js";
+
+/** The recognizer's code, or a plain-English reason it can't run on this PC. */
+async function loadRuntime() {
+  try {
+    return (await import("../recognizer/runtime.js")).RecognizerRuntime;
+  } catch (err) {
+    const why = explainRecognizerLoadFailure(err);
+    console.error(why.message.replace(/ Until then.*$/, ""));
+    if (why.help) console.error(`${why.help.label}: ${why.help.url}`);
+    console.error(`(${why.detail})`);
+    process.exit(1);
+  }
+}
 
 // `npm run build-index` — builds (first time) or updates the card library on
 // this PC, then runs the self-test. Safe to stop with Ctrl+C at any point:
@@ -13,11 +26,13 @@ async function main() {
   const config = loadConfig();
   const { supabase } = await createAuthedClient(config);
   console.log(`Signed in as ${config.staffEmail}. Card library folder: ${config.recognizer.dataDir}`);
+  const RecognizerRuntime = await loadRuntime();
   const runtime = new RecognizerRuntime({
     config: { ...config.recognizer, enabled: true, autoUpdate: true },
     supabase,
     isBusy: () => false,
     log: (m) => console.log(m),
+    retryFailedStart: false,
   });
 
   let lastLine = "";
@@ -50,6 +65,12 @@ async function main() {
   }, 2000);
 
   await runtime.start();
+  if (runtime.status.state === "error") {
+    // The model couldn't be downloaded or loaded; nothing to build with.
+    clearInterval(timer);
+    console.error(runtime.status.message);
+    process.exit(1);
+  }
   // start() kicks off a build only when there's no library yet; an explicit
   // run always checks for new cards too.
   runtime.requestUpdate();

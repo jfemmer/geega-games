@@ -84,7 +84,11 @@ here is inspectable, never silently committed to inventory.
 
 Requires 64-bit Windows 10/11, [Node.js](https://nodejs.org/) 22 or later (the LTS installer),
 an internet connection, and about 2.5 GB of free disk space for the card
-recognizer (see section 8).
+recognizer (see section 8). The card recognizer also needs Microsoft's free
+[Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe),
+which most PCs already have. Without it, the bridge still scans and uploads,
+and the dashboard's Scanner panel says the recognizer needs it and links to
+the download.
 
 ```powershell
 cd scanner-bridge
@@ -119,8 +123,14 @@ npm start
 For development/iteration without a build step: `npm run dev`.
 
 **Updating** to a new version of the bridge: stop it, then from this folder
-run `git pull`, `npm install`, `npm run build`, and start it again. Your
-`.env`, card library and image cache are kept.
+run `git pull`, `npm install`, `npm run build`, and start it again. All
+three steps matter: a new version can add packages, and `npm install` is
+what fetches them. Your `.env`, card library and image cache are kept.
+
+The bridge reads `.env` from this folder, whichever folder it's started
+from. If it ever stops on its own, the reason is also written to
+`bridge-error.log` here, which is useful when Task Scheduler runs it without
+a window. See section 9 if the dashboard says it's not connected.
 
 Leave it running while you scan. Console output shows each state
 transition (watching → uploading → done, or an error with a plain-English
@@ -331,7 +341,11 @@ Then there's nothing to do but leave the bridge running. On first start it:
    The score shows in the dashboard's Scanner panel.
 
 Until the library is ready, scans keep working — they just go to the old
-cloud recognizer. The Scanner panel shows progress.
+cloud recognizer. The Scanner panel shows progress. If the model download or
+the build fails (no internet for a while, say), it tries again by itself,
+after 2 minutes at first and then hourly; **Try again** in the Scanner panel
+retries straight away. If the recognizer can't run on this PC at all, the
+panel shows **Needs setup** with what to install (section 9).
 
 To watch progress in a window instead (or to build before starting the
 bridge): `npm run build-index`. Ctrl+C is safe; run it again to continue.
@@ -376,6 +390,56 @@ works from the scanning PC's browser). Nothing is re-uploaded.
   the language in review.
 - A few old printings are nearly identical (Alpha / Beta / Unlimited, for
   example). They come up as *check*, never *sure*.
+
+## 9. Troubleshooting
+
+The bridge's status server starts before anything else, so as long as the
+bridge is running, the dashboard's Scanner panel (Scan Sessions page)
+shows what's wrong. Work from what the panel says.
+
+**"Not connected from this computer"**: the dashboard can't reach the bridge
+on this PC.
+
+1. Is it running? Start it (`npm start` in this folder) and wait for
+   `Ready.` in its window. If it stops, the window and `bridge-error.log`
+   in this folder say why. "The scanner bridge is already running on this
+   PC" means another copy has it covered (another window, or Task
+   Scheduler); use that one, or end it in Task Manager to restart.
+2. Just updated? Run `npm install` and `npm run build` in this folder, then
+   start it again.
+3. Open `http://127.0.0.1:8787/status` in Chrome on this PC. If that shows
+   text, the bridge is fine and the browser is the problem: see the next
+   two entries (the panel usually names which one).
+
+**"Chrome is blocking the scanner bridge"**: this site was denied access to
+apps on this PC, and Chrome won't ask again by itself. Click the icon at the
+left end of the address bar, open **Site settings**, set **Apps on device**
+(older Chrome: **Local network access**) to **Allow**, and reload.
+
+**"Scanner bridge is set up for a different address"**: the bridge only
+talks to the site address in `GEEGA_API_BASE_URL`. Set it to the address
+you open the dashboard at (e.g. `https://geega-games.com`) in `.env` and
+restart the bridge.
+
+**Bridge badge "Error" with a sign-in message**: the bridge couldn't sign in
+as its staff account. "Couldn't reach Supabase" means no internet yet (it
+retries by itself); "Could not sign in" means the email or password in
+`.env` is wrong, or the account isn't staff. Fix `.env` and restart.
+
+**Card recognition "Needs setup"**: it can't run on this PC, and the
+message says why. Scanning carries on meanwhile (the website identifies the
+cards, as before). The usual reason is Windows missing the
+[Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe):
+install it, then restart the bridge. Other reasons it names: run
+`npm install` (a package is missing), or install a newer Node.js.
+
+**Card recognition "Needs attention"**: the model download or the library
+build failed; the message says why. It retries by itself; **Try again**
+retries now.
+
+**"Check scanner connection" doesn't list the fi-8170**: see "Validating it
+on your machine" in section 7. The scanner must be switched on and
+connected by USB, with its PaperStream IP (TWAIN) driver installed.
 
 ## Limitations
 

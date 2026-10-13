@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SectionCard } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Badge";
@@ -7,7 +7,13 @@ import { EmptyState } from "../../components/ui/States";
 import { useToast } from "../../hooks/useToast";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatDate, formatDateTime, formatNumber, timeAgo } from "../../utils/format";
-import { postToBridge, SCANNER_BRIDGE_URL } from "../../utils/scannerBridge";
+import {
+  BridgeUnreachableError,
+  diagnoseUnreachableBridge,
+  postToBridge,
+  SCANNER_BRIDGE_URL,
+  type BridgeProblem,
+} from "../../utils/scannerBridge";
 import type { BadgeTone } from "../../utils/labels";
 
 // Live view of the LOCAL scanner-bridge process (scanner-bridge/src/index.ts)
@@ -22,14 +28,18 @@ import type { BadgeTone } from "../../utils/labels";
 // them the bridge is simply unreachable, which is normal, not an error.
 // Distinguish that ("not connected from this computer") from the bridge
 // itself reporting trouble (state === "error" / lastError set), which IS
-// actionable.
+// actionable. When it's unreachable, the panel also works out why where it
+// can: Chrome blocking local access for this site, or a bridge that's
+// running but set up for a different address of the site
+// (diagnoseUnreachableBridge in utils/scannerBridge.ts).
 //
 // A public HTTPS page fetching http://127.0.0.1 crosses Chrome's Local
-// Network Access boundary (shipped Chrome 142, Oct 2025) — the browser may
-// show a one-time "access devices on your local network?" permission
-// prompt before this ever succeeds. Denying it looks identical to "bridge
-// not running" from here, so the empty state mentions it explicitly rather
-// than leaving staff to guess.
+// Network Access boundary (shipped Chrome 142, Oct 2025; "Apps on device" in
+// site settings since Chrome 145) — the browser shows a one-time permission
+// prompt before this ever succeeds.
+//
+// The bridge's status server starts before it signs in, so the panel can
+// show a sign-in problem (state "error" + lastError) rather than nothing.
 //
 // "Scan now" and "Check scanner connection" drive the fi-8170 directly via
 // the bridge's scan endpoints, which run NAPS2.Console.exe (TWAIN by
@@ -37,13 +47,21 @@ import type { BadgeTone } from "../../utils/labels";
 // 7. The Foil / Non-foil switch is sent with each scan and pre-selects the
 // finish for that batch. The "Card recognition" block reports the bridge's
 // on-PC recognizer (scanner-bridge/README.md section 8): its card library,
-// build progress and self-test score.
+// build progress and self-test score — or, when it can't run on that PC
+// ("unavailable"), why, with a link to the fix.
 
 const POLL_MS = 4000;
 
 type BridgeState = "starting" | "watching" | "uploading" | "scanning" | "error";
 type BatchFinish = "nonfoil" | "foil";
-type RecognizerState = "off" | "starting" | "downloading_model" | "building_library" | "ready" | "error";
+type RecognizerState =
+  | "off"
+  | "starting"
+  | "downloading_model"
+  | "building_library"
+  | "ready"
+  | "error"
+  | "unavailable";
 
 interface DeviceCheckResult {
   ok: boolean;
@@ -66,6 +84,8 @@ interface SelfTestSummary {
 interface RecognizerStatus {
   state: RecognizerState;
   message: string;
+  /** A link to the fix (e.g. a Windows component to install). Older bridges don't send it. */
+  help?: { label: string; url: string } | null;
   library: { entries: number; builtAt: string; cardListRefreshedAt: string | null } | null;
   build: { phase: string; done: number; total: number; failed: number; startedAt: string } | null;
   modelDownload: { receivedBytes: number; totalBytes: number | null } | null;
@@ -123,6 +143,7 @@ const RECOGNIZER_TONE: Record<RecognizerState, BadgeTone> = {
   building_library: "info",
   ready: "success",
   error: "danger",
+  unavailable: "danger",
 };
 
 const RECOGNIZER_LABEL: Record<RecognizerState, string> = {
@@ -132,7 +153,31 @@ const RECOGNIZER_LABEL: Record<RecognizerState, string> = {
   building_library: "Building library",
   ready: "Ready",
   error: "Needs attention",
+  unavailable: "Needs setup",
 };
+
+/** What to tell staff when the bridge can't be reached, by likely cause. */
+function unreachableCopy(problem: BridgeProblem | null): { title: string; message: string } {
+  if (problem === "browser_blocked") {
+    return {
+      title: "Chrome is blocking the scanner bridge",
+      message:
+        'This site isn\'t allowed to reach apps on this computer. If this is the scanning PC, click the icon at the left end of the address bar, open Site settings, set "Apps on device" (older Chrome: "Local network access") to Allow, then reload this page. On any other computer, this is fine as it is.',
+    };
+  }
+  if (problem === "wrong_site") {
+    const origin = window.location.origin;
+    return {
+      title: "Scanner bridge is set up for a different address",
+      message: `The scanner bridge is running on this computer but won't talk to ${origin}. In scanner-bridge/.env set GEEGA_API_BASE_URL=${origin} and restart the bridge, or open the dashboard at the address the bridge is set up for.`,
+    };
+  }
+  return {
+    title: "Not connected from this computer",
+    message:
+      'Normal if you\'re not at the scanning PC. At the scanning PC, start the scanner bridge and wait for "Ready" in its window (if it stops, bridge-error.log in its folder says why). If Chrome asks to let this site use apps on this device, click Allow.',
+  };
+}
 
 const pct = (v: number) => `${(v * 100).toFixed(1).replace(/\.0$/, "")}%`;
 
@@ -144,6 +189,8 @@ export function ScannerBridgePanel({
   const toast = useToast();
   const [status, setStatus] = useState<BridgeStatus | null>(null);
   const [unreachable, setUnreachable] = useState(false);
+  const [problem, setProblem] = useState<BridgeProblem | null>(null);
+  const diagnosing = useRef(false);
   const [ending, setEnding] = useState(false);
   const [starting, setStarting] = useState(false);
   const [checkingDevices, setCheckingDevices] = useState(false);
@@ -158,9 +205,19 @@ export function ScannerBridgePanel({
       const data = (await res.json()) as BridgeStatus;
       setStatus(data);
       setUnreachable(false);
+      setProblem(null);
     } catch {
       setStatus(null);
       setUnreachable(true);
+      if (!diagnosing.current) {
+        diagnosing.current = true;
+        void diagnoseUnreachableBridge()
+          .then(setProblem)
+          .catch(() => setProblem(null))
+          .finally(() => {
+            diagnosing.current = false;
+          });
+      }
     }
   }, []);
 
@@ -190,20 +247,32 @@ export function ScannerBridgePanel({
   const startScan = useCallback(async () => {
     setStarting(true);
     try {
-      const reply = await postToBridge("/scan/start", supportsFinish ? { batchFinish } : undefined);
+      const reply = await postToBridge<{ ok?: boolean; message?: string }>(
+        "/scan/start",
+        supportsFinish ? { batchFinish } : undefined,
+      );
       if (reply.status === 409) {
         toast.error("A scan is already running.");
         return;
       }
-      if (!reply.ok) throw new Error(`Bridge returned ${reply.status}`);
+      if (!reply.ok) {
+        // The bridge says why (still signing in, a sign-in that failed, …).
+        toast.error(reply.data.message ?? `The scanner bridge couldn't start a scan (error ${reply.status}).`);
+        await poll();
+        return;
+      }
       toast.success(
         batchFinish === "foil"
           ? "Scan started (foil batch) — feed the cards into the ADF now."
           : "Scan started — feed the cards into the ADF now.",
       );
       await poll();
-    } catch {
-      toast.error("Could not reach the scanner bridge to start a scan.");
+    } catch (err) {
+      toast.error(
+        err instanceof BridgeUnreachableError
+          ? "Could not reach the scanner bridge to start a scan."
+          : "The scanner bridge couldn't start a scan.",
+      );
     } finally {
       setStarting(false);
     }
@@ -230,7 +299,7 @@ export function ScannerBridgePanel({
     setLibraryBusy("update");
     try {
       const reply = await postToBridge<{ ok?: boolean; message?: string }>("/library/update");
-      if (reply.ok) toast.success("Updating the card library in the background.");
+      if (reply.ok) toast.success(reply.data.message ?? "Updating the card library in the background.");
       else toast.error(reply.data.message ?? "The card library couldn't start updating.");
       await poll();
     } catch {
@@ -278,13 +347,10 @@ export function ScannerBridgePanel({
   if (!status && !unreachable) return null;
 
   if (unreachable) {
+    const copy = unreachableCopy(problem);
     return (
       <SectionCard title="Scanner bridge" className="gg-bridge-panel">
-        <EmptyState
-          icon="scan"
-          title="Not connected from this computer"
-          message={`Normal if you're not at the scanning workstation. If you are, make sure scanner-bridge is running there, and if Chrome shows a "use devices on your local network?" prompt for this site, click Allow.`}
-        />
+        <EmptyState icon="scan" title={copy.title} message={copy.message} />
       </SectionCard>
     );
   }
@@ -292,14 +358,16 @@ export function ScannerBridgePanel({
   if (!status) return null;
 
   const scanning = status.state === "scanning" || status.state === "uploading";
+  // "starting": signing in. "error": sign-in failed (the reason is shown above).
+  const cantScanYet = status.state === "starting" || status.state === "error";
 
   return (
     <SectionCard
       title="Scanner bridge"
       className="gg-bridge-panel"
       action={
-        <Badge tone={STATE_TONE[status.state]} dot>
-          {STATE_LABEL[status.state]}
+        <Badge tone={STATE_TONE[status.state] ?? "neutral"} dot>
+          {STATE_LABEL[status.state] ?? status.state}
         </Badge>
       }
     >
@@ -349,13 +417,21 @@ export function ScannerBridgePanel({
             ))}
           </div>
         )}
-        <Button variant="primary" icon="scan" loading={starting} disabled={scanning} onClick={startScan}>
+        <Button
+          variant="primary"
+          icon="scan"
+          loading={starting}
+          disabled={scanning || cantScanYet}
+          onClick={startScan}
+        >
           Scan now
         </Button>
         <span className="gg-muted">
-          Drives the fi-8170 directly{status.scanDpi ? ` at ${status.scanDpi} dpi` : ""} — no need to open
-          PaperStream IP. Feed cards into the ADF once this starts
-          {supportsFinish ? "; put foils in their own batch with Foil selected" : ""}.
+          {status.state === "starting"
+            ? "The bridge is signing in — Scan now is ready in a moment."
+            : status.state === "error"
+              ? "Scanning is paused until the problem above is fixed."
+              : `Drives the fi-8170 directly${status.scanDpi ? ` at ${status.scanDpi} dpi` : ""} — no need to open PaperStream IP. Feed cards into the ADF once this starts${supportsFinish ? "; put foils in their own batch with Foil selected" : ""}.`}
         </span>
       </div>
 
@@ -437,7 +513,7 @@ export function ScannerBridgePanel({
   );
 }
 
-/** The on-PC card recognizer: library, progress, self-test. */
+/** The on-PC card recognizer: library, progress, self-test — or what it needs to run. */
 function RecognizerBlock({
   recognizer,
   busy,
@@ -451,6 +527,9 @@ function RecognizerBlock({
 }) {
   const { state, library, build, modelDownload, selfTest } = recognizer;
   const building = build !== null;
+  const trouble = state === "error" || state === "unavailable";
+  // Only ever an https link from the bridge on this PC.
+  const help = recognizer.help && /^https:\/\//i.test(recognizer.help.url) ? recognizer.help : null;
   const progress =
     modelDownload && modelDownload.totalBytes
       ? modelDownload.receivedBytes / modelDownload.totalBytes
@@ -462,11 +541,13 @@ function RecognizerBlock({
     <div className="gg-bridge-recog" aria-live="polite">
       <div className="gg-bridge-recog__head">
         <span className="gg-bridge-recog__title">Card recognition on this PC</span>
-        <Badge tone={RECOGNIZER_TONE[state]} dot>
-          {RECOGNIZER_LABEL[state]}
+        <Badge tone={RECOGNIZER_TONE[state] ?? "neutral"} dot>
+          {RECOGNIZER_LABEL[state] ?? state}
         </Badge>
       </div>
-      <p className={state === "error" ? "gg-bridge-panel__error" : "gg-bridge-recog__message"}>{recognizer.message}</p>
+      <p className={trouble ? "gg-bridge-panel__error gg-bridge-recog__problem" : "gg-bridge-recog__message"}>
+        {recognizer.message}
+      </p>
       {progress !== null && (
         <div
           className="gg-bridge-recog__bar"
@@ -499,27 +580,42 @@ function RecognizerBlock({
         </p>
       )}
       {recognizer.selfTestRunning && <p className="gg-bridge-recog__meta">Self-test running…</p>}
-      {state !== "off" && (
+      {(help || (state !== "off" && state !== "unavailable")) && (
         <div className="gg-bridge-recog__actions">
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="download"
-            loading={busy === "update"}
-            disabled={building || state === "starting" || state === "downloading_model"}
-            onClick={onUpdate}
-          >
-            Update card library
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            loading={busy === "selftest"}
-            disabled={state !== "ready" || recognizer.selfTestRunning}
-            onClick={onSelfTest}
-          >
-            Run self-test
-          </Button>
+          {help && (
+            <a
+              className="gg-btn gg-btn--secondary gg-btn--sm gg-bridge-recog__help"
+              href={help.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Icon name="download" size={15} />
+              <span>{help.label}</span>
+            </a>
+          )}
+          {state !== "off" && state !== "unavailable" && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={state === "error" ? undefined : "download"}
+                loading={busy === "update"}
+                disabled={building || state === "starting" || state === "downloading_model"}
+                onClick={onUpdate}
+              >
+                {state === "error" ? "Try again" : "Update card library"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={busy === "selftest"}
+                disabled={state !== "ready" || recognizer.selfTestRunning}
+                onClick={onSelfTest}
+              >
+                Run self-test
+              </Button>
+            </>
+          )}
         </div>
       )}
     </div>
