@@ -238,9 +238,12 @@ failed here, so it isn't necessarily affected by the same bug) — see
 Each scanned side is saved as a quality-95 JPEG named
 `scan_<time>_0001.jpg`, `scan_<time>_0002.jpg`, … in feed order (NAPS2's
 `$(nnnn)` numbering), at `SCAN_DPI` (300 by default; 600 for condition-only
-sessions). JPEG rather than TIFF because NAPS2 can't crop: every page is the
-whole feeder width, which as a TIFF is ~16 MB per side to keep and to read,
-and as a JPEG ~1–2 MB. The bridge crops the card out itself.
+sessions). The fi-8170's driver trims each page to the card plus about 1 mm
+of grey margin (with a dark shadow along the card's trailing edge) but
+doesn't straighten it; the bridge finds the card's exact edges and
+straightens it itself. JPEG rather than TIFF keeps each page small (a few
+hundred KB) in case the driver's crop is ever turned off and pages come back
+the whole feeder width (~16 MB per side as TIFF).
 
 **The NAPS2 command line itself has not yet been verified against the
 real fi-8170** — its options are confirmed from NAPS2's own documentation,
@@ -269,12 +272,12 @@ until you've validated it end-to-end.
    `-v`/verbose on, NAPS2 reports its own progress there, and any failure
    message comes straight from NAPS2 rather than being invented by the
    bridge.
-3. **Check the result in Scan Review**, same as any session. NAPS2 has no
-   auto-crop, so its raw pages show the whole feeder width — that's
-   expected: once the card library is ready (section 8), the bridge finds,
-   crops and straightens every card itself, so each card in Scan Review
-   should sit upright and tightly cropped. If one doesn't, its warnings say
-   why (two cards stuck together, card cut off, blank page).
+3. **Check the result in Scan Review**, same as any session. Once the
+   card library is ready (section 8), the bridge finds, crops and
+   straightens every card itself, so each card in Scan Review should sit
+   upright and tightly cropped, with no grey margin or dark shadow band. If
+   one doesn't, its warnings say why (two cards stuck together, card cut
+   off, blank page).
 4. **A full-size batch** only once 2 and 3 look right — front/back pairing
    depends on pages arriving at a steady enough pace (see `WatcherControl`
    in `watcher.ts`, which deliberately holds off auto-processing for the
@@ -337,7 +340,8 @@ Then there's nothing to do but leave the bridge running. On first start it:
    hours — overnight is ideal. It pauses while you scan, and if the PC
    restarts it carries on where it stopped.
 3. runs a **self-test**: fake scans made from Scryfall images (crooked,
-   blurred, colour-shifted, some upside down) through the full recognizer.
+   blurred, colour-shifted, some upside down, half of them trimmed the way
+   the fi-8170's driver delivers its scans) through the full recognizer.
    The score shows in the dashboard's Scanner panel.
 
 Until the library is ready, scans keep working — they just go to the old

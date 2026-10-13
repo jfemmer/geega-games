@@ -9,9 +9,11 @@ import type { CatalogEntry } from "./types.js";
 // Takes a sample of printings — half random, half deliberately hard (art
 // that was printed more than once, where the exact printing is the whole
 // question) — and turns each one's Scryfall "large" image into a fake scan:
-// a different image size than the library uses, placed crooked on a scanner
-// background, colour-shifted, blurred, JPEG-compressed, sometimes upside
-// down. Then runs the full recognizer and counts.
+// a different image size than the library uses, colour-shifted, blurred,
+// JPEG-compressed, sometimes upside down, and either placed crooked on a page
+// of scanner background or trimmed the way the fi-8170's driver delivers it
+// (a narrow grey margin, a slight tilt, a shadow along the trailing edge).
+// Then runs the full recognizer and counts.
 //
 // It's a lower bar than real scans in one way (the picture underneath is
 // Scryfall's own) and a higher bar in others (heavier blur and colour shift
@@ -102,32 +104,129 @@ export function largeImageUrl(normalUrl: string): string {
   return normalUrl.replace("/normal/", "/large/");
 }
 
-/** A fake 300 dpi scan of a card image (see the header comment). */
+const CARD_W = 744;
+const CARD_H = 1039;
+/** A Magic card's corner radius (about 3 mm) at 300 dpi. */
+const CORNER_RADIUS = 35;
+
+export interface DriverCropOptions {
+  /** Tilt in degrees, clockwise. */
+  angle?: number;
+  /** The light-grey margin the driver leaves around the card, in pixels. */
+  margin?: number;
+  /** Height of the dark shadow band from the card's trailing edge to the bottom of the image (0: none). */
+  shadow?: number;
+  upsideDown?: boolean;
+  /** Noise source (seeded in the self-test, so a run is reproducible). */
+  random?: () => number;
+}
+
+/**
+ * A card image as a scan the fi-8170's driver delivers it (through NAPS2 or
+ * PaperStream IP): trimmed to the card plus a narrow light-grey margin but
+ * not straightened, the feeder background shaded lighter toward the top,
+ * sensor noise, and a dark shadow band from the card's trailing edge to the
+ * bottom of the image. PNG, before any blur or JPEG.
+ */
+export async function driverCropScan(cardImage: Buffer, options: DriverCropOptions = {}): Promise<Buffer> {
+  const random = options.random ?? Math.random;
+  const angle = options.angle ?? 0;
+  const margin = options.margin ?? 12;
+  const shadow = options.shadow ?? 9;
+  const corners = Buffer.from(
+    `<svg width="${CARD_W}" height="${CARD_H}"><rect width="${CARD_W}" height="${CARD_H}" rx="${CORNER_RADIUS}" ry="${CORNER_RADIUS}" fill="#fff"/></svg>`,
+  );
+  let rounded = await sharp(cardImage)
+    .resize(CARD_W, CARD_H, { fit: "fill" })
+    .removeAlpha()
+    .ensureAlpha()
+    .composite([{ input: corners, blend: "dest-in" }])
+    .png()
+    .toBuffer();
+  if (options.upsideDown) rounded = await sharp(rounded).rotate(180).png().toBuffer();
+  const tilted = await sharp(rounded).rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  const { width: tw = CARD_W, height: th = CARD_H } = await sharp(tilted).metadata();
+  const w = tw + 2 * margin;
+  const h = th + margin + (shadow > 0 ? shadow : margin);
+
+  const page = new Uint8Array(w * h * 3);
+  const topShade = 220 + random() * 8;
+  const bottomShade = topShade - 24 - random() * 10;
+  for (let y = 0; y < h; y++) {
+    const base = topShade + ((bottomShade - topShade) * y) / h;
+    for (let x = 0; x < w; x++) {
+      const v = Math.max(0, Math.min(255, Math.round(base + (random() - 0.5) * 7)));
+      const i = (y * w + x) * 3;
+      page[i] = v;
+      page[i + 1] = Math.min(255, v + 2);
+      page[i + 2] = v;
+    }
+  }
+  if (shadow > 0) {
+    // Under the card's lowest edge, between its rounded corners, down to the bottom.
+    const rad = (angle * Math.PI) / 180;
+    const cx = margin + tw / 2;
+    const cy = margin + th / 2;
+    const at = (dx: number, dy: number) => ({ x: cx + dx * Math.cos(rad) - dy * Math.sin(rad), y: cy + dx * Math.sin(rad) + dy * Math.cos(rad) });
+    const a = at(-CARD_W / 2, CARD_H / 2);
+    const b = at(CARD_W / 2, CARD_H / 2);
+    for (let x = Math.ceil(a.x + CORNER_RADIUS); x < Math.floor(b.x - CORNER_RADIUS); x++) {
+      const edge = a.y + ((x - a.x) * (b.y - a.y)) / (b.x - a.x);
+      for (let y = Math.max(0, Math.floor(edge) - 1); y < h; y++) {
+        const i = (y * w + x) * 3;
+        const v = Math.round(12 + random() * 8);
+        page[i] = page[i + 1] = page[i + 2] = v;
+      }
+    }
+  }
+  return sharp(Buffer.from(page), { raw: { width: w, height: h, channels: 3 } })
+    .composite([{ input: tilted, left: margin, top: margin }])
+    .png()
+    .toBuffer();
+}
+
+/**
+ * A fake 300 dpi scan of a card image (see the header comment): half laid
+ * crooked on a page of scanner background, half the way the fi-8170's driver
+ * actually delivers them (driverCropScan), so the score reflects this PC's
+ * own scans.
+ */
 export async function synthesizeScan(cardImage: Buffer, random: () => number): Promise<Buffer> {
-  const cardW = 744;
-  const cardH = 1039;
   const brightness = 0.92 + random() * 0.16;
   const saturation = 0.88 + random() * 0.24;
   const contrast = 0.9 + random() * 0.2;
   const card = await sharp(cardImage)
-    .resize(cardW, cardH, { fit: "fill" })
+    .resize(CARD_W, CARD_H, { fit: "fill" })
     .modulate({ brightness, saturation })
     .linear(contrast, 128 * (1 - contrast))
     .removeAlpha()
     .png()
     .toBuffer();
-  const canvasW = 1000;
-  const canvasH = 1300;
-  const shade = 236 + Math.floor(random() * 19);
-  const left = Math.floor(60 + random() * (canvasW - cardW - 120));
-  const top = Math.floor(60 + random() * (canvasH - cardH - 120));
-  const angle = (random() - 0.5) * 6;
-  let img = sharp({ create: { width: canvasW, height: canvasH, channels: 3, background: { r: shade, g: shade, b: shade } } })
-    .composite([{ input: card, left, top }])
-    .png();
-  let buf = await img.toBuffer();
-  img = sharp(buf).rotate(angle + (random() < 0.25 ? 180 : 0), { background: { r: shade, g: shade, b: shade } });
-  buf = await img.png().toBuffer();
+  let buf: Buffer;
+  if (random() < 0.5) {
+    buf = await driverCropScan(card, {
+      angle: (random() - 0.5) * 3,
+      margin: 8 + Math.floor(random() * 9),
+      shadow: random() < 0.8 ? 7 + Math.floor(random() * 5) : 0,
+      upsideDown: random() < 0.25,
+      random,
+    });
+  } else {
+    const canvasW = 1000;
+    const canvasH = 1300;
+    const shade = 236 + Math.floor(random() * 19);
+    const left = Math.floor(60 + random() * (canvasW - CARD_W - 120));
+    const top = Math.floor(60 + random() * (canvasH - CARD_H - 120));
+    const angle = (random() - 0.5) * 6;
+    const page = await sharp({ create: { width: canvasW, height: canvasH, channels: 3, background: { r: shade, g: shade, b: shade } } })
+      .composite([{ input: card, left, top }])
+      .png()
+      .toBuffer();
+    buf = await sharp(page)
+      .rotate(angle + (random() < 0.25 ? 180 : 0), { background: { r: shade, g: shade, b: shade } })
+      .png()
+      .toBuffer();
+  }
   const sigma = 0.3 + random() * 0.6;
   return sharp(buf)
     .blur(sigma)

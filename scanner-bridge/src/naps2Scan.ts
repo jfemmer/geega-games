@@ -32,12 +32,13 @@ import path from "node:path";
 //
 // Pages are saved as high-quality JPEGs, numbered explicitly through
 // NAPS2's $(nnnn) placeholder (scan_<timestamp>_0001.jpg, _0002.jpg, … in
-// feed order, which is what pairing sorts on). JPEG rather than TIFF: NAPS2
-// has no auto-crop, so every page is the whole feeder width — as a TIFF
-// that's ~16 MB per side to keep in _processed and to decode before the card
-// can even be found, as a JPEG ~1 MB, and the card finder reads it twice as
-// fast. At quality 95 the compression is invisible next to the scan itself;
-// what's uploaded is the bridge's own straightened crop anyway.
+// feed order, which is what pairing sorts on). The fi-8170's TWAIN driver
+// trims each page to the card plus a narrow margin (not straightened; the
+// card finder does that, see recognizer/tightCrop.ts). JPEG rather than TIFF
+// keeps pages small even if that crop is ever off and a page comes back the
+// whole feeder width (~16 MB as TIFF). At quality 95 the compression is
+// invisible next to the scan itself; what's uploaded is the bridge's own
+// straightened crop anyway.
 
 // A full ~100-card duplex batch at the fi-8170's rated 70ppm is a few
 // minutes; this leaves generous headroom above that rather than risk

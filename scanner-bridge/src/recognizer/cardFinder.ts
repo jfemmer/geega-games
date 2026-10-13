@@ -1,21 +1,29 @@
-import { convexHull, minAreaRect, rectBounds, scaleRect, toPortrait } from "./geometry.js";
+import { convexHull, minAreaRect, rectBounds, rectCorners, scaleRect, toPortrait } from "./geometry.js";
 import { decodeFit, decodeRegion, halveRgb, imageInfo, warpRect, type ImageInput } from "./image.js";
+import { fitTightCrop, isTightCrop } from "./tightCrop.js";
 import type { Point, RgbImage, RotatedRect } from "./types.js";
 
 // Finds the card in a raw scan and returns it cropped and straightened.
 //
 // Everything after this step compares fixed spots on the card (the art, the
 // set symbol, the collector number corner), so the card has to land in
-// exactly the same place every time — whether the scanner's own auto-crop
-// ran (PaperStream) or not ("Scan now" through NAPS2 has no auto-crop and
-// hands back the whole feeder width), and whether the card went in crooked.
+// exactly the same place every time, however the scan came out:
 //
-// How: estimate the scanner background from the image border, mark every
-// pixel that clearly differs from it, keep the biggest blob, and fit the
-// smallest rotated rectangle around it. A Magic card is 63 × 88 mm, so when
-// the scan resolution is known the rectangle is snapped to exactly that
-// size — which also rescues a white-bordered card on a white background,
-// where only the inside of the white border stands out.
+//  * Trimmed by the scanner's driver to the card plus a narrow margin, not
+//    straightened (the fi-8170 through NAPS2 or PaperStream IP, usually with
+//    a dark shadow band along the trailing edge): the card's edges are read
+//    straight off each side of the image (tightCrop.ts).
+//  * Exactly the card (a driver crop that was straightened too, or an image
+//    this PC straightened before): used as it is.
+//  * The card somewhere on a larger page of scanner background: estimate the
+//    background from the image border, mark every pixel that clearly differs
+//    from it, keep the biggest blob, and fit the smallest rotated rectangle
+//    around it.
+//
+// A Magic card is 63 × 88 mm, so when the scan resolution is known the
+// rectangle is snapped to exactly that size, which also rescues a
+// white-bordered card on a white background, where only the inside of the
+// white border stands out.
 
 export const CARD_WIDTH_MM = 63;
 export const CARD_HEIGHT_MM = 88;
@@ -375,15 +383,69 @@ function isBlank(img: RgbImage): boolean {
   return Math.sqrt(Math.max(0, sumSq / n - mean * mean)) < 6;
 }
 
+const CUT_OFF_WARNING = "The card touches the edge of the scan — part of it may be cut off.";
+
+/**
+ * Part of the card's outline lies outside the scan. A card merely touching
+ * the edge (a driver crop with the card's corners on the border) is whole.
+ */
+export function outlineCutOff(rect: RotatedRect, image: { width: number; height: number }): boolean {
+  const slack = Math.max(3, rect.width * 0.005);
+  return rectCorners(rect).some((c) => c.x < -slack || c.y < -slack || c.x > image.width + slack || c.y > image.height + slack);
+}
+
+/** The card in a scan the driver trimmed close to it (see tightCrop.ts), or null to fall back. */
+async function findInTightCrop(
+  input: ImageInput,
+  info: { width: number; height: number },
+  dpi: number,
+  dpis: number[],
+): Promise<FoundCard | null> {
+  const expected = expectedCardSize(dpi);
+  // Read at about the output resolution: full detail at 300 dpi, halved at 600.
+  const scale = Math.min(1, CARD_OUT_HEIGHT / expected.height);
+  const img = await decodeFit(input, Math.max(1, Math.round(Math.max(info.width, info.height) * scale)));
+  const k = info.width / img.width;
+  const fit = fitTightCrop(img, { width: expected.width / k, height: expected.height / k });
+  if (!fit) return null;
+  const sized = applyCardSize(scaleRect(fit.rect, k), [dpi, ...dpis.filter((d) => d !== dpi)]);
+  const warnings: string[] = [];
+  if (sized.warning) warnings.push(sized.warning);
+  if (fit.cutOff || outlineCutOff(sized.rect, info)) warnings.push(CUT_OFF_WARNING);
+  const finalRect = sized.rect;
+  const image = await cropFromSource(input, info, finalRect);
+  const full = fullResScale(finalRect);
+  return {
+    image,
+    found: true,
+    rect: finalRect,
+    dpi: sized.dpi,
+    warnings,
+    recrop: (dx, dy) => cropFromSource(input, info, shifted(finalRect, dx, dy)),
+    renderFull: full ? (dx = 0, dy = 0) => cropFromSource(input, info, shifted(finalRect, dx, dy), full) : undefined,
+  };
+}
+
 /** Finds, crops and straightens the card in one scanned side. */
 export async function findCard(input: ImageInput, options: FindCardOptions = {}): Promise<FoundCard> {
   const info = await imageInfo(input);
   const dpis = candidateDpis(info.density, options.fallbackDpi);
   const warnings: string[] = [];
 
-  // Already exactly one card in size (PaperStream's tight crop, or an image
-  // this PC straightened before): use it whole. A raw scan always carries
-  // some background beyond the card, so it never lands this close.
+  // Trimmed by the scanner's driver to about one card: read the card's
+  // edges off the sides of the image (this also straightens it).
+  const tightDpi = dpis.find((dpi) => {
+    const expected = expectedCardSize(dpi);
+    return isTightCrop(info.width, info.height, expected.width, expected.height);
+  });
+  if (tightDpi !== undefined) {
+    const tight = await findInTightCrop(input, info, tightDpi, dpis);
+    if (tight) return tight;
+  }
+
+  // Already exactly one card in size (a driver crop that was straightened
+  // too, or an image this PC straightened before) and no edges to read in
+  // it: use it whole.
   for (const dpi of dpis) {
     const expected = expectedCardSize(dpi);
     const portraitW = Math.min(info.width, info.height);
@@ -404,10 +466,12 @@ export async function findCard(input: ImageInput, options: FindCardOptions = {})
     }
   }
 
-  // Pass 1: the whole image, shrunk.
+  // Pass 1: the whole image, shrunk. (Not for a tight crop whose edges
+  // couldn't be read: with so little background this finds part of the card
+  // at best, which is worse than using the whole image.)
   const small = await decodeFit(input, DETECT_MAX_SIDE);
   const scale1 = info.width / small.width;
-  const coarse = detectCardRect(small);
+  const coarse = tightDpi === undefined ? detectCardRect(small) : null;
 
   if (!coarse) {
     // No background around it: already cropped to the card (or not a card
@@ -468,7 +532,12 @@ export async function findCard(input: ImageInput, options: FindCardOptions = {})
 
   const sized = applyCardSize(rect, dpis);
   if (sized.warning) warnings.push(sized.warning);
-  if (touchesEdge) warnings.push("The card touches the edge of the scan — part of it may be cut off.");
+  // The outline reaching the border isn't enough: a card whose corners just
+  // touch it is whole. It's cut off when what reaches the border is short of
+  // a whole card, or the card placed around it runs off the scan.
+  const expected = sized.dpi !== null ? expectedCardSize(sized.dpi) : null;
+  const shortOfACard = expected !== null && (rect.width < expected.width * 0.97 || rect.height < expected.height * 0.97);
+  if (touchesEdge && (shortOfACard || outlineCutOff(sized.rect, info))) warnings.push(CUT_OFF_WARNING);
   const k = (sx + sy) / 2;
   const finalLocal: RotatedRect = {
     cx: (sized.rect.cx - region.left) * sx,
