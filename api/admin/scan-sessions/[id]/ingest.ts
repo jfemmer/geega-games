@@ -42,6 +42,16 @@ interface Body {
   uploads?: UploadRef[];
 }
 
+// One entry is ~200 bytes of JSON (its Storage path alone is ~110), so a
+// full 100-card duplex batch is ~40 KB — far past readJsonBody's 4 KB
+// default for public forms, which used to reject any batch of more than
+// about ten cards.
+const MAX_INGEST_BODY_BYTES = 512 * 1024;
+const MAX_UPLOADS_PER_REQUEST = 1000;
+// Paths per "already ingested?" lookup — they travel in the request URL,
+// which has to stay well under the API gateway's length limit.
+const PATH_LOOKUP_CHUNK = 40;
+
 function isValidUpload(u: unknown): u is UploadRef {
   if (!u || typeof u !== "object") return false;
   const r = u as Record<string, unknown>;
@@ -62,8 +72,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sessionId = String(req.query.id ?? "");
     if (!sessionId) throw new HttpError(400, "Session id is required.");
 
-    const body = (await readJsonBody(req)) as Body;
+    const body = (await readJsonBody(req, MAX_INGEST_BODY_BYTES)) as Body;
     const uploads = Array.isArray(body.uploads) ? body.uploads : [];
+    if (uploads.length > MAX_UPLOADS_PER_REQUEST) {
+      throw new HttpError(400, `Too many files in one request (max ${MAX_UPLOADS_PER_REQUEST}). Split into smaller batches.`);
+    }
     if (!uploads.every(isValidUpload)) {
       throw new HttpError(400, "Each upload needs fileName, side, sequenceHint, and path.");
     }
@@ -74,33 +87,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Idempotency guard: drop any upload whose path already belongs to an
     // existing scan in this session (a retried ingest call). Two plain
     // .in() queries (front paths, back paths) rather than one hand-built
-    // .or() filter string — simpler to get right than raw PostgREST syntax.
+    // .or() filter string — simpler to get right than raw PostgREST syntax —
+    // a few dozen paths at a time so the request URL stays short.
     let toIngest = uploads;
     if (uploads.length > 0) {
       const paths = uploads.map((u) => u.path);
-      const [frontMatches, backMatches] = await Promise.all([
-        admin
-          .from("card_scans")
-          .select("front_image_path")
-          .eq("scan_session_id", sessionId)
-          .in("front_image_path", paths),
-        admin
-          .from("card_scans")
-          .select("back_image_path")
-          .eq("scan_session_id", sessionId)
-          .in("back_image_path", paths),
-      ]);
-      if (frontMatches.error || backMatches.error) {
-        throw new HttpError(500, "Could not check for already-ingested files.");
+      const already = new Set<string>();
+      for (let i = 0; i < paths.length; i += PATH_LOOKUP_CHUNK) {
+        const group = paths.slice(i, i + PATH_LOOKUP_CHUNK);
+        const [frontMatches, backMatches] = await Promise.all([
+          admin
+            .from("card_scans")
+            .select("front_image_path")
+            .eq("scan_session_id", sessionId)
+            .in("front_image_path", group),
+          admin
+            .from("card_scans")
+            .select("back_image_path")
+            .eq("scan_session_id", sessionId)
+            .in("back_image_path", group),
+        ]);
+        if (frontMatches.error || backMatches.error) {
+          throw new HttpError(500, "Could not check for already-ingested files.");
+        }
+        for (const r of frontMatches.data ?? []) if (r.front_image_path) already.add(r.front_image_path);
+        for (const r of backMatches.data ?? []) if (r.back_image_path) already.add(r.back_image_path);
       }
-      const already = new Set([
-        ...(frontMatches.data ?? [])
-          .map((r) => r.front_image_path)
-          .filter((p): p is string => !!p),
-        ...(backMatches.data ?? [])
-          .map((r) => r.back_image_path)
-          .filter((p): p is string => !!p),
-      ]);
       toIngest = filterUnseenUploads(already, uploads);
     }
 

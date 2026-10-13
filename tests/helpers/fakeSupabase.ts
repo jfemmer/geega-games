@@ -1,9 +1,9 @@
 // A small in-memory stand-in for the Supabase service-role client, enough for
-// the partner program's API tests: from(table) with select / insert / update /
-// delete, the filters those endpoints use (eq, neq, is, in, gte, lte, gt, lt,
+// the partner program's and scan endpoints' API tests: from(table) with
+// select / insert / upsert / update / delete, the filters those endpoints use (eq, neq, is, in, gte, lte, gt, lt,
 // not … is), order, limit, single / maybeSingle and head counts; rpc();
-// auth.getUser (staff sessions) and auth.admin.getUserById; and signed photo
-// URLs from storage.
+// auth.getUser (staff sessions) and auth.admin.getUserById; and storage
+// (signed photo and upload URLs, plus download/upload against state.files).
 //
 // It doesn't project columns (every select returns whole rows) and only knows
 // the constraints a test declares, so tests stay about the endpoint's logic.
@@ -32,10 +32,12 @@ export interface FakeState {
   users: Record<string, { id: string; email: string | null }>;
   /** Every write, in order. */
   writes: { table: string; op: "insert" | "update" | "delete"; payload: unknown }[];
+  /** Storage objects by path (any bucket), for download/upload. */
+  files: Record<string, { data: Buffer; contentType?: string }>;
 }
 
 export function createFakeState(): FakeState {
-  return { tables: {}, defaults: {}, unique: {}, failNext: {}, rpc: {}, sessions: {}, users: {}, writes: [] };
+  return { tables: {}, defaults: {}, unique: {}, failNext: {}, rpc: {}, sessions: {}, users: {}, writes: [], files: {} };
 }
 
 let idCounter = 0;
@@ -51,7 +53,8 @@ function compare(a: unknown, b: unknown): number {
 }
 
 class Query implements PromiseLike<Result> {
-  private op: "select" | "insert" | "update" | "delete" = "select";
+  private op: "select" | "insert" | "update" | "delete" | "upsert" = "select";
+  private upsertOptions: { onConflict?: string; ignoreDuplicates?: boolean } = {};
   private payload: unknown = null;
   private filters: ((row: Row) => boolean)[] = [];
   private orderBy: { column: string; ascending: boolean; nullsFirst: boolean }[] = [];
@@ -79,6 +82,12 @@ class Query implements PromiseLike<Result> {
   insert(rows: Row | Row[]) {
     this.op = "insert";
     this.payload = rows;
+    return this;
+  }
+  upsert(rows: Row | Row[], options: { onConflict?: string; ignoreDuplicates?: boolean } = {}) {
+    this.op = "upsert";
+    this.payload = rows;
+    this.upsertOptions = options;
     return this;
   }
   update(patch: Row) {
@@ -193,6 +202,27 @@ class Query implements PromiseLike<Result> {
       return this.shape(this.returning ? created : null);
     }
 
+    if (this.op === "upsert") {
+      const list = (Array.isArray(this.payload) ? this.payload : [this.payload]) as Row[];
+      const keys = (this.upsertOptions.onConflict ?? "id").split(",").map((k) => k.trim());
+      const touched: Row[] = [];
+      for (const row of list) {
+        const existing = rows.find((r) => keys.every((k) => r[k] === row[k]));
+        if (existing) {
+          if (this.upsertOptions.ignoreDuplicates) continue;
+          Object.assign(existing, row);
+          this.state.writes.push({ table: this.table, op: "update", payload: row });
+          touched.push(existing);
+        } else {
+          const created = { id: fakeId(), created_at: new Date().toISOString(), ...row };
+          rows.push(created);
+          this.state.writes.push({ table: this.table, op: "insert", payload: row });
+          touched.push(created);
+        }
+      }
+      return this.shape(this.returning ? touched : null);
+    }
+
     const matched = rows.filter((row) => this.filters.every((f) => f(row)));
 
     if (this.op === "update") {
@@ -275,6 +305,18 @@ export function createFakeSupabase(state: FakeState) {
           error: null,
         }),
         list: async () => ({ data: [], error: null }),
+        createSignedUploadUrl: async (path: string) => ({
+          data: { path, token: `token-${path}`, signedUrl: `https://upload.example/${path}` },
+          error: null,
+        }),
+        download: async (path: string) => {
+          const f = state.files[path];
+          return f ? { data: new Blob([f.data]), error: null } : { data: null, error: { message: "Object not found" } };
+        },
+        upload: async (path: string, data: Buffer, opts?: { contentType?: string }) => {
+          state.files[path] = { data: Buffer.from(data), contentType: opts?.contentType };
+          return { data: { path }, error: null };
+        },
       }),
     },
   };

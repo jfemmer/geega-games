@@ -8,7 +8,7 @@ import type {
   ScanRecognitionMode,
 } from "../../../src/admin/types/index.js";
 import { ocrProvider } from "../ocr/index.js";
-import { normalizeCardImage } from "./imageRegions.js";
+import { normalizeCardImage, normalizeStraightenedImage } from "./imageRegions.js";
 import { ocrCardFields, parseCollectorLine } from "./ocrFields.js";
 import {
   candidatesBySet,
@@ -44,6 +44,18 @@ export interface RecognitionPipelineResult {
    * image was null. */
   frontPreview: Buffer | null;
   backPreview: Buffer | null;
+}
+
+export interface PipelineOptions {
+  /**
+   * Identity already decided elsewhere — the scanner PC's own recognizer
+   * (see localResult.ts, which validates it first). OCR, candidate
+   * generation and visual verification are skipped; condition grading and
+   * previews still run here.
+   */
+  identity?: { recognitionResult: CardRecognitionResult; autoMatchedPrinting: CardPrinting | null };
+  /** Sides the scanner PC already cropped and straightened (no trim). */
+  straightened?: { front: boolean; back: boolean };
 }
 
 export interface ScoredCandidate {
@@ -303,12 +315,15 @@ export async function runRecognitionPipeline(
   frontImage: Buffer | null,
   backImage: Buffer | null,
   mode: ScanRecognitionMode = "both",
+  options: PipelineOptions = {},
 ): Promise<RecognitionPipelineResult> {
   const doIdentity = mode !== "condition";
   const doCondition = mode !== "card_matching";
 
-  const frontNormalized = frontImage ? await normalizeCardImage(frontImage) : null;
-  const backNormalized = backImage ? await normalizeCardImage(backImage) : null;
+  const normalizeFront = options.straightened?.front ? normalizeStraightenedImage : normalizeCardImage;
+  const normalizeBack = options.straightened?.back ? normalizeStraightenedImage : normalizeCardImage;
+  const frontNormalized = frontImage ? await normalizeFront(frontImage) : null;
+  const backNormalized = backImage ? await normalizeBack(backImage) : null;
 
   if (!doIdentity) {
     // Card-matching intentionally skipped for this session — identity stays
@@ -336,6 +351,22 @@ export async function runRecognitionPipeline(
           : undefined,
       },
       autoMatchedPrinting: null,
+      condition,
+      frontPreview: frontNormalized?.buffer ?? null,
+      backPreview: backNormalized?.buffer ?? null,
+    };
+  }
+
+  if (options.identity) {
+    const condition = doCondition ? await analyzeCondition(frontNormalized, backNormalized) : null;
+    return {
+      recognitionResult: {
+        ...options.identity.recognitionResult,
+        normalizedDimensions: frontNormalized
+          ? { width: frontNormalized.width, height: frontNormalized.height }
+          : undefined,
+      },
+      autoMatchedPrinting: options.identity.autoMatchedPrinting,
       condition,
       frontPreview: frontNormalized?.buffer ?? null,
       backPreview: backNormalized?.buffer ?? null,
@@ -408,6 +439,7 @@ export async function runRecognitionPipeline(
     collectorNumber: r.printing.collectorNumber,
     confidence: r.confidence,
     reason: r.reason,
+    imageUrl: r.printing.images.normal ?? r.printing.images.small ?? r.printing.faces[0]?.images.normal ?? null,
   }));
 
   const overallConfidence = autoMatch?.confidence ?? ranked[0]?.confidence ?? 0;
@@ -435,6 +467,7 @@ export async function runRecognitionPipeline(
     setSymbolMatch: setIdentification?.best ?? null,
     visualSimilarity: autoMatch?.visual?.combinedSimilarity ?? ranked[0]?.visual?.combinedSimilarity ?? null,
     ocrRawText: { title: ocr.title.text, collectorInfo: ocr.collectorInfo.text },
+    engine: "cloud",
     normalizedDimensions: frontNormalized
       ? { width: frontNormalized.width, height: frontNormalized.height }
       : undefined,

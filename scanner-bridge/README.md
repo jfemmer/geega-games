@@ -1,9 +1,16 @@
 # Geega scanner bridge
 
-Watches a folder on a Windows PC for scans PaperStream IP saves from a Ricoh
-fi-8170, and pushes them into a Geega scan session over the same staff-gated
-API the browser admin app uses — real Supabase Storage uploads, real
-`card_scans` rows, real recognition, never fake data.
+Runs on the Windows PC next to the Ricoh fi-8170. It drives scans ("Scan
+now" in the admin dashboard, through NAPS2) or watches the folder PaperStream
+IP saves into, **identifies each card right here on the PC** (free — no paid
+service, no per-scan cost), and pushes the scans into a Geega scan session
+over the same staff-gated API the browser admin app uses — real Supabase
+Storage uploads, real `card_scans` rows, never fake data.
+
+The workflow it's built for: click **Scan now** → the cards appear in Scan
+Review already matched → glance, fix the odd one → **Add to inventory**.
+See [section 8](#8-card-recognition-on-this-pc) for how the recognition
+works and how to set it up.
 
 ## Why a watched folder instead of talking to the scanner SDK directly
 
@@ -20,8 +27,8 @@ into the scan event instead of a filesystem watch; everything from
 ## What this is (and isn't)
 
 - It is real, working, buildable TypeScript. `npm install && npm run
-  typecheck` and `npm test` (the pairing-logic unit tests in
-  `src/pairing.test.ts`) both run and pass in this environment.
+  typecheck` and `npm test` (pairing, upload, status server, and the card
+  recognizer end to end on synthetic cards) all run and pass.
 - It has **not** been run against a physical fi-8170, a real PaperStream IP
   install, or Windows, because none of those are available here. Validate it
   against your actual scanner and folder before relying on it for real
@@ -29,22 +36,31 @@ into the scan event instead of a filesystem watch; everything from
 
 ## 1. Configure the PaperStream IP scan profile
 
-Create a new scan profile in PaperStream IP (e.g. named "Geega MTG Cards")
-with these settings, per Part 4's condition-analysis-grade requirements:
+Only needed if you scan from PaperStream IP instead of the dashboard's
+"Scan now" button. Create a scan profile (e.g. "Geega MTG Cards"):
 
 | Setting | Value | Why |
 |---|---|---|
-| Image mode | 24-bit Color | Preserves foil/holo color and print detail condition analysis needs. |
-| Resolution | 600 DPI | High enough to read collector numbers/set symbols and see edge wear. |
-| Duplex | On (scan both sides), unless `SCAN_MODE=card_matching` | Front is required for ID; front + back for condition grading. |
-| File format | TIFF, uncompressed (or LZW) | Lossless — JPEG's compression artifacts corrupt edge/corner analysis. |
-| Image processing | Off (no auto-crop/auto-color/auto-rotate "enhancement") | The pipeline does its own deskew/crop from a consistent, unprocessed source; destructive scanner-side processing works against it. |
-| Orientation | Fixed, consistent per batch | The pipeline expects a consistent orientation; don't mix portrait/landscape within one run. |
+| Image mode | 24-bit Color | Identification and foil/holo detail need colour. Use the sRGB colour profile for chrome/prism cards (Ricoh's own card advice). |
+| Resolution | 300 DPI | The fi-8170's full speed (about 70 cards a minute, both sides) and all identification needs. Use 600 DPI only for condition-grading sessions. |
+| Duplex | On (scan both sides), unless `SCAN_MODE=card_matching` | Both sides let the bridge find the card's face whichever way it went in, and read double-faced cards. |
+| File format | JPEG (quality ~90) or TIFF | The bridge crops each card and re-saves it as a small JPEG before uploading, so the source format doesn't matter much. |
+| Background | White (the default) | Black-bordered cards (almost all modern Magic) stand out cleanly against it. |
+| Auto-crop / deskew | Either | The bridge finds and straightens the card itself; the driver's crop is fine too. |
+| Hole punch removal, edge correction | Off | Ricoh: hole punch removal leaves "digital squares" on cards. |
+| Continuous scan | On | So a big stack can go through in several loads. |
 | Output | Save to folder | Point this at the folder you'll set as `WATCH_FOLDER` below. |
-| File naming | A fixed prefix + sequential number, e.g. `card_00001.tif` | This bridge pairs files by sequence number — see "How pairing works" below. |
+| File naming | A fixed prefix + sequential number, e.g. `card_00001.jpg` | This bridge pairs files by sequence number — see "How pairing works" below. |
 
 Feed a stack of cards through the ADF in one run per batch. PaperStream
 writes one file per physical page, in feed order.
+
+**Feeding tips** (from Ricoh's and TCGplayer's card-scanning guidance):
+batches of 40–50 cards; no sleeves, toploaders or card savers through the
+feeder; keep high-value cards out of the feeder altogether (add those by
+hand); put foils in their own batch and flip the **Foil** switch next to
+"Scan now" first. Cards don't all need to face the same way — upside-down
+and face-down cards are handled.
 
 ## 2. How pairing works
 
@@ -66,7 +82,9 @@ here is inspectable, never silently committed to inventory.
 
 ## 3. Install and configure
 
-Requires [Node.js](https://nodejs.org/) 20 or later on the Windows PC.
+Requires 64-bit Windows 10/11, [Node.js](https://nodejs.org/) 22 or later (the LTS installer),
+an internet connection, and about 2.5 GB of free disk space for the card
+recognizer (see section 8).
 
 ```powershell
 cd scanner-bridge
@@ -99,6 +117,10 @@ npm start
 ```
 
 For development/iteration without a build step: `npm run dev`.
+
+**Updating** to a new version of the bridge: stop it, then from this folder
+run `git pull`, `npm install`, `npm run build`, and start it again. Your
+`.env`, card library and image cache are kept.
 
 Leave it running while you scan. Console output shows each state
 transition (watching → uploading → done, or an error with a plain-English
@@ -143,9 +165,16 @@ it's a standard, well-documented tool for exactly this.
   left in place and retried automatically on the next quiet period — no
   manual intervention needed for a transient error.
 
-Recognition happens automatically per card after ingest, same as a browser
-upload (Part 15) — there's nothing more to click. Review the results in the
-admin app's Scan Review page, same as any other session.
+Recognition happens automatically per card, same as a browser upload (Part
+15) — there's nothing more to click. With the card library ready (section
+8), each card is identified on this PC before upload and goes up as a
+cropped, straightened JPEG of a few hundred KB (a 600 dpi scan goes up at
+its full resolution, so condition grading keeps the detail); until then,
+cards go up as the raw scan and the cloud recognizer reads them. Review the
+results in the admin app's Scan Review page, same as any other session.
+
+The raw scans in `_processed/` aren't needed after upload — delete old ones
+whenever you like to free disk space.
 
 ## 6. Resuming after a restart
 
@@ -196,10 +225,17 @@ support goes through a different, lower-level API than the one that
 failed here, so it isn't necessarily affected by the same bug) — see
 `.env.example`.
 
+Each scanned side is saved as a quality-95 JPEG named
+`scan_<time>_0001.jpg`, `scan_<time>_0002.jpg`, … in feed order (NAPS2's
+`$(nnnn)` numbering), at `SCAN_DPI` (300 by default; 600 for condition-only
+sessions). JPEG rather than TIFF because NAPS2 can't crop: every page is the
+whole feeder width, which as a TIFF is ~16 MB per side to keep and to read,
+and as a JPEG ~1–2 MB. The bridge crops the card out itself.
+
 **The NAPS2 command line itself has not yet been verified against the
-real fi-8170** — its options are confirmed from NAPS2's own source code,
+real fi-8170** — its options are confirmed from NAPS2's own documentation,
 but no Windows PC or physical scanner was available while wiring this up.
-Everything downstream of "a TIFF lands in the watch folder" (pairing,
+Everything downstream of "an image lands in the watch folder" (pairing,
 upload, recognition) has its own real, passing tests; only NAPS2's actual
 conversation with the scanner hardware is untested. **Keep PaperStream IP
 installed and working as a fallback** — don't rely on this exclusively
@@ -223,15 +259,12 @@ until you've validated it end-to-end.
    `-v`/verbose on, NAPS2 reports its own progress there, and any failure
    message comes straight from NAPS2 rather than being invented by the
    bridge.
-3. **Check the result in Scan Review**, same as any session, but look
-   specifically at whether the card sits well-cropped and upright in the
-   image, the way a PaperStream-scanned card does. Not every driver/backend
-   includes the same auto-crop/deskew PaperStream IP provides — if cards
-   come through noticeably rougher (skewed, a visible scan-bed border,
-   wrong orientation), recognition accuracy will suffer even though nothing
-   "failed": say so, with a sample image if you can, since fixing that is a
-   separate, real piece of work (real crop/deskew logic in the recognition
-   pipeline), not a one-line tweak.
+3. **Check the result in Scan Review**, same as any session. NAPS2 has no
+   auto-crop, so its raw pages show the whole feeder width — that's
+   expected: once the card library is ready (section 8), the bridge finds,
+   crops and straightens every card itself, so each card in Scan Review
+   should sit upright and tightly cropped. If one doesn't, its warnings say
+   why (two cards stuck together, card cut off, blank page).
 4. **A full-size batch** only once 2 and 3 look right — front/back pairing
    depends on pages arriving at a steady enough pace (see `WatcherControl`
    in `watcher.ts`, which deliberately holds off auto-processing for the
@@ -243,22 +276,121 @@ unexpectedly), whatever pages it DID save before failing are still picked
 up normally — nothing scanned successfully is discarded just because the
 run as a whole errored.
 
+## 8. Card recognition on this PC
+
+### How it works
+
+Instead of reading the card's text first (slow, and easily thrown off by a
+crooked scan), the bridge identifies each card by its **picture**:
+
+1. **Finds the card** in the scan, crops it and straightens it — any angle,
+   upside down, face-down, white or black scanner background, with or
+   without the driver's own crop.
+2. **Fingerprints it** with DINOv2, a free, open-source image model from Meta
+   (Apache-2.0), running on this PC's processor through ONNX Runtime.
+3. **Searches a library of fingerprints of every paper Magic printing** —
+   built on this PC from the shop's own Scryfall card list (the
+   `scryfall_bulk_cards` table) and Scryfall's card images.
+4. **Pixel-checks the closest printings** against their Scryfall images,
+   including every reprint with the same art, and tells look-alikes apart by
+   the spots where they differ: set symbol, collector-number corner, promo
+   stamps, frame.
+5. **Reads the collector number** with PaddleOCR's text reader (Apache-2.0)
+   when two printings still look identical — and, on modern cards, to
+   double-check every *sure* match: if the corner names a different set
+   (a reprint from a set newer than the shop's card list), the card goes to
+   *check* instead of being matched to the older printing.
+6. **Decides**: *sure* (pre-matched for review), *check* (the top choices
+   are shown as pictures; you pick), or *none* (use Find match). "Sure" is
+   only given when every look-alike was ruled out.
+
+Each card takes about half a second on a typical desktop PC (about a second
+on a slow two-core machine) — enough to keep up with the scanner's ~70 cards
+a minute. Cards already in the session never wait for the rest of the
+batch: they're processed and uploaded a dozen at a time.
+
+### First run
+
+**Before the first build**, check when the shop's Scryfall card list was
+last refreshed (the Scanner panel shows it once the library exists; the
+card list is what the library is built from). If new sets have come out
+since, refresh it first from the main app folder: `npm run scryfall:refresh`
+(needs the main app's `.env`; takes a few minutes).
+
+Then there's nothing to do but leave the bridge running. On first start it:
+
+1. downloads the fingerprint model (88 MB, once; checked against its
+   published SHA-256 before use), then
+2. builds the card library: downloads each paper printing's Scryfall image
+   once (about 110,000 images, roughly 7–8 GB of download, not kept),
+   fingerprints it, and keeps only the fingerprints (~70 MB). Expect a few
+   hours — overnight is ideal. It pauses while you scan, and if the PC
+   restarts it carries on where it stopped.
+3. runs a **self-test**: fake scans made from Scryfall images (crooked,
+   blurred, colour-shifted, some upside down) through the full recognizer.
+   The score shows in the dashboard's Scanner panel.
+
+Until the library is ready, scans keep working — they just go to the old
+cloud recognizer. The Scanner panel shows progress.
+
+To watch progress in a window instead (or to build before starting the
+bridge): `npm run build-index`. Ctrl+C is safe; run it again to continue.
+
+### Keeping it current
+
+- The library refreshes itself weekly (and on **Update card library** in
+  the Scanner panel), fingerprinting only what changed.
+- It can only contain cards that are in the shop's Scryfall card list. When a
+  new set comes out, refresh that list from the main app
+  (`npm run scryfall:refresh`, run where the main app's `.env` is), then
+  click **Update card library**. The Scanner panel shows when the list was
+  last refreshed.
+
+### Settings (`.env`)
+
+All optional — see `.env.example`. `RECOGNIZER=off` turns it off entirely
+(every card then goes to the cloud recognizer). `DATA_DIR` moves the model,
+library and image cache (default `%LOCALAPPDATA%\GeegaScannerBridge`).
+`SCAN_DPI` sets the "Scan now" resolution. `REFERENCE_CACHE_MB` caps the
+folder of Scryfall images kept for the pixel check (default 2 GB).
+
+### Checking how well it's doing
+
+- `npm run benchmark [samples]` re-runs the self-test and lists every miss.
+- Real accuracy comes from real cards: every card you review records
+  whether the first suggestion was right. After your first few hundred
+  reviewed cards, the "sure" cut-off can be tuned from that.
+
+### Re-running a card
+
+"Re-run" in Scan Review re-recognizes a card with this PC's current library
+(the dashboard asks the bridge, which downloads the stored images, so it
+works from the scanning PC's browser). Nothing is re-uploaded.
+
+### What it can't do
+
+- **Foil vs non-foil** isn't reliably visible in a scan — use the Foil
+  switch per batch (printings that only exist in foil are set
+  automatically).
+- **Non-English cards** match the English printing with the same art; set
+  the language in review.
+- A few old printings are nearly identical (Alpha / Beta / Unlimited, for
+  example). They come up as *check*, never *sure*.
+
 ## Limitations
 
-- **Batches over ~200 cards**: uploads and database inserts happen in
-  chunks internally. If one batch's upload step fails partway through
-  (e.g. the network drops between chunks) after an earlier chunk already
-  created some `card_scans` rows, the whole batch is retried from scratch,
-  which can create a few duplicate review-queue rows for the cards that
-  already succeeded. Nothing reaches real inventory until a human approves
-  a row in Scan Review, so this is a "reject the duplicate row" cleanup,
-  never silently duplicated stock. Keep individual scanning runs under
-  ~200 cards to avoid this case entirely.
+- **Interrupted batches**: cards go to the server a dozen at a time. If the
+  connection drops partway through a batch, the cards already sent stay in
+  the session and only the rest are retried (after 30 s), so an interruption
+  never creates duplicate review rows. If a whole batch fails before
+  anything is sent, it's retried from the start.
 - **Strict page-order pairing**: a jam or an out-of-order re-feed mid-batch
   will pair the wrong front with the wrong back. Re-scan the affected batch
   from a clean watch folder rather than resuming mid-stream — see "How
   pairing works" above.
 - **Not yet run against real hardware**: this has been typechecked, unit
-  tested (the pure pairing logic), and built successfully, but not
-  exercised against an actual fi-8170, PaperStream IP install, or Windows,
-  none of which are available in the environment this was built in.
+  tested and built, and the recognizer tested end to end on synthetic
+  cards — but not exercised against an actual fi-8170, PaperStream IP or
+  NAPS2 install, Windows, or the real card library, none of which are
+  available in the environment this was built in. The self-test on your PC
+  and your first reviewed batches are the real check.

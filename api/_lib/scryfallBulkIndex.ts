@@ -120,3 +120,21 @@ export async function candidatesByOracleId(
   if (error || !data) return [];
   return data.map(toCardPrinting);
 }
+
+/**
+ * Printings by Scryfall id, from the local index — how a result computed on
+ * the scanner PC is checked: only printings this index actually has can be
+ * suggested or saved.
+ */
+export async function printingsByScryfallIds(
+  admin: Admin,
+  scryfallIds: string[],
+): Promise<Map<string, CardPrinting>> {
+  const ids = [...new Set(scryfallIds)];
+  const out = new Map<string, CardPrinting>();
+  if (ids.length === 0) return out;
+  const { data, error } = await admin.from("scryfall_bulk_cards").select("*").in("scryfall_id", ids);
+  if (error) throw new Error(`Could not look up printings: ${error.message}`);
+  for (const row of data ?? []) out.set(row.scryfall_id, toCardPrinting(row));
+  return out;
+}

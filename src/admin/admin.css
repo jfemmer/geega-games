@@ -1020,6 +1020,10 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   margin: 0; flex: 1; min-width: 0; color: var(--gg-text, #241d31);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* On phones a long title wraps rather than being cut off with "…". */
+@media (max-width: 640px) {
+  .gg-dialog__title { white-space: normal; overflow-wrap: break-word; }
+}
 .gg-dialog__head-right { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex: 0 0 auto; }
 .gg-dialog__body {
   padding: 20px; overflow-y: auto; flex: 1;
@@ -2045,8 +2049,24 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-scanform__actions .gg-btn:first-child { margin-right:auto; }
 
 .gg-candidates { width:100%; }
-.gg-candidate { display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; padding:9px 0; border-bottom:1px solid var(--gg-line); }
+.gg-candidate { display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; padding:9px 10px; border-bottom:1px solid var(--gg-line); }
 .gg-candidate__info { min-width:0; display:flex; flex-direction:column; gap:2px; overflow-wrap:anywhere; }
+.gg-candidate__info { flex: 1 1 auto; }
+.gg-candidate__img { width: 56px; height: 78px; object-fit: cover; border-radius: 4px; flex: 0 0 auto; background: var(--gg-surface-2); }
+/* With a Scryfall picture: the picture on the left, the details and the
+   button stacked beside it, so the name and set stay readable even in the
+   narrow reference column next to the scan. */
+.gg-candidate--pic {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-rows: auto auto;
+  column-gap: 12px; row-gap: 6px; align-items: start;
+}
+.gg-candidate--pic .gg-candidate__img { grid-row: 1 / span 2; }
+.gg-candidate--pic .gg-btn { grid-column: 2; justify-self: start; }
+.gg-candidate__key {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
+  margin-right: 6px; border-radius: 4px; border: 1px solid var(--gg-line-strong, var(--gg-line)); font-size: .7rem;
+  font-family: inherit; line-height: 1; color: var(--gg-text-soft); background: var(--gg-surface);
+}
 
 @media (min-width: 1101px) {
   .gg-scandetail { position:sticky; top:calc(var(--gg-topbar-h) + 16px); max-height:calc(100vh - var(--gg-topbar-h) - 32px); overflow:auto; }
@@ -2091,8 +2111,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-scanform__row .gg-btn { width:100%; justify-content:center; }
   .gg-scanform__actions { display:grid; grid-template-columns:1fr; }
   .gg-scanform__actions .gg-btn { width:100%; justify-content:center; margin:0; min-height:42px; }
-  .gg-candidate { align-items:stretch; flex-direction:column; }
+  .gg-candidate { align-items:center; flex-direction:row; flex-wrap:wrap; }
   .gg-candidate .gg-btn { width:100%; justify-content:center; }
+  .gg-candidate__key { display:none; }
 }
 
 
@@ -2407,6 +2428,32 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   padding: 1px 6px; border-radius: 4px; white-space: pre-wrap; word-break: break-word;
 }
 .gg-bridge-panel__started { margin: 12px 0 0; color: var(--gg-text-faint); font-size: .72rem; }
+.gg-bridge-panel__finish { flex: 0 0 auto; }
+.gg-bridge-panel__finish .gg-tab:disabled { opacity: .55; cursor: not-allowed; }
+
+/* On-PC card recognizer (inside the scanner bridge panel) */
+.gg-bridge-recog {
+  padding: 12px 0 14px; margin-bottom: 14px; border-bottom: 1px solid var(--gg-line);
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.gg-bridge-recog__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.gg-bridge-recog__title { font-weight: 600; font-size: .9rem; }
+.gg-bridge-recog__message { margin: 0; font-size: .85rem; color: var(--gg-text-soft); overflow-wrap: anywhere; }
+.gg-bridge-recog__meta { margin: 0; font-size: .8rem; color: var(--gg-text-faint); overflow-wrap: anywhere; }
+.gg-bridge-recog__bar { height: 8px; border-radius: 999px; background: var(--gg-surface-2); border: 1px solid var(--gg-line); overflow: hidden; }
+.gg-bridge-recog__fill { height: 100%; background: var(--gg-brand); border-radius: 999px; transition: width .4s ease; }
+.gg-bridge-recog__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Approve sure matches */
+.gg-approvesure { display: flex; flex-direction: column; gap: 12px; font-size: .9rem; }
+.gg-approvesure p { margin: 0; }
+.gg-approvesure__skipped { margin: 0; padding-left: 18px; font-size: .84rem; color: var(--gg-text-soft); }
+
+@media (max-width: 520px) {
+  .gg-bridge-panel__finish { width: 100%; justify-content: center; }
+  .gg-bridge-panel__finish .gg-tab { flex: 1 1 0; min-height: 40px; }
+  .gg-bridge-recog__actions .gg-btn { flex: 1 1 auto; justify-content: center; }
+}
 
 
 /* ==================================================================

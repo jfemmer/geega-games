@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { checkConsolePath, runScan } from "./naps2Scan.js";
+import { checkConsolePath, naps2ScanArgs, runScan } from "./naps2Scan.js";
+import { pairScannedFiles, sortScannedFileNames } from "./pairing.js";
 
 // checkConsolePath and the directory-based page counting inside runScan are
 // real, mechanically testable Node behavior (filesystem existence checks,
@@ -75,8 +76,8 @@ describe("runScan", () => {
     writeFileSync(fakeExe, "not a real executable", "utf8");
 
     writeFileSync(path.join(dir, "leftover_from_paperstream.tif"), "", "utf8");
-    writeFileSync(path.join(dir, "scan_test0001.tiff"), "", "utf8");
-    writeFileSync(path.join(dir, "scan_test0002.tiff"), "", "utf8");
+    writeFileSync(path.join(dir, "scan_test_0001.jpg"), "", "utf8");
+    writeFileSync(path.join(dir, "scan_test_0002.jpg"), "", "utf8");
 
     const result = await runScan({
       consolePath: fakeExe,
@@ -91,5 +92,43 @@ describe("runScan", () => {
     // The fake exe can't actually run, so this reports failure — but the
     // page count is computed independently of that, straight from disk.
     expect(result.pagesScanned).toBe(2);
+  });
+});
+
+describe("naps2ScanArgs", () => {
+  it("scans the feeder (both sides) into numbered high-quality JPEGs at the chosen resolution", () => {
+    const args = naps2ScanArgs({
+      outputFolder: path.join("C:", "GeegaScans", "Incoming"),
+      filePrefix: "scan_1760300000000",
+      driver: "twain",
+      deviceNameMatch: "8170",
+      duplex: true,
+      resolution: 300,
+    });
+    const value = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(value("--driver")).toBe("twain");
+    expect(value("--device")).toBe("8170");
+    expect(value("--source")).toBe("duplex");
+    expect(value("--dpi")).toBe("300");
+    expect(value("--bitdepth")).toBe("color");
+    expect(value("--jpegquality")).toBe("95");
+    expect(path.basename(value("-o"))).toBe("scan_1760300000000_$(nnnn).jpg");
+    expect(args).toContain("--noprofile");
+    // TIFF-only splitting no longer applies: every JPEG page is its own file.
+    expect(args).not.toContain("--split");
+    expect(naps2ScanArgs({ outputFolder: "x", filePrefix: "p", driver: "wia", deviceNameMatch: "d", duplex: false, resolution: 600 })).toContain("feeder");
+  });
+
+  it("names pages so pairing puts them back in feed order, past 9999 too", () => {
+    const names = ["scan_1760300000000_0010.jpg", "scan_1760300000000_0002.jpg", "scan_1760300000000_0001.jpg", "scan_1760300000000_0009.jpg"];
+    const sorted = sortScannedFileNames(names);
+    expect(sorted).toEqual([
+      "scan_1760300000000_0001.jpg",
+      "scan_1760300000000_0002.jpg",
+      "scan_1760300000000_0009.jpg",
+      "scan_1760300000000_0010.jpg",
+    ]);
+    expect(pairScannedFiles(sorted, true)[0]).toEqual({ sequenceHint: 1, front: sorted[0], back: sorted[1] });
+    expect(sortScannedFileNames(["scan_1_10000.jpg", "scan_1_9999.jpg"])).toEqual(["scan_1_9999.jpg", "scan_1_10000.jpg"]);
   });
 });

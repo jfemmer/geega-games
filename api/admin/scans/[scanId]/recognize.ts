@@ -1,10 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { HttpError, methodNotAllowed, sendJson } from "../../../_lib/http.js";
+import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../../../_lib/http.js";
 import { requireStaff } from "../../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../../_lib/supabaseAdmin.js";
 import { SCAN_BUCKET, buildPreviewStoragePath, recomputeSession } from "../../../_lib/scan.js";
 import { runRecognitionPipeline } from "../../../_lib/recognition/pipeline.js";
 import { normalizeCardImage } from "../../../_lib/recognition/imageRegions.js";
+import {
+  buildLocalIdentity,
+  chooseFinish,
+  parseLocalRecognition,
+} from "../../../_lib/recognition/localResult.js";
 import type { Database } from "../../../../src/types/database.js";
 
 // POST /api/admin/scans/:scanId/recognize
@@ -25,6 +30,14 @@ import type { Database } from "../../../../src/types/database.js";
 // Downloads front/back from the private card-scans bucket via the
 // service-role client (never a signed URL round-trip — this runs entirely
 // server-side).
+//
+// Scans from the scanner bridge usually arrive already identified ON THE
+// SCANNER PC: the body then carries `{ local: {...} }` (see
+// api/_lib/recognition/localResult.ts, which validates it and re-checks
+// every suggested printing against this server's Scryfall index). OCR is
+// skipped; condition grading and previews still run here, and the batch's
+// foil / non-foil switch pre-selects the finish of a pre-matched printing.
+// A call without a body runs the cloud pipeline exactly as before.
 
 async function downloadImage(
   admin: ReturnType<typeof getSupabaseAdmin>,
@@ -62,6 +75,8 @@ async function uploadPreview(
   return previewPath;
 }
 
+const MAX_RECOGNIZE_BODY_BYTES = 32 * 1024;
+
 // Review states this endpoint may move a scan OUT of automatically. A scan
 // already reviewed by a human (ready/added/rejected) is never silently
 // reclassified — recognition only ever proposes into the pre-review states.
@@ -79,6 +94,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await requireStaff(req);
     const scanId = String(req.query.scanId ?? "");
     if (!scanId) throw new HttpError(400, "Scan id is required.");
+    // A scanner-PC result with every candidate, reason and warning filled in
+    // runs to a few KB — well past readJsonBody's 4 KB default for public
+    // forms. parseLocalRecognition caps every field on its own.
+    const body = await readJsonBody(req, MAX_RECOGNIZE_BODY_BYTES);
+    const local = body.local !== undefined ? parseLocalRecognition(body.local) : null;
 
     const admin = getSupabaseAdmin();
     const { data: scan, error: scanErr } = await admin
@@ -115,7 +135,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // deserves to be viewable in the review UI even though identity failed,
     // so it gets normalized + previewed here same as the main path below —
     // this branch returns before ever reaching runRecognitionPipeline.
-    if (doIdentity && !front) {
+    // (With a scanner-PC result the card is already identified — only the
+    // cloud pipeline needs a front image to read.)
+    if (doIdentity && !front && !local) {
       const backNormalized = back ? await normalizeCardImage(back) : null;
       const backPreviewPath = scan.back_image_path
         ? await uploadPreview(admin, scan.back_image_path, backNormalized?.buffer ?? null)
@@ -146,16 +168,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return sendJson(res, 200, fresh.data as unknown as Record<string, unknown>);
     }
 
+    const identity = local && doIdentity ? await buildLocalIdentity(admin, local) : undefined;
     const { recognitionResult, autoMatchedPrinting, condition, frontPreview, backPreview } =
-      await runRecognitionPipeline(admin, front, back, scanMode);
+      await runRecognitionPipeline(admin, front, back, scanMode, {
+        identity,
+        straightened: local?.straightened,
+      });
 
+    // A side the scanner PC uploaded as a cropped, straightened JPEG already
+    // shows in the browser as it is — a PNG preview of it would only be a
+    // bigger copy (several MB at 600 dpi), so none is made.
+    const needsPreview = (path: string | null, straightened: boolean | undefined): path is string =>
+      !!path && !(straightened && /\.jpe?g$/i.test(path));
     const [frontPreviewPath, backPreviewPath] = await Promise.all([
-      scan.front_image_path ? uploadPreview(admin, scan.front_image_path, frontPreview) : null,
-      scan.back_image_path ? uploadPreview(admin, scan.back_image_path, backPreview) : null,
+      needsPreview(scan.front_image_path, local?.straightened.front)
+        ? uploadPreview(admin, scan.front_image_path, frontPreview)
+        : null,
+      needsPreview(scan.back_image_path, local?.straightened.back)
+        ? uploadPreview(admin, scan.back_image_path, backPreview)
+        : null,
     ]);
 
-    // Cache the auto-matched (or best-candidate) printing so the review UI
-    // can show it even without an inventory line yet.
+    // Cache the auto-matched printing so the review UI can show it even
+    // without an inventory line yet. Insert-only: an existing card_printings
+    // row may carry fresher prices (cachePrinting writes live Scryfall data);
+    // the bulk index's copy must never overwrite them.
     if (autoMatchedPrinting) {
       await admin.from("card_printings").upsert(
         {
@@ -187,7 +224,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           price_usd_etched_cents: autoMatchedPrinting.prices.usdEtched,
           prices_updated_at: new Date().toISOString(),
         },
-        { onConflict: "scryfall_id" },
+        { onConflict: "scryfall_id", ignoreDuplicates: true },
       );
     }
 
@@ -231,6 +268,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             !autoMatchedPrinting.availableFinishes.includes(scan.selected_finish)
           ) {
             patch.selected_finish = autoMatchedPrinting.availableFinishes[0] ?? null;
+          } else if (!scan.selected_finish && local?.finish) {
+            // The batch's foil / non-foil switch — a person's choice for the
+            // whole stack, fitted to the finishes this printing comes in.
+            const chosen = chooseFinish(local.finish, autoMatchedPrinting.availableFinishes);
+            if (chosen.finish) patch.selected_finish = chosen.finish;
+            if (chosen.warning) recognitionResult.warnings = [...recognitionResult.warnings, chosen.warning];
           }
         } else if (recognitionResult.candidatePrintings.length > 0) {
           patch.review_status = "needs_manual_match";

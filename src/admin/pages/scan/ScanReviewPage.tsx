@@ -28,7 +28,9 @@ import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
 import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS, SCAN_MODE_LABELS } from "../../utils/labels";
-import { applyPriceFloor } from "../../utils/pricing";
+import { approvalPatch, matchDefaults } from "../../utils/scanApproval";
+import { BridgeUnreachableError, postToBridge } from "../../utils/scannerBridge";
+import { ApproveSureModal } from "./ApproveSureModal";
 import type {
   BatchCommitPreview,
   CardCondition,
@@ -73,6 +75,9 @@ const CONDITION_KEYS: Record<string, CardCondition> = {
   "5": "DMG",
 };
 
+/** Letter keys that pick a suggested printing (number keys set the condition). */
+const CANDIDATE_KEYS = ["a", "b", "c"];
+
 function centsFromInput(v: string): number | null {
   if (v.trim() === "") return null;
   const n = Number.parseFloat(v);
@@ -96,6 +101,7 @@ export function ScanReviewPage({
   const [committing, setCommitting] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [approveSureOpen, setApproveSureOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CardScan | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -164,6 +170,10 @@ export function ScanReviewPage({
     [active, reloadAll],
   );
 
+  // Enter: approve with the defaults a confirmed match gets — finish from
+  // the batch's foil switch, today's Scryfall price for that finish (raised
+  // to the price floors) unless a price was typed. Condition stays a person's
+  // call (keys 1–5).
   const approveActive = useCallback(async () => {
     if (!active) return;
     if (!active.selectedScryfallId) {
@@ -174,18 +184,111 @@ export function ScanReviewPage({
       toast.error("Set a condition (keys 1–5) before approving.");
       return;
     }
-    if (!active.selectedFinish) {
-      toast.error("Choose a finish before approving.");
+    let printing = active.selectedPrinting;
+    const fillsPrice = active.priceCents == null;
+    if (fillsPrice || !active.selectedFinish) {
+      printing = (await scryfallRepository.getByScryfallId(active.selectedScryfallId).catch(() => null)) ?? printing;
+    }
+    if (!printing) {
+      toast.error("Couldn't load this printing's details — try again.");
       return;
     }
-    if (active.priceCents == null || active.priceCents <= 0) {
-      toast.error("Enter a selling price before approving.");
+    const result = approvalPatch(active, printing, priceFloors);
+    if (!result.ok) {
+      toast.error(result.reason);
       return;
     }
-    await scanRepository.updateScan(active.id, { reviewStatus: "ready" });
+    await scanRepository.updateScan(active.id, result.patch);
+    if (fillsPrice && result.patch.priceCents != null) {
+      toast.success(`Approved at ${formatCents(result.patch.priceCents)} (Scryfall price).`);
+    }
     reloadAll();
     moveActive(1);
-  }, [active, reloadAll, moveActive, toast]);
+  }, [active, reloadAll, moveActive, toast, priceFloors]);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Shared by the "Find match" modal and one-click acceptance of a
+  // recognition candidate — both are a human confirming an exact printing.
+  const applyPrinting = useCallback(
+    async (scan: CardScan, printing: CardPrinting) => {
+      // Finish: kept if valid, else the batch's foil switch, else the first
+      // finish; price: kept if typed, else Scryfall's for that finish, floored.
+      const defaults = matchDefaults(scan, printing, priceFloors);
+      await scanRepository.updateScan(scan.id, {
+        selectedScryfallId: printing.scryfallId,
+        selectedPrinting: printing,
+        selectedFinish: defaults.selectedFinish,
+        priceCents: defaults.priceCents,
+      });
+      setActiveId(scan.id);
+      reloadAll();
+      toast.success(`Matched to ${printing.cardName} (${printing.setName}).`);
+    },
+    [reloadAll, toast, priceFloors],
+  );
+
+  async function handleMatchChosen(printing: CardPrinting) {
+    if (!findMatchFor) return;
+    await applyPrinting(findMatchFor, printing);
+    setFindMatchFor(null);
+  }
+
+  const [recognizingId, setRecognizingId] = useState<string | null>(null);
+
+  // Re-run on the scanner PC when it's reachable from this computer (same
+  // picture matcher that identified the card); otherwise the cloud reader —
+  // except for a card the scanner PC identified, which shouldn't be
+  // silently replaced by the less accurate cloud result.
+  const rerunRecognition = useCallback(
+    async (scan: CardScan) => {
+      setRecognizingId(scan.id);
+      try {
+        try {
+          const reply = await postToBridge<{ ok?: boolean; message?: string }>("/recognize", { scanId: scan.id });
+          if (reply.ok) {
+            toast.success("Re-recognized on the scanner PC.");
+            reloadAll();
+            return;
+          }
+          if (reply.status !== 503) throw new Error(reply.data.message ?? "The scanner PC couldn't re-run this card.");
+          // 503: the bridge is up but its card library isn't ready — fall through.
+        } catch (err) {
+          if (!(err instanceof BridgeUnreachableError)) throw err;
+        }
+        if (scan.recognitionData?.engine === "scanner_pc") {
+          toast.error("This card was identified on the scanner PC — re-run it from that computer (its bridge isn't reachable from here).");
+          return;
+        }
+        await recognitionProvider.recognize(scan);
+        reloadAll();
+      } catch (err) {
+        toast.error(err instanceof Error && err.message ? err.message : "Recognition failed to run. Try again in a moment.");
+      } finally {
+        setRecognizingId(null);
+      }
+    },
+    [reloadAll, toast],
+  );
+
+  const selectCandidate = useCallback(
+    async (scan: CardScan, candidate: RecognitionCandidate) => {
+      const printing = await scryfallRepository.getByScryfallId(candidate.scryfallId);
+      if (!printing) {
+        toast.error("Couldn't load that printing's details — try Find match instead.");
+        return;
+      }
+      await applyPrinting(scan, printing);
+    },
+    [applyPrinting, toast],
+  );
 
   // Keyboard workflow.
   useEffect(() => {
@@ -193,7 +296,7 @@ export function ScanReviewPage({
       const tag = (e.target as HTMLElement)?.tagName;
       const typing =
         tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
-      if (typing || findMatchFor || bulkOpen || shortcutsOpen || commitPreview) return;
+      if (typing || findMatchFor || bulkOpen || shortcutsOpen || commitPreview || approveSureOpen) return;
 
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -216,6 +319,15 @@ export function ScanReviewPage({
       } else if (CONDITION_KEYS[e.key]) {
         e.preventDefault();
         void patchActive({ confirmedCondition: CONDITION_KEYS[e.key] });
+      } else if (CANDIDATE_KEYS.includes(e.key.toLowerCase()) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // A / B / C pick one of the suggested printings (when there's no match yet).
+        const candidate = active && !active.selectedPrinting
+          ? active.recognitionData?.candidatePrintings[CANDIDATE_KEYS.indexOf(e.key.toLowerCase())]
+          : undefined;
+        if (candidate && active) {
+          e.preventDefault();
+          void selectCandidate(active, candidate);
+        }
       } else if (e.key === "?") {
         e.preventDefault();
         setShortcutsOpen(true);
@@ -223,73 +335,7 @@ export function ScanReviewPage({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, moveActive, approveActive, patchActive, findMatchFor, bulkOpen, shortcutsOpen, commitPreview]);
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  // Shared by the "Find match" modal and one-click acceptance of a
-  // recognition candidate — both are a human confirming an exact printing.
-  const applyPrinting = useCallback(
-    async (scan: CardScan, printing: CardPrinting) => {
-      await scanRepository.updateScan(scan.id, {
-        selectedScryfallId: printing.scryfallId,
-        selectedPrinting: printing,
-        selectedFinish:
-          scan.selectedFinish && printing.availableFinishes.includes(scan.selectedFinish)
-            ? scan.selectedFinish
-            : printing.availableFinishes[0] ?? null,
-        priceCents:
-          scan.priceCents ??
-          applyPriceFloor(printing.scryfallPriceCents, printing.rarity, priceFloors),
-      });
-      setActiveId(scan.id);
-      reloadAll();
-      toast.success(`Matched to ${printing.cardName} (${printing.setName}).`);
-    },
-    [reloadAll, toast, priceFloors],
-  );
-
-  async function handleMatchChosen(printing: CardPrinting) {
-    if (!findMatchFor) return;
-    await applyPrinting(findMatchFor, printing);
-    setFindMatchFor(null);
-  }
-
-  const [recognizingId, setRecognizingId] = useState<string | null>(null);
-
-  const rerunRecognition = useCallback(
-    async (scan: CardScan) => {
-      setRecognizingId(scan.id);
-      try {
-        await recognitionProvider.recognize(scan);
-        reloadAll();
-      } catch {
-        toast.error("Recognition failed to run. Try again in a moment.");
-      } finally {
-        setRecognizingId(null);
-      }
-    },
-    [reloadAll, toast],
-  );
-
-  const selectCandidate = useCallback(
-    async (scan: CardScan, candidate: RecognitionCandidate) => {
-      const printing = await scryfallRepository.getByScryfallId(candidate.scryfallId);
-      if (!printing) {
-        toast.error("Couldn't load that printing's details — try Find match instead.");
-        return;
-      }
-      await applyPrinting(scan, printing);
-    },
-    [applyPrinting, toast],
-  );
+  }, [active, moveActive, approveActive, patchActive, selectCandidate, findMatchFor, bulkOpen, shortcutsOpen, commitPreview, approveSureOpen]);
 
   async function deleteScan() {
     if (!deleteTarget) return;
@@ -365,6 +411,15 @@ export function ScanReviewPage({
               onClick={() => setBulkOpen(true)}
             >
               Bulk ({selectedIds.size})
+            </Button>
+            <Button
+              variant="secondary"
+              icon="check"
+              disabled={(countMap.matched ?? 0) === 0}
+              onClick={() => setApproveSureOpen(true)}
+              title="Mark every card recognition was sure about as ready, in one go."
+            >
+              Approve sure matches
             </Button>
             <Button
               variant="primary"
@@ -558,6 +613,28 @@ export function ScanReviewPage({
         onCancel={() => !deleting && setDeleteTarget(null)}
         onConfirm={deleteScan}
       />
+      {approveSureOpen && (
+        <ApproveSureModal
+          sessionId={sessionId}
+          priceFloors={priceFloors}
+          onClose={() => setApproveSureOpen(false)}
+          onDone={({ approved, skipped }) => {
+            // What's left is the close calls: show those next (still in scan
+            // order, so each is easy to find in the stack).
+            const closeCalls = countMap.needs_manual_match ?? 0;
+            if (approved > 0 && closeCalls > 0) setFilter("needs_manual_match");
+            reloadAll();
+            const leftover = closeCalls > 0 ? ` ${closeCalls} close call${closeCalls === 1 ? "" : "s"} to pick from next.` : "";
+            if (approved > 0) {
+              toast.success(
+                `${approved} card${approved === 1 ? "" : "s"} approved${skipped ? ` — ${skipped} still need a look` : ""}.${leftover}`,
+              );
+            } else if (skipped > 0) {
+              toast.error(`None approved — ${skipped} need a look.`);
+            }
+          }}
+        />
+      )}
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>
   );
@@ -778,6 +855,7 @@ function ScanDetail({
           ) : scan.recognitionData && scan.recognitionData.candidatePrintings.length > 0 ? (
             <CandidateSuggestions
               candidates={scan.recognitionData.candidatePrintings}
+              closeCall={scan.recognitionData.engine === "scanner_pc" && scan.recognitionData.scannerPc?.decision === "check"}
               onSelect={onSelectCandidate}
               onSearchInstead={onFindMatch}
             />
@@ -858,7 +936,9 @@ function ScanDetail({
             onBlur={() => onPatch({ priceCents: centsFromInput(price) })}
             hint={
               scan.selectedPrinting?.scryfallPriceCents != null
-                ? `Scryfall ${formatCents(scan.selectedPrinting.scryfallPriceCents)}`
+                ? scan.priceCents == null && price.trim() === ""
+                  ? `Scryfall ${formatCents(scan.selectedPrinting.scryfallPriceCents)} — today's price is used if left blank`
+                  : `Scryfall ${formatCents(scan.selectedPrinting.scryfallPriceCents)}`
                 : undefined
             }
           />
@@ -943,8 +1023,12 @@ function RecognitionPanel({
         </div>
       )}
 
-      {data && (data.era === "vintage" || data.visualSimilarity != null || data.setSymbolMatch) && (
+      {data && (data.era === "vintage" || data.visualSimilarity != null || data.setSymbolMatch || data.engine === "scanner_pc") && (
         <div className="gg-recog__signals">
+          {data.engine === "scanner_pc" && <span className="gg-recog__signal">Identified on the scanner PC</span>}
+          {data.scannerPc?.ocrText && (
+            <span className="gg-recog__signal">Collector number read: {data.scannerPc.ocrText}</span>
+          )}
           {data.era === "vintage" && (
             <span className="gg-recog__signal gg-recog__signal--warn">
               Possible vintage card — treated conservatively
@@ -985,14 +1069,18 @@ function RecognitionPanel({
 }
 
 /** Clickable recognition candidates shown in place of the empty "no match"
- * placeholder — a human still confirms the printing with one click, same as
- * picking from manual search, just pre-narrowed by the pipeline. */
+ * placeholder — a human still confirms the printing with one click (or the
+ * A / B / C keys), same as picking from manual search, just pre-narrowed by
+ * recognition. Each shows its Scryfall image, to compare with the scan. */
 function CandidateSuggestions({
   candidates,
+  closeCall,
   onSelect,
   onSearchInstead,
 }: {
   candidates: RecognitionCandidate[];
+  /** The scanner PC narrowed it to look-alikes (vs. the cloud's low confidence). */
+  closeCall: boolean;
   onSelect: (candidate: RecognitionCandidate) => Promise<void>;
   onSearchInstead: () => void;
 }) {
@@ -1010,11 +1098,15 @@ function CandidateSuggestions({
   return (
     <div className="gg-candidates">
       <p className="gg-candidates__intro">
-        Not confident enough to auto-match — recognition found{" "}
-        {candidates.length === 1 ? "this possibility" : `these ${candidates.length} possibilities`}:
+        {closeCall
+          ? "Close call — compare with the scan and pick the right printing:"
+          : `Not confident enough to auto-match — recognition found ${candidates.length === 1 ? "this possibility" : `these ${candidates.length} possibilities`}:`}
       </p>
-      {candidates.map((c) => (
-        <div key={c.scryfallId} className="gg-candidate">
+      {candidates.map((c, i) => (
+        <div key={c.scryfallId} className={c.imageUrl ? "gg-candidate gg-candidate--pic" : "gg-candidate"}>
+          {c.imageUrl ? (
+            <img className="gg-candidate__img" src={c.imageUrl} alt={`${c.cardName} (${c.setCode} #${c.collectorNumber})`} loading="lazy" />
+          ) : null}
           <div className="gg-candidate__info">
             <span className="gg-candidate__name">{c.cardName}</span>
             <span className="gg-candidate__meta">
@@ -1028,7 +1120,9 @@ function CandidateSuggestions({
             loading={busyId === c.scryfallId}
             disabled={busyId != null}
             onClick={() => pick(c)}
+            title={i < CANDIDATE_KEYS.length ? `Shortcut: ${CANDIDATE_KEYS[i].toUpperCase()}` : undefined}
           >
+            {i < CANDIDATE_KEYS.length && <kbd className="gg-candidate__key">{CANDIDATE_KEYS[i].toUpperCase()}</kbd>}
             Use this
           </Button>
         </div>
@@ -1217,9 +1311,10 @@ function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void 
   const rows: [string, string][] = [
     ["J / ↓", "Next card"],
     ["K / ↑", "Previous card"],
-    ["Enter", "Approve (mark ready) → next"],
+    ["Enter", "Approve (mark ready) → next — fills in the Scryfall price if none is typed"],
     ["F", "Find Scryfall match"],
     ["1–5", "Set condition (NM, LP, MP, HP, DMG)"],
+    ["A / B / C", "Use a suggested printing (when there's no match yet)"],
     ["S", "Skip to next"],
     ["X", "Reject card"],
     ["?", "Show this help"],

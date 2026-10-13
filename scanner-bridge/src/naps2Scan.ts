@@ -27,8 +27,17 @@ import path from "node:path";
 // Like the WIA approach before it, this writes scanned pages straight into
 // the bridge's own WATCH_FOLDER, so the EXISTING chokidar watcher/pairing/
 // upload/recognition pipeline (watcher.ts) picks them up exactly as if
-// PaperStream IP had written them — nothing downstream of "a TIFF appears
+// PaperStream IP had written them — nothing downstream of "an image appears
 // in the watch folder" needed to change for this feature.
+//
+// Pages are saved as high-quality JPEGs, numbered explicitly through
+// NAPS2's $(nnnn) placeholder (scan_<timestamp>_0001.jpg, _0002.jpg, … in
+// feed order, which is what pairing sorts on). JPEG rather than TIFF: NAPS2
+// has no auto-crop, so every page is the whole feeder width — as a TIFF
+// that's ~16 MB per side to keep in _processed and to decode before the card
+// can even be found, as a JPEG ~1 MB, and the card finder reads it twice as
+// fast. At quality 95 the compression is invisible next to the scan itself;
+// what's uploaded is the bridge's own straightened crop anyway.
 
 // A full ~100-card duplex batch at the fi-8170's rated 70ppm is a few
 // minutes; this leaves generous headroom above that rather than risk
@@ -126,7 +135,7 @@ export async function listScanDevices(
  * unique per run (caller uses a timestamp), so any file whose name starts
  * with it can only have come from this run. This is deliberately the same
  * "the filesystem is truth" approach watcher.ts already uses downstream:
- * robust regardless of NAPS2's exact --split naming/numbering scheme, and
+ * robust regardless of NAPS2's exact naming/numbering scheme, and
  * still correct even on a partial failure (a jam mid-batch) where some
  * pages saved before the error. */
 async function countScannedPages(outputFolder: string, filePrefix: string): Promise<number> {
@@ -151,16 +160,16 @@ export interface ScanResult {
   rawOutput: string;
 }
 
-export async function runScan(options: ScanOptions): Promise<ScanResult> {
-  const pathError = checkConsolePath(options.consolePath);
-  if (pathError) return { ok: false, pagesScanned: 0, message: pathError, rawOutput: "" };
+/** JPEG quality for "Scan now" pages. */
+export const SCAN_JPEG_QUALITY = 95;
 
-  const outputPath = path.join(options.outputFolder, `${options.filePrefix}.tiff`);
-  const args = [
+/** NAPS2.Console arguments for one batch (pure — see the header comment for the choices). */
+export function naps2ScanArgs(options: Omit<ScanOptions, "consolePath">): string[] {
+  const outputPath = path.join(options.outputFolder, `${options.filePrefix}_$(nnnn).jpg`);
+  return [
     "--noprofile",
     "-v",
     "-f",
-    "--split",
     "--driver",
     options.driver,
     "--device",
@@ -171,11 +180,18 @@ export async function runScan(options: ScanOptions): Promise<ScanResult> {
     String(options.resolution),
     "--bitdepth",
     "color",
+    "--jpegquality",
+    String(SCAN_JPEG_QUALITY),
     "-o",
     outputPath,
   ];
+}
 
-  const run = await runNaps2(options.consolePath, args);
+export async function runScan(options: ScanOptions): Promise<ScanResult> {
+  const pathError = checkConsolePath(options.consolePath);
+  if (pathError) return { ok: false, pagesScanned: 0, message: pathError, rawOutput: "" };
+
+  const run = await runNaps2(options.consolePath, naps2ScanArgs(options));
   const pagesScanned = await countScannedPages(options.outputFolder, options.filePrefix);
   const rawOutput = combinedOutput(run);
 

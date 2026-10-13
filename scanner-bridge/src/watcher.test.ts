@@ -47,7 +47,15 @@ type BatchResult = Awaited<ReturnType<typeof uploadBatch>>;
 type PairedCard = Parameters<typeof uploadBatch>[3][number];
 
 function emptyBatchResult(): BatchResult {
-  return { cardsCreated: 0, cardsRecognized: 0, cardsFailedRecognition: 0, fileOutcomes: [] };
+  return {
+    cardsCreated: 0,
+    cardsRecognized: 0,
+    cardsFailedRecognition: 0,
+    cardsRecognizedOnPc: 0,
+    fileOutcomes: [],
+    retryLater: [],
+    retryReason: null,
+  };
 }
 
 function testConfig(dir: string, overrides: Partial<BridgeConfig> = {}): BridgeConfig {
@@ -69,6 +77,18 @@ function testConfig(dir: string, overrides: Partial<BridgeConfig> = {}): BridgeC
     batchQuietMs: 50,
     statusPort: 0,
     sessionStateFile: path.join(dir, ".geega-session-id"),
+    scanDpi: 300,
+    recognizer: {
+      enabled: false,
+      dataDir: path.join(dir, "data"),
+      autoUpdate: false,
+      maxLibraryAgeDays: 7,
+      downloadConcurrency: 1,
+      referenceCacheBytes: 1024 * 1024,
+      threads: 1,
+      fallbackDpi: 300,
+      selfTestSamples: 20,
+    },
     ...overrides,
   };
 }
@@ -165,6 +185,8 @@ describe("startWatcher — straggler-file races", () => {
       const allFiles = pairs.flatMap((p) => [p.front, p.back]).filter((f): f is string => !!f);
       expect(allFiles.some((f) => f.includes("card1.tiff"))).toBe(true);
       expect(allFiles.some((f) => f.includes("card2.tiff"))).toBe(true);
+      // The Scanner panel's "Last batch" counts cards, not scanned sides.
+      expect(status.lastBatchSize).toBe(pairs.length);
     },
     20_000,
   );

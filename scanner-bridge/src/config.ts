@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { defaultDataDir, type RecognizerRuntimeConfig } from "./recognizer/runtime.js";
 
 // All configuration is read from environment variables (.env in this
 // folder, loaded by index.ts) — nothing is hardcoded, so the same build
@@ -27,6 +29,14 @@ function optionalInt(name: string, fallback: number): number {
   if (!v) return fallback;
   const n = Number.parseInt(v, 10);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function optionalBool(name: string, fallback: boolean): boolean {
+  const v = process.env[name]?.trim().toLowerCase();
+  if (!v) return fallback;
+  if (["1", "true", "yes", "on"].includes(v)) return true;
+  if (["0", "false", "no", "off"].includes(v)) return false;
+  throw new Error(`Invalid ${name} "${process.env[name]}" — use true or false.`);
 }
 
 export interface BridgeConfig {
@@ -82,6 +92,11 @@ export interface BridgeConfig {
   statusPort: number;
   /** Where the current session id is persisted so a restart resumes instead of fragmenting into a new session. */
   sessionStateFile: string;
+  /** Resolution for "Scan now". 300 dpi is the fi-8170's full speed and all
+   * identification needs; condition-grading sessions default to 600. */
+  scanDpi: number;
+  /** The on-PC card recognizer (scanner-bridge/src/recognizer). */
+  recognizer: RecognizerRuntimeConfig;
 }
 
 export function parseScanMode(value: string): "card_matching" | "condition" | "both" {
@@ -106,6 +121,27 @@ export function duplexForMode(mode: "card_matching" | "condition" | "both"): boo
   return mode !== "card_matching";
 }
 
+/** 600 dpi for condition-only sessions (wear shows better), 300 otherwise. */
+export function defaultDpiForMode(mode: "card_matching" | "condition" | "both"): number {
+  return mode === "condition" ? 600 : 300;
+}
+
+export function parseScanDpi(value: string | undefined, mode: "card_matching" | "condition" | "both"): number {
+  if (!value || value.trim() === "") return defaultDpiForMode(mode);
+  const n = Number.parseInt(value, 10);
+  if (![200, 240, 300, 400, 600].includes(n)) {
+    throw new Error(`Invalid SCAN_DPI "${value}" — use 200, 240, 300, 400 or 600.`);
+  }
+  return n;
+}
+
+export function parseRecognizerSwitch(value: string | undefined): boolean {
+  const v = (value ?? "on").trim().toLowerCase();
+  if (v === "on" || v === "true" || v === "") return true;
+  if (v === "off" || v === "false") return false;
+  throw new Error(`Invalid RECOGNIZER "${value}" — use on or off.`);
+}
+
 export function loadConfig(): BridgeConfig {
   const apiBaseUrl = required("GEEGA_API_BASE_URL").replace(/\/+$/, "");
   const watchFolder = path.resolve(required("WATCH_FOLDER"));
@@ -124,6 +160,8 @@ export function loadConfig(): BridgeConfig {
   }
 
   const scanMode = parseScanMode(optional("SCAN_MODE", "both"));
+  const scanDpi = parseScanDpi(process.env.SCAN_DPI, scanMode);
+  const cpuCount = Math.max(1, os.cpus().length);
 
   return {
     apiBaseUrl,
@@ -146,5 +184,17 @@ export function loadConfig(): BridgeConfig {
     batchQuietMs: optionalInt("BATCH_QUIET_MS", 5000),
     statusPort: optionalInt("STATUS_PORT", 8787),
     sessionStateFile: path.join(watchFolder, ".geega-session-id"),
+    scanDpi,
+    recognizer: {
+      enabled: parseRecognizerSwitch(process.env.RECOGNIZER),
+      dataDir: path.resolve(optional("DATA_DIR", defaultDataDir())),
+      autoUpdate: optionalBool("LIBRARY_AUTO_UPDATE", true),
+      maxLibraryAgeDays: Math.max(1, optionalInt("LIBRARY_MAX_AGE_DAYS", 7)),
+      downloadConcurrency: Math.min(32, Math.max(1, optionalInt("DOWNLOAD_CONCURRENCY", 8))),
+      referenceCacheBytes: Math.max(100, optionalInt("REFERENCE_CACHE_MB", 2048)) * 1024 * 1024,
+      threads: Math.max(1, optionalInt("RECOGNIZER_THREADS", Math.min(4, Math.max(1, cpuCount - 1)))),
+      fallbackDpi: scanDpi,
+      selfTestSamples: Math.min(2000, Math.max(20, optionalInt("SELF_TEST_SAMPLES", 200))),
+    },
   };
 }

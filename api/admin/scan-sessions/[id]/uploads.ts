@@ -32,6 +32,9 @@ interface Body {
 }
 
 const MAX_FILES_PER_REQUEST = 500;
+// ~80 bytes of JSON per file; readJsonBody's 4 KB default for public forms
+// would cap a request at about fifty files.
+const MAX_UPLOADS_BODY_BYTES = 128 * 1024;
 
 function isValidFile(f: unknown): f is FileReq {
   if (!f || typeof f !== "object") return false;
@@ -52,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sessionId = String(req.query.id ?? "");
     if (!sessionId) throw new HttpError(400, "Session id is required.");
 
-    const body = (await readJsonBody(req)) as Body;
+    const body = (await readJsonBody(req, MAX_UPLOADS_BODY_BYTES)) as Body;
     const files = Array.isArray(body.files) ? body.files : [];
     if (files.length === 0) throw new HttpError(400, "No files provided.");
     if (files.length > MAX_FILES_PER_REQUEST) {

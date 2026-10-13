@@ -458,6 +458,24 @@ export interface RecognitionCandidate {
   confidence: number;
   /** Why this candidate scored the way it did, e.g. "set+collector exact, visual 0.94". */
   reason?: string;
+  /** Scryfall image of this printing, for picking between candidates by eye. */
+  imageUrl?: string | null;
+}
+
+/** What the scanner PC's own recognizer reported (scanner-bridge/src/recognizer). */
+export interface ScannerPcRecognition {
+  version: string;
+  decision: "sure" | "check" | "none";
+  /** 180 when the card went through the feeder upside down. */
+  orientation: 0 | 180;
+  /** The scanner's second side turned out to be the card's face. */
+  sidesSwapped: boolean;
+  /** Collector-number text read, when it had to be read. */
+  ocrText: string | null;
+  timingsMs: Record<string, number>;
+  library: { builtAt: string | null; entries: number; model: string };
+  /** Which stored images are the PC's cropped, straightened copies (re-runs reuse them as they are). */
+  straightened?: { front: boolean; back: boolean };
 }
 
 /** Which Part 7 era-strategy the pipeline used for this scan. */
@@ -495,6 +513,11 @@ export interface CardRecognitionResult {
    * detectedName/detectedSetCode/detectedCollectorNumber came back null or
    * wrong, without re-deriving it from a screenshot every time. */
   ocrRawText?: { title: string; collectorInfo: string };
+  /** Which recognizer produced this: the cloud OCR pipeline (default when
+   * absent) or the scanner PC's picture matcher. */
+  engine?: "cloud" | "scanner_pc";
+  /** Present when engine is "scanner_pc". */
+  scannerPc?: ScannerPcRecognition;
   /** Pixel dimensions of normalizeCardImage()'s actual output for the front
    * scan — the image REGIONS' percentages are applied against. A local
    * screenshot-based check of a crop region can't fully substitute for the

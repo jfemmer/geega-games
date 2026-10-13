@@ -7,6 +7,8 @@ import type { BridgeConfig } from "./config.js";
 import { pairScannedFiles, sortScannedFileNames } from "./pairing.js";
 import { ensureSession, uploadBatch } from "./uploader.js";
 import type { BridgeStatus } from "./statusServer.js";
+import type { CardRecognizer } from "./recognizer/recognizer.js";
+import type { BatchFinish } from "./recognizer/types.js";
 
 const IMAGE_EXTENSIONS = new Set([".tif", ".tiff", ".jpg", ".jpeg", ".png"]);
 const BATCH_RETRY_DELAY_MS = 30_000;
@@ -57,8 +59,13 @@ export function startWatcher(
   api: ApiClient,
   supabase: SupabaseClient,
   status: BridgeStatus,
+  /** The on-PC recognizer once its card library is ready (null until then, or when turned off). */
+  getRecognizer: () => CardRecognizer | null = () => null,
 ): WatcherControl {
   const pending = new Set<string>();
+  // The foil / non-foil setting in force when each file arrived — so
+  // flipping the switch for the NEXT batch never relabels one still uploading.
+  const finishByFile = new Map<string, BatchFinish>();
   let quietTimer: NodeJS.Timeout | null = null;
   let retryTimer: NodeJS.Timeout | null = null;
   let processing = false;
@@ -102,13 +109,14 @@ export function startWatcher(
     const files = Array.from(pending);
     pending.clear();
     status.state = "uploading";
-    status.lastBatchSize = files.length;
 
     try {
       const byName = new Map(files.map((f) => [path.basename(f), f]));
       const sortedNames = sortScannedFileNames(Array.from(byName.keys()));
       const sortedPaths = sortedNames.map((n) => byName.get(n)!);
       const pairs = pairScannedFiles(sortedPaths, config.duplex);
+      // Cards, not files — with both sides scanned that's half the files.
+      status.lastBatchSize = pairs.length;
 
       console.log(
         `[geega-scanner-bridge] Processing ${files.length} file(s) as ${pairs.length} card(s)…`,
@@ -116,7 +124,17 @@ export function startWatcher(
 
       const sessionId = await ensureSession(config, api, supabase);
       status.currentSessionId = sessionId;
-      const result = await uploadBatch(api, supabase, sessionId, pairs);
+      const recognizer = getRecognizer();
+      const result = await uploadBatch(api, supabase, sessionId, pairs, {
+        recognizer,
+        finishFor: (pair) => {
+          const file = pair.front ?? pair.back;
+          return file ? (finishByFile.get(file) ?? status.batchFinish) : status.batchFinish;
+        },
+        log: (message) => console.log(`[geega-scanner-bridge] ${message}`),
+      });
+      const retry = new Set(result.retryLater);
+      for (const f of files) if (!retry.has(f)) finishByFile.delete(f);
 
       for (const outcome of result.fileOutcomes) {
         const dest = outcome.ok ? config.processedFolder : config.failedFolder;
@@ -132,14 +150,31 @@ export function startWatcher(
         }
       }
 
+      if (result.retryLater.length > 0) {
+        // Part of the batch never reached the server (connection dropped
+        // mid-way). The cards before that point are in the session; only
+        // these files are retried, so nothing is uploaded twice.
+        for (const f of result.retryLater) pending.add(f);
+        status.lastError = `${result.retryLater.length} file(s) will be retried: ${result.retryReason ?? "upload interrupted"}`;
+        console.error(
+          `[geega-scanner-bridge] Batch interrupted (${result.retryReason}); retrying ${result.retryLater.length} file(s) in ${BATCH_RETRY_DELAY_MS / 1000}s.`,
+        );
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+          void processBatch();
+        }, BATCH_RETRY_DELAY_MS);
+      }
+
       status.totalCardsCreated += result.cardsCreated;
       status.totalCardsRecognized += result.cardsRecognized;
+      status.totalCardsRecognizedOnPc += result.cardsRecognizedOnPc;
       status.totalRecognitionFailures += result.cardsFailedRecognition;
-      status.lastError = null;
+      if (result.retryLater.length === 0) status.lastError = null;
       status.lastBatchAt = new Date().toISOString();
       console.log(
         `[geega-scanner-bridge] Batch done: ${result.cardsCreated} card(s) created, ` +
-          `${result.cardsRecognized} recognized, ${result.cardsFailedRecognition} recognition failures.`,
+          `${result.cardsRecognized} recognized (${result.cardsRecognizedOnPc} on this PC), ` +
+          `${result.cardsFailedRecognition} recognition failures.`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -164,6 +199,7 @@ export function startWatcher(
 
   watcher.on("add", (filePath) => {
     if (!isScannedImage(filePath)) return;
+    if (!finishByFile.has(filePath)) finishByFile.set(filePath, status.batchFinish);
     pending.add(filePath);
     status.pendingFiles = pending.size;
     scheduleProcessing();

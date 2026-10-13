@@ -3,23 +3,31 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Watches a PaperStream IP output folder for Ricoh fi-8170 scans and pushes them into a Geega scan session over the same staff-gated API the browser uses.",
+  "description": "Runs next to the Ricoh fi-8170: drives scans (NAPS2) or watches a PaperStream IP folder, recognizes each card on this PC, and pushes scans into a Geega scan session over the same staff-gated API the browser uses.",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "build-index": "tsc -p tsconfig.json && node dist/cli/buildIndex.js",
+    "benchmark": "tsc -p tsconfig.json && node dist/cli/benchmark.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@gutenye/ocr-models": "1.4.2",
     "@supabase/supabase-js": "^2.112.4",
     "chokidar": "^4.0.3",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "onnxruntime-node": "1.30.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "tsx": "^4.23.13",
     "typescript": "~6.0.2",
     "vitest": "4.1.11"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }

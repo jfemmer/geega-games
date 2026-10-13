@@ -117,6 +117,24 @@ export async function normalizeCardImage(
   };
 }
 
+/**
+ * Like normalizeCardImage, for an image the scanner PC already cropped and
+ * straightened to the card's exact edges (scanner-bridge/src/recognizer).
+ * No trim(): on a tightly cropped black-bordered card, "trim the uniform
+ * border" would eat the card's own black border.
+ */
+export async function normalizeStraightenedImage(
+  input: Buffer,
+): Promise<{ buffer: Buffer; width: number; height: number }> {
+  let image = sharp(input, { failOn: "none" }).rotate();
+  const meta = await image.metadata();
+  if ((meta.width ?? 0) > (meta.height ?? 0)) {
+    image = image.rotate(90);
+  }
+  const out = await image.toFormat("png").toBuffer({ resolveWithObject: true });
+  return { buffer: out.data, width: out.info.width, height: out.info.height };
+}
+
 /** Cut one named (or explicit) region out of a normalized card image. */
 export async function cropRegion(
   normalized: Buffer,
