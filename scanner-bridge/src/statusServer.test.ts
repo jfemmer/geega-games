@@ -14,6 +14,7 @@ import {
 import { createRecognizerStatus, unavailableRecognizerStatus } from "./recognizer/status.js";
 import type { WatcherControl } from "./watcher.js";
 import type { ScanDeviceCheckResult, ScanResult } from "./naps2Scan.js";
+import { BRIDGE_VERSION } from "./version.js";
 
 // Real HTTP requests against a real (ephemeral, 127.0.0.1-bound) instance —
 // this is the exact same server the admin dashboard's Scan panel talks to,
@@ -358,6 +359,19 @@ describe("startStatusServer", () => {
     const body = (await (await fetch(`${baseUrl}/status`)).json()) as BridgeStatus;
     expect(body).toMatchObject({ batchFinish: "nonfoil", scanDpi: 300, totalCardsRecognizedOnPc: 0 });
     expect(body.recognizer).toMatchObject({ state: "off", library: null });
+  });
+
+  it("GET /status says which version is running, and an update on disk that isn't running yet", async () => {
+    let body = (await (await fetch(`${baseUrl}/status`)).json()) as BridgeStatus;
+    expect(body.version).toBe(BRIDGE_VERSION);
+    expect(body.pendingUpdate).toBeNull();
+
+    // Checked when the dashboard asks, so a `git pull` while running shows up.
+    const checkForUpdate = vi.fn(() => ({ version: "9.9.9", step: "build" as const }));
+    serverOptions.checkForUpdate = checkForUpdate;
+    body = (await (await fetch(`${baseUrl}/status`)).json()) as BridgeStatus;
+    expect(checkForUpdate).toHaveBeenCalledTimes(1);
+    expect(body.pendingUpdate).toEqual({ version: "9.9.9", step: "build" });
   });
 });
 

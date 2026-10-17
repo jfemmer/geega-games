@@ -5,6 +5,7 @@ import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SignInError, type AuthedClient } from "./auth.js";
 import { describePortConflict, signInRetryDelayMs, startBridge, type RecognizerModules, type RunningBridge } from "./bridge.js";
+import { BRIDGE_VERSION } from "./version.js";
 import type { BridgeConfig } from "./config.js";
 import { createRecognizerStatus } from "./recognizer/status.js";
 import type { BridgeStatus } from "./statusServer.js";
@@ -237,9 +238,27 @@ describe("startBridge", () => {
 });
 
 describe("describePortConflict", () => {
+  const runningBridge = (extra: Record<string, unknown>) =>
+    vi.fn(async () =>
+      Response.json({ watchFolder: "C:\\Scans", startedAt: "2026-10-13T21:00:00.000Z", ...extra }),
+    ) as unknown as typeof fetch;
+
   it("names another program when whatever holds the port isn't a bridge", async () => {
     const fetchImpl = vi.fn(async () => new Response("<html>", { status: 200 })) as unknown as typeof fetch;
     expect(await describePortConflict(8787, fetchImpl)).toMatch(/Another program on this PC is using port 8787/);
+  });
+
+  it("points at the copy that's already running when it's this same version", async () => {
+    const why = await describePortConflict(8787, runningBridge({ version: BRIDGE_VERSION }));
+    expect(why).toMatch(/already running on this PC/);
+    expect(why).toMatch(/Use that one/);
+  });
+
+  it("says an update isn't finished while an older copy keeps running", async () => {
+    const unversioned = await describePortConflict(8787, runningBridge({}));
+    expect(unversioned).toMatch(new RegExp(`An older version of the scanner bridge is still running .*this is version ${BRIDGE_VERSION.replace(/\./g, "\\.")}`));
+    expect(unversioned).toMatch(/To finish updating, stop the old one .*Task Manager\), then start the bridge again/);
+    expect(await describePortConflict(8787, runningBridge({ version: "1.0.5" }))).toMatch(/^Version 1\.0\.5 of the scanner bridge is still running/);
   });
 });
 

@@ -36,6 +36,7 @@ import type {
   BatchCommitResult,
   CardScan,
   Page,
+  QuickApproveResult,
   ScanReviewPatch,
   ScanSession,
 } from "../types";
@@ -497,5 +498,13 @@ export const supabaseScanRepository: ScanRepository = {
     );
     const [mapped] = await mapScansWithImages([row]);
     return mapped;
+  },
+
+  async quickApprove(sessionId, request, _reviewer): Promise<QuickApproveResult> {
+    // The reviewer comes from the verified staff session on the server.
+    return adminFetch<QuickApproveResult>(`/api/admin/scan-sessions/${sessionId}/approve`, {
+      method: "POST",
+      body: request,
+    });
   },
 };

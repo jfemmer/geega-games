@@ -5,7 +5,7 @@ import { Icon } from "../components/ui/Icon";
 import { inventoryRepository, scryfallRepository } from "../repositories";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
-import { priceForFinish } from "../components/cards/PrintingPreview";
+import { priceForFinish } from "../utils/pricing";
 import { FINISH_LABELS } from "../utils/labels";
 import type { CardCondition, CardFinish } from "../types";
 

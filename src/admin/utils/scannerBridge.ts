@@ -6,6 +6,26 @@
 export const SCANNER_BRIDGE_URL =
   (import.meta.env.VITE_SCANNER_BRIDGE_URL as string | undefined) ?? "http://127.0.0.1:8787";
 
+/**
+ * The scanner bridge version this site was released with: the "version" in
+ * scanner-bridge/package.json (tests/scannerBridgeVersion.test.ts keeps the
+ * two equal). The Scanner panel asks for an update when the bridge on the
+ * scanning PC reports an older one, or none (bridges before 1.1.0 didn't).
+ */
+export const LATEST_BRIDGE_VERSION = "1.1.0";
+
+/** Compares dotted version numbers: negative when a is older than b ("1.9.2" < "1.10.0"). */
+export function compareVersions(a: string, b: string): number {
+  const parts = (v: string) => v.split(".").map((p) => Number.parseInt(p, 10) || 0);
+  const pa = parts(a);
+  const pb = parts(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
 /** The bridge isn't running on this computer (or the browser blocked local network access). */
 export class BridgeUnreachableError extends Error {
   constructor() {

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { loadConfig } from "./config.js";
 import { startBridge } from "./bridge.js";
+import { BRIDGE_VERSION, pendingUpdate } from "./version.js";
 
 // The bridge's entry point (`npm start`). Startup order and why: bridge.ts.
 //
@@ -49,13 +50,26 @@ function warnIfOldNode(): void {
   }
 }
 
+/** Half-finished update: the files in this folder are newer than the code running. */
+function warnIfUpdatePending(): void {
+  const pending = pendingUpdate(BRIDGE_DIR);
+  if (!pending) return;
+  console.warn(
+    pending.step === "build"
+      ? `[geega-scanner-bridge] The files in ${BRIDGE_DIR} are version ${pending.version}, but they haven't been built: ` +
+          `this is still version ${BRIDGE_VERSION}. Stop the bridge, run npm install and npm run build in that folder, then start it again.`
+      : `[geega-scanner-bridge] Version ${pending.version} is built in ${BRIDGE_DIR}, but this is version ${BRIDGE_VERSION}. Restart the bridge.`,
+  );
+}
+
 async function main() {
   console.log(
-    `[geega-scanner-bridge] Starting… (settings: ${existsSync(envFile) ? envFile : `no .env found in ${BRIDGE_DIR}`})`,
+    `[geega-scanner-bridge] Starting version ${BRIDGE_VERSION}… (settings: ${existsSync(envFile) ? envFile : `no .env found in ${BRIDGE_DIR}`})`,
   );
   warnIfOldNode();
+  warnIfUpdatePending();
   const config = loadConfig();
-  const bridge = await startBridge(config);
+  const bridge = await startBridge(config, { bridgeDir: BRIDGE_DIR });
   await bridge.ready;
   const recognizer = bridge.status.recognizer;
   console.log(

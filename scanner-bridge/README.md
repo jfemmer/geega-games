@@ -127,6 +127,18 @@ run `git pull`, `npm install`, `npm run build`, and start it again. All
 three steps matter: a new version can add packages, and `npm install` is
 what fetches them. Your `.env`, card library and image cache are kept.
 
+"Stop it" includes the copy Task Scheduler starts at log-on (it has no
+window): end its **Node.js** task in Task Manager. Otherwise that old copy
+keeps running, and the new one refuses to start because the old one has its
+port (it says so, naming both versions).
+
+The dashboard's Scanner panel shows which version is running ("Bridge version
+1.1.0, running since …") and tells you when it's out of date or an update is
+only half done: **Finish updating** means the files were pulled but not
+built (`npm install`, `npm run build`, restart); **Restart … to finish
+updating** means they were built but the old version is still running. Every
+recognized card also records the version that identified it.
+
 The bridge reads `.env` from this folder, whichever folder it's started
 from. If it ever stops on its own, the reason is also written to
 `bridge-error.log` here, which is useful when Task Scheduler runs it without
@@ -317,6 +329,21 @@ crooked scan), the bridge identifies each card by its **picture**:
    are shown as pictures; you pick), or *none* (use Find match). "Sure" is
    only given when every look-alike was ruled out.
 
+**The List** (Scryfall set PLST) reprints cards down to the original's own
+set symbol and collector line; only a small planeswalker symbol in the
+bottom-left corner differs. A scan can't tell them apart, so The List's copy
+is never picked over the original: the original (far more common) is listed
+first and the card comes up as *check*, with that hint. The website applies
+the same rule to results from older bridge versions.
+
+Scans the fi-8170's driver trims close to the card are straightened from the
+card's edges, even when the driver trims the leading margin away entirely
+(the card is then centred in the image, which is accurate to a few pixels).
+A card is only flagged "may be cut off" when its outline runs more than 1 %
+of its length past the image's edge: a sheet feeder's scale along the feed
+is only that exact, and that little border missing doesn't change which card
+it is.
+
 Each card takes about half a second on a typical desktop PC (about a second
 on a slow two-core machine) — enough to keep up with the scanner's ~70 cards
 a minute. Cards already in the session never wait for the rest of the
@@ -379,6 +406,22 @@ folder of Scryfall images kept for the pixel check (default 2 GB).
   whether the first suggestion was right. After your first few hundred
   reviewed cards, the "sure" cut-off can be tuned from that.
 
+### Approving a batch quickly
+
+**Quick approve** in Scan Review shows every card of the session that isn't
+in inventory yet as your scan next to the printing it matched. Sure matches
+are ticked already; close calls and unsure matches show their best guess,
+one tap to tick (tap the pictures to compare up close or pick another
+printing). Choose the condition for cards nobody graded (remembered on that
+device) and, optionally, a storage location, then **Add to inventory**:
+everything ticked is approved at today's Scryfall price for its finish
+(raised to your price floors) and added in one go. Cards that can't be (no
+Scryfall price, say) are marked in red with what to do.
+
+In the one-card review screen, **Enter** approves the card and moves on; on
+a card with no match yet it approves suggestion **A** in the same step, with
+the default condition shown above the list unless you set one (keys 1–5).
+
 ### Re-running a card
 
 "Re-run" in Scan Review re-recognizes a card with this PC's current library
@@ -414,6 +457,14 @@ on this PC.
 3. Open `http://127.0.0.1:8787/status` in Chrome on this PC. If that shows
    text, the bridge is fine and the browser is the problem: see the next
    two entries (the panel usually names which one).
+
+**"Update the scanner bridge on this PC"** (or **Finish updating** /
+**Restart the scanner bridge to finish updating**): the PC is running an
+older version than the website expects. Scanning keeps working, but card
+recognition misses the latest fixes. Do what the panel says: usually stop
+the bridge (including its Task Scheduler copy, as **Node.js** in Task
+Manager), run `git pull`, `npm install` and `npm run build` in this folder,
+and start it again.
 
 **"Chrome is blocking the scanner bridge"**: this site was denied access to
 apps on this PC, and Chrome won't ask again by itself. Click the icon at the

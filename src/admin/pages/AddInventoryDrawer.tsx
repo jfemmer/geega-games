@@ -4,10 +4,8 @@ import { Button } from "../components/ui/Button";
 import { TextField, TextArea, SelectField } from "../components/ui/Field";
 import { Icon } from "../components/ui/Icon";
 import { ScryfallSearch } from "../components/cards/ScryfallSearch";
-import {
-  SelectedPrintingPreview,
-  priceForFinish,
-} from "../components/cards/PrintingPreview";
+import { SelectedPrintingPreview } from "../components/cards/PrintingPreview";
+import { priceForFinish } from "../utils/pricing";
 import { inventoryRepository } from "../repositories";
 import { useToast } from "../hooks/useToast";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";

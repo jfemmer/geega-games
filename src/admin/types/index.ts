@@ -1106,6 +1106,33 @@ export interface BatchCommitResult {
   failures: { scanId: string; sequenceNumber: number; reason: string }[];
 }
 
+/** One card in a Quick approve batch: the printing staff confirmed for it. */
+export interface QuickApproveItem {
+  scanId: string;
+  scryfallId: string;
+  /** A price typed in Quick approve (otherwise the card's own, else today's Scryfall price). */
+  priceCents?: number | null;
+}
+
+export interface QuickApproveRequest {
+  items: QuickApproveItem[];
+  /** For cards nobody has graded yet. */
+  condition: CardCondition;
+  /** For cards without a storage location yet. */
+  storageLocation?: string | null;
+  /** Add the approved cards to inventory straight away (else they're left "ready"). */
+  addToInventory: boolean;
+}
+
+export interface QuickApproveResult {
+  /** Marked ready (and, with addToInventory, then added). */
+  approvedCount: number;
+  addedCount: number;
+  createdCount: number;
+  incrementedCount: number;
+  failures: { scanId: string; sequenceNumber: number; reason: string }[];
+}
+
 /* ------------------------------------------------------------------ *
  * Buying Leads — Sell Your Cards / Sell Your Collection submissions
  * ------------------------------------------------------------------ */

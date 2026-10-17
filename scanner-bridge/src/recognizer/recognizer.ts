@@ -1,3 +1,4 @@
+import { BRIDGE_VERSION } from "../version.js";
 import { findCard } from "./cardFinder.js";
 import { collectorEvidence, collectorLines, printedSetCodes, printedSetMatches, type TextLine, type TextReader } from "./collectorOcr.js";
 import { decide, DEFAULT_THRESHOLDS, type Contender, type DecisionResult, type Thresholds } from "./decide.js";
@@ -31,9 +32,30 @@ import {
 //      art, telling look-alikes apart by the spots where they differ;
 //   5. read the collector number if two printings still look identical, and
 //      on every sure match, to catch a reprint the library doesn't have yet;
-//   6. decide sure / check / none (decide.ts).
+//   6. decide sure / check / none (decide.ts). The List's copy of a printing
+//      is never picked over the original on the picture (isListCopyOf).
 
-export const ENGINE_VERSION = "1.0.0";
+/** Recorded with every result (recognition_data.scannerPc.version): the bridge build that produced it. */
+export const ENGINE_VERSION = BRIDGE_VERSION;
+
+/** "ORI-153": Scryfall numbers The List's copy of a printing after the original (Magic Origins #153). */
+const LIST_COPY_NUMBER = /^([A-Za-z0-9]{2,6})-([A-Za-z0-9★†]+)$/;
+
+/**
+ * True when `copy` is The List's reprint of `original` (Scryfall set PLST).
+ * It copies the original down to its set symbol and collector line; only a
+ * small planeswalker symbol in the bottom-left corner differs. In a scan
+ * neither the picture nor the collector number can tell them apart, and a
+ * newer, sharper Scryfall scan of the copy can match a little better (9 of
+ * 10 Magic Origins Lightning Javelins in the shop's first big batch were
+ * picked as the List copy), so the copy is never picked over the original on
+ * the picture: the original is far more common. Same rule as the website's
+ * src/admin/utils/listReprints.ts.
+ */
+export function isListCopyOf(copy: Pick<CatalogEntry, "cn">, original: Pick<CatalogEntry, "set" | "cn">): boolean {
+  const match = LIST_COPY_NUMBER.exec(copy.cn.trim());
+  return match !== null && match[1].toUpperCase() === original.set.toUpperCase() && match[2].toLowerCase() === original.cn.toLowerCase();
+}
 
 const SEARCH_K = 40;
 /** A side whose best match pixel-checks at least this well is the face, the right way up. */
@@ -261,12 +283,17 @@ export class CardRecognizer {
         tiles = differingTiles(ca.views, cb.views);
         pairTiles.set(key, tiles);
       }
-      return discriminate(scanViews, ca, cb, tiles);
+      const d = discriminate(scanViews, ca, cb, tiles);
+      // Never in favour of The List's copy over its original (isListCopyOf).
+      if (isListCopyOf(a.entry, b.entry)) return { ...d, margin: Math.min(0, d.margin) };
+      if (isListCopyOf(b.entry, a.entry)) return { ...d, margin: Math.max(0, d.margin) };
+      return d;
     };
 
     const blockSure =
       warnings.find((w) => /two cards|cut off|edges|part of a card|card-shaped|one flat card|blank|reference images/i.test(w)) ?? null;
-    let decision: DecisionResult = decide(contenders, judge, this.thresholds, { blockSure });
+    const mayOutrank = (a: Contender, b: Contender) => !isListCopyOf(a.entry, b.entry);
+    let decision: DecisionResult = decide(contenders, judge, this.thresholds, { blockSure, mayOutrank });
     t = lap("decide", t);
 
     // Register the card exactly against its best match: the pixel check
@@ -294,7 +321,12 @@ export class CardRecognizer {
     if (decision.needsOcr && this.deps.reader) {
       cornerLines = await this.deps.reader.readLines(collectorLines(faceImage));
       for (const c of contenders) c.ocr = collectorEvidence(cornerLines, c.entry.set, c.entry.cn);
-      decision = decide(contenders, judge, this.thresholds, { blockSure });
+      // The List's copy prints the original's collector line, so what's read can't tell them apart.
+      for (const copy of contenders) {
+        const original = contenders.find((o) => isListCopyOf(copy.entry, o.entry));
+        if (original) copy.ocr = original.ocr;
+      }
+      decision = decide(contenders, judge, this.thresholds, { blockSure, mayOutrank });
     }
     // A "sure" match is cross-checked against the set code printed in the
     // corner of modern cards. If the corner names a different set, the
@@ -313,12 +345,31 @@ export class CardRecognizer {
         );
         decision = decide(contenders, judge, this.thresholds, {
           blockSure: `its corner reads "${read}" — that printing may be missing from the card list.`,
+          mayOutrank,
         });
       }
     }
     if (cornerLines) {
       ocrText = cornerLines.map((l) => l.text).filter(Boolean).join(" / ") || null;
       t = lap("read", t);
+    }
+
+    // Left with the original and its List copy: say what tells them apart.
+    const winner = decision.ranked[0]?.contender;
+    if (
+      winner &&
+      decision.decision === "check" &&
+      decision.ambiguousWith.length > 0 &&
+      decision.ambiguousWith.every((c) => isListCopyOf(c.entry, winner.entry))
+    ) {
+      const original = `${winner.entry.set} #${winner.entry.cn}`;
+      const copy = decision.ambiguousWith[0].entry;
+      decision = {
+        ...decision,
+        reason:
+          `${winner.entry.name}: ${original} or The List's copy of it (${copy.set} #${copy.cn}): they look the same in a scan. ` +
+          `The List copy has a small planeswalker symbol in the bottom-left corner; without one, it's ${original}.`,
+      };
     }
 
     if (decision.decision === "none" && sources.length === 1) {

@@ -55,11 +55,26 @@ const RATE_LIMIT_MAX_RETRIES = 2;
 const RATE_LIMIT_RETRY_DELAY_MS = 400;
 
 async function scryfallGetUrl<T>(url: string, attempt = 0): Promise<T> {
+  return scryfallRequest<T>(url, undefined, attempt);
+}
+
+/** A GET, or a POST with a JSON body (`/cards/collection`), with the timeout and 429 handling above. */
+async function scryfallRequest<T>(url: string, jsonBody?: unknown, attempt = 0): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(url, { headers: COMMON_HEADERS, signal: controller.signal });
+    res = await fetch(
+      url,
+      jsonBody === undefined
+        ? { headers: COMMON_HEADERS, signal: controller.signal }
+        : {
+            method: "POST",
+            headers: { ...COMMON_HEADERS, "Content-Type": "application/json" },
+            body: JSON.stringify(jsonBody),
+            signal: controller.signal,
+          },
+    );
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new HttpError(504, "Scryfall took too long to respond. Try again.");
@@ -72,7 +87,7 @@ async function scryfallGetUrl<T>(url: string, attempt = 0): Promise<T> {
   if (res.status === 429) {
     if (attempt < RATE_LIMIT_MAX_RETRIES) {
       await sleep(RATE_LIMIT_RETRY_DELAY_MS * (attempt + 1));
-      return scryfallGetUrl<T>(url, attempt + 1);
+      return scryfallRequest<T>(url, jsonBody, attempt + 1);
     }
     throw new HttpError(429, "Scryfall rate limit reached. Retry shortly.");
   }
@@ -87,6 +102,29 @@ async function scryfallGetUrl<T>(url: string, attempt = 0): Promise<T> {
 
 async function scryfallGet<T>(path: string): Promise<T> {
   return scryfallGetUrl<T>(`${BASE}${path}`);
+}
+
+/** Scryfall's /cards/collection takes at most this many identifiers per request. */
+const COLLECTION_CHUNK = 75;
+
+/**
+ * Many printings by Scryfall id, today's prices included, in as few requests
+ * as Scryfall allows (75 per POST /cards/collection) — for approving a whole
+ * batch of scans at once instead of one GET per card. Ids Scryfall doesn't
+ * know are simply missing from the map.
+ */
+export async function scryfallCollection(ids: string[]): Promise<Map<string, ScryfallCard>> {
+  const unique = [...new Set(ids.filter((id) => UUID_RE_SRV.test(id)))];
+  const out = new Map<string, ScryfallCard>();
+  for (let i = 0; i < unique.length; i += COLLECTION_CHUNK) {
+    if (i > 0) await sleep(PAGE_DELAY_MS);
+    const chunk = unique.slice(i, i + COLLECTION_CHUNK);
+    const list = await scryfallRequest<ScryfallList>(`${BASE}/cards/collection`, {
+      identifiers: chunk.map((id) => ({ id })),
+    });
+    for (const card of list.data ?? []) out.set(card.id, card);
+  }
+  return out;
 }
 
 export interface ScryfallSearchOptions {

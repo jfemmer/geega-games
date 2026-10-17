@@ -9,6 +9,8 @@ import type {
   AdminActivity,
   BatchCommitPreview,
   BatchCommitResult,
+  QuickApproveRequest,
+  QuickApproveResult,
   Campaign,
   CardCondition,
   CardFinish,
@@ -284,6 +286,14 @@ export interface ScanRepository {
   ): Promise<BatchCommitResult>;
   /** Commit a single reviewed scan to inventory (scan_add movement). */
   commitScan(scanId: string, reviewer: string): Promise<CardScan>;
+  /**
+   * Quick approve: confirm each card's printing, fill finish / price /
+   * condition / location the same way approving one card does, and (with
+   * addToInventory) add them to inventory, all in one call. A card that
+   * can't be approved is reported and left as it was; the rest go through.
+   * Send at most QUICK_APPROVE_BATCH items per call.
+   */
+  quickApprove(sessionId: string, request: QuickApproveRequest, reviewer: string): Promise<QuickApproveResult>;
 }
 
 /* ------------------------------------------------------------------ *

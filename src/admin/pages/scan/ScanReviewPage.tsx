@@ -25,12 +25,14 @@ import {
   recognitionProvider,
 } from "../../repositories";
 import { useCurrentAdmin } from "../../hooks/useCurrentAdmin";
+import { useDefaultCondition } from "../../hooks/useDefaultCondition";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
 import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS, SCAN_MODE_LABELS } from "../../utils/labels";
-import { approvalPatch, matchDefaults } from "../../utils/scanApproval";
+import { listTieAdvice, preferOriginals } from "../../utils/listReprints";
+import { approvalPatch, listTieOriginal, matchDefaults } from "../../utils/scanApproval";
+import { matchesScanFilter } from "../../utils/scanFilters";
 import { BridgeUnreachableError, postToBridge } from "../../utils/scannerBridge";
-import { ApproveSureModal } from "./ApproveSureModal";
 import type {
   BatchCommitPreview,
   CardCondition,
@@ -84,24 +86,38 @@ function centsFromInput(v: string): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
+const NO_SCANS: CardScan[] = [];
+
+/**
+ * The suggested printings in the order they're offered (A, B, C): results
+ * stored before the server put an original ahead of The List's copy of it get
+ * the same order here.
+ */
+function suggestions(scan: CardScan): RecognitionCandidate[] {
+  return preferOriginals(scan.recognitionData?.candidatePrintings ?? [], (c) => c).ranked;
+}
+
 export function ScanReviewPage({
   sessionId,
+  query,
   onNavigate,
 }: {
   sessionId: string;
+  /** ?scan=<id> opens that card (Quick approve's "Open in review"). */
+  query?: URLSearchParams;
   onNavigate: (path: string) => void;
 }) {
   const toast = useToast();
   const currentAdmin = useCurrentAdmin();
   const [filter, setFilter] = useState<ScanFilterKey>("all");
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(() => query?.get("scan") ?? null);
+  const [defaultCondition, setDefaultCondition] = useDefaultCondition();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [findMatchFor, setFindMatchFor] = useState<CardScan | null>(null);
   const [commitPreview, setCommitPreview] = useState<BatchCommitPreview | null>(null);
   const [committing, setCommitting] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [approveSureOpen, setApproveSureOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CardScan | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -127,20 +143,55 @@ export function ScanReviewPage({
     [sessionId, filter, nonce],
   );
 
-  const scans = useMemo(() => scansState.data?.rows ?? [], [scansState.data]);
+  // The queue, kept here so one card's change updates (or drops) just that
+  // row instead of reloading the whole list after every keypress. Fresh rows
+  // from the server replace it (adjusted during render, not in an effect, so
+  // a new tab never shows the old tab's rows for a frame).
+  const baseRows = scansState.data?.rows;
+  const [queue, setQueue] = useState<{ base: CardScan[] | undefined; rows: CardScan[] }>({ base: undefined, rows: [] });
+  if (queue.base !== baseRows) setQueue({ base: baseRows, rows: baseRows ?? NO_SCANS });
+  const scans = useMemo(() => (queue.base === baseRows ? queue.rows : (baseRows ?? NO_SCANS)), [queue, baseRows]);
   const active = useMemo(
     () => scans.find((s) => s.id === activeId) ?? null,
     [scans, activeId],
   );
 
   const reloadAll = useCallback(() => setNonce((n) => n + 1), []);
+  const reloadSession = session.reload;
+  const reloadCounts = counts.reload;
 
-  // Keep an active row selected as the list changes.
+  /** The card after `id` in the queue (or before it, at the end): where review goes next. */
+  const neighborOf = useCallback(
+    (id: string): string | null => {
+      const idx = scans.findIndex((s) => s.id === id);
+      if (idx < 0) return null;
+      return scans[idx + 1]?.id ?? scans[idx - 1]?.id ?? null;
+    },
+    [scans],
+  );
+
+  /** One card changed: update its row, or drop it from a tab it no longer fits; refresh the counts. */
+  const applyLocal = useCallback(
+    (updated: Partial<CardScan> & { id: string }) => {
+      setQueue((prev) => ({
+        ...prev,
+        rows: prev.rows.flatMap((s) => {
+          if (s.id !== updated.id) return [s];
+          const merged = { ...s, ...updated };
+          return matchesScanFilter(merged, filter) ? [merged] : [];
+        }),
+      }));
+      reloadSession();
+      reloadCounts();
+    },
+    [filter, reloadSession, reloadCounts],
+  );
+
+  // Keep an active row selected as the list changes. (An empty list —
+  // still loading, or a tab with nothing in it — leaves the choice alone, so
+  // a card opened from a link is still selected once the list arrives.)
   useEffect(() => {
-    if (scans.length === 0) {
-      setActiveId(null);
-      return;
-    }
+    if (scans.length === 0) return;
     if (!activeId || !scans.some((s) => s.id === activeId)) {
       setActiveId(scans[0].id);
     }
@@ -164,47 +215,57 @@ export function ScanReviewPage({
   const patchActive = useCallback(
     async (patch: Parameters<typeof scanRepository.updateScan>[1]) => {
       if (!active) return;
-      await scanRepository.updateScan(active.id, patch);
-      reloadAll();
+      const updated = await scanRepository.updateScan(active.id, patch);
+      applyLocal({ ...patch, ...updated, id: active.id });
     },
-    [active, reloadAll],
+    [active, applyLocal],
   );
 
   // Enter: approve with the defaults a confirmed match gets — finish from
   // the batch's foil switch, today's Scryfall price for that finish (raised
-  // to the price floors) unless a price was typed. Condition stays a person's
-  // call (keys 1–5).
+  // to the price floors) unless a price was typed, and the default condition
+  // when nobody graded the card (keys 1–5 set one). A card with no match yet
+  // but suggestions gets the first one (A) in the same step.
   const approveActive = useCallback(async () => {
     if (!active) return;
-    if (!active.selectedScryfallId) {
+    const suggestion = active.selectedScryfallId ? null : (suggestions(active)[0] ?? null);
+    const scryfallId = active.selectedScryfallId ?? suggestion?.scryfallId ?? null;
+    if (!scryfallId) {
       toast.error("Find a Scryfall match before approving.");
       return;
     }
-    if (!active.confirmedCondition) {
-      toast.error("Set a condition (keys 1–5) before approving.");
-      return;
-    }
-    let printing = active.selectedPrinting;
-    const fillsPrice = active.priceCents == null;
-    if (fillsPrice || !active.selectedFinish) {
-      printing = (await scryfallRepository.getByScryfallId(active.selectedScryfallId).catch(() => null)) ?? printing;
+    let printing = suggestion ? null : active.selectedPrinting;
+    const fillsPrice = suggestion !== null || active.priceCents == null;
+    if (fillsPrice || !active.selectedFinish || !printing) {
+      printing = (await scryfallRepository.getByScryfallId(scryfallId).catch(() => null)) ?? printing;
     }
     if (!printing) {
       toast.error("Couldn't load this printing's details — try again.");
       return;
     }
-    const result = approvalPatch(active, printing, priceFloors);
+    const result = approvalPatch(suggestion ? { ...active, priceCents: null } : active, printing, priceFloors, defaultCondition);
     if (!result.ok) {
       toast.error(result.reason);
       return;
     }
-    await scanRepository.updateScan(active.id, result.patch);
-    if (fillsPrice && result.patch.priceCents != null) {
+    const patch = suggestion
+      ? { selectedScryfallId: printing.scryfallId, selectedPrinting: printing, ...result.patch }
+      : result.patch;
+    const next = neighborOf(active.id);
+    const updated = await scanRepository.updateScan(active.id, patch);
+    applyLocal({ ...patch, ...updated, id: active.id });
+    const what = suggestion ? `${printing.cardName} (${printing.setCode} #${printing.collectorNumber})` : null;
+    const price = result.patch.priceCents ?? active.priceCents;
+    if (what) {
+      toast.success(`Approved ${what}${price != null ? ` at ${formatCents(price)}` : ""}${result.patch.confirmedCondition ? `, ${result.patch.confirmedCondition}` : ""}.`);
+    } else if (fillsPrice && result.patch.priceCents != null) {
       toast.success(`Approved at ${formatCents(result.patch.priceCents)} (Scryfall price).`);
     }
-    reloadAll();
-    moveActive(1);
-  }, [active, reloadAll, moveActive, toast, priceFloors]);
+    if (next) {
+      setActiveId(next);
+      rowRefs.current.get(next)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [active, applyLocal, neighborOf, toast, priceFloors, defaultCondition]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -222,17 +283,21 @@ export function ScanReviewPage({
       // Finish: kept if valid, else the batch's foil switch, else the first
       // finish; price: kept if typed, else Scryfall's for that finish, floored.
       const defaults = matchDefaults(scan, printing, priceFloors);
-      await scanRepository.updateScan(scan.id, {
+      const patch = {
         selectedScryfallId: printing.scryfallId,
         selectedPrinting: printing,
         selectedFinish: defaults.selectedFinish,
         priceCents: defaults.priceCents,
-      });
+      };
+      const updated = await scanRepository.updateScan(scan.id, patch);
+      // A newly chosen match moves the card to "matched" (the server does the
+      // same, and its copy of the card wins when it sends one back).
+      const expected: Partial<CardScan> = { ...patch, reviewStatus: scan.reviewStatus === "added" ? scan.reviewStatus : "matched" };
+      applyLocal({ ...expected, ...updated, id: scan.id });
       setActiveId(scan.id);
-      reloadAll();
       toast.success(`Matched to ${printing.cardName} (${printing.setName}).`);
     },
-    [reloadAll, toast, priceFloors],
+    [applyLocal, toast, priceFloors],
   );
 
   async function handleMatchChosen(printing: CardPrinting) {
@@ -303,7 +368,7 @@ export function ScanReviewPage({
       const tag = (e.target as HTMLElement)?.tagName;
       const typing =
         tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
-      if (typing || findMatchFor || bulkOpen || shortcutsOpen || commitPreview || approveSureOpen) return;
+      if (typing || findMatchFor || bulkOpen || shortcutsOpen || commitPreview) return;
 
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -329,7 +394,7 @@ export function ScanReviewPage({
       } else if (CANDIDATE_KEYS.includes(e.key.toLowerCase()) && !e.metaKey && !e.ctrlKey && !e.altKey) {
         // A / B / C pick one of the suggested printings (when there's no match yet).
         const candidate = active && !active.selectedPrinting
-          ? active.recognitionData?.candidatePrintings[CANDIDATE_KEYS.indexOf(e.key.toLowerCase())]
+          ? suggestions(active)[CANDIDATE_KEYS.indexOf(e.key.toLowerCase())]
           : undefined;
         if (candidate && active) {
           e.preventDefault();
@@ -342,7 +407,7 @@ export function ScanReviewPage({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, moveActive, approveActive, patchActive, selectCandidate, findMatchFor, bulkOpen, shortcutsOpen, commitPreview, approveSureOpen]);
+  }, [active, moveActive, approveActive, patchActive, selectCandidate, findMatchFor, bulkOpen, shortcutsOpen, commitPreview]);
 
   async function deleteScan() {
     if (!deleteTarget) return;
@@ -392,6 +457,8 @@ export function ScanReviewPage({
 
   const countMap = counts.data ?? {};
   const readyCount = countMap.ready ?? 0;
+  // Cards Quick approve can take: everything not in inventory or rejected.
+  const quickCount = Math.max(0, (countMap.all ?? 0) - (countMap.added ?? 0) - (countMap.rejected ?? 0));
 
   return (
     <>
@@ -420,21 +487,21 @@ export function ScanReviewPage({
               Bulk ({selectedIds.size})
             </Button>
             <Button
-              variant="secondary"
-              icon="check"
-              disabled={(countMap.matched ?? 0) === 0}
-              onClick={() => setApproveSureOpen(true)}
-              title="Mark every card recognition was sure about as ready, in one go."
-            >
-              Approve sure matches
-            </Button>
-            <Button
-              variant="primary"
+              variant={readyCount > 0 ? "secondary" : "ghost"}
               icon="checkCircle"
               disabled={readyCount === 0}
               onClick={openCommit}
             >
               Add {readyCount} ready to inventory
+            </Button>
+            <Button
+              variant="primary"
+              icon="check"
+              disabled={quickCount === 0}
+              onClick={() => onNavigate(`${ADMIN_BASE}/scanning/${sessionId}/approve`)}
+              title="Every card on one screen: tick the right ones, add them to inventory in one go."
+            >
+              Quick approve
             </Button>
           </div>
         }
@@ -442,6 +509,7 @@ export function ScanReviewPage({
 
       {session.data && <ProgressBar session={session.data} />}
 
+      <div className="gg-scanfilters-row">
       <div className="gg-filtertabs" role="tablist" aria-label="Filter scans">
         {FILTERS.map((f) => (
           <button
@@ -459,6 +527,17 @@ export function ScanReviewPage({
             <span className="gg-filtertab__count">{countMap[f.key] ?? 0}</span>
           </button>
         ))}
+      </div>
+        <label className="gg-scandefault" title="Used when you approve a card nobody graded (keys 1–5 set one).">
+          Default condition
+          <select value={defaultCondition} onChange={(e) => setDefaultCondition(e.target.value as CardCondition)}>
+            {CONDITIONS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="gg-scanlayout">
@@ -501,6 +580,7 @@ export function ScanReviewPage({
             <ScanDetail
               key={active.id}
               scan={active}
+              defaultCondition={defaultCondition}
               scanMode={session.data?.scanMode ?? "both"}
               onFindMatch={() => setFindMatchFor(active)}
               onPatch={patchActive}
@@ -620,28 +700,6 @@ export function ScanReviewPage({
         onCancel={() => !deleting && setDeleteTarget(null)}
         onConfirm={deleteScan}
       />
-      {approveSureOpen && (
-        <ApproveSureModal
-          sessionId={sessionId}
-          priceFloors={priceFloors}
-          onClose={() => setApproveSureOpen(false)}
-          onDone={({ approved, skipped }) => {
-            // What's left is the close calls: show those next (still in scan
-            // order, so each is easy to find in the stack).
-            const closeCalls = countMap.needs_manual_match ?? 0;
-            if (approved > 0 && closeCalls > 0) setFilter("needs_manual_match");
-            reloadAll();
-            const leftover = closeCalls > 0 ? ` ${closeCalls} close call${closeCalls === 1 ? "" : "s"} to pick from next.` : "";
-            if (approved > 0) {
-              toast.success(
-                `${approved} card${approved === 1 ? "" : "s"} approved${skipped ? ` — ${skipped} still need a look` : ""}.${leftover}`,
-              );
-            } else if (skipped > 0) {
-              toast.error(`None approved — ${skipped} need a look.`);
-            }
-          }}
-        />
-      )}
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>
   );
@@ -790,6 +848,7 @@ function ScanRow({
 
 function ScanDetail({
   scan,
+  defaultCondition,
   scanMode,
   onFindMatch,
   onPatch,
@@ -801,6 +860,8 @@ function ScanDetail({
   onDelete,
 }: {
   scan: CardScan;
+  /** What Enter approves an ungraded card as. */
+  defaultCondition: CardCondition;
   scanMode: ScanRecognitionMode;
   onFindMatch: () => void;
   onPatch: (patch: Parameters<typeof scanRepository.updateScan>[1]) => Promise<void>;
@@ -827,6 +888,9 @@ function ScanDetail({
   }, [scan.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const finishes = scan.selectedPrinting?.availableFinishes ?? [];
+  const offered = suggestions(scan);
+  // Matched to The List's copy of a printing whose original was suggested too.
+  const listOriginal = listTieOriginal(scan);
 
   return (
     <div className="gg-scandetail__inner">
@@ -859,9 +923,9 @@ function ScanDetail({
               printing={scan.selectedPrinting}
               finish={scan.selectedFinish}
             />
-          ) : scan.recognitionData && scan.recognitionData.candidatePrintings.length > 0 ? (
+          ) : scan.recognitionData && offered.length > 0 ? (
             <CandidateSuggestions
-              candidates={scan.recognitionData.candidatePrintings}
+              candidates={offered}
               closeCall={scan.recognitionData.engine === "scanner_pc" && scan.recognitionData.scannerPc?.decision === "check"}
               onSelect={onSelectCandidate}
               onSearchInstead={onFindMatch}
@@ -877,6 +941,18 @@ function ScanDetail({
           )}
         </div>
       </div>
+
+      {listOriginal && scan.selectedPrinting && (
+        <div className="gg-inline-note gg-inline-note--warning">
+          <Icon name="warning" size={16} />
+          <div>
+            <div>{listTieAdvice(listOriginal, scan.selectedPrinting)}</div>
+            <Button variant="secondary" size="sm" onClick={() => void onSelectCandidate(listOriginal)}>
+              Use {listOriginal.setCode} #{listOriginal.collectorNumber} instead
+            </Button>
+          </div>
+        </div>
+      )}
 
       {scanMode !== "condition" ? (
         <RecognitionPanel scan={scan} recognizing={recognizing} onRerun={onRerunRecognition} />
@@ -910,7 +986,7 @@ function ScanDetail({
             value={scan.confirmedCondition ?? ""}
             onChange={(e) => onPatch({ confirmedCondition: e.target.value as CardCondition })}
           >
-            <option value="" disabled>Choose…</option>
+            <option value="" disabled>Not graded — approves as {defaultCondition}</option>
             {CONDITIONS.map((c) => (
               <option key={c} value={c}>{CONDITION_LABELS[c]}</option>
             ))}
@@ -974,7 +1050,7 @@ function ScanDetail({
             Reject (X)
           </Button>
           <Button variant="primary" icon="check" onClick={onApprove}>
-            Approve → next (Enter)
+            {!scan.selectedPrinting && offered.length > 0 ? "Approve A → next (Enter)" : "Approve → next (Enter)"}
           </Button>
         </div>
       </div>
@@ -1318,7 +1394,7 @@ function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void 
   const rows: [string, string][] = [
     ["J / ↓", "Next card"],
     ["K / ↑", "Previous card"],
-    ["Enter", "Approve (mark ready) → next — fills in the Scryfall price if none is typed"],
+    ["Enter", "Approve (mark ready) → next. No match yet: approves suggestion A. Fills in today's Scryfall price, and the default condition if none is set"],
     ["F", "Find Scryfall match"],
     ["1–5", "Set condition (NM, LP, MP, HP, DMG)"],
     ["A / B / C", "Use a suggested printing (when there's no match yet)"],

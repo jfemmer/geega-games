@@ -5,7 +5,7 @@ import type { ImageEmbedder } from "./embedder.js";
 import { ocrModelPaths } from "./modelFiles.js";
 import { CardRecognizer } from "./recognizer.js";
 import { fakeCardBack, fakeScan, renderCard, type SyntheticPrinting } from "./testing/syntheticCards.js";
-import { buildSyntheticLibrary, tinyEmbedder, type SyntheticLibrary } from "./testing/syntheticLibrary.js";
+import { buildSyntheticLibrary, normalUrl, tinyEmbedder, type SyntheticLibrary } from "./testing/syntheticLibrary.js";
 
 // End to end on synthetic cards: scan in (front + back, any way up, either
 // side first), straightened JPEGs and an answer out. The fingerprint model
@@ -181,6 +181,28 @@ describe("CardRecognizer.recognizePair", () => {
     const r = await recognizer.recognizePair({ front: back, back: null, finish: null });
     expect(r.result.decision).toBe("none");
     expect(r.result.warnings.join(" ")).toMatch(/back of the card/);
+  }, 30_000);
+
+  it("never picks The List's copy over the original, even when its reference matches better", async () => {
+    // The List reprints a card down to its set symbol and collector line; a
+    // sharper Scryfall scan of the copy made 9 of 10 Magic Origins Lightning
+    // Javelins come back as The List's.
+    const original: SyntheticPrinting = { id: id(20), name: "Javelin Test", set: "ORI", cn: "153", art: 66, symbol: 2 };
+    const listCopy: SyntheticPrinting = { id: id(21), name: "Javelin Test", set: "PLST", cn: "ORI-153", art: 66, symbol: 2 };
+    const listLib = await buildSyntheticLibrary([original, listCopy, bolt], embedder);
+    const crisp = await renderCard(original, 488, 680);
+    listLib.images.set(normalUrl(listCopy), crisp);
+    listLib.images.set(normalUrl(original), await sharp(crisp).blur(1.8).jpeg({ quality: 60 }).toBuffer());
+    const listRecognizer = new CardRecognizer({ embedder, library: listLib.library, references: listLib.references, reader, fallbackDpi: 300 });
+
+    const r = await listRecognizer.recognizePair({ front: await fakeScan(original, { angle: 1 }), back, finish: null });
+    const [first, second] = r.result.candidates;
+    expect(second.visual!).toBeGreaterThan(first.visual!); // the copy did match better…
+    expect(first.scryfallId).toBe(original.id); // …but the original comes first
+    expect(second.scryfallId).toBe(listCopy.id);
+    expect(r.result.decision).toBe("check");
+    expect(r.result.decisionReason).toMatch(/^Javelin Test: ORI #153 or The List's copy of it \(PLST #ORI-153\)/);
+    expect(r.result.decisionReason).toMatch(/planeswalker symbol in the bottom-left corner/);
   }, 30_000);
 
   it("refuses to run with no images", async () => {

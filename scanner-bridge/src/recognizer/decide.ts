@@ -79,11 +79,23 @@ function ocrScore(o: OcrEvidence | null | undefined): number {
 
 type Separation = { kind: "gap" | "picture" | "ocr"; strength: number } | null;
 
+export interface DecideOptions {
+  /** A warning that keeps the answer from being "sure" (the card looks cut off, …). */
+  blockSure?: string | null;
+  /**
+   * False when `a` may never be picked over `b` on the picture, however much
+   * better it matches: The List's copy of a printing over the original,
+   * which look the same in a scan (recognizer.ts). `b` is then tried as the
+   * winner instead, and kept as a look-alike if it can't win either.
+   */
+  mayOutrank?: (a: Contender, b: Contender) => boolean;
+}
+
 export function decide(
   contenders: Contender[],
   judge: PairJudge,
   thresholds: Thresholds = DEFAULT_THRESHOLDS,
-  options: { blockSure?: string | null } = {},
+  options: DecideOptions = {},
 ): DecisionResult {
   if (contenders.length === 0) {
     return {
@@ -120,6 +132,14 @@ export function decide(
     let challenger: Contender | null = null;
     for (const c of sorted) {
       if (c.key === best.key) continue;
+      if (options.mayOutrank && !options.mayOutrank(best, c)) {
+        if (!tried.has(c.key)) {
+          challenger = c;
+          break;
+        }
+        ambiguous.push(c);
+        continue;
+      }
       const gap = best.visual - c.visual;
       if (gap >= thresholds.clearGap) {
         separations.set(c.key, { kind: "gap", strength: gap });

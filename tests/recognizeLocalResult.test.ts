@@ -302,4 +302,79 @@ describe("buildLocalIdentity", () => {
     expect(identity.autoMatchedPrinting?.scryfallId).toBe(BOLT);
     expect(identity.recognitionResult.candidatePrintings[1]).toMatchObject({ scryfallId: BOLT_SLD, setCode: "SLD", reason: "Picture match 74%" });
   });
+
+  it("pre-matches a sure result exactly 0.15 ahead (0.94 over 0.79)", async () => {
+    const onTheBar = local({
+      candidates: [
+        { scryfallId: BOLT, confidence: 0.94, reason: "Picture match 89%, look-alikes ruled out", visual: 0.89, similarity: 0.9, face: 0 },
+        { scryfallId: BOLT_SLD, confidence: 0.79, reason: "Picture match 75%", visual: 0.75, similarity: 0.88, face: 0 },
+      ],
+    });
+    const identity = await buildLocalIdentity(createFakeSupabase(state) as never, parseLocalRecognition(onTheBar));
+    expect(identity.autoMatchedPrinting?.scryfallId).toBe(BOLT);
+    expect(identity.recognitionResult.warnings.join(" ")).not.toMatch(/auto-match bar/);
+  });
+
+  describe("The List's copy of a printing", () => {
+    const JAVELIN = "33333333-3333-4333-8333-333333333333";
+    const JAVELIN_LIST = "44444444-4444-4444-8444-444444444444";
+    const JAVELIN_J25 = "55555555-5555-4555-8555-555555555555";
+
+    beforeEach(() => {
+      const javelin = { name: "Lightning Javelin", type_line: "Instant", rarity: "common" };
+      state.tables.scryfall_bulk_cards.push(
+        bulkRow(scryfallCard(JAVELIN, { ...javelin, set: "ori", set_name: "Magic Origins", collector_number: "153" })),
+        bulkRow(scryfallCard(JAVELIN_LIST, { ...javelin, set: "plst", set_name: "The List", collector_number: "ORI-153" })),
+        bulkRow(scryfallCard(JAVELIN_J25, { name: "Sarkhan's Rage", set: "j25", set_name: "Foundations Jumpstart", collector_number: "594" })),
+      );
+    });
+
+    // The shop's first big batch: 10 Magic Origins Lightning Javelins, 9 picked as The List's copy.
+    const listPick = local({
+      candidates: [
+        { scryfallId: JAVELIN_LIST, confidence: 0.93, reason: "Picture match 87%, look-alikes ruled out", visual: 0.87, similarity: 0.9, face: 0 },
+        { scryfallId: JAVELIN, confidence: 0.78, reason: "Picture match 87%", visual: 0.87, similarity: 0.9, face: 0 },
+        { scryfallId: JAVELIN_J25, confidence: 0.68, reason: "Picture match 50%", visual: 0.5, similarity: 0.6, face: 0 },
+      ],
+      decisionReason: "Matched Lightning Javelin (PLST #ORI-153) — picture match 87%; told apart from the same art in ORI #153.",
+      finish: "nonfoil",
+    });
+
+    it("never pre-selects it over the original, which is listed first, saying what to look for", async () => {
+      const identity = await buildLocalIdentity(createFakeSupabase(state) as never, parseLocalRecognition(listPick));
+      expect(identity.autoMatchedPrinting).toBeNull();
+      const [first, second, third] = identity.recognitionResult.candidatePrintings;
+      expect(first).toMatchObject({ scryfallId: JAVELIN, setCode: "ORI", collectorNumber: "153", confidence: 0.93 });
+      expect(first.reason).toMatch(/far more common/);
+      expect(second).toMatchObject({ scryfallId: JAVELIN_LIST, confidence: 0.93 });
+      expect(second.reason).toMatch(/planeswalker symbol/);
+      expect(third.scryfallId).toBe(JAVELIN_J25);
+      const result = identity.recognitionResult;
+      expect(result.detectedSetCode).toBe("ORI");
+      expect(result.decisionReason).toMatch(/^Lightning Javelin: ORI #153 or The List's copy of it \(PLST #ORI-153\)/);
+      expect(result.decisionReason).toMatch(/bottom-left corner/);
+      // Not the generic "didn't clear the bar": the reason says why.
+      expect(result.warnings.join(" ")).not.toMatch(/auto-match bar/);
+    });
+
+    it("still pre-selects the original when the PC picked it clearly", async () => {
+      const originalPick = local({
+        candidates: [
+          { scryfallId: JAVELIN, confidence: 0.99, reason: "Picture match 92%, look-alikes ruled out", visual: 0.92, similarity: 0.9, face: 0 },
+          { scryfallId: JAVELIN_LIST, confidence: 0.84, reason: "Picture match 85%", visual: 0.85, similarity: 0.9, face: 0 },
+        ],
+        finish: "nonfoil",
+      });
+      const identity = await buildLocalIdentity(createFakeSupabase(state) as never, parseLocalRecognition(originalPick));
+      expect(identity.autoMatchedPrinting?.scryfallId).toBe(JAVELIN);
+      expect(identity.recognitionResult.candidatePrintings.map((c) => c.scryfallId)).toEqual([JAVELIN, JAVELIN_LIST]);
+    });
+
+    it("sends the scan to review with the original first", async () => {
+      await post({ local: listPick });
+      expect(scan()).toMatchObject({ recognition_status: "low_confidence", review_status: "needs_manual_match", selected_scryfall_id: null });
+      const data = scan().recognition_data as { candidatePrintings: { setCode: string }[] };
+      expect(data.candidatePrintings[0].setCode).toBe("ORI");
+    });
+  });
 });

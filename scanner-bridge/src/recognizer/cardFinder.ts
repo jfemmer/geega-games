@@ -1,6 +1,6 @@
-import { convexHull, minAreaRect, rectBounds, rectCorners, scaleRect, toPortrait } from "./geometry.js";
+import { convexHull, minAreaRect, rectBounds, scaleRect, toPortrait } from "./geometry.js";
 import { decodeFit, decodeRegion, halveRgb, imageInfo, warpRect, type ImageInput } from "./image.js";
-import { fitTightCrop, isTightCrop } from "./tightCrop.js";
+import { fitTightCrop, isTightCrop, outlineCutOff } from "./tightCrop.js";
 import type { Point, RgbImage, RotatedRect } from "./types.js";
 
 // Finds the card in a raw scan and returns it cropped and straightened.
@@ -385,15 +385,6 @@ function isBlank(img: RgbImage): boolean {
 
 const CUT_OFF_WARNING = "The card touches the edge of the scan — part of it may be cut off.";
 
-/**
- * Part of the card's outline lies outside the scan. A card merely touching
- * the edge (a driver crop with the card's corners on the border) is whole.
- */
-export function outlineCutOff(rect: RotatedRect, image: { width: number; height: number }): boolean {
-  const slack = Math.max(3, rect.width * 0.005);
-  return rectCorners(rect).some((c) => c.x < -slack || c.y < -slack || c.x > image.width + slack || c.y > image.height + slack);
-}
-
 /** The card in a scan the driver trimmed close to it (see tightCrop.ts), or null to fall back. */
 async function findInTightCrop(
   input: ImageInput,
@@ -411,7 +402,7 @@ async function findInTightCrop(
   const sized = applyCardSize(scaleRect(fit.rect, k), [dpi, ...dpis.filter((d) => d !== dpi)]);
   const warnings: string[] = [];
   if (sized.warning) warnings.push(sized.warning);
-  if (fit.cutOff || outlineCutOff(sized.rect, info)) warnings.push(CUT_OFF_WARNING);
+  if (outlineCutOff(sized.rect, info)) warnings.push(CUT_OFF_WARNING);
   const finalRect = sized.rect;
   const image = await cropFromSource(input, info, finalRect);
   const full = fullResScale(finalRect);

@@ -89,4 +89,33 @@ describe("decide", () => {
     expect(r.ranked[0].contender.key).toBe("2");
     expect(calls).toEqual(["1>2"]);
   });
+
+  describe("a printing that may never outrank another (The List's copy over its original)", () => {
+    const original = () => contender("ori", 0.78, "ORI", "153", "Lightning Javelin");
+    const copy = () => contender("plst", 0.93, "PLST", "ORI-153", "Lightning Javelin");
+    const mayOutrank = (a: Contender, b: Contender) => !(a.key === "plst" && b.key === "ori");
+
+    it("isn't picked even with a clear lead on the picture: the other is tried, and it's a close call", () => {
+      const judge: PairJudge = () => ({ differingTiles: 4, margin: 0 });
+      const r = decide([copy(), original()], judge, DEFAULT_THRESHOLDS, { mayOutrank });
+      expect(r.decision).toBe("check");
+      expect(r.ranked[0].contender.key).toBe("ori");
+      expect(r.ambiguousWith.map((c) => c.key)).toEqual(["plst"]);
+    });
+
+    it("still loses to the other on picture evidence", () => {
+      const judge: PairJudge = (a) => (a.key === "ori" ? { differingTiles: 4, margin: 0.2 } : { differingTiles: 4, margin: -0.2 });
+      const r = decide([{ ...copy(), visual: 0.88 }, { ...original(), visual: 0.88 }], judge, DEFAULT_THRESHOLDS, { mayOutrank });
+      expect(r.decision).toBe("sure");
+      expect(r.ranked[0].contender.key).toBe("ori");
+    });
+
+    it("doesn't affect anything else", () => {
+      const r = decide([contender("x", 0.93), { ...original(), visual: 0.5 }, { ...copy(), visual: 0.6 }], noLookAlikes, DEFAULT_THRESHOLDS, {
+        mayOutrank,
+      });
+      expect(r.decision).toBe("sure");
+      expect(r.ranked[0].contender.key).toBe("x");
+    });
+  });
 });

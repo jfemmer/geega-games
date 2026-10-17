@@ -11,6 +11,7 @@ import { PosPage } from "./pages/PosPage";
 import { PickupRequestsPage } from "./pages/PickupRequestsPage";
 import { ScanSessionsPage } from "./pages/scan/ScanSessionsPage";
 import { ScanReviewPage } from "./pages/scan/ScanReviewPage";
+import { QuickApprovePage } from "./pages/scan/QuickApprovePage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { BuyingLeadsPage } from "./pages/BuyingLeadsPage";
 import { ReferralLeadsPage } from "./pages/ReferralLeadsPage";
@@ -83,17 +84,18 @@ function AdminDashboard() {
       case "pickup":
         return <PickupRequestsPage />;
       case "scanning": {
-        // /scanning or /scanning/:sessionId
+        // /scanning, /scanning/:sessionId, or /scanning/:sessionId/approve
         const clean = path.split("?")[0].replace(/\/+$/, "");
         const rest = clean.startsWith(ADMIN_BASE)
           ? clean.slice(ADMIN_BASE.length + 1)
           : "";
         const parts = rest.split("/");
         const sessionId = parts[1];
-        return sessionId ? (
-          <ScanReviewPage sessionId={sessionId} onNavigate={navigate} />
+        if (!sessionId) return <ScanSessionsPage onNavigate={navigate} />;
+        return parts[2] === "approve" ? (
+          <QuickApprovePage key={sessionId} sessionId={sessionId} onNavigate={navigate} />
         ) : (
-          <ScanSessionsPage onNavigate={navigate} />
+          <ScanReviewPage key={sessionId} sessionId={sessionId} query={query} onNavigate={navigate} />
         );
       }
       case "announcements":

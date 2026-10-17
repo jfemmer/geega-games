@@ -19,6 +19,7 @@ import { verifyCandidatesVisually, isVisuallyVerified, type VisualVerification }
 import { identifySetFromSymbol, type SetSymbolResult } from "./setSymbol.js";
 import { analyzeCondition, type ConditionAnalysis } from "./condition.js";
 import { RECOGNITION_THRESHOLDS } from "./config.js";
+import { listTieAdvice, preferOriginals } from "../../../src/admin/utils/listReprints.js";
 
 // The multi-signal recognition orchestrator (Parts 6 & 7). Deliberately NOT
 // one giant vision-model prompt: independent signals (OCR'd collector line,
@@ -275,6 +276,14 @@ export function scoreAndRank(
 }
 
 /**
+ * Confidences arrive as 2–3 decimal fractions, and their differences come out
+ * a hair off in floating point (0.94 − 0.79 = 0.14999…): compared exactly,
+ * a result exactly on a bar failed it. A quarter of the scanner PC's sure
+ * matches in the shop's first big batch were sent back for that alone.
+ */
+const BAR_TOLERANCE = 1e-9;
+
+/**
  * Decide auto-match vs. manual review (Part 10). Only accepts when the top
  * candidate clears the overall bar AND beats the runner-up by a real
  * margin — an ambiguous top-two (close scores) is exactly the "conflicting
@@ -289,7 +298,7 @@ export function combineAndDecide(ranked: ScoredCandidate[]): {
     return { autoMatch: null, reason: "No candidates found from any signal." };
   }
   const [top, runnerUp] = ranked;
-  if (top.confidence < RECOGNITION_THRESHOLDS.autoMatchOverallConfidence) {
+  if (top.confidence < RECOGNITION_THRESHOLDS.autoMatchOverallConfidence - BAR_TOLERANCE) {
     return {
       autoMatch: null,
       reason: `Top candidate confidence ${top.confidence.toFixed(2)} below the ${RECOGNITION_THRESHOLDS.autoMatchOverallConfidence} auto-match bar (${top.reason}).`,
@@ -297,7 +306,7 @@ export function combineAndDecide(ranked: ScoredCandidate[]): {
   }
   if (
     runnerUp &&
-    top.confidence - runnerUp.confidence < RECOGNITION_THRESHOLDS.autoMatchMinMarginOverRunnerUp
+    top.confidence - runnerUp.confidence < RECOGNITION_THRESHOLDS.autoMatchMinMarginOverRunnerUp - BAR_TOLERANCE
   ) {
     return {
       autoMatch: null,
@@ -420,7 +429,12 @@ export async function runRecognitionPipeline(
       ? ocr.collectorInfo.text
       : undefined;
 
-  const ranked = scoreAndRank(candidates, visualResults, ocr.title.text, possibleArtistText);
+  // The List's copy of a printing never outranks the original (see listReprints.ts).
+  const { ranked, ties } = preferOriginals(
+    scoreAndRank(candidates, visualResults, ocr.title.text, possibleArtistText),
+    (r) => r.printing,
+  );
+  for (const tie of ties) warnings.push(listTieAdvice(tie.original.printing, tie.reprint.printing));
   const { autoMatch, reason } = combineAndDecide(ranked);
 
   const condition = doCondition ? await analyzeCondition(frontNormalized, backNormalized) : null;

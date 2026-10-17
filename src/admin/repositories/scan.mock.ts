@@ -29,11 +29,15 @@ import type {
   BatchCommitResult,
   CardScan,
   Page,
+  QuickApproveResult,
   ScanReviewPatch,
   ScanSession,
 } from "../types";
 import { delay, mockId } from "../utils/format";
+import { approvalPatch } from "../utils/scanApproval";
+import { matchesScanFilter } from "../utils/scanFilters";
 import { mockInventoryRepository } from "./mock";
+import { mockScryfallRepository } from "./scryfall.mock";
 import type {
   ScanIngestProgress,
   ScanRepository,
@@ -282,30 +286,7 @@ export const mockScanRepository: ScanRepository = {
     const { filter = "all", search = "", page = 1, pageSize = 50 } = query;
     let rows = scans.filter((c) => c.scanSessionId === sessionId);
 
-    rows = rows.filter((c) => {
-      switch (filter) {
-        case "unreviewed":
-          return c.reviewStatus === "unreviewed";
-        case "pending_match":
-          return c.selectedScryfallId == null && c.reviewStatus !== "rejected";
-        case "matched":
-          return c.selectedScryfallId != null && c.reviewStatus === "matched";
-        case "needs_manual_match":
-          return c.reviewStatus === "needs_manual_match";
-        case "ready":
-          return c.reviewStatus === "ready";
-        case "added":
-          return c.reviewStatus === "added";
-        case "rejected":
-          return c.reviewStatus === "rejected";
-        case "missing_back":
-          return c.backImagePath == null;
-        case "error":
-          return c.reviewStatus === "error";
-        default:
-          return true;
-      }
-    });
+    rows = rows.filter((c) => matchesScanFilter(c, filter));
 
     const q = search.trim().toLowerCase();
     if (q) {
@@ -467,6 +448,62 @@ export const mockScanRepository: ScanRepository = {
     await commitOne(scan, reviewer, "scan_add");
     recomputeSession(scan.scanSessionId);
     return delay(scan, 200);
+  },
+
+  // Same rules as api/admin/scan-sessions/[id]/approve.ts.
+  async quickApprove(sessionId, request, reviewer): Promise<QuickApproveResult> {
+    const floors = await mockInventoryRepository.getPriceFloors();
+    const failures: QuickApproveResult["failures"] = [];
+    let approved = 0;
+    let created = 0;
+    let incremented = 0;
+    for (const item of request.items) {
+      const scan = scans.find((c) => c.id === item.scanId && c.scanSessionId === sessionId);
+      const fail = (reason: string) => failures.push({ scanId: item.scanId, sequenceNumber: scan?.sequenceNumber ?? 0, reason });
+      if (!scan) {
+        fail("This card isn't in this session any more.");
+        continue;
+      }
+      if (scan.inventoryItemId || scan.reviewStatus === "added") continue;
+      if (scan.reviewStatus === "rejected") {
+        fail("This card was rejected — open it in review to change that.");
+        continue;
+      }
+      const printing = await mockScryfallRepository.getByScryfallId(item.scryfallId);
+      if (!printing) {
+        fail("Couldn't load that printing from Scryfall — try again in a moment.");
+        continue;
+      }
+      const samePrinting = scan.selectedScryfallId === printing.scryfallId;
+      const fields = { ...scan, priceCents: item.priceCents ?? (samePrinting ? scan.priceCents : null) };
+      const approval = approvalPatch(fields, printing, floors, request.condition);
+      if (!approval.ok) {
+        fail(approval.reason);
+        continue;
+      }
+      applyPatch(scan, {
+        selectedScryfallId: printing.scryfallId,
+        selectedPrinting: printing,
+        priceCents: fields.priceCents,
+        ...approval.patch,
+        storageLocation: scan.storageLocation ?? request.storageLocation ?? null,
+      });
+      scan.reviewStatus = "ready";
+      scan.reviewedBy = reviewer;
+      scan.reviewedAt = nowIso();
+      approved++;
+      if (request.addToInventory) {
+        try {
+          const outcome = await commitOne(scan, reviewer, "batch_scan_add");
+          if (outcome === "created") created++;
+          else incremented++;
+        } catch (err) {
+          fail(err instanceof Error ? err.message : "Couldn't add this card.");
+        }
+      }
+    }
+    recomputeSession(sessionId);
+    return delay({ approvedCount: approved, addedCount: created + incremented, createdCount: created, incrementedCount: incremented, failures }, 200);
   },
 };
 

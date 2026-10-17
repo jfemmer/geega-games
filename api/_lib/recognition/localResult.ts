@@ -4,6 +4,7 @@ import type { CardFinish, CardPrinting, CardRecognitionResult, RecognitionCandid
 import { HttpError } from "../http.js";
 import { printingsByScryfallIds } from "../scryfallBulkIndex.js";
 import { combineAndDecide, type ScoredCandidate } from "./pipeline.js";
+import { listTieAdvice, preferOriginals } from "../../../src/admin/utils/listReprints.js";
 // (pipeline.ts never imports this module — recognize.ts passes the identity
 // built here into the pipeline — so there's no import cycle.)
 
@@ -18,6 +19,9 @@ import { combineAndDecide, type ScoredCandidate } from "./pipeline.js";
 //     pipeline (combineAndDecide: 0.90 overall, 0.15 ahead of the runner-up)
 //     before a printing is pre-selected; otherwise the scan goes to review
 //     with the candidates listed.
+//   * The List's copy of a printing is never put ahead of the original (the
+//     two look the same in a scan; see src/admin/utils/listReprints.ts), so
+//     it's never pre-selected over it either.
 //
 // So a buggy or tampered result can at worst suggest a real printing for a
 // human to look at — which any staff member can already do by hand.
@@ -190,32 +194,45 @@ export async function buildLocalIdentity(
     );
   }
 
-  const scored: ScoredCandidate[] = known.map((c) => ({ printing: printings.get(c.scryfallId)!, confidence: c.confidence, reason: c.reason }));
+  const { ranked: scored, ties } = preferOriginals<ScoredCandidate>(
+    known.map((c) => ({ printing: printings.get(c.scryfallId)!, confidence: c.confidence, reason: c.reason })),
+    (c) => c.printing,
+  );
+  // The PC's own top pick was a List copy, now behind its original.
+  const pcTopTie = ties.find((t) => t.reprint.printing.scryfallId === known[0]?.scryfallId) ?? null;
+  for (const tie of ties) {
+    tie.original.reason = `Same picture as The List's copy (${tie.reprint.printing.setCode} #${tie.reprint.printing.collectorNumber}), and far more common`;
+    tie.reprint.reason = "The List's copy: a small planeswalker symbol in the bottom-left corner";
+    // The PC's own pick gets this as the decision reason instead (below).
+    if (tie !== pcTopTie) warnings.push(listTieAdvice(tie.original.printing, tie.reprint.printing));
+  }
   const serverDecision = combineAndDecide(scored);
-  const top = known[0] ?? null;
+  const top = scored[0] ?? null;
   const autoMatch =
-    local.decision === "sure" && top && serverDecision.autoMatch?.printing.scryfallId === top.scryfallId
+    local.decision === "sure" && top && serverDecision.autoMatch?.printing.scryfallId === top.printing.scryfallId
       ? serverDecision.autoMatch.printing
       : null;
-  if (local.decision === "sure" && !autoMatch) {
+  if (local.decision === "sure" && !autoMatch && !pcTopTie) {
     warnings.push("The scanner PC was sure, but the result didn't clear the server's auto-match bar — please confirm.");
   }
 
-  const candidatePrintings: RecognitionCandidate[] = known.slice(0, 6).map((c) => {
-    const p = printings.get(c.scryfallId)!;
-    return {
-      scryfallId: p.scryfallId,
-      cardName: p.cardName,
-      setCode: p.setCode,
-      collectorNumber: p.collectorNumber,
-      confidence: c.confidence,
-      reason: c.reason,
-      imageUrl: imageOf(p),
-    };
-  });
+  const candidatePrintings: RecognitionCandidate[] = scored.slice(0, 6).map((c) => ({
+    scryfallId: c.printing.scryfallId,
+    cardName: c.printing.cardName,
+    setCode: c.printing.setCode,
+    collectorNumber: c.printing.collectorNumber,
+    confidence: c.confidence,
+    reason: c.reason,
+    imageUrl: imageOf(c.printing),
+  }));
 
-  const topPrinting = top ? printings.get(top.scryfallId)! : null;
+  const topPrinting = top ? top.printing : null;
   const confidence = top ? top.confidence : 0;
+  const decisionReason = pcTopTie
+    ? `${pcTopTie.original.printing.cardName}: ${listTieAdvice(pcTopTie.original.printing, pcTopTie.reprint.printing)}`
+    : autoMatch || local.decision !== "sure"
+      ? local.decisionReason
+      : `${local.decisionReason} (needs a quick confirm)`;
   return {
     autoMatchedPrinting: autoMatch,
     recognitionResult: {
@@ -233,7 +250,7 @@ export async function buildLocalIdentity(
         ...(local.visualSimilarity !== null ? { visual: local.visualSimilarity } : {}),
       },
       warnings,
-      decisionReason: autoMatch || local.decision !== "sure" ? local.decisionReason : `${local.decisionReason} (needs a quick confirm)`,
+      decisionReason,
       setSymbolMatch: null,
       visualSimilarity: local.visualSimilarity,
       engine: "scanner_pc",

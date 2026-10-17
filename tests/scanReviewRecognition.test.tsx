@@ -6,9 +6,10 @@ import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
 import type { CardPrinting, CardRecognitionResult, CardScan, ScanSession } from "../src/admin/types";
 
 // Scan Review with cards identified on the scanner PC: A / B / C to pick
-// between look-alikes, Enter approving with today's Scryfall price,
-// "Approve sure matches" for the whole batch, and "Re-run" going to the
-// scanner PC first.
+// between look-alikes, Enter approving with today's Scryfall price (and
+// suggestion A, for a card with no match yet), Quick approve for the whole
+// batch, The List's copy of a card never standing in for the original, and
+// "Re-run" going to the scanner PC first.
 
 const repo = {
   getSession: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../src/admin/repositories", () => ({
 vi.mock("../src/admin/hooks/useCurrentAdmin", () => ({ useCurrentAdmin: () => ({ name: "Test Staff", email: null, userId: null }) }));
 
 const { ScanReviewPage } = await import("../src/admin/pages/scan/ScanReviewPage");
+const { ADMIN_BASE } = await import("../src/admin/hooks/useRouter");
 
 function printing(id: string, overrides: Partial<CardPrinting> = {}): CardPrinting {
   return {
@@ -173,6 +175,7 @@ function renderPage() {
 beforeEach(() => {
   // jsdom has no layout; the queue scrolls the next card into view.
   Element.prototype.scrollIntoView = vi.fn();
+  window.localStorage.clear();
   repo.getSession.mockResolvedValue(session);
   repo.filterCounts.mockResolvedValue({ all: 2, matched: 1, needs_manual_match: 1 });
   repo.listScans.mockImplementation(async (_s: string, q: { filter?: string }) => ({
@@ -222,36 +225,73 @@ describe("Scan Review with scanner-PC results", () => {
     sure.confirmedCondition = null;
   });
 
-  it("'Approve sure matches' approves every sure card in one go, with the condition chosen for ungraded ones", async () => {
+  it("Enter on a card with no match yet approves suggestion A in one step, with the default condition", async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "Approve sure matches" }));
-    const dialog = await screen.findByRole("dialog", { name: "Approve sure matches" });
-    expect(await within(dialog).findByText(/sure match will be marked ready/)).toBeInTheDocument();
-    await user.selectOptions(within(dialog).getByLabelText(/Condition for the 1 card not graded yet/), "LP");
-    await user.click(within(dialog).getByRole("button", { name: "Approve 1" }));
-    await waitFor(() =>
-      expect(repo.updateScan).toHaveBeenCalledWith("sure-1", { reviewStatus: "ready", confirmedCondition: "LP", priceCents: 420 }),
+    await user.click(await screen.findByText("#002"));
+    expect(await screen.findByRole("button", { name: "Approve A → next (Enter)" })).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(repo.updateScan).toHaveBeenCalled());
+    expect(repo.getByScryfallId).toHaveBeenCalledWith("m10");
+    expect(repo.updateScan).toHaveBeenCalledWith(
+      "check-1",
+      expect.objectContaining({ selectedScryfallId: "m10", reviewStatus: "ready", confirmedCondition: "NM", selectedFinish: "foil", priceCents: 420 }),
     );
-    expect(await screen.findByText("1 card approved. 1 close call to pick from next.")).toBeInTheDocument();
-    // The close calls are what's left, so they're shown next.
-    expect(screen.getByRole("tab", { name: /Needs match/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("Approved Lightning Bolt (M10 #146) at $4.20, NM.")).toBeInTheDocument();
+    // No reload of the whole list for one card.
+    expect(repo.listScans).toHaveBeenCalledTimes(1);
   });
 
-  it("'Approve sure matches' covers a session bigger than one page", async () => {
-    const second = { ...sure, id: "sure-2", sequenceNumber: 600 };
-    repo.listScans.mockImplementation(async (_s: string, q: { filter?: string; page?: number }) =>
-      q.filter === "matched"
-        ? { rows: (q.page ?? 1) === 1 ? [sure] : (q.page ?? 1) === 2 ? [second, sure] : [], total: 501 }
-        : { rows: [sure, closeCall], total: 2 },
-    );
+  it("approves ungraded cards as the default condition chosen above the list", async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "Approve sure matches" }));
-    const dialog = await screen.findByRole("dialog", { name: "Approve sure matches" });
-    // Two different cards across the pages (the repeated one counted once).
-    expect(await within(dialog).findByRole("button", { name: "Approve 2" })).toBeInTheDocument();
-    expect(repo.listScans).toHaveBeenCalledWith("s1", expect.objectContaining({ filter: "matched", page: 2 }));
+    await user.selectOptions(await screen.findByLabelText("Default condition"), "LP");
+    await user.click(await screen.findByText("#001"));
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(repo.updateScan).toHaveBeenCalledWith("sure-1", { reviewStatus: "ready", confirmedCondition: "LP", priceCents: 420 }));
+  });
+
+  it("Quick approve opens the screen for the whole session", async () => {
+    const onNavigate = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ToastProvider>
+        <ScanReviewPage sessionId="s1" onNavigate={onNavigate} />
+      </ToastProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Quick approve" }));
+    expect(onNavigate).toHaveBeenCalledWith(`${ADMIN_BASE}/scanning/s1/approve`);
+  });
+
+  it("offers the original for a card matched to The List's copy of it", async () => {
+    const list = printing("plst", { cardName: "Lightning Javelin", setCode: "PLST", setName: "The List", collectorNumber: "ORI-153" });
+    const tie = scan("tie-1", 3, {
+      selectedScryfallId: "plst",
+      selectedPrinting: list,
+      recognitionStatus: "recognized",
+      reviewStatus: "matched",
+      recognitionData: recognition({
+        candidatePrintings: [
+          { scryfallId: "plst", cardName: "Lightning Javelin", setCode: "PLST", collectorNumber: "ORI-153", confidence: 0.93, reason: "Picture match 87%" },
+          { scryfallId: "ori", cardName: "Lightning Javelin", setCode: "ORI", collectorNumber: "153", confidence: 0.78, reason: "Picture match 87%" },
+        ],
+      }),
+    });
+    repo.listScans.mockImplementation(async () => ({ rows: [tie], total: 1 }));
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText(/The List copy has a small planeswalker symbol in the bottom-left corner/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Use ORI #153 instead" }));
+    await waitFor(() => expect(repo.updateScan).toHaveBeenCalledWith("tie-1", expect.objectContaining({ selectedScryfallId: "ori" })));
+  });
+
+  it("opens the card Quick approve sent you to", async () => {
+    render(
+      <ToastProvider>
+        <ScanReviewPage sessionId="s1" query={new URLSearchParams("scan=check-1")} onNavigate={vi.fn()} />
+      </ToastProvider>,
+    );
+    expect(await screen.findByText(/Close call — compare with the scan/)).toBeInTheDocument();
   });
 
   it("re-runs on the scanner PC when it's reachable", async () => {

@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
 import { ScannerBridgePanel } from "../src/admin/pages/scan/ScannerBridgePanel";
+import { LATEST_BRIDGE_VERSION } from "../src/admin/utils/scannerBridge";
 
 // The Scanner panel talks to the bridge on the scanning PC: the Foil switch,
 // "Scan now" carrying it, and the on-PC recognizer's library + self-test.
@@ -12,6 +13,8 @@ const BRIDGE = "http://127.0.0.1:8787";
 
 function bridgeStatus(overrides: Record<string, unknown> = {}) {
   return {
+    version: LATEST_BRIDGE_VERSION,
+    pendingUpdate: null,
     state: "watching",
     watchFolder: "C:\\GeegaScans\\Incoming",
     pendingFiles: 0,
@@ -251,6 +254,46 @@ describe("ScannerBridgePanel", () => {
     expect(await screen.findByText(/Could not sign in as scanner@example.com/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Scan now" })).toBeDisabled();
     expect(screen.getByText(/Scanning is paused until the problem above is fixed/)).toBeInTheDocument();
+  });
+
+  it("shows the bridge's version, with no update notice when it's the latest", async () => {
+    stubBridge(bridgeStatus());
+    renderPanel();
+    expect(await screen.findByText(new RegExp(`Bridge version ${LATEST_BRIDGE_VERSION.replace(/\./g, "\\.")}, running since`))).toBeInTheDocument();
+    expect(screen.queryByText(/Update the scanner bridge/)).toBeNull();
+  });
+
+  it("asks for an update when the bridge is older than the site, or predates version reporting", async () => {
+    const old = bridgeStatus();
+    delete (old as Record<string, unknown>).version;
+    delete (old as Record<string, unknown>).pendingUpdate;
+    stubBridge(old);
+    const view = renderPanel();
+    expect(await screen.findByText("Update the scanner bridge on this PC")).toBeInTheDocument();
+    expect(screen.getByText(/running an older version/)).toBeInTheDocument();
+    expect(screen.getByText("git pull")).toBeInTheDocument();
+    expect(screen.getByText("npm run build")).toBeInTheDocument();
+    // Scanning still works meanwhile.
+    expect(screen.getByRole("button", { name: "Scan now" })).toBeEnabled();
+    view.unmount();
+
+    stubBridge(bridgeStatus({ version: "1.0.0" }));
+    renderPanel();
+    expect(await screen.findByText(/It.s running version 1\.0\.0; the latest is/)).toBeInTheDocument();
+  });
+
+  it("says exactly what's left when an update was pulled but not built, or built but not restarted", async () => {
+    stubBridge(bridgeStatus({ version: "1.1.0", pendingUpdate: { version: "9.0.0", step: "build" } }));
+    const view = renderPanel();
+    expect(await screen.findByText("Finish updating the scanner bridge")).toBeInTheDocument();
+    expect(screen.getByText(/files for version 9\.0\.0, but they haven.t been built, so version 1\.1\.0 is still/)).toBeInTheDocument();
+    expect(screen.getByText("npm install")).toBeInTheDocument();
+    view.unmount();
+
+    stubBridge(bridgeStatus({ version: "1.1.0", pendingUpdate: { version: "9.0.0", step: "restart" } }));
+    renderPanel();
+    expect(await screen.findByText("Restart the scanner bridge to finish updating")).toBeInTheDocument();
+    expect(screen.getByText(/Version 9\.0\.0 is installed, but version 1\.1\.0 is still running/)).toBeInTheDocument();
   });
 
   it("shows the bridge's own reason when it turns a scan down", async () => {

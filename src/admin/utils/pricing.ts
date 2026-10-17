@@ -1,4 +1,23 @@
-import type { CardRarity, FloorableRarity, InventoryPriceFloor } from "../types";
+import { extractPriceForFinish } from "../services/scryfall.js";
+import type { ScryfallCard } from "../services/scryfall.types.js";
+import type { CardFinish, CardPrinting, CardRarity, FloorableRarity, InventoryPriceFloor } from "../types/index.js";
+
+/**
+ * The reference price for a specific finish, read from the printing's normalized
+ * prices (foil→usdFoil, etched→usdEtched, else usd). Falls back to plain usd.
+ * Plain TypeScript (no React), so the server's bulk approval uses it too.
+ */
+export function priceForFinish(printing: CardPrinting, finish: CardFinish): number | null {
+  // Reuse the shared extractor by faking the minimal price shape.
+  const fake = {
+    prices: {
+      usd: printing.prices.usd != null ? (printing.prices.usd / 100).toString() : null,
+      usd_foil: printing.prices.usdFoil != null ? (printing.prices.usdFoil / 100).toString() : null,
+      usd_etched: printing.prices.usdEtched != null ? (printing.prices.usdEtched / 100).toString() : null,
+    },
+  } as unknown as ScryfallCard;
+  return extractPriceForFinish(fake, finish);
+}
 
 /**
  * Applies a per-rarity minimum sell price to a reference (e.g. Scryfall

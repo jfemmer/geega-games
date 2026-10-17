@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { SectionCard } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Badge";
@@ -9,7 +9,9 @@ import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatDate, formatDateTime, formatNumber, timeAgo } from "../../utils/format";
 import {
   BridgeUnreachableError,
+  compareVersions,
   diagnoseUnreachableBridge,
+  LATEST_BRIDGE_VERSION,
   postToBridge,
   SCANNER_BRIDGE_URL,
   type BridgeProblem,
@@ -40,6 +42,13 @@ import type { BadgeTone } from "../../utils/labels";
 //
 // The bridge's status server starts before it signs in, so the panel can
 // show a sign-in problem (state "error" + lastError) rather than nothing.
+//
+// It also reports its version. Updating the scanning PC takes three steps
+// (git pull; npm install + npm run build; restart) and a half-done update
+// leaves the old code running with no sign of it, so the panel asks for an
+// update when the bridge is older than LATEST_BRIDGE_VERSION, and says
+// exactly which step is left when the bridge sees newer files on disk than
+// the code it's running (pendingUpdate).
 //
 // "Scan now" and "Check scanner connection" drive the fi-8170 directly via
 // the bridge's scan endpoints, which run NAPS2.Console.exe (TWAIN by
@@ -96,6 +105,9 @@ interface RecognizerStatus {
 }
 
 interface BridgeStatus {
+  /** Older bridges (before 1.1.0) don't report these. */
+  version?: string;
+  pendingUpdate?: { version: string; step: "build" | "restart" } | null;
   state: BridgeState;
   watchFolder: string;
   pendingFiles: number;
@@ -176,6 +188,44 @@ function unreachableCopy(problem: BridgeProblem | null): { title: string; messag
     title: "Not connected from this computer",
     message:
       'Normal if you\'re not at the scanning PC. At the scanning PC, start the scanner bridge and wait for "Ready" in its window (if it stops, bridge-error.log in its folder says why). If Chrome asks to let this site use apps on this device, click Allow.',
+  };
+}
+
+const STOP_THE_BRIDGE = 'close its window, or end its "Node.js" task in Task Manager when it runs in the background';
+
+/** What's left to do when the scanning PC isn't running the latest bridge (null: it is). */
+function updateNotice(status: BridgeStatus): { title: string; message: ReactNode } | null {
+  const running = status.version;
+  const pending = status.pendingUpdate;
+  if (running && pending) {
+    if (pending.step === "restart") {
+      return {
+        title: "Restart the scanner bridge to finish updating",
+        message: `Version ${pending.version} is installed, but version ${running} is still running. Stop it (${STOP_THE_BRIDGE}), then start it again.`,
+      };
+    }
+    return {
+      title: "Finish updating the scanner bridge",
+      message: (
+        <>
+          This PC has the files for version {pending.version}, but they haven&rsquo;t been built, so version {running} is still
+          running. Stop the bridge ({STOP_THE_BRIDGE}). In the scanner-bridge folder run <code>npm install</code>, then{" "}
+          <code>npm run build</code>, and start it again.
+        </>
+      ),
+    };
+  }
+  if (running && compareVersions(running, LATEST_BRIDGE_VERSION) >= 0) return null;
+  return {
+    title: "Update the scanner bridge on this PC",
+    message: (
+      <>
+        It&rsquo;s running {running ? `version ${running}` : "an older version"}; the latest is {LATEST_BRIDGE_VERSION}. Scans
+        still upload meanwhile, but card recognition misses the latest fixes. Stop the bridge ({STOP_THE_BRIDGE}). In the
+        scanner-bridge folder run <code>git pull</code>, <code>npm install</code> and <code>npm run build</code>, then start
+        it again.
+      </>
+    ),
   };
 }
 
@@ -360,6 +410,7 @@ export function ScannerBridgePanel({
   const scanning = status.state === "scanning" || status.state === "uploading";
   // "starting": signing in. "error": sign-in failed (the reason is shown above).
   const cantScanYet = status.state === "starting" || status.state === "error";
+  const update = updateNotice(status);
 
   return (
     <SectionCard
@@ -371,6 +422,16 @@ export function ScannerBridgePanel({
         </Badge>
       }
     >
+      {update && (
+        <div className="gg-inline-note gg-inline-note--warning gg-bridge-panel__update" role="status">
+          <Icon name="warning" size={16} />
+          <div>
+            <p className="gg-bridge-panel__update-title">{update.title}</p>
+            <p className="gg-bridge-panel__update-text">{update.message}</p>
+          </div>
+        </div>
+      )}
+
       <div className="gg-bridge-panel__stats">
         <BridgeStat label="Pending files" value={status.pendingFiles} />
         <BridgeStat label="Cards created" value={status.totalCardsCreated} />
@@ -507,7 +568,7 @@ export function ScannerBridgePanel({
       </div>
 
       <p className="gg-bridge-panel__started">
-        Bridge running since {formatDateTime(status.startedAt)}
+        {status.version ? `Bridge version ${status.version}, running` : "Bridge running"} since {formatDateTime(status.startedAt)}
       </p>
     </SectionCard>
   );

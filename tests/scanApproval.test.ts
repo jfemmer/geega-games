@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { approvalPatch, defaultFinish, isSureMatch, matchDefaults, suggestedPrice } from "../src/admin/utils/scanApproval";
-import type { CardPrinting, CardRecognitionResult, InventoryPriceFloor } from "../src/admin/types";
+import {
+  approvalPatch,
+  defaultFinish,
+  inQuickApprove,
+  isSureMatch,
+  listTieOriginal,
+  matchDefaults,
+  quickProposal,
+  suggestedPrice,
+} from "../src/admin/utils/scanApproval";
+import type { CardPrinting, CardRecognitionResult, CardScan, InventoryPriceFloor, RecognitionCandidate } from "../src/admin/types";
 
 // The defaults a confirmed match gets — shared by picking a match, Enter,
 // and "Approve sure matches" — and what approving requires.
@@ -105,10 +114,108 @@ describe("approvalPatch", () => {
   });
 });
 
+const candidate = (scryfallId: string, setCode: string, collectorNumber: string, confidence: number, reason?: string): RecognitionCandidate => ({
+  scryfallId,
+  cardName: "Lightning Javelin",
+  setCode,
+  collectorNumber,
+  confidence,
+  reason,
+  imageUrl: `https://img/${scryfallId}.jpg`,
+});
+const ORI = candidate("ori", "ORI", "153", 0.79, "Picture match 87%");
+const LIST = candidate("plst", "PLST", "ORI-153", 0.94, "Picture match 87%, look-alikes ruled out");
+const J25 = candidate("j25", "J25", "594", 0.68, "Picture match 50%");
+
+function pcResult(decision: "sure" | "check", candidates: RecognitionCandidate[], extra: Partial<CardRecognitionResult> = {}): CardRecognitionResult {
+  return {
+    ...recognition("nonfoil"),
+    candidatePrintings: candidates,
+    engine: "scanner_pc",
+    decisionReason: "x",
+    scannerPc: { version: "1.0.0", decision, orientation: 0, sidesSwapped: false, ocrText: null, timingsMs: {}, library: { builtAt: null, entries: 1, model: "m" } },
+    ...extra,
+  };
+}
+
+type ProposalScan = Parameters<typeof quickProposal>[0];
+const reviewScan = (overrides: Partial<CardScan> = {}): ProposalScan => ({
+  selectedScryfallId: null,
+  selectedPrinting: null,
+  recognitionData: null,
+  reviewStatus: "needs_manual_match",
+  recognitionStatus: "low_confidence",
+  ...overrides,
+});
+const listPrinting = printing({ scryfallId: "plst", id: "plst", cardName: "Lightning Javelin", setCode: "PLST", setName: "The List", collectorNumber: "ORI-153" });
+
 describe("isSureMatch", () => {
   it("is an auto-matched card nobody has reviewed yet", () => {
     expect(isSureMatch({ recognitionStatus: "recognized", reviewStatus: "matched", selectedScryfallId: "p" })).toBe(true);
     expect(isSureMatch({ recognitionStatus: "low_confidence", reviewStatus: "matched", selectedScryfallId: "p" })).toBe(false);
     expect(isSureMatch({ recognitionStatus: "recognized", reviewStatus: "ready", selectedScryfallId: "p" })).toBe(false);
+  });
+
+  it("isn't a card matched to The List's copy when the original was suggested too", () => {
+    const tie = { recognitionStatus: "recognized" as const, reviewStatus: "matched" as const, selectedScryfallId: "plst", selectedPrinting: listPrinting };
+    expect(isSureMatch({ ...tie, recognitionData: pcResult("sure", [LIST, ORI, J25]) })).toBe(false);
+    expect(listTieOriginal({ selectedPrinting: listPrinting, recognitionData: pcResult("sure", [LIST, ORI]) })?.scryfallId).toBe("ori");
+    // No original among the suggestions: nothing to doubt.
+    expect(isSureMatch({ ...tie, recognitionData: pcResult("sure", [LIST, J25]) })).toBe(true);
+  });
+});
+
+describe("quickProposal", () => {
+  it("proposes a match as it is, pre-ticked", () => {
+    const p = quickProposal(reviewScan({ selectedScryfallId: "p", selectedPrinting: printing(), reviewStatus: "matched", recognitionStatus: "recognized", recognitionData: pcResult("sure", [candidate("p", "M10", "146", 0.96), J25]) }));
+    expect(p).toMatchObject({ kind: "sure", scryfallId: "p", setName: "Magic 2010", preselect: true, note: null });
+    expect(p.alternatives.map((c) => c.scryfallId)).toEqual(["j25"]);
+  });
+
+  it("proposes the original over The List's copy it was matched to, pre-ticked, with what to look for", () => {
+    const p = quickProposal(reviewScan({ selectedScryfallId: "plst", selectedPrinting: listPrinting, reviewStatus: "matched", recognitionStatus: "recognized", recognitionData: pcResult("sure", [LIST, ORI, J25]) }));
+    expect(p).toMatchObject({ kind: "listTie", scryfallId: "ori", setCode: "ORI", preselect: true });
+    expect(p.note).toMatch(/planeswalker symbol/);
+    // The List's copy stays one tap away.
+    expect(p.alternatives.map((c) => c.scryfallId)).toEqual(["plst", "j25"]);
+  });
+
+  it("puts the original first in suggestions stored the old way, too", () => {
+    const p = quickProposal(reviewScan({ recognitionData: pcResult("sure", [LIST, ORI, J25]) }));
+    expect(p).toMatchObject({ kind: "listTie", scryfallId: "ori", preselect: true });
+  });
+
+  it("pre-ticks the scanner PC's sure pick that the website only asked to confirm", () => {
+    const p = quickProposal(reviewScan({ recognitionData: pcResult("sure", [candidate("a", "ORI", "149", 0.94), candidate("b", "DDU", "46", 0.79)]) }));
+    expect(p).toMatchObject({ kind: "confirm", scryfallId: "a", preselect: true });
+  });
+
+  it("shows a close call's best guess unticked", () => {
+    const p = quickProposal(
+      reviewScan({ recognitionData: pcResult("check", [candidate("a", "M10", "146", 0.88), candidate("b", "M11", "149", 0.87)], { decisionReason: "Close call: Lightning Bolt (M10 #146) looks the same as M11 #149." }) }),
+    );
+    expect(p).toMatchObject({ kind: "closeCall", scryfallId: "a", preselect: false });
+    expect(p.note).toMatch(/^Close call/);
+  });
+
+  it("shows an unsure match unticked, saying why", () => {
+    const p = quickProposal(
+      reviewScan({ recognitionData: pcResult("check", [candidate("a", "ORI", "152", 0.86)], { warnings: ["The card touches the edge of the scan — part of it may be cut off."] }) }),
+    );
+    expect(p).toMatchObject({ kind: "check", preselect: false, note: "The card touches the edge of the scan — part of it may be cut off." });
+  });
+
+  it("has nothing to propose without suggestions", () => {
+    expect(quickProposal(reviewScan({ recognitionData: pcResult("check", []) }))).toMatchObject({ kind: "noMatch", scryfallId: null, preselect: false });
+    expect(quickProposal(reviewScan())).toMatchObject({ kind: "noMatch" });
+  });
+});
+
+describe("inQuickApprove", () => {
+  it("lists every card not yet in inventory or rejected", () => {
+    expect(inQuickApprove({ reviewStatus: "ready", inventoryItemId: null })).toBe(true);
+    expect(inQuickApprove({ reviewStatus: "matched", inventoryItemId: null })).toBe(true);
+    expect(inQuickApprove({ reviewStatus: "added", inventoryItemId: "i" })).toBe(false);
+    expect(inQuickApprove({ reviewStatus: "rejected", inventoryItemId: null })).toBe(false);
   });
 });

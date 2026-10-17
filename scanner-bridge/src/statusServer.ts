@@ -4,6 +4,7 @@ import type { WatcherControl } from "./watcher.js";
 import { listScanDevices, runScan } from "./naps2Scan.js";
 import { createRecognizerStatus, type RecognizerStatus } from "./recognizer/status.js";
 import type { BatchFinish } from "./recognizer/types.js";
+import { BRIDGE_VERSION, type PendingUpdate } from "./version.js";
 
 // A local status + control endpoint — bound to 127.0.0.1 ONLY, never
 // 0.0.0.0, so it is never reachable from the network (Part 3's explicit
@@ -27,6 +28,11 @@ import type { BatchFinish } from "./recognizer/types.js";
 // every request must be addressed to 127.0.0.1 / localhost, which shuts out
 // "DNS rebinding" (a website pointing its own domain at this PC).
 //
+// GET /status also says which version of the bridge is running, and whether
+// its folder holds a newer one it isn't using yet (pulled but not rebuilt,
+// or rebuilt but not restarted; see version.ts), so the dashboard can say
+// exactly what's left to do.
+//
 // The card recognizer (src/recognizer) adds: GET /status's `recognizer`
 // block, POST /settings (the foil / non-foil switch next to "Scan now"),
 // POST /library/update, POST /library/self-test, and POST /recognize
@@ -49,6 +55,10 @@ import type { BatchFinish } from "./recognizer/types.js";
 export type BridgeState = "starting" | "watching" | "uploading" | "scanning" | "error";
 
 export interface BridgeStatus {
+  /** The running bridge's version (version.ts). */
+  version: string;
+  /** A newer version in the bridge's folder that isn't running yet (null: none). */
+  pendingUpdate: PendingUpdate | null;
   state: BridgeState;
   watchFolder: string;
   pendingFiles: number;
@@ -88,6 +98,8 @@ export interface BridgeStatus {
 
 export function createStatus(watchFolder: string, scanDpi = 300): BridgeStatus {
   return {
+    version: BRIDGE_VERSION,
+    pendingUpdate: null,
     state: "starting",
     watchFolder,
     pendingFiles: 0,
@@ -178,6 +190,8 @@ export interface StatusServerOptions {
   scanDpi?: number;
   /** The card recognizer's controls; null when it's turned off. */
   recognizer?: RecognizerControl | null;
+  /** Looks for an update on disk the running bridge isn't using yet (version.ts), for GET /status. */
+  checkForUpdate?: () => PendingUpdate | null;
 }
 
 /**
@@ -323,6 +337,7 @@ export function startStatusServer(
     }
 
     if (req.method === "GET" && (req.url === "/status" || req.url === "/")) {
+      if (options.checkForUpdate) status.pendingUpdate = options.checkForUpdate();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(status, null, 2));
       return;

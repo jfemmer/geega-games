@@ -9,8 +9,7 @@ import {
   TREATMENT_TONE,
 } from "../../utils/labels";
 import { formatCents } from "../../utils/format";
-import { extractPriceForFinish } from "../../services/scryfall";
-import type { ScryfallCard } from "../../services/scryfall.types";
+import { priceForFinish } from "../../utils/pricing";
 
 /** Small row of treatment badges (showcase/borderless/etc.) for a printing. */
 export function PrintingTreatmentBadges({
@@ -44,31 +43,6 @@ export function FinishPills({ finishes }: { finishes: CardFinish[] }) {
       ))}
     </span>
   );
-}
-
-/**
- * The reference price for a specific finish, read from the printing's normalized
- * prices (foil→usdFoil, etched→usdEtched, else usd). Falls back to plain usd.
- */
-export function priceForFinish(
-  printing: CardPrinting,
-  finish: CardFinish,
-): number | null {
-  // Reuse the shared extractor by faking the minimal price shape.
-  const fake = {
-    prices: {
-      usd: printing.prices.usd != null ? (printing.prices.usd / 100).toString() : null,
-      usd_foil:
-        printing.prices.usdFoil != null
-          ? (printing.prices.usdFoil / 100).toString()
-          : null,
-      usd_etched:
-        printing.prices.usdEtched != null
-          ? (printing.prices.usdEtched / 100).toString()
-          : null,
-    },
-  } as unknown as ScryfallCard;
-  return extractPriceForFinish(fake, finish);
 }
 
 /**

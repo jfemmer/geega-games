@@ -114,6 +114,8 @@ export interface DriverCropOptions {
   angle?: number;
   /** The light-grey margin the driver leaves around the card, in pixels. */
   margin?: number;
+  /** The margin above the card's leading edge (default: `margin`). The driver sometimes trims it right off. */
+  topMargin?: number;
   /** Height of the dark shadow band from the card's trailing edge to the bottom of the image (0: none). */
   shadow?: number;
   upsideDown?: boolean;
@@ -132,6 +134,7 @@ export async function driverCropScan(cardImage: Buffer, options: DriverCropOptio
   const random = options.random ?? Math.random;
   const angle = options.angle ?? 0;
   const margin = options.margin ?? 12;
+  const topMargin = options.topMargin ?? margin;
   const shadow = options.shadow ?? 9;
   const corners = Buffer.from(
     `<svg width="${CARD_W}" height="${CARD_H}"><rect width="${CARD_W}" height="${CARD_H}" rx="${CORNER_RADIUS}" ry="${CORNER_RADIUS}" fill="#fff"/></svg>`,
@@ -147,7 +150,7 @@ export async function driverCropScan(cardImage: Buffer, options: DriverCropOptio
   const tilted = await sharp(rounded).rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
   const { width: tw = CARD_W, height: th = CARD_H } = await sharp(tilted).metadata();
   const w = tw + 2 * margin;
-  const h = th + margin + (shadow > 0 ? shadow : margin);
+  const h = th + topMargin + (shadow > 0 ? shadow : margin);
 
   const page = new Uint8Array(w * h * 3);
   const topShade = 220 + random() * 8;
@@ -166,7 +169,7 @@ export async function driverCropScan(cardImage: Buffer, options: DriverCropOptio
     // Under the card's lowest edge, between its rounded corners, down to the bottom.
     const rad = (angle * Math.PI) / 180;
     const cx = margin + tw / 2;
-    const cy = margin + th / 2;
+    const cy = topMargin + th / 2;
     const at = (dx: number, dy: number) => ({ x: cx + dx * Math.cos(rad) - dy * Math.sin(rad), y: cy + dx * Math.sin(rad) + dy * Math.cos(rad) });
     const a = at(-CARD_W / 2, CARD_H / 2);
     const b = at(CARD_W / 2, CARD_H / 2);
@@ -180,7 +183,7 @@ export async function driverCropScan(cardImage: Buffer, options: DriverCropOptio
     }
   }
   return sharp(Buffer.from(page), { raw: { width: w, height: h, channels: 3 } })
-    .composite([{ input: tilted, left: margin, top: margin }])
+    .composite([{ input: tilted, left: margin, top: topMargin }])
     .png()
     .toBuffer();
 }
@@ -207,6 +210,8 @@ export async function synthesizeScan(cardImage: Buffer, random: () => number): P
     buf = await driverCropScan(card, {
       angle: (random() - 0.5) * 3,
       margin: 8 + Math.floor(random() * 9),
+      // Now and then the driver trims the leading margin almost to nothing.
+      topMargin: random() < 0.25 ? Math.floor(random() * 3) : undefined,
       shadow: random() < 0.8 ? 7 + Math.floor(random() * 5) : 0,
       upsideDown: random() < 0.25,
       random,

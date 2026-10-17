@@ -4,6 +4,7 @@ import { HttpError } from "./http.js";
 import { scryfallResolveExact } from "./scryfall.js";
 import { cachePrinting } from "./inventory.js";
 import { scryfallCardName, scryfallOracleId, scryfallTypeLine } from "../../src/admin/services/scryfall.js";
+import type { ScryfallCard } from "../../src/admin/services/scryfall.types.js";
 
 // Server-side helpers shared by /api/admin/scan-sessions/* — the real,
 // Supabase-backed replacement for mockScanRepository's in-memory logic. Kept
@@ -154,7 +155,9 @@ export interface CommitOutcome {
  * Commit one scan to inventory. Idempotent: a scan already carrying
  * inventory_item_id is a no-op (returns its existing link). Re-resolves the
  * exact printing from Scryfall server-side (never trusts a client-supplied
- * printing) before writing, same as the inventory PATCH/POST endpoints.
+ * printing) before writing, same as the inventory PATCH/POST endpoints —
+ * unless the caller already did (`resolved`: fetched from Scryfall and
+ * cached in this same request, as Quick approve does for a whole batch).
  * admin_upsert_inventory does the atomic create-or-increment + movement
  * write in one transaction; p_reason records this came from the scanner.
  */
@@ -163,6 +166,7 @@ export async function commitScanToInventory(
   scan: CardScanRow,
   actor: string,
   reason: "scan_add" | "batch_scan_add",
+  resolved?: ScryfallCard,
 ): Promise<CommitOutcome> {
   if (scan.inventory_item_id) {
     return { outcome: "incremented", inventoryItemId: scan.inventory_item_id };
@@ -170,17 +174,22 @@ export async function commitScanToInventory(
   const problem = validateScanForCommit(scan);
   if (problem) throw new HttpError(400, problem);
 
-  const card = await scryfallResolveExact({
-    scryfallId: scan.selected_scryfall_id,
-    finish: scan.selected_finish,
-  });
-  if (!card) {
-    throw new HttpError(
-      400,
-      "Could not re-resolve this card's exact Scryfall printing. Find the match again.",
-    );
+  let card: ScryfallCard | null;
+  if (resolved && resolved.id === scan.selected_scryfall_id) {
+    card = resolved;
+  } else {
+    card = await scryfallResolveExact({
+      scryfallId: scan.selected_scryfall_id,
+      finish: scan.selected_finish,
+    });
+    if (!card) {
+      throw new HttpError(
+        400,
+        "Could not re-resolve this card's exact Scryfall printing. Find the match again.",
+      );
+    }
+    await cachePrinting(admin, card);
   }
-  await cachePrinting(admin, card);
 
   // Informational only (reporting created-vs-incremented in the result) —
   // admin_upsert_inventory re-checks this itself, atomically, under a row

@@ -214,6 +214,30 @@ describe("scoreAndRank + combineAndDecide (Part 10 precision-over-recall)", () =
   });
 });
 
+describe("combineAndDecide on the bar exactly", () => {
+  const scored = (id: string, confidence: number, setCode = "ORI") => ({
+    printing: printing({ id, scryfallId: id, setCode }),
+    confidence,
+    reason: "Picture match",
+  });
+
+  it("accepts a lead of exactly 0.15, however floating point rounds the difference", () => {
+    // 0.94 − 0.79 is 0.14999… in floating point: these came back from the
+    // scanner PC as sure and were sent to manual confirm anyway.
+    expect(0.94 - 0.79).toBeLessThan(0.15);
+    for (const [top, runnerUp] of [[0.94, 0.79], [0.95, 0.8], [0.96, 0.81], [0.93, 0.78], [0.9, 0.75]]) {
+      const { autoMatch } = combineAndDecide([scored("a", top), scored("b", runnerUp, "DDU")]);
+      expect(autoMatch?.printing.scryfallId, `${top} over ${runnerUp}`).toBe("a");
+    }
+  });
+
+  it("still refuses a lead short of 0.15, and a top under 0.90", () => {
+    expect(combineAndDecide([scored("a", 0.94), scored("b", 0.8, "DDU")]).autoMatch).toBeNull();
+    expect(combineAndDecide([scored("a", 0.89)]).autoMatch).toBeNull();
+    expect(combineAndDecide([scored("a", 0.9)]).autoMatch?.printing.scryfallId).toBe("a");
+  });
+});
+
 describe("gradeFromFindings (Part 9 condition mapping)", () => {
   const finding = (overrides: Partial<DefectFinding>): DefectFinding => ({
     region: "front surface",

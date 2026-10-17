@@ -9,6 +9,7 @@ import type { RecognizerRuntime } from "./recognizer/runtime.js";
 import { createRecognizerStatus, unavailableRecognizerStatus } from "./recognizer/status.js";
 import type { rerunStoredScan } from "./rerun.js";
 import { createStatus, startStatusServer, whenListening, type BridgeStatus, type StatusServerOptions } from "./statusServer.js";
+import { BRIDGE_VERSION, pendingUpdateChecker } from "./version.js";
 import { startWatcher } from "./watcher.js";
 
 // Starts the bridge in the order that keeps the dashboard informed:
@@ -51,6 +52,8 @@ function delayText(ms: number): string {
 }
 
 export interface BridgeDeps {
+  /** The scanner-bridge folder: GET /status then notices an update there that isn't running yet. */
+  bridgeDir?: string;
   signIn?: (config: BridgeConfig) => Promise<AuthedClient>;
   loadRecognizer?: () => Promise<RecognizerModules>;
   startWatcher?: typeof startWatcher;
@@ -105,6 +108,7 @@ export async function startBridge(config: BridgeConfig, deps: BridgeDeps = {}): 
     duplex: config.duplex,
     watcherControl: null,
     scanDpi: config.scanDpi,
+    checkForUpdate: deps.bridgeDir ? pendingUpdateChecker(deps.bridgeDir) : undefined,
     recognizer: config.recognizer.enabled
       ? {
           requestUpdate: () => runtime?.requestUpdate() ?? false,
@@ -221,12 +225,22 @@ export async function startBridge(config: BridgeConfig, deps: BridgeDeps = {}): 
 export async function describePortConflict(port: number, fetchImpl: typeof fetch = fetch): Promise<string> {
   try {
     const res = await fetchImpl(`http://127.0.0.1:${port}/status`, { signal: AbortSignal.timeout(2000) });
-    const body = (await res.json()) as { watchFolder?: unknown; startedAt?: unknown };
+    const body = (await res.json()) as { watchFolder?: unknown; startedAt?: unknown; version?: unknown };
     if (typeof body.watchFolder === "string" && typeof body.startedAt === "string") {
+      const since = new Date(body.startedAt).toLocaleString();
+      const stopIt = 'close its window, or end its "Node.js" task in Task Manager';
+      if (body.version !== BRIDGE_VERSION) {
+        // Usually: updated while the old copy kept running (Task Scheduler started it at log-on).
+        const which =
+          typeof body.version === "string" ? `Version ${body.version} of the scanner bridge` : "An older version of the scanner bridge";
+        return (
+          `${which} is still running on this PC (since ${since}), and this is version ${BRIDGE_VERSION}. ` +
+          `To finish updating, stop the old one (${stopIt}), then start the bridge again.`
+        );
+      }
       return (
-        `The scanner bridge is already running on this PC (since ${new Date(body.startedAt).toLocaleString()}), ` +
-        "and the dashboard is talking to that copy. Use that one, or stop it first to restart the bridge: close its " +
-        'window, or end its "Node.js" task in Task Manager.'
+        `The scanner bridge is already running on this PC (since ${since}), and the dashboard is talking to that ` +
+        `copy. Use that one, or stop it first to restart the bridge: ${stopIt}.`
       );
     }
   } catch {

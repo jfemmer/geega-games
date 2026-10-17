@@ -21,9 +21,14 @@ import type { RgbImage, RotatedRect } from "./types.js";
 //    all) is only trusted when it agrees with the card's known 63 × 88 mm
 //    shape. Otherwise that edge is placed from the opposite one and the
 //    card's shape.
+//  * When neither edge along an axis can place the card (the driver trimmed
+//    one margin away entirely and the other side is the shadow), but the
+//    image is barely longer than the card that way, the card is centred in
+//    it: it spans the image, so it's off by at most half the leftover.
 //
-// The result is the card's outline to within about a pixel, the same as a
-// card found on open background, so everything downstream lines up.
+// The result is the card's outline to within about a pixel (a few pixels
+// when it had to be centred), the same as a card found on open background,
+// so everything downstream lines up.
 
 export const CARD_ASPECT_LONG_OVER_SHORT = 88 / 63;
 
@@ -37,6 +42,30 @@ const SIDE_MARGIN = 0.1;
 const SAME_BACKGROUND = 40;
 /** The colour difference from the margin must rise at least this much within 3 px at the card's edge. */
 const EDGE_RISE = 12;
+/**
+ * Centring an axis no edge could place: the image may be at most this much
+ * longer than the card that way (as a fraction of the card)…
+ */
+const CENTRE_MAX_LEFTOVER = 0.025;
+/** …or this much shorter (the card's length from its width overshooting a little). */
+const CENTRE_MAX_SHORTFALL = 0.015;
+/**
+ * How far a card's outline may run past the image's edge, as a fraction of
+ * its length, and still be a whole card. Along the feed, a sheet-fed
+ * scanner's scale depends on the feed speed, so an outline placed from the
+ * card's width and one edge can overshoot by about this much on a card
+ * that's whole. And under 1 mm of border missing doesn't change which card it is.
+ */
+const CUT_OFF_SLACK = 0.01;
+
+/**
+ * Part of the card's outline lies clearly outside the image. A card whose
+ * edges merely touch the image's edge (a tight driver crop) is whole.
+ */
+export function outlineCutOff(rect: RotatedRect, image: { width: number; height: number }): boolean {
+  const slack = Math.max(3, CUT_OFF_SLACK * Math.max(rect.width, rect.height));
+  return rectCorners(rect).some((c) => c.x < -slack || c.y < -slack || c.x > image.width + slack || c.y > image.height + slack);
+}
 
 type Side = "left" | "right" | "top" | "bottom";
 const SIDES: Side[] = ["left", "right", "top", "bottom"];
@@ -352,29 +381,71 @@ export function fitTightCrop(img: RgbImage, card: { width: number; height: numbe
   const sizeX = extentX ?? (extentY !== null ? extentY / ratio : expectX);
   const sizeY = extentY ?? sizeX * ratio;
 
-  // Centre along each axis: between both edges when they were measured as a
-  // pair, else from one edge with a clean margin plus the card's size. A
-  // lone edge without a clean margin may be the shadow or a line inside the
-  // card, so it never places the card by itself.
-  const measured: Record<Side, boolean> = { left: false, right: false, top: false, bottom: false };
-  const centre = (low: number | null, high: number | null, lowSide: Side, highSide: Side, size: number, pair: boolean): number | null => {
-    if (pair && low !== null && high !== null) {
-      measured[lowSide] = true;
-      measured[highSide] = true;
-      return (low + high) / 2;
-    }
-    if (low !== null && isClean(lowSide)) {
-      measured[lowSide] = true;
-      return low + size / 2;
-    }
-    if (high !== null && isClean(highSide)) {
-      measured[highSide] = true;
-      return high - size / 2;
-    }
-    return null;
+  // Where the card's centre can sit along each axis, most trusted first:
+  // between both edges when they were measured as a pair, else one edge
+  // with a clean margin plus the card's size. A lone edge without a clean
+  // margin may be the shadow or a line inside the card, so it never places
+  // the card by itself.
+  interface Placement {
+    at: number;
+    sides: Side[];
+  }
+  const placements = (low: number | null, high: number | null, lowSide: Side, highSide: Side, size: number, pair: boolean): Placement[] => {
+    const list: Placement[] = [];
+    if (pair && low !== null && high !== null) list.push({ at: (low + high) / 2, sides: [lowSide, highSide] });
+    if (low !== null && isClean(lowSide)) list.push({ at: low + size / 2, sides: [lowSide] });
+    if (high !== null && isClean(highSide)) list.push({ at: high - size / 2, sides: [highSide] });
+    return list;
   };
-  const cu = centre(left, right, "left", "right", sizeX, extentX !== null);
-  const cv = centre(top, bottom, "top", "bottom", sizeY, extentY !== null);
+  const uPlacements = placements(left, right, "left", "right", sizeX, extentX !== null);
+  const vPlacements = placements(top, bottom, "top", "bottom", sizeY, extentY !== null);
+
+  // The driver's crop holds the whole card, so a placement that runs the
+  // card off the image is wrong: a white border or pale art right at the
+  // image's edge passes for clean margin, and its "edge" is a line inside
+  // the card. (Image position of a centre (cu, cv): cu·u + cv·v.)
+  const cos = Math.abs(Math.cos(angle));
+  const sin = Math.abs(Math.sin(angle));
+  const spanX = sizeX * cos + sizeY * sin;
+  const spanY = sizeY * cos + sizeX * sin;
+  const slack = Math.max(3, CUT_OFF_SLACK * Math.max(sizeX, sizeY));
+  const insideX = (cu: number, cv: number) => Math.abs(cu * ux + cv * vx - w / 2) <= (w - spanX) / 2 + slack;
+  const insideY = (cu: number, cv: number) => Math.abs(cu * uy + cv * vy - h / 2) <= (h - spanY) / 2 + slack;
+  // The image's centre in the card's frame (stands in for an axis not placed yet).
+  const uMid = (w / 2) * ux + (h / 2) * uy;
+  const vMid = (w / 2) * vx + (h / 2) * vy;
+
+  const measured: Record<Side, boolean> = { left: false, right: false, top: false, bottom: false };
+  const adopt = (p: Placement): number => {
+    for (const side of p.sides) measured[side] = true;
+    return p.at;
+  };
+  const pu = uPlacements.find((p) => insideX(p.at, vMid));
+  let cu = pu ? adopt(pu) : null;
+  const pv = vPlacements.find((p) => insideY(cu ?? uMid, p.at));
+  let cv = pv ? adopt(pv) : null;
+
+  // An axis nothing places (no margin left on one side, the shadow on the
+  // other) while the other axis is placed: if the image is barely longer than
+  // the card that way, the card spans it, so centre it there. It's off by at
+  // most half the leftover, which the picture check's alignment then takes
+  // out. Never both axes: an image with no edges to read at all (already
+  // cropped exactly) is left whole.
+  const spans = (imageLength: number, cardSpan: number, cardLength: number): boolean => {
+    const leftover = imageLength - cardSpan;
+    return leftover <= CENTRE_MAX_LEFTOVER * cardLength && leftover >= -CENTRE_MAX_SHORTFALL * cardLength;
+  };
+  if (cu === null && cv !== null && spans(w, spanX, sizeX)) {
+    cu = (w / 2 - cv * vx) / ux; // cu·ux + cv·vx = w / 2
+  } else if (cu === null && uPlacements.length > 0) {
+    // Runs off the image, but it's what the edges say (flagged as cut off).
+    cu = adopt(uPlacements[0]);
+  }
+  if (cv === null && cu !== null && spans(h, spanY, sizeY)) {
+    cv = (h / 2 - cu * uy) / vy; // cu·uy + cv·vy = h / 2
+  } else if (cv === null && vPlacements.length > 0) {
+    cv = adopt(vPlacements[0]);
+  }
   if (cu === null || cv === null) return null;
 
   const rect: RotatedRect = {
@@ -384,7 +455,5 @@ export function fitTightCrop(img: RgbImage, card: { width: number; height: numbe
     height: sizeY,
     angle,
   };
-  const slack = 3;
-  const cutOff = rectCorners(rect).some((c) => c.x < -slack || c.y < -slack || c.x > w + slack || c.y > h + slack);
-  return { rect: toPortrait(rect), measured, cutOff };
+  return { rect: toPortrait(rect), measured, cutOff: outlineCutOff(rect, img) };
 }
