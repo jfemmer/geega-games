@@ -53,6 +53,12 @@ vi.mock("../src/store/lib/yardSaleApi", async () => {
   };
 });
 
+const deck = vi.hoisted(() => ({ find: vi.fn() }));
+vi.mock("../src/store/lib/yardSaleDeck", async () => {
+  const actual = await vi.importActual<typeof import("../src/store/lib/yardSaleDeck")>("../src/store/lib/yardSaleDeck");
+  return { ...actual, findYardSaleDeckCards: deck.find };
+});
+
 const { default: YardSalePage } = await import("../src/store/pages/YardSalePage");
 const { YardSaleApiError } = await import("../src/store/lib/yardSaleApi");
 
@@ -225,5 +231,61 @@ describe("the yard sale page", () => {
     expect(await screen.findByRole("heading", { name: "We couldn’t load the yard sale" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Cards $3 and up · 20% off")).toBeInTheDocument();
+  });
+});
+
+describe("shop your deck", () => {
+  beforeEach(() => deck.find.mockReset());
+
+  it("adds the cards we have from a pasted decklist", async () => {
+    const bolt = card("bolt", "Lightning Bolt", 500, 2);
+    const goyf = card("goyf", "Tarmogoyf", 1234, 1);
+    deck.find.mockResolvedValue({
+      wantedCopies: 6,
+      foundCopies: 3,
+      found: [
+        { name: "Lightning Bolt", wanted: 4, found: 2, lines: [{ card: bolt, quantity: 2 }] },
+        { name: "Tarmogoyf", wanted: 1, found: 1, lines: [{ card: goyf, quantity: 1 }] },
+      ],
+      missing: [{ name: "Mox Diamond", quantity: 1 }],
+    });
+    const user = userEvent.setup();
+    render(<YardSalePage />);
+    await user.click(await screen.findByRole("button", { name: "Shop your deck" }));
+    const sheet = screen.getByRole("dialog", { name: "Shop your deck" });
+    expect(within(sheet).getByRole("button", { name: "Find my cards" })).toBeDisabled();
+    await user.type(within(sheet).getByLabelText("Your decklist"), "4 Lightning Bolt (2XM) 141{enter}1 Tarmogoyf{enter}1 Mox Diamond");
+    await user.click(within(sheet).getByRole("button", { name: "Find my cards" }));
+    expect(deck.find).toHaveBeenCalledWith([
+      { name: "Lightning Bolt", quantity: 4 },
+      { name: "Tarmogoyf", quantity: 1 },
+      { name: "Mox Diamond", quantity: 1 },
+    ]);
+
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("We have 3 of your 6 cards here.");
+    expect(within(sheet).getByText(/only 2 of 4 here/)).toBeInTheDocument();
+    expect(within(sheet).getByText("Not here (1 card)")).toBeInTheDocument();
+    expect(within(sheet).getByRole("link", { name: "Create a free account" })).toHaveAttribute("href", "/signup?next=%2Faccount%2Fdecks");
+
+    // Leave the Tarmogoyf: two Bolts at $4 (20% off $5.00).
+    await user.click(within(sheet).getByRole("checkbox", { name: /Tarmogoyf/ }));
+    await user.click(within(sheet).getByRole("button", { name: "Add 2 cards · $8.00" }));
+
+    const list = screen.getByRole("dialog", { name: "Your list" });
+    expect(within(list).getByText("Lightning Bolt")).toBeInTheDocument();
+    expect(within(list).getByLabelText("2 on your list")).toBeInTheDocument();
+    expect(within(list).queryByText("Tarmogoyf")).not.toBeInTheDocument();
+    expect(screen.getByText("2 cards · $8.00")).toBeInTheDocument();
+  });
+
+  it("asks for a list it can read", async () => {
+    const user = userEvent.setup();
+    render(<YardSalePage />);
+    await user.click(await screen.findByRole("button", { name: "Shop your deck" }));
+    const sheet = screen.getByRole("dialog", { name: "Shop your deck" });
+    await user.type(within(sheet).getByLabelText("Your decklist"), "// nothing here");
+    await user.click(within(sheet).getByRole("button", { name: "Find my cards" }));
+    expect(within(sheet).getByRole("alert")).toHaveTextContent("We couldn’t find any cards in that list.");
+    expect(deck.find).not.toHaveBeenCalled();
   });
 });

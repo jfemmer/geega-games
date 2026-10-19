@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_FILTERS,
   PAGE_SIZE,
@@ -12,6 +12,11 @@ import {
 import { formatCents } from "../lib/money";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 import KioskProductCard from "../components/KioskProductCard";
+import PriceCell from "../components/YardSalePriceCell";
+import YardSaleDeckSheet from "../components/YardSaleDeckSheet";
+import { useSheet } from "../lib/useSheet";
+import { Icon } from "../components/Icon";
+import type { DeckFoundLine } from "../lib/yardSaleDeck";
 import CatalogFiltersPanel from "../components/CatalogFiltersPanel";
 import {
   YARD_SALE_LIMITS,
@@ -94,6 +99,7 @@ export default function YardSalePage() {
   const [list, setList] = useState<YardSaleListView | null>(null);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [deckOpen, setDeckOpen] = useState(false);
   const [name, setName] = useState("");
   const [website, setWebsite] = useState("");
   const [busy, setBusy] = useState(false);
@@ -170,6 +176,7 @@ export default function YardSalePage() {
         setStatus(next);
         if (!next.active) {
           setSheetOpen(false);
+          setDeckOpen(false);
           setPhase((p) => (p === "browsing" ? (openList ? "list" : "closed") : p));
         }
       } catch {
@@ -209,6 +216,34 @@ export default function YardSalePage() {
         .filter((l) => l.quantity > 0),
     );
   }
+
+  // "Shop your deck": its cards join the draft (a card already there gets
+  // more copies, as far as we have), then the list opens to send.
+  function addDeckToDraft(lines: DeckFoundLine[]) {
+    setDraft((prev) => {
+      const next = prev.map((l) => ({ ...l }));
+      for (const line of lines) {
+        const max = Math.min(line.card.quantity, YARD_SALE_LIMITS.copiesPerCard);
+        const existing = next.find((l) => l.card.id === line.card.id);
+        if (existing) existing.quantity = Math.min(max, existing.quantity + line.quantity);
+        else if (next.length < YARD_SALE_LIMITS.linesPerSend) next.push({ card: line.card, quantity: Math.min(max, line.quantity) });
+      }
+      return next;
+    });
+    setDeckOpen(false);
+    setSheetError(null);
+    setSheetOpen(true);
+  }
+
+  // Different cards "Shop your deck" can still add: what one send takes,
+  // and when adding to a list, what the list has room for.
+  const deckLinesLeft = Math.max(
+    0,
+    Math.min(
+      YARD_SALE_LIMITS.linesPerSend,
+      adding && openList ? YARD_SALE_LIMITS.linesPerList - openList.lines.length : YARD_SALE_LIMITS.linesPerSend,
+    ) - draft.length,
+  );
 
   const draftTotals = yardSaleTotals(
     draft.map((l) => ({ priceCents: l.card.priceCents ?? 0, quantity: l.quantity })),
@@ -377,6 +412,17 @@ export default function YardSalePage() {
           </button>
         </div>
       )}
+
+      <div className="gg-yard-deckcta">
+        <Icon name="deck" size={22} />
+        <p>
+          <strong>Have a decklist?</strong>
+          <span>Paste it and we&rsquo;ll find the cards we have here.</span>
+        </p>
+        <button type="button" className="gg-btn gg-btn-sm" onClick={() => setDeckOpen(true)}>
+          Shop your deck
+        </button>
+      </div>
 
       <div className="gg-kiosk-search">
         <label htmlFor="gg-yard-search" className="visually-hidden">
@@ -557,6 +603,15 @@ export default function YardSalePage() {
         />
       )}
 
+      {deckOpen && (
+        <YardSaleDeckSheet
+          discountPercent={status.discountPercent}
+          linesLeft={deckLinesLeft}
+          onAdd={addDeckToDraft}
+          onClose={() => setDeckOpen(false)}
+        />
+      )}
+
       {filtersOpen && (
         <>
           <div className="gg-drawer-overlay" onClick={() => setFiltersOpen(false)} aria-hidden="true" />
@@ -602,21 +657,6 @@ function YardSaleTopBar({ status }: { status: YardSaleStatus | null }) {
         )}
       </div>
     </header>
-  );
-}
-
-function PriceCell({ priceCents, salePriceCents, quantity }: { priceCents: number; salePriceCents: number; quantity: number }) {
-  const discounted = salePriceCents < priceCents;
-  return (
-    <span className="gg-priceblock gg-yard-line__price">
-      <span className={discounted ? "gg-price gg-price--deal" : "gg-price"}>{formatCents(salePriceCents * quantity)}</span>
-      {discounted && (
-        <span className="gg-price-original">
-          <span className="visually-hidden">Regular price </span>
-          {formatCents(priceCents * quantity)}
-        </span>
-      )}
-    </span>
   );
 }
 
@@ -682,28 +722,7 @@ function YardSaleSheet({
   onClose: () => void;
   onSubmit: () => void;
 }) {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const closeRef = useRef(onClose);
-  useEffect(() => {
-    closeRef.current = onClose;
-  }, [onClose]);
-
-  // Once, when the sheet opens: focus its title, stop the page scrolling
-  // behind it, and close on Escape. (Not on every render, or typing a name
-  // would keep losing focus.)
-  useEffect(() => {
-    headingRef.current?.focus();
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
+  const headingRef = useSheet(onClose);
 
   return (
     <>

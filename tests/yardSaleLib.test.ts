@@ -17,7 +17,7 @@ import { yardSaleFlyerCopy } from "../src/admin/utils/marketing";
 
 const migration = readFileSync(new URL("../supabase/migrations/20261019050000_yard_sale_mode.sql", import.meta.url), "utf8");
 const wholeDollars = readFileSync(
-  new URL("../supabase/migrations/20261019190000_yard_sale_whole_dollar_prices.sql", import.meta.url),
+  new URL("../supabase/migrations/20261019190000_yard_sale_whole_dollars_deck_search.sql", import.meta.url),
   "utf8",
 ).replace(/\r\n/g, "\n");
 

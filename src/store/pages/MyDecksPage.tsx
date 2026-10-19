@@ -4,7 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
 import { Link } from "../lib/router";
 import { formatCents } from "../lib/money";
-import { parseCardListText } from "../lib/sellCardListParser";
+import { parseDecklist, type ParsedCard } from "../lib/decklist";
 
 const db = supabase as any;
 
@@ -66,11 +66,9 @@ type Recommendation = {
   score: number;
 };
 
-export type ParsedCard = {
-  name: string;
-  quantity: number;
-  section: string;
-};
+// Reading a pasted or uploaded decklist lives in src/store/lib/decklist.ts,
+// shared with the yard sale page's "Shop your deck".
+export type { ParsedCard } from "../lib/decklist";
 
 export type ResolvedCard = {
   input_name: string;
@@ -142,90 +140,6 @@ function formatMaxCopies(format: string): number {
 // mislabeled as its "commander."
 function hasCommander(format: string): boolean {
   return format === "commander" || format === "brawl";
-}
-
-// parseCardListText (shared with the "sell my collection" flow) already
-// knows how to tell a pasted/uploaded CSV-with-header block from free-text
-// lines, and — for free text — to strip a bracketed/parenthesized set code
-// plus a trailing collector number ("Lightning Bolt [SLD] 84", the exact
-// shape TCGplayer's Mass Entry produces, and Moxfield's "(C21) 263" style).
-// That covers Scryfall-style plain lists (already just "qty name"),
-// TCGplayer's Mass Entry text AND its "Quantity,Name,Simple Name,Set,..."
-// collection-export CSV, and ManaBox's "Name,Set code,...,Quantity,..."
-// collection-export CSV — its header-column lookup is by column NAME, not
-// fixed position, so it doesn't care that ManaBox and TCGplayer order their
-// columns differently. Deck-specific concerns (section headings, merging
-// repeated names within a section) stay local to this function; card-name
-// extraction itself is delegated so decks and sell-collection uploads stay
-// governed by one tested implementation instead of two that can drift.
-//
-// One legacy shape parseCardListText doesn't cover: a trailing
-// "Name, 3" / "Name;3" / "Name<tab>3" quantity (no leading digit, no "x").
-// Applied as a fallback below so it keeps working for anyone with an
-// existing list in that shape.
-function applyTrailingQuantityFallback(name: string, quantity: number): { name: string; quantity: number } {
-  const m = name.match(/^(.+?)[,;\t]\s*([0-9]{1,2})$/);
-  if (!m) return { name, quantity };
-  return { name: m[1].trim(), quantity: Number(m[2]) || quantity };
-}
-
-export function parseDecklist(text: string, maxCopies = 99): ParsedCard[] {
-  const lines = text.replace(/\r/g, "").split("\n");
-  let section = "mainboard";
-  const bySection = new Map<string, string[]>();
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith("//") || line.startsWith("#")) continue;
-
-    const normalizedHeading = line.replace(/:$/, "").toLowerCase();
-    if (["commander", "commanders"].includes(normalizedHeading)) {
-      section = "commander";
-      continue;
-    }
-    if (["mainboard", "main deck", "deck", "maindeck"].includes(normalizedHeading)) {
-      section = "mainboard";
-      continue;
-    }
-    if (["sideboard", "side board"].includes(normalizedHeading)) {
-      section = "sideboard";
-      continue;
-    }
-    if (["maybeboard", "maybe board", "considering"].includes(normalizedHeading)) {
-      section = "maybeboard";
-      continue;
-    }
-
-    const list = bySection.get(section) ?? [];
-    list.push(line.replace(/^[-*•]\s*/, ""));
-    bySection.set(section, list);
-  }
-
-  const out: ParsedCard[] = [];
-  for (const [sectionName, sectionLines] of bySection) {
-    // Grouped per section (rather than parsed line-by-line) so a pasted CSV
-    // block — header row plus data rows — reaches parseCardListText intact;
-    // it needs to see the header to know which column is which.
-    for (const parsed of parseCardListText(sectionLines.join("\n"))) {
-      const fallback = applyTrailingQuantityFallback(parsed.cardName, parsed.quantity);
-      const name = fallback.name.replace(/\s+\*F\*$/i, "").trim();
-      if (!name) continue;
-      out.push({
-        name,
-        quantity: Math.max(1, Math.min(fallback.quantity || 1, maxCopies)),
-        section: sectionName,
-      });
-    }
-  }
-
-  const merged = new Map<string, ParsedCard>();
-  for (const card of out) {
-    const key = `${card.section}::${card.name.toLowerCase()}`;
-    const existing = merged.get(key);
-    if (existing) existing.quantity = Math.min(maxCopies, existing.quantity + card.quantity);
-    else merged.set(key, { ...card });
-  }
-  return Array.from(merged.values());
 }
 
 function categoryOrder(category: string): number {

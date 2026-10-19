@@ -182,7 +182,8 @@ export function countActiveFilters(filters: CatalogFilters): number {
   );
 }
 
-type SearchRow = {
+/** A row from search_inventory / search_deals (and yard_sale_deck_matches, which returns the same columns). */
+export type CatalogSearchRow = {
   id: string;
   oracle_id?: string | null;
   scryfall_id: string | null;
@@ -204,7 +205,7 @@ type SearchRow = {
   variant_type?: string | null;
 };
 
-function mapRow(row: SearchRow): CatalogCard {
+export function mapCatalogRow(row: CatalogSearchRow): CatalogCard {
   return {
     id: row.id,
     oracleId: row.oracle_id ?? null,
@@ -216,7 +217,7 @@ function mapRow(row: SearchRow): CatalogCard {
     rarity: row.rarity ?? null,
     quantity: row.quantity ?? 0,
     imageUrl: storefrontImageUrl(
-      (row as SearchRow & { image_url?: string | null }).image_url ?? null,
+      (row as CatalogSearchRow & { image_url?: string | null }).image_url ?? null,
     ),
     priceCents: row.price_cents,
     condition: row.condition ?? "NM",
@@ -293,8 +294,8 @@ export function useCatalog(filters: CatalogFilters, page: number) {
           });
       if (requestId !== requestRef.current) return; // a newer request already landed
       if (response.error) throw new Error(response.error.message);
-      const rows = (response.data ?? []) as unknown as SearchRow[];
-      setCards(rows.map(mapRow));
+      const rows = (response.data ?? []) as unknown as CatalogSearchRow[];
+      setCards(rows.map(mapCatalogRow));
       setTotal(rows.length ? (rows[0].total_count ?? 0) : 0);
     } catch (err) {
       if (requestId !== requestRef.current) return; // a newer request already landed

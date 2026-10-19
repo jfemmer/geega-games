@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDecklist } from "../src/store/pages/MyDecksPage";
+import { normalizeDeckCardName, parseDecklist } from "../src/store/lib/decklist";
 
 describe("parseDecklist — plain-text lists (Scryfall / Moxfield / Archidekt style)", () => {
   it("parses simple 'qty name' lines into the mainboard section", () => {
@@ -93,5 +93,153 @@ describe("parseDecklist — ManaBox collection-export CSV", () => {
     ].join("\n");
     const cards = parseDecklist(csv);
     expect(cards).toEqual([{ name: "Muldrotha, the Gravetide", quantity: 1, section: "mainboard" }]);
+  });
+});
+
+// Exports copied from the apps people use (the yard sale page's "Shop your
+// deck" asks for any of these).
+
+describe("parseDecklist — Moxfield", () => {
+  it("reads its export with foil and etched marks and collector numbers after the set", () => {
+    const cards = parseDecklist(
+      [
+        "1 Atraxa, Praetors' Voice (2X2) 190",
+        "1 Arcane Signet (PLST) ELD-331",
+        "1 Sol Ring (C21) 263 *F*",
+        "1 Command Tower (CMM) 1013 *E*",
+        "1 Swords to Plowshares (SLD) 1531★",
+        "",
+        "SIDEBOARD:",
+        "1 Lurrus of the Dream-Den (IKO) 226",
+      ].join("\n"),
+    );
+    expect(cards).toEqual([
+      { name: "Atraxa, Praetors' Voice", quantity: 1, section: "mainboard" },
+      { name: "Arcane Signet", quantity: 1, section: "mainboard" },
+      { name: "Sol Ring", quantity: 1, section: "mainboard" },
+      { name: "Command Tower", quantity: 1, section: "mainboard" },
+      { name: "Swords to Plowshares", quantity: 1, section: "mainboard" },
+      { name: "Lurrus of the Dream-Den", quantity: 1, section: "sideboard" },
+    ]);
+  });
+
+  it("reads its MTG Arena copy, skipping the About block", () => {
+    const cards = parseDecklist(
+      [
+        "About",
+        "Name Atraxa Superfriends",
+        "",
+        "Commander",
+        "1 Atraxa, Praetors' Voice (2X2) 190",
+        "",
+        "Deck",
+        "1 Sol Ring (C21) 263",
+        "1 Fable of the Mirror-Breaker (NEO) 141",
+        "",
+        "Sideboard",
+        "1 Negate (M20) 69",
+      ].join("\n"),
+    );
+    expect(cards).toEqual([
+      { name: "Atraxa, Praetors' Voice", quantity: 1, section: "commander" },
+      { name: "Sol Ring", quantity: 1, section: "mainboard" },
+      { name: "Fable of the Mirror-Breaker", quantity: 1, section: "mainboard" },
+      { name: "Negate", quantity: 1, section: "sideboard" },
+    ]);
+  });
+
+  it("counts an Arena companion once, as a sideboard card", () => {
+    const listedTwice = parseDecklist(
+      "Companion\n1 Lurrus of the Dream-Den\n\nDeck\n4 Lightning Bolt (2XM) 141\n\nSideboard\n1 Lurrus of the Dream-Den\n2 Pyroblast (ICE) 213",
+    );
+    expect(listedTwice).toEqual([
+      { name: "Lightning Bolt", quantity: 4, section: "mainboard" },
+      { name: "Lurrus of the Dream-Den", quantity: 1, section: "sideboard" },
+      { name: "Pyroblast", quantity: 2, section: "sideboard" },
+    ]);
+    const listedOnce = parseDecklist("Companion\n1 Lurrus of the Dream-Den\n\nDeck\n4 Lightning Bolt");
+    expect(listedOnce).toEqual([
+      { name: "Lurrus of the Dream-Den", quantity: 1, section: "sideboard" },
+      { name: "Lightning Bolt", quantity: 4, section: "mainboard" },
+    ]);
+  });
+});
+
+describe("parseDecklist — Archidekt", () => {
+  it("drops categories and labels, and files cards by their Commander, Sideboard and Maybeboard categories", () => {
+    const cards = parseDecklist(
+      [
+        "1x Atraxa, Praetors' Voice (2x2) 190 [Commander{top}]",
+        "1x Sol Ring (c21) 263 *F* [Ramp] ^Have,#37d67a^",
+        "1x Swords to Plowshares (sta) 10 [Removal,Instant]",
+        "1x Rhystic Study (pcy) 45 [Maybeboard{noDeck}{noPrice}]",
+        "1x Negate (m20) 69 [Sideboard{noDeck}]",
+        "1x Cultivate [Ramp]",
+      ].join("\n"),
+    );
+    expect(cards).toEqual([
+      { name: "Atraxa, Praetors' Voice", quantity: 1, section: "commander" },
+      { name: "Sol Ring", quantity: 1, section: "mainboard" },
+      { name: "Swords to Plowshares", quantity: 1, section: "mainboard" },
+      { name: "Cultivate", quantity: 1, section: "mainboard" },
+      { name: "Rhystic Study", quantity: 1, section: "maybeboard" },
+      { name: "Negate", quantity: 1, section: "sideboard" },
+    ]);
+  });
+});
+
+describe("parseDecklist — MTGGoldfish and ManaBox text", () => {
+  it("reads MTGGoldfish's text download, whose sideboard follows a blank line", () => {
+    const cards = parseDecklist("4 Lightning Bolt\n4 Ragavan, Nimble Pilferer\n\n2 Pyroblast\n1 Blood Moon");
+    expect(cards).toEqual([
+      { name: "Lightning Bolt", quantity: 4, section: "mainboard" },
+      { name: "Ragavan, Nimble Pilferer", quantity: 4, section: "mainboard" },
+      { name: "Pyroblast", quantity: 2, section: "mainboard" },
+      { name: "Blood Moon", quantity: 1, section: "mainboard" },
+    ]);
+  });
+
+  it("reads ManaBox's deck text with foil marks", () => {
+    const cards = parseDecklist("1 Sol Ring (C21) 263 *F*\n2 Counterspell (MH2) 267");
+    expect(cards).toEqual([
+      { name: "Sol Ring", quantity: 1, section: "mainboard" },
+      { name: "Counterspell", quantity: 2, section: "mainboard" },
+    ]);
+  });
+});
+
+describe("parseDecklist — other shapes", () => {
+  it("skips 'Creatures (23)'-style group headings but follows 'Sideboard (15)'", () => {
+    const cards = parseDecklist(
+      "Creatures (2)\n1 Ragavan, Nimble Pilferer\n1 Dragon's Rage Channeler\nLands (1)\n1 Mountain\nSideboard (1)\n1 Pyroblast",
+    );
+    expect(cards).toEqual([
+      { name: "Ragavan, Nimble Pilferer", quantity: 1, section: "mainboard" },
+      { name: "Dragon's Rage Channeler", quantity: 1, section: "mainboard" },
+      { name: "Mountain", quantity: 1, section: "mainboard" },
+      { name: "Pyroblast", quantity: 1, section: "sideboard" },
+    ]);
+  });
+
+  it("reads old 'SB:' sideboard lines", () => {
+    expect(parseDecklist("4 Lightning Bolt\nSB: 2 Negate")).toEqual([
+      { name: "Lightning Bolt", quantity: 4, section: "mainboard" },
+      { name: "Negate", quantity: 2, section: "sideboard" },
+    ]);
+  });
+
+  it("keeps parentheses that are part of a card's name", () => {
+    expect(parseDecklist("1 B.F.M. (Big Furry Monster) (UGL) 28")).toEqual([
+      { name: "B.F.M. (Big Furry Monster)", quantity: 1, section: "mainboard" },
+    ]);
+  });
+
+  it("writes names the way the shop does", () => {
+    expect(normalizeDeckCardName("Jace\u2019s Erasure")).toBe("Jace's Erasure");
+    expect(normalizeDeckCardName("Æther Vial")).toBe("Aether Vial");
+    expect(normalizeDeckCardName("Fire / Ice")).toBe("Fire // Ice");
+    expect(normalizeDeckCardName("Fire // Ice")).toBe("Fire // Ice");
+    expect(normalizeDeckCardName("Who/What/When/Where/Why")).toBe("Who/What/When/Where/Why");
+    expect(parseDecklist("1 Jace\u2019s Erasure")).toEqual([{ name: "Jace's Erasure", quantity: 1, section: "mainboard" }]);
   });
 });

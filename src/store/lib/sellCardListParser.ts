@@ -243,6 +243,16 @@ function parseFreeTextLine(line: string): ParsedCardLine {
 }
 
 /**
+ * Whether a pasted/uploaded list is a CSV block with a header row (rather
+ * than free-text lines) — the same check parseCardListText makes.
+ */
+export function looksLikeCardListCsv(text: string): boolean {
+  const lines = splitLines(text);
+  const firstFields = lines.length > 0 ? splitCsvFields(lines[0]) : null;
+  return !!firstFields && looksLikeCsvHeader(firstFields);
+}
+
+/**
  * Parse a whole pasted/uploaded card list. Handles a CSV-with-header block
  * (our own admin export/import format, or a TCGplayer collection export) OR
  * free-text lines — detected per-file by checking whether the FIRST

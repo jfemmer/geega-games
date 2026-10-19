@@ -4534,6 +4534,31 @@ export type Database = {
           request_id: string
         }[]
       }
+      yard_sale_deck_matches: {
+        Args: { p_names: string[] }
+        Returns: {
+          card_name: string
+          collector_number: string
+          condition: Database["public"]["Enums"]["card_condition"]
+          deal_discount_percent: number
+          deal_note: string
+          deal_source: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string
+          input_name: string
+          oracle_id: string
+          original_price_cents: number
+          price_cents: number
+          quantity: number
+          rarity: string
+          scryfall_id: string
+          set_code: string
+          set_name: string
+          type_line: string
+          variant_type: string
+        }[]
+      }
       yard_sale_end: {
         Args: { p_actor?: string; p_sale_id: string }
         Returns: {
