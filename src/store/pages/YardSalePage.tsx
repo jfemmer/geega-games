@@ -472,9 +472,7 @@ export default function YardSalePage() {
                   quantityInList={quantityInDraft(c.id)}
                   onAdd={() => addToDraft(c)}
                   salePriceCents={
-                    c.priceCents != null && status.discountPercent > 0
-                      ? yardSalePriceCents(c.priceCents, status.discountPercent)
-                      : null
+                    c.priceCents != null ? yardSalePriceCents(c.priceCents, status.discountPercent) : null
                   }
                 />
               ))}
@@ -622,12 +620,14 @@ function PriceCell({ priceCents, salePriceCents, quantity }: { priceCents: numbe
   );
 }
 
-function TotalsBlock({ totals, discountPercent }: { totals: YardSaleTotals; discountPercent: number }) {
+// "Savings", not "discount (20%)": prices round to whole dollars, so the
+// savings aren't exactly the sale's percent (and there are some at 0%).
+function TotalsBlock({ totals }: { totals: YardSaleTotals }) {
   return (
     <dl className="gg-yard-totals">
       {totals.discountCents > 0 && (
         <div>
-          <dt>Yard sale discount ({discountPercent}%)</dt>
+          <dt>Yard sale savings</dt>
           <dd>−{formatCents(totals.discountCents)}</dd>
         </div>
       )}
@@ -781,7 +781,7 @@ function YardSaleSheet({
             </ul>
           )}
 
-          <TotalsBlock totals={totals} discountPercent={discountPercent} />
+          <TotalsBlock totals={totals} />
           <p className="gg-card-meta gg-yard-fine">
             You don&rsquo;t pay here. Pay us in person when you&rsquo;re done, together with anything from the tables.
           </p>
@@ -884,7 +884,7 @@ function YardSaleListScreen({
           </li>
         ))}
       </ul>
-      <TotalsBlock totals={list.totals} discountPercent={list.discountPercent} />
+      <TotalsBlock totals={list.totals} />
       <p className="gg-card-meta gg-yard-fine">
         Changed your mind about a card? Just tell us when you pay. Your total is confirmed when you pay.
       </p>

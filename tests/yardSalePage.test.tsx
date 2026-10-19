@@ -144,7 +144,7 @@ describe("the yard sale page", () => {
       listView({
         lines: [
           ...listView().lines,
-          { ...listView().lines[0], itemId: "i2", inventoryItemId: "goyf", cardName: "Tarmogoyf", priceCents: 1234, salePriceCents: 987 },
+          { ...listView().lines[0], itemId: "i2", inventoryItemId: "goyf", cardName: "Tarmogoyf", priceCents: 1234, salePriceCents: 1000 },
         ],
       }),
     );

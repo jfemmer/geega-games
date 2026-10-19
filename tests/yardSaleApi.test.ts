@@ -136,15 +136,15 @@ describe("sending a list", () => {
     ]);
     const list = res.body.list;
     expect(list).toMatchObject({ requestId: REQUEST, pickupNumber: 1, customerName: "Ann Lee", status: "open", canAdd: true, discountPercent: 20 });
-    // 20% off each card: Bolt 500 -> 400 (x2), Goyf 1234 -> 987.
+    // 20% off each card, to the nearest dollar: Bolt $5.00 -> $4 (x2), Goyf $12.34 -> $9.87 -> $10.
     expect(list.lines.map((l: { cardName: string; quantity: number; salePriceCents: number }) => [l.cardName, l.quantity, l.salePriceCents])).toEqual([
       ["Lightning Bolt", 2, 400],
-      ["Tarmogoyf", 1, 987],
+      ["Tarmogoyf", 1, 1000],
     ]);
-    expect(list.totals).toEqual({ subtotalCents: 2234, discountCents: 447, cardsCents: 1787, taxCents: 0, totalCents: 1787 });
+    expect(list.totals).toEqual({ subtotalCents: 2234, discountCents: 434, cardsCents: 1800, taxCents: 0, totalCents: 1800 });
     expect(res.body.token).toBe(yardSaleListToken(REQUEST));
     expect(pushes.sent).toEqual([
-      expect.objectContaining({ kind: "pickup", title: "Yard sale list #1", body: "Ann Lee · 3 cards to grab · $17.87" }),
+      expect.objectContaining({ kind: "pickup", title: "Yard sale list #1", body: "Ann Lee · 3 cards to grab · $18.00" }),
     ]);
   });
 
@@ -156,13 +156,14 @@ describe("sending a list", () => {
     expect(res.statusCode).toBe(201);
     expect(res.body.token).toBe(yardSaleListToken(REQUEST));
     // At the prices the cards were held at.
-    expect(res.body.list.totals.totalCents).toBe(1787);
+    expect(res.body.list.totals.totalCents).toBe(1800);
   });
 
   it("charges the register's tax on top, as Complete will", async () => {
     state.tables.pos_settings = [{ id: 1, sales_tax_bps: 825 }];
     const res = await post({ ...SEND, items: [{ inventoryItemId: GOYF, quantity: 1 }] });
-    expect(res.body.list.totals).toMatchObject({ cardsCents: 987, taxCents: 81, totalCents: 1068 });
+    // $10 at 8.25%: $0.825 of tax, rounded down.
+    expect(res.body.list.totals).toMatchObject({ cardsCents: 1000, taxCents: 82, totalCents: 1082 });
   });
 
   it("needs a name and some cards", async () => {
@@ -247,8 +248,9 @@ describe("adding to a list and showing it again", () => {
     storewidePercent = 10;
     const res = await post({ action: "get", requestId: REQUEST, token: yardSaleListToken(REQUEST) });
     const bolt = res.body.list.lines.find((l: { cardName: string }) => l.cardName === "Lightning Bolt");
-    // $5.00 on the website is $4.50 during the storewide sale; the yard sale's 20% comes off that.
-    expect(bolt).toMatchObject({ priceCents: 450, salePriceCents: 360, quantity: 2 });
+    // $5.00 on the website is $4.50 during the storewide sale; the yard sale's 20% comes off
+    // that ($3.60), rounded to the nearest dollar.
+    expect(bolt).toMatchObject({ priceCents: 450, salePriceCents: 400, quantity: 2 });
   });
 
   it("can't add once the sale is over, and says the list is closed once it's completed", async () => {

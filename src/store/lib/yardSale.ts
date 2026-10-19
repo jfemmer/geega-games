@@ -38,12 +38,18 @@ export const YARD_SALE_PAYMENT_LABELS: Record<YardSalePaymentMethod, string> = {
 };
 
 /**
- * One card's yard sale price: the website price less the discount, rounded to
- * the nearest cent. Same formula as public.yard_sale_price, so what a shopper
- * sees is exactly what Complete charges.
+ * One card's yard sale price, in whole dollars: the website price less the
+ * discount, rounded to the nearest dollar (50 cents rounds up). It never goes
+ * above the website price (it rounds down to the dollar below instead) or
+ * under $1; a card under $1 keeps its website price. Same formula as
+ * public.yard_sale_price, so what a shopper sees is exactly what Complete
+ * charges.
  */
 export function yardSalePriceCents(priceCents: number, discountPercent: number): number {
-  return Math.floor((priceCents * (100 - discountPercent) + 50) / 100);
+  if (priceCents < 100) return priceCents;
+  let price = Math.floor((priceCents * (100 - discountPercent) + 5000) / 10_000) * 100;
+  if (price > priceCents) price = Math.floor(priceCents / 100) * 100;
+  return Math.max(price, 100);
 }
 
 export interface YardSaleLine {

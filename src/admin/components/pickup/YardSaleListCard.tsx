@@ -60,7 +60,7 @@ export function YardSaleListCard({
             key={item.id}
             item={item}
             priceCents={livePriceCents(item)}
-            salePriceCents={discount > 0 ? yardSalePriceCents(livePriceCents(item), discount) : null}
+            salePriceCents={yardSalePriceCents(livePriceCents(item), discount)}
             listLabel={listLabel}
             onToggle={() => onToggle(item.id)}
             onRemove={() => onRemove(item)}
@@ -77,7 +77,7 @@ export function YardSaleListCard({
         </div>
         {totals.discountCents > 0 && (
           <div>
-            <dt>Yard sale discount ({discount}%)</dt>
+            <dt>Yard sale savings</dt>
             <dd>−{formatCents(totals.discountCents)}</dd>
           </div>
         )}

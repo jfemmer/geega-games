@@ -16,19 +16,37 @@ import { yardSaleFlyerCopy } from "../src/admin/utils/marketing";
 // must agree to the cent.
 
 const migration = readFileSync(new URL("../supabase/migrations/20261019050000_yard_sale_mode.sql", import.meta.url), "utf8");
+const wholeDollars = readFileSync(
+  new URL("../supabase/migrations/20261019190000_yard_sale_whole_dollar_prices.sql", import.meta.url),
+  "utf8",
+).replace(/\r\n/g, "\n");
 
 describe("yard sale prices", () => {
-  it("rounds each card to the nearest cent, half up", () => {
-    expect(yardSalePriceCents(500, 20)).toBe(400);
-    expect(yardSalePriceCents(1234, 20)).toBe(987); // 987.2
-    expect(yardSalePriceCents(1235, 20)).toBe(988); // 988.0
-    expect(yardSalePriceCents(1, 50)).toBe(1); // 0.5 -> 1
-    expect(yardSalePriceCents(999, 0)).toBe(999);
-    expect(yardSalePriceCents(333, 90)).toBe(33); // 33.3
+  it("rounds each card to the nearest dollar after the discount", () => {
+    expect(yardSalePriceCents(500, 20)).toBe(400); // $4.00
+    expect(yardSalePriceCents(1234, 20)).toBe(1000); // $9.87 -> $10
+    expect(yardSalePriceCents(1185, 20)).toBe(900); // $9.48 -> $9
+    expect(yardSalePriceCents(1188, 20)).toBe(1000); // $9.504 -> $10
+    expect(yardSalePriceCents(500, 10)).toBe(500); // $4.50: 50 cents rounds up
+    expect(yardSalePriceCents(2899, 20)).toBe(2300); // $23.19 -> $23
+    expect(yardSalePriceCents(6499, 20)).toBe(5200); // $51.99 -> $52
+  });
+
+  it("never goes above the website price or under $1", () => {
+    expect(yardSalePriceCents(480, 5)).toBe(400); // $4.56 would round up to $5, more than $4.80: $4
+    expect(yardSalePriceCents(438, 0)).toBe(400); // no discount: down to the whole dollar
+    expect(yardSalePriceCents(1250, 0)).toBe(1200);
+    expect(yardSalePriceCents(500, 0)).toBe(500);
+    expect(yardSalePriceCents(300, 90)).toBe(100); // $0.30 -> $1, never free
+    expect(yardSalePriceCents(100, 90)).toBe(100);
+    expect(yardSalePriceCents(75, 50)).toBe(75); // under $1: its website price
   });
 
   it("uses the same formula as the database", () => {
-    expect(migration).toContain("((p_price_cents::bigint * (100 - p_discount_percent) + 50) / 100)::integer");
+    expect(wholeDollars).toContain("v_price := (((p_price_cents::bigint * (100 - p_discount_percent) + 5000) / 10000) * 100)::integer;");
+    expect(wholeDollars).toContain("v_price := (p_price_cents / 100) * 100;");
+    expect(wholeDollars).toContain("return greatest(v_price, 100);");
+    expect(wholeDollars).toContain("if p_price_cents < 100 then\n    return p_price_cents;");
     expect(migration).toContain("public.yard_sale_price(v_price, v_sale.discount_percent) * ri.quantity");
     expect(migration).toContain("v_tax := ((v_discounted::bigint * v_tax_bps) / 10000)::integer;");
   });
@@ -51,7 +69,8 @@ describe("yard sale prices", () => {
       20,
       825,
     );
-    expect(totals).toEqual({ subtotalCents: 2234, discountCents: 447, cardsCents: 1787, taxCents: 147, totalCents: 1934 });
+    // $4 x 2 + $10 = $18; 8.25% tax is $1.485 -> $1.48.
+    expect(totals).toEqual({ subtotalCents: 2234, discountCents: 434, cardsCents: 1800, taxCents: 148, totalCents: 1948 });
     expect(yardSaleTotals([], 20)).toEqual({ subtotalCents: 0, discountCents: 0, cardsCents: 0, taxCents: 0, totalCents: 0 });
   });
 });

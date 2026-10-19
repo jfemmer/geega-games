@@ -74,7 +74,7 @@ beforeEach(() => {
   for (const fn of Object.values(yard)) fn.mockReset();
   pickup.list.mockResolvedValue(queue());
   pickup.removeItem.mockResolvedValue({ cardName: "Lightning Bolt", removed: 1, itemsLeft: 1, listClosed: false });
-  pickup.completeYardSaleList.mockResolvedValue({ orderId: "o1", subtotalCents: 1200, discountCents: 240, taxCents: 0, totalCents: 960 });
+  pickup.completeYardSaleList.mockResolvedValue({ orderId: "o1", subtotalCents: 1200, discountCents: 200, taxCents: 0, totalCents: 1000 });
 });
 afterEach(cleanup);
 
@@ -84,9 +84,10 @@ describe("yard sale lists in Pickup Requests", () => {
     expect(await screen.findByText("#3")).toBeInTheDocument();
     expect(screen.getByText("Box A3")).toBeInTheDocument();
     const card = screen.getByText("#3").closest(".gg-pickup-card") as HTMLElement;
-    // Live price $6.00 x 2 at 20% off.
-    expect(within(card).getByText("$9.60", { selector: ".gg-pickup-row__sale" })).toBeInTheDocument();
-    expect(within(card).getByText("Total").nextSibling).toHaveTextContent("$9.60");
+    // Live price $6.00 x 2 at 20% off: $4.80 each, rounded to $5.
+    expect(within(card).getByText("$10.00", { selector: ".gg-pickup-row__sale" })).toBeInTheDocument();
+    expect(within(card).getByText("Yard sale savings").nextSibling).toHaveTextContent("−$2.00");
+    expect(within(card).getByText("Total").nextSibling).toHaveTextContent("$10.00");
     expect(screen.getByRole("status")).toHaveTextContent(/Yard sale on until .* Cards \$3 and up · 20% off/);
   });
 
@@ -97,9 +98,9 @@ describe("yard sale lists in Pickup Requests", () => {
     const dialog = screen.getByRole("dialog", { name: "Complete list #3?" });
     expect(within(dialog).getByRole("radio", { name: "Cash" })).toHaveAttribute("aria-checked", "true");
     await user.click(within(dialog).getByRole("radio", { name: "Venmo" }));
-    await user.click(within(dialog).getByRole("button", { name: "Complete · $9.60" }));
+    await user.click(within(dialog).getByRole("button", { name: "Complete · $10.00" }));
     expect(pickup.completeYardSaleList).toHaveBeenCalledWith("list-1", "venmo");
-    expect(await screen.findByText(/List #3 complete: \$9\.60 by Venmo/)).toBeInTheDocument();
+    expect(await screen.findByText(/List #3 complete: \$10\.00 by Venmo/)).toBeInTheDocument();
     expect(screen.queryByText("#3")).not.toBeInTheDocument();
   });
 

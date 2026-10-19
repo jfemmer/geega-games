@@ -239,7 +239,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
                   inputMode="numeric"
                   value={discount}
                   onChange={(e) => setDiscount(e.target.value)}
-                  hint="0 for no discount. You can change it during the sale; each list is charged at the discount when you complete it."
+                  hint="0 for no discount. Each card's price is rounded to the nearest dollar after the discount (never above its website price). You can change the discount during the sale; each list is charged at the discount when you complete it."
                 />
                 <TextField
                   label="Show cards priced at least ($)"
