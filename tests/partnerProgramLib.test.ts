@@ -126,7 +126,9 @@ describe("Marketing page data (src/admin/utils/marketing)", () => {
     for (const page of MARKETING_PAGES) {
       const words = [page.copy.headline, page.copy.sub, ...page.copy.points, page.copy.cta, page.copy.finePrint ?? ""].join(" ");
       // No payout, price or speed promises, and the retired partner line.
-      expect(words, page.key).not.toMatch(/very competitively|top dollar|best price|highest|cash today|same.day|fast cash|\$\d/i);
+      expect(words, page.key).not.toMatch(/very competitively|top dollar|best price|highest|cash today|same.day|fast cash/i);
+      // The yard sale sign isn't seller copy: it's printed for one sale and names its minimum card price.
+      if (page.key !== "yard_sale") expect(words, page.key).not.toMatch(/\$\d/);
       // Nothing we don't take.
       expect(words, page.key).not.toMatch(/Yu-Gi-Oh|Lorcana|sports cards/i);
       expect(page.copy.points.length, page.key).toBeGreaterThanOrEqual(3);

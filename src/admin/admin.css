@@ -323,6 +323,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   padding: 9px 15px; border-radius: var(--gg-radius-sm); border: 1px solid transparent;
   font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer;
   white-space: nowrap; transition: background 0.14s ease, border-color 0.14s ease, transform 0.05s ease;
+  /* Links styled as buttons (a.gg-btn) shouldn't keep the link underline. */
+  text-decoration: none;
 }
 .gg-btn:active { transform: translateY(1px); }
 .gg-btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -1766,7 +1768,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   gap: 16px;
   margin-top: 20px;
 }
-.gg-pickup-card { padding: 0; overflow: hidden; }
+/* A column, so the actions sit at the bottom when a card is stretched to
+   match a taller card beside it. */
+.gg-pickup-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .gg-pickup-card__head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 16px 18px; background: var(--gg-surface-2);
@@ -1785,6 +1789,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-pickup-item > span:last-child { font-weight: 700; white-space: nowrap; color: var(--gg-text); }
 .gg-pickup-card__actions {
   display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: auto;
   padding: 14px 18px; background: var(--gg-surface-2); border-top: 1px solid var(--gg-line);
 }
 
@@ -3376,4 +3381,70 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-sortq__other > .gg-btn { grid-column: 1 / -1; justify-self: start; }
   .gg-sortrates__row { flex-direction: column; }
   .gg-sortrates__actions .gg-btn { min-height: 40px; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Pickup Requests: card rows (kiosk + yard sale) and yard sale lists
+ * ------------------------------------------------------------------ */
+.gg-pickup-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-pickup-row:last-child { border-bottom: 0; }
+.gg-pickup-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--gg-brand); cursor: pointer; }
+.gg-pickup-row__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.gg-pickup-row__name { font-weight: 600; color: var(--gg-text); }
+.gg-pickup-row--pulled .gg-pickup-row__name { text-decoration: line-through; text-decoration-color: var(--gg-text-faint); color: var(--gg-text-soft); }
+.gg-pickup-row__where {
+  display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--gg-brand-tint); color: var(--gg-brand);
+  font-size: 0.78rem; font-weight: 600;
+}
+.gg-pickup-row__warn { color: var(--gg-danger); font-size: 0.8rem; font-weight: 600; }
+.gg-pickup-row__price { display: flex; flex-direction: column; align-items: flex-end; white-space: nowrap; font-weight: 700; color: var(--gg-text); }
+.gg-pickup-row__sale { color: var(--gg-brand); }
+.gg-pickup-row__was { color: var(--gg-text-faint); font-weight: 500; font-size: 0.78rem; }
+.gg-pickup-row__remove { color: var(--gg-text-faint); }
+.gg-pickup-row__remove:hover { color: var(--gg-danger); }
+
+.gg-pickup-card--yard { border-color: var(--gg-line-strong); }
+.gg-pickup-card__who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gg-pickup-card__number {
+  flex: 0 0 auto;
+  min-width: 52px; padding: 4px 10px; border-radius: 10px;
+  background: var(--gg-rail); color: #fff;
+  font-size: 1.35rem; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums;
+}
+.gg-pickup-card__totals { margin: 0; padding: 8px 18px 14px; display: grid; gap: 4px; }
+.gg-pickup-card__totals div { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: var(--gg-text-soft); }
+.gg-pickup-card__totals dt, .gg-pickup-card__totals dd { margin: 0; }
+.gg-pickup-card__total { padding-top: 6px; border-top: 1px solid var(--gg-line); color: var(--gg-text) !important; font-size: 1rem !important; font-weight: 800; }
+.gg-pickup-card__hint { margin-right: auto; color: var(--gg-danger); font-size: 0.8rem; }
+
+.gg-pickup-salebar { align-items: center; flex-wrap: wrap; margin-top: 14px; background: var(--gg-brand-tint); color: var(--gg-text); }
+.gg-pickup-salebar svg { color: var(--gg-brand); }
+.gg-pickup-salebar a { margin-left: auto; font-weight: 600; color: var(--gg-brand); }
+.gg-pickup-search { margin-top: 14px; max-width: 360px; }
+.gg-page > .gg-inline-note--warning { margin-top: 14px; }
+
+.gg-yardcomplete { display: flex; flex-direction: column; gap: 14px; }
+.gg-yardcomplete p { margin: 0; }
+.gg-yardcomplete__summary { font-size: 1rem; color: var(--gg-text); }
+.gg-yardcomplete__method { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.gg-yardcomplete__label { font-size: 0.8rem; font-weight: 600; color: var(--gg-text-soft); }
+.gg-yardcomplete .gg-tab { min-height: 40px; padding: 8px 22px; font-size: 0.95rem; }
+
+.gg-yardmode-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; color: var(--gg-text-soft); font-size: 0.9rem; line-height: 1.55; }
+
+@media (max-width: 760px) {
+  .gg-pickup-row { grid-template-columns: 22px minmax(0, 1fr) auto; gap: 9px; }
+  .gg-pickup-row__price { grid-column: 2; grid-row: 2; align-items: flex-start; flex-direction: row; gap: 8px; }
+  .gg-pickup-row__remove { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+  .gg-pickup-card__totals { padding: 8px 14px 12px; }
+  .gg-pickup-salebar a { margin-left: 0; }
 }

@@ -67,11 +67,35 @@ export function useStoreStatus(): StoreStatus {
   return useSyncExternalStore(subscribe, () => snapshot, () => OPEN);
 }
 
-/** "Monday, October 6" — the reopen date as customers see it. */
-export function formatReopenDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/**
+ * When checkout reopens, as customers see it: "today at 3:00 PM" or
+ * "tomorrow at 9:00 AM" when it's that soon (a yard sale ends the same day),
+ * otherwise "Monday, October 6".
+ */
+export function formatReopenDate(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (sameDay(date, now)) return `today at ${time}`;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  if (sameDay(date, tomorrow)) return `tomorrow at ${time}`;
+  return date.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
+}
+
+/** The short form for the one-line banner: "at 3:00 PM", "tomorrow" or "Sat, Oct 3". */
+export function formatReopenShort(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  if (sameDay(date, now)) return `at ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  if (sameDay(date, tomorrow)) return "tomorrow";
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }

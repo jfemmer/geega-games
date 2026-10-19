@@ -19,6 +19,7 @@ import type { Database } from "../../src/types/database.js";
 import { sendOrderStatusEmail } from "../_lib/orderStatusEmail.js";
 import { logAdminAction } from "../_lib/auditLog.js";
 import { sendPickupReadyEmail } from "../_lib/pickupEmails.js";
+import { UUID_RE, loadLivePrices, yardSaleDbError } from "../_lib/yardSale.js";
 import { getStripe } from "../_lib/stripe.js";
 import { buyShippingLabel, isEasyPostConnected } from "../_lib/easypost.js";
 
@@ -70,6 +71,8 @@ import { buyShippingLabel, isEasyPostConnected } from "../_lib/easypost.js";
 //   resource=pickup        action=mark-ready                 POST
 //   resource=pickup        action=cancel                     POST
 //   resource=pickup        action=complete-sale              POST
+//   resource=pickup        action=remove-item                POST
+//   resource=pickup        action=complete-yard-sale         POST
 // ─────────────────────────────────────────────────────────────────────────────
 
 type CampaignRow = Database["public"]["Tables"]["campaigns"]["Row"];
@@ -485,16 +488,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const ids = (requests ?? []).map((r) => r.id);
         let itemsByRequest = new Map<string, unknown[]>();
+        // Where each card is kept and what it sells for now: the website
+        // price, a storewide sale included (yard sale lists are charged that,
+        // less the sale's discount).
+        const inventoryById = new Map<string, { storage_location: string | null; status: string }>();
+        let livePrices = new Map<string, number>();
         if (ids.length > 0) {
           const { data: items, error: itemsErr } = await admin
             .from("pickup_request_items")
             .select("*")
-            .in("pickup_request_id", ids);
+            .in("pickup_request_id", ids)
+            .order("created_at", { ascending: true });
           if (itemsErr) throw new HttpError(500, itemsErr.message);
+          const inventoryIds = [
+            ...new Set((items ?? []).map((i) => i.inventory_item_id).filter((v): v is string => !!v)),
+          ];
+          if (inventoryIds.length > 0) {
+            const [invRes, prices] = await Promise.all([
+              admin.from("inventory_items").select("id, storage_location, status").in("id", inventoryIds),
+              loadLivePrices(inventoryIds),
+            ]);
+            if (invRes.error) throw new HttpError(500, invRes.error.message);
+            for (const row of invRes.data ?? []) inventoryById.set(row.id, row);
+            livePrices = prices;
+          }
           itemsByRequest = new Map();
           for (const item of items ?? []) {
+            const inv = item.inventory_item_id ? inventoryById.get(item.inventory_item_id) : undefined;
+            const livePrice = item.inventory_item_id ? livePrices.get(item.inventory_item_id) : undefined;
             const list = itemsByRequest.get(item.pickup_request_id) ?? [];
-            list.push(item);
+            list.push({
+              ...item,
+              storage_location: inv?.storage_location ?? null,
+              current_price_cents: livePrice ?? null,
+              available: !!inv && inv.status !== "archived" && livePrice != null,
+            });
             itemsByRequest.set(item.pickup_request_id, list);
           }
         }
@@ -502,7 +530,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ...r,
           items: itemsByRequest.get(r.id) ?? [],
         }));
-        return sendJson(res, 200, { ok: true, rows });
+
+        // The yard sales these lists belong to, and the latest one (on or not).
+        const saleColumns = "id, started_at, ends_at, ended_at, discount_percent, min_price_cents";
+        const saleIds = [...new Set(rows.map((r) => r.yard_sale_id).filter((v): v is string => !!v))];
+        const [latestRes, listedRes, posRes] = await Promise.all([
+          admin.from("yard_sales").select(saleColumns).order("started_at", { ascending: false }).limit(1),
+          saleIds.length > 0
+            ? admin.from("yard_sales").select(saleColumns).in("id", saleIds)
+            : Promise.resolve({ data: [], error: null }),
+          admin.from("pos_settings").select("sales_tax_bps").order("id").limit(1).maybeSingle(),
+        ]);
+        if (latestRes.error || listedRes.error) {
+          throw new HttpError(500, (latestRes.error ?? listedRes.error)?.message ?? "Could not load yard sales.");
+        }
+        const yardSales = new Map<string, Record<string, unknown>>();
+        for (const sale of [...(latestRes.data ?? []), ...(listedRes.data ?? [])]) {
+          yardSales.set(sale.id, {
+            ...sale,
+            active: sale.ended_at === null && Date.parse(sale.ends_at) > Date.now(),
+          });
+        }
+        return sendJson(res, 200, {
+          ok: true,
+          rows,
+          yardSales: [...yardSales.values()],
+          taxBps: Number(posRes.data?.sales_tax_bps ?? 0) || 0,
+        });
       }
 
       if (action === "toggle-item" && method === "POST") {
@@ -554,13 +608,123 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           p_reason: (body.reason as string) || "Cancelled at register",
         });
         if (error) throw new HttpError(500, error.message);
+        await logAdminAction(admin, staff, {
+          action: "pickup.cancelled",
+          resourceType: "pickup_request",
+          resourceId: requestId,
+        });
         return sendJson(res, 200, { ok: true });
+      }
+
+      // Take a card (or some of its copies) off an open list; it goes back
+      // on the website. A list left empty is closed.
+      if (action === "remove-item" && method === "POST") {
+        const body = await readJsonBody(req);
+        const itemId = String(body.itemId ?? "").toLowerCase();
+        if (!UUID_RE.test(itemId)) throw new HttpError(400, "itemId is required.");
+        const rawQuantity = body.quantity;
+        const quantity = rawQuantity === undefined || rawQuantity === null ? null : Number(rawQuantity);
+        if (quantity !== null && (!Number.isInteger(quantity) || quantity < 1)) {
+          throw new HttpError(400, "quantity must be a whole number.");
+        }
+        const { data, error } = await admin.rpc("pickup_remove_item", {
+          p_item_id: itemId,
+          p_quantity: quantity ?? undefined,
+        });
+        if (error) throw yardSaleDbError(error, "Could not take that card off the list.");
+        const result = (data ?? {}) as {
+          request_id?: string;
+          card_name?: string;
+          removed?: number;
+          items_left?: number;
+          cancelled?: boolean;
+        };
+        await logAdminAction(admin, staff, {
+          action: "pickup.item_removed",
+          resourceType: "pickup_request",
+          resourceId: String(result.request_id ?? ""),
+          after: {
+            item_id: itemId,
+            card_name: result.card_name ?? null,
+            removed: result.removed ?? null,
+            items_left: result.items_left ?? null,
+            list_closed: result.cancelled ?? false,
+          },
+        });
+        return sendJson(res, 200, {
+          ok: true,
+          result: {
+            cardName: result.card_name ?? "",
+            removed: Number(result.removed ?? 0),
+            itemsLeft: Number(result.items_left ?? 0),
+            listClosed: Boolean(result.cancelled),
+          },
+        });
+      }
+
+      // A yard sale list paid in person (cash or Venmo): the cards are sold
+      // and off the website, the sale is recorded. No payment service.
+      if (action === "complete-yard-sale" && method === "POST") {
+        const body = await readJsonBody(req);
+        const requestId = String(body.requestId ?? "").toLowerCase();
+        if (!UUID_RE.test(requestId)) throw new HttpError(400, "requestId is required.");
+        const paymentMethod = body.paymentMethod;
+        if (paymentMethod !== "cash" && paymentMethod !== "venmo") {
+          throw new HttpError(400, "Choose how they paid: cash or Venmo.");
+        }
+        const { data, error } = await admin.rpc("yard_sale_complete_list", {
+          p_request_id: requestId,
+          p_payment_method: paymentMethod,
+        });
+        if (error) throw yardSaleDbError(error, "Could not complete this list.");
+        const row = (Array.isArray(data) ? data[0] : data) as {
+          order_id?: string;
+          subtotal_cents?: number;
+          discount_cents?: number;
+          tax_cents?: number;
+          total_cents?: number;
+        } | null;
+        if (!row?.order_id) throw new HttpError(500, "Completing the list didn't return a sale.");
+        await logAdminAction(admin, staff, {
+          action: "yard_sale.list_completed",
+          resourceType: "pickup_request",
+          resourceId: requestId,
+          after: {
+            order_id: row.order_id,
+            payment_method: paymentMethod,
+            subtotal_cents: row.subtotal_cents ?? null,
+            discount_cents: row.discount_cents ?? null,
+            tax_cents: row.tax_cents ?? null,
+            total_cents: row.total_cents ?? null,
+          },
+        });
+        return sendJson(res, 200, {
+          ok: true,
+          sale: {
+            orderId: row.order_id,
+            subtotalCents: Number(row.subtotal_cents ?? 0),
+            discountCents: Number(row.discount_cents ?? 0),
+            taxCents: Number(row.tax_cents ?? 0),
+            totalCents: Number(row.total_cents ?? 0),
+          },
+        });
       }
 
       if (action === "complete-sale" && method === "POST") {
         const body = await readJsonBody(req);
         const requestId = String(body.requestId ?? "");
         if (!requestId) throw new HttpError(400, "requestId is required.");
+        // Yard sale lists are paid outside the register and completed with
+        // their discount (complete-yard-sale), never rung up here.
+        const { data: listRow, error: listErr } = await admin
+          .from("pickup_requests")
+          .select("yard_sale_id")
+          .eq("id", requestId)
+          .maybeSingle();
+        if (listErr) throw new HttpError(500, listErr.message);
+        if (listRow?.yard_sale_id) {
+          throw new HttpError(409, "This is a yard sale list. Use Complete instead.");
+        }
         const { data, error } = await admin.rpc("pos_complete_pickup_sale", {
           p_pickup_request_id: requestId,
           p_customer_id: (body.customerId as string) || undefined,

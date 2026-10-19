@@ -2006,9 +2006,11 @@ export type Database = {
           notes: string | null
           order_id: string | null
           phone: string | null
+          pickup_number: number | null
           ready_at: string | null
           status: Database["public"]["Enums"]["pickup_request_status"]
           updated_at: string
+          yard_sale_id: string | null
         }
         Insert: {
           cancelled_at?: string | null
@@ -2020,9 +2022,11 @@ export type Database = {
           notes?: string | null
           order_id?: string | null
           phone?: string | null
+          pickup_number?: number | null
           ready_at?: string | null
           status?: Database["public"]["Enums"]["pickup_request_status"]
           updated_at?: string
+          yard_sale_id?: string | null
         }
         Update: {
           cancelled_at?: string | null
@@ -2034,9 +2038,11 @@ export type Database = {
           notes?: string | null
           order_id?: string | null
           phone?: string | null
+          pickup_number?: number | null
           ready_at?: string | null
           status?: Database["public"]["Enums"]["pickup_request_status"]
           updated_at?: string
+          yard_sale_id?: string | null
         }
         Relationships: [
           {
@@ -2044,6 +2050,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_requests_yard_sale_id_fkey"
+            columns: ["yard_sale_id"]
+            isOneToOne: false
+            referencedRelation: "yard_sales"
             referencedColumns: ["id"]
           },
         ]
@@ -3461,6 +3474,48 @@ export type Database = {
         }
         Relationships: []
       }
+      yard_sales: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          discount_percent: number
+          ended_at: string | null
+          ends_at: string
+          id: string
+          min_price_cents: number
+          next_pickup_number: number
+          started_at: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          discount_percent?: number
+          ended_at?: string | null
+          ends_at: string
+          id?: string
+          min_price_cents?: number
+          next_pickup_number?: number
+          started_at?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          discount_percent?: number
+          ended_at?: string | null
+          ends_at?: string
+          id?: string
+          min_price_cents?: number
+          next_pickup_number?: number
+          started_at?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       inventory_public: {
@@ -4052,6 +4107,13 @@ export type Database = {
           sets: Json
         }[]
       }
+      inventory_live_prices: {
+        Args: { p_inventory_item_ids: string[] }
+        Returns: {
+          inventory_item_id: string
+          price_cents: number
+        }[]
+      }
       inventory_write_authorized: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_staff: { Args: never; Returns: boolean }
@@ -4110,6 +4172,10 @@ export type Database = {
           min_price_cents: number
           oracle_id: string
         }[]
+      }
+      pickup_remove_item: {
+        Args: { p_item_id: string; p_quantity?: number }
+        Returns: Json
       }
       pos_cancel_pickup_request: {
         Args: { p_pickup_request_id: string; p_reason?: string }
@@ -4438,6 +4504,144 @@ export type Database = {
           p_price_cents: number
         }
         Returns: number
+      }
+      yard_sale_add_to_list: {
+        Args: { p_items: Json; p_request_id: string }
+        Returns: number
+      }
+      yard_sale_check_settings: {
+        Args: {
+          p_discount_percent: number
+          p_ends_at: string
+          p_min_price_cents: number
+        }
+        Returns: undefined
+      }
+      yard_sale_complete_list: {
+        Args: { p_payment_method: string; p_request_id: string }
+        Returns: {
+          discount_cents: number
+          order_id: string
+          subtotal_cents: number
+          tax_cents: number
+          total_cents: number
+        }[]
+      }
+      yard_sale_create_list: {
+        Args: { p_customer_name: string; p_items: Json }
+        Returns: {
+          pickup_number: number
+          request_id: string
+        }[]
+      }
+      yard_sale_end: {
+        Args: { p_actor?: string; p_sale_id: string }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          discount_percent: number
+          ended_at: string | null
+          ends_at: string
+          id: string
+          min_price_cents: number
+          next_pickup_number: number
+          started_at: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "yard_sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      yard_sale_hold_card: {
+        Args: {
+          p_inventory_item_id: string
+          p_min_price_cents: number
+          p_pickup_number: number
+          p_quantity: number
+          p_request_id: string
+        }
+        Returns: undefined
+      }
+      yard_sale_lines: {
+        Args: { p_items: Json; p_max_lines: number }
+        Returns: {
+          inventory_item_id: string
+          quantity: number
+        }[]
+      }
+      yard_sale_price: {
+        Args: { p_discount_percent: number; p_price_cents: number }
+        Returns: number
+      }
+      yard_sale_start: {
+        Args: {
+          p_actor?: string
+          p_discount_percent?: number
+          p_ends_at: string
+          p_min_price_cents?: number
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          discount_percent: number
+          ended_at: string | null
+          ends_at: string
+          id: string
+          min_price_cents: number
+          next_pickup_number: number
+          started_at: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "yard_sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      yard_sale_status: {
+        Args: never
+        Returns: {
+          active: boolean
+          discount_percent: number
+          ends_at: string
+          min_price_cents: number
+          sale_id: string
+          sales_tax_bps: number
+        }[]
+      }
+      yard_sale_update: {
+        Args: {
+          p_actor?: string
+          p_discount_percent?: number
+          p_ends_at?: string
+          p_min_price_cents?: number
+          p_sale_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          discount_percent: number
+          ended_at: string | null
+          ends_at: string
+          id: string
+          min_price_cents: number
+          next_pickup_number: number
+          started_at: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "yard_sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

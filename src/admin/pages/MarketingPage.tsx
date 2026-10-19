@@ -15,14 +15,17 @@ import { leadSourcesRepository, partnersRepository } from "../repositories/partn
 import {
   DEFAULT_MARKETING_PAGE,
   MARKETING_PAGES,
+  YARD_SALE_MARKETING_KEY,
   daysAgoIso,
   marketingLink,
   marketingPage,
   printedAddress,
   qrFileName,
   summarizeLeadSources,
+  yardSaleFlyerCopy,
   type LeadSourceSummary,
 } from "../utils/marketing";
+import { yardSaleRepository } from "../repositories/yardSale.supabase";
 import { SOURCE_PRESETS, cleanCampaignToken, sourceLabel } from "../../store/lib/attribution";
 
 // Marketing: make a tagged link and QR code for wherever sellers will see it
@@ -66,6 +69,14 @@ export function MarketingPage() {
   const leads = useAsync(() => leadSourcesRepository.since(daysAgoIso(Number(range))), [range]);
 
   const page = marketingPage(pageKey);
+  // The yard sale sign isn't for sellers: no lead tags, and it says the
+  // sale's minimum price (from Yard Sale Mode) instead of a fixed one.
+  const isYardSale = page.key === YARD_SALE_MARKETING_KEY;
+  const yardSale = useAsync(
+    () => (isYardSale ? yardSaleRepository.snapshot() : Promise.resolve(null)),
+    [isYardSale],
+  );
+  const flyerCopy = isYardSale ? yardSaleFlyerCopy(yardSale.data?.sale?.minPriceCents) : page.copy;
   const referrers = useMemo(
     () =>
       (partners.data ?? []).filter((p) => p.kind === "referrer" && p.status === "active" && p.referralCode),
@@ -77,24 +88,28 @@ export function MarketingPage() {
     source === NO_SOURCE ? null : source === CUSTOM_SOURCE ? cleanCampaignToken(customSource) : source;
   const utmCampaign = cleanCampaignToken(campaign);
   const refCode = partner?.referralCode ?? null;
-  const link = marketingLink(page.path, {
-    source: utmSource,
-    medium: preset?.medium ?? null,
-    campaign: utmCampaign,
-    ref: refCode,
-  });
-  const address = printedAddress(page.path, refCode);
+  const link = isYardSale
+    ? marketingLink(page.path, {})
+    : marketingLink(page.path, {
+        source: utmSource,
+        medium: preset?.medium ?? null,
+        campaign: utmCampaign,
+        ref: refCode,
+      });
+  const address = printedAddress(page.path, isYardSale ? null : refCode);
   const fileName = qrFileName([page.key, utmSource, utmCampaign, refCode]);
   const shareable = canShare();
 
   // What a lead from this link will say under "Where they came from".
-  const tagSummary = [
-    utmSource ? sourceLabel(utmSource) : null,
-    utmCampaign,
-    partner ? `credited to ${partner.businessName}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const tagSummary = isYardSale
+    ? ""
+    : [
+        utmSource ? sourceLabel(utmSource) : null,
+        utmCampaign,
+        partner ? `credited to ${partner.businessName}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
   async function copy() {
     try {
@@ -107,7 +122,7 @@ export function MarketingPage() {
 
   async function share() {
     try {
-      await navigator.share({ title: page.copy.headline, url: link });
+      await navigator.share({ title: flyerCopy.headline, url: link });
     } catch (err) {
       // Closing the share sheet without picking anything isn't an error.
       if ((err as { name?: unknown } | null)?.name === "AbortError") return;
@@ -180,51 +195,60 @@ export function MarketingPage() {
                 </option>
               ))}
             </SelectField>
-            <SelectField
-              label="Where you'll use it"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              hint="Leads that come in through the link are labeled with it."
-            >
-              {SOURCE_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-              <option value={CUSTOM_SOURCE}>Somewhere else…</option>
-              <option value={NO_SOURCE}>Nowhere in particular (no label)</option>
-            </SelectField>
-            {source === CUSTOM_SOURCE && (
-              <TextField
-                label="Name it"
-                value={customSource}
-                onChange={(e) => setCustomSource(e.target.value)}
-                placeholder="e.g. church bulletin"
-                maxLength={60}
-              />
-            )}
-            <TextField
-              label="Campaign (optional)"
-              value={campaign}
-              onChange={(e) => setCampaign(e.target.value)}
-              placeholder="e.g. nov 1 card show"
-              hint="Tells two of the same kind apart, like two card shows."
-              maxLength={60}
-            />
-            {referrers.length > 0 && (
-              <SelectField
-                label="Credit a referral partner (optional)"
-                value={partnerId}
-                onChange={(e) => setPartnerId(e.target.value)}
-                hint="Puts their referral code in the link, so sellers who use it count as theirs."
-              >
-                <option value="">Nobody</option>
-                {referrers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.businessName}
-                  </option>
-                ))}
-              </SelectField>
+            {isYardSale ? (
+              <p className="gg-card-meta">
+                The yard sale page doesn&rsquo;t collect leads, so this link has no tags. The sign shows the
+                minimum price set in Yard Sale Mode.
+              </p>
+            ) : (
+              <>
+                <SelectField
+                  label="Where you'll use it"
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  hint="Leads that come in through the link are labeled with it."
+                >
+                  {SOURCE_PRESETS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value={CUSTOM_SOURCE}>Somewhere else…</option>
+                  <option value={NO_SOURCE}>Nowhere in particular (no label)</option>
+                </SelectField>
+                {source === CUSTOM_SOURCE && (
+                  <TextField
+                    label="Name it"
+                    value={customSource}
+                    onChange={(e) => setCustomSource(e.target.value)}
+                    placeholder="e.g. church bulletin"
+                    maxLength={60}
+                  />
+                )}
+                <TextField
+                  label="Campaign (optional)"
+                  value={campaign}
+                  onChange={(e) => setCampaign(e.target.value)}
+                  placeholder="e.g. nov 1 card show"
+                  hint="Tells two of the same kind apart, like two card shows."
+                  maxLength={60}
+                />
+                {referrers.length > 0 && (
+                  <SelectField
+                    label="Credit a referral partner (optional)"
+                    value={partnerId}
+                    onChange={(e) => setPartnerId(e.target.value)}
+                    hint="Puts their referral code in the link, so sellers who use it count as theirs."
+                  >
+                    <option value="">Nobody</option>
+                    {referrers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.businessName}
+                      </option>
+                    ))}
+                  </SelectField>
+                )}
+              </>
             )}
             <TextField
               label="Extra line for the flyer or sign (optional)"
@@ -313,7 +337,7 @@ export function MarketingPage() {
 
       {printing && (
         <FlyerPrintView
-          job={{ layout: printing, copy: page.copy, url: link, address, extraLine: extraLine.trim() || null }}
+          job={{ layout: printing, copy: flyerCopy, url: link, address, extraLine: extraLine.trim() || null }}
           onClose={() => setPrinting(null)}
         />
       )}

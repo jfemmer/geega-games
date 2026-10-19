@@ -23,6 +23,7 @@ import { TrendsPage } from "./pages/TrendsPage";
 import { MarketInsightsPage } from "./pages/MarketInsightsPage";
 import { StorewideSalePage } from "./pages/StorewideSalePage";
 import { VacationModePage } from "./pages/VacationModePage";
+import { YardSaleModePage } from "./pages/YardSaleModePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import "./admin.css";
 
@@ -83,7 +84,7 @@ function AdminDashboard() {
       case "pos":
         return <PosPage />;
       case "pickup":
-        return <PickupRequestsPage />;
+        return <PickupRequestsPage onNavigate={navigate} />;
       case "scanning": {
         // /scanning, /scanning/:sessionId, or /scanning/:sessionId/approve
         const clean = path.split("?")[0].replace(/\/+$/, "");
@@ -119,6 +120,8 @@ function AdminDashboard() {
         return <MarketInsightsPage />;
       case "sale":
         return <StorewideSalePage />;
+      case "yard-sale":
+        return <YardSaleModePage onNavigate={navigate} />;
       case "vacation":
         return <VacationModePage />;
       case "audit-log":

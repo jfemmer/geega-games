@@ -23,8 +23,12 @@ import { ServerEnv } from "./env.js";
 // quote email carries one, and it's what lets a customer approve, decline
 // or pay their quote (api/sorting-quote.ts) without signing in. Looking at
 // the quote only needs the reference number and email.
+//
+// "yard_sale" tokens sign a yard sale pickup list id: the shopper's phone
+// gets one with its pickup number and uses it to show the list and add more
+// cards (api/yard-sale.ts). They can't be claimed by an account.
 
-export type GuestRecordKind = "order" | "sell" | "checkin" | "sorting";
+export type GuestRecordKind = "order" | "sell" | "checkin" | "sorting" | "yard_sale";
 
 const ID_RE = /^[0-9a-f-]{36}$/i;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;

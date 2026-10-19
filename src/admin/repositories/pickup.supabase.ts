@@ -1,10 +1,19 @@
-// LIVE PickupRequestRepository — the staff-facing queue of kiosk pickup
-// requests. All actions are privileged writes (releasing a hold, decrementing
-// stock, creating an order), so everything goes through the staff-guarded
+// LIVE PickupRequestRepository — the staff-facing queue of pickup lists: the
+// in-store kiosk's requests and the lists shoppers send from /yard-sale. All
+// actions are privileged writes (releasing a hold, decrementing stock,
+// creating an order), so everything goes through the staff-guarded
 // /api/admin?resource=pickup&action=* router, same pattern as pos.supabase.ts.
 
 import { adminFetch } from "./apiClient";
-import type { PickupRequest, PickupRequestItem, PosSaleResult } from "../types";
+import type {
+  PickupQueue,
+  PickupRemoveResult,
+  PickupRequest,
+  PickupRequestItem,
+  PickupYardSale,
+  PosSaleResult,
+  YardSaleCompleteResult,
+} from "../types";
 import type { PickupRequestRepository } from "./types";
 
 const BASE = "/api/admin?resource=pickup";
@@ -26,6 +35,9 @@ type ItemRow = {
   quantity: number;
   unit_price_cents: number;
   pulled: boolean;
+  storage_location?: string | null;
+  current_price_cents?: number | null;
+  available?: boolean;
 };
 
 type RequestRow = {
@@ -35,7 +47,19 @@ type RequestRow = {
   status: PickupRequest["status"];
   notes: string | null;
   created_at: string;
+  yard_sale_id?: string | null;
+  pickup_number?: number | null;
   items: ItemRow[];
+};
+
+type YardSaleRow = {
+  id: string;
+  started_at: string;
+  ends_at: string;
+  ended_at: string | null;
+  discount_percent: number;
+  min_price_cents: number;
+  active: boolean;
 };
 
 function mapItem(row: ItemRow): PickupRequestItem {
@@ -52,6 +76,9 @@ function mapItem(row: ItemRow): PickupRequestItem {
     quantity: row.quantity,
     unitPriceCents: row.unit_price_cents,
     pulled: row.pulled,
+    storageLocation: row.storage_location ?? null,
+    currentPriceCents: row.current_price_cents ?? null,
+    available: row.available ?? true,
   };
 }
 
@@ -64,13 +91,33 @@ function mapRequest(row: RequestRow): PickupRequest {
     notes: row.notes,
     createdAt: row.created_at,
     items: (row.items ?? []).map(mapItem),
+    yardSaleId: row.yard_sale_id ?? null,
+    pickupNumber: row.pickup_number ?? null,
+  };
+}
+
+function mapYardSale(row: YardSaleRow): PickupYardSale {
+  return {
+    id: row.id,
+    startedAt: row.started_at,
+    endsAt: row.ends_at,
+    endedAt: row.ended_at,
+    active: row.active,
+    discountPercent: row.discount_percent,
+    minPriceCents: row.min_price_cents,
   };
 }
 
 export const supabasePickupRequestRepository: PickupRequestRepository = {
-  async list() {
-    const res = await adminFetch<{ rows: RequestRow[] }>(action("list"), { method: "GET" });
-    return res.rows.map(mapRequest);
+  async list(): Promise<PickupQueue> {
+    const res = await adminFetch<{ rows: RequestRow[]; yardSales?: YardSaleRow[]; taxBps?: number }>(action("list"), {
+      method: "GET",
+    });
+    return {
+      requests: res.rows.map(mapRequest),
+      yardSales: (res.yardSales ?? []).map(mapYardSale),
+      taxBps: res.taxBps ?? 0,
+    };
   },
 
   async toggleItem(itemId) {
@@ -101,5 +148,21 @@ export const supabasePickupRequestRepository: PickupRequestRepository = {
       totalCents: Number(s.total_cents),
       amountDueCents: Number(s.amount_due_cents),
     } satisfies PosSaleResult;
+  },
+
+  async removeItem(itemId, quantity) {
+    const res = await adminFetch<{ result: PickupRemoveResult }>(action("remove-item"), {
+      method: "POST",
+      body: { itemId, quantity: quantity ?? undefined },
+    });
+    return res.result;
+  },
+
+  async completeYardSaleList(requestId, paymentMethod) {
+    const res = await adminFetch<{ sale: YardSaleCompleteResult }>(action("complete-yard-sale"), {
+      method: "POST",
+      body: { requestId, paymentMethod },
+    });
+    return res.sale;
   },
 };

@@ -6280,3 +6280,148 @@
 .gg-sort-accountrow > div:first-child {
   min-width: 0;
 }
+
+/* ---- Yard sale page (/yard-sale, the QR code at our yard sale) ----
+   Phone-first and standalone like the kiosk, and built from the same pieces
+   (.gg-kiosk-topbar, .gg-grid, .gg-card, .gg-drawer). A bar along the bottom
+   of the screen carries the list; it opens as a sheet from the bottom on
+   phones and from the side on wider screens. After sending, the phone shows
+   a big pickup number to show at the table. */
+.gg-yard-page--browsing {
+  padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+}
+.gg-yard-topbar h1 { font-size: 1.5rem; }
+.gg-yard-terms {
+  display: inline-block;
+  margin: 0.15rem 0 0.4rem !important;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: var(--gg-gold);
+  color: var(--gg-ink);
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.gg-yard-message { max-width: 34rem; margin: 0 auto; }
+.gg-yard-message h2 { color: var(--gg-ink); margin-top: 0; }
+.gg-yard-notice {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+  font-size: 0.92rem;
+}
+.gg-yard-adding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: var(--gg-ink);
+}
+.gg-yard-shop { grid-template-columns: 220px 1fr; }
+@media (max-width: 800px) {
+  .gg-yard-shop { grid-template-columns: 1fr; }
+}
+
+/* The list bar, fixed to the bottom of the screen while browsing. */
+.gg-yard-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem max(1rem, env(safe-area-inset-right, 0px)) calc(0.75rem + env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+  background: var(--gg-ink);
+  color: #fff;
+  border-top: 3px solid var(--gg-gold);
+  box-shadow: 0 -6px 18px rgba(26, 16, 48, 0.18);
+}
+.gg-yard-bar__hint { margin: 0 auto; font-size: 0.92rem; opacity: 0.9; text-align: center; }
+.gg-yard-bar__summary { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.gg-yard-bar__summary strong { font-size: 1rem; }
+.gg-yard-bar__summary span { font-size: 0.9rem; opacity: 0.9; }
+.gg-yard-bar .gg-btn { flex: none; background: var(--gg-gold); color: var(--gg-ink); }
+
+/* The list sheet. */
+.gg-yard-sheet__body { display: flex; flex-direction: column; gap: 0.85rem; }
+@media (max-width: 700px) {
+  .gg-yard-sheet {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: auto;
+    max-height: 88dvh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+.gg-yard-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+/* In the sheet (narrow at every screen size): the card with its copies
+   under it on the left, the price and remove button on the right. */
+.gg-yard-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem 0.6rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-yard-line .gg-kiosk-qty { grid-column: 1; grid-row: 2; justify-self: start; }
+.gg-yard-line .gg-yard-line__price { grid-column: 2; grid-row: 1 / span 2; }
+.gg-yard-line .gg-kiosk-remove { grid-column: 3; grid-row: 1 / span 2; }
+/* The sent list on the pickup screen: just the card and its price. */
+.gg-yard-line--sent { grid-template-columns: minmax(0, 1fr) auto; }
+.gg-yard-line--sent .gg-yard-line__price { grid-row: auto; }
+.gg-yard-line__info { display: flex; flex-direction: column; min-width: 0; }
+.gg-yard-line__info .gg-card-name { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; min-height: 0; }
+.gg-yard-line__info .gg-card-name:hover { color: var(--gg-ink); text-decoration: none; }
+.gg-yard-line__price { justify-content: flex-end; text-align: right; white-space: nowrap; }
+.gg-yard-line .gg-kiosk-qty button { width: 34px; height: 34px; }
+.gg-yard-line .gg-kiosk-remove { min-width: 34px; min-height: 34px; }
+.gg-yard-totals { margin: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.gg-yard-totals div { display: flex; justify-content: space-between; gap: 1rem; }
+.gg-yard-totals dt, .gg-yard-totals dd { margin: 0; }
+.gg-yard-totals dd { font-weight: 600; white-space: nowrap; }
+.gg-yard-totals__total {
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--gg-line);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--gg-ink);
+}
+.gg-yard-totals__total dd { font-weight: 800; }
+.gg-yard-fine { margin: 0; }
+.gg-yard-name input { font-size: 1rem; }
+
+/* After sending: the pickup number to show at the table. */
+.gg-yard-list { max-width: 34rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+.gg-yard-ticket {
+  text-align: center;
+  padding: 1.25rem 1rem;
+  border-radius: 16px;
+  background: linear-gradient(160deg, var(--gg-purple), var(--gg-ink));
+  color: #fff;
+  border: 3px dashed var(--gg-gold);
+}
+.gg-yard-ticket p { margin: 0; }
+.gg-yard-ticket__label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
+.gg-yard-ticket__number { font-size: 4.5rem; font-weight: 900; line-height: 1.05; color: #fff; letter-spacing: 0.02em; }
+.gg-yard-ticket__name { margin-top: 0.35rem !important; font-size: 1rem; }
+.gg-yard-steps { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.3rem; color: var(--gg-ink); }
+.gg-yard-list__heading { margin: 0.5rem 0 0; font-size: 1.1rem; color: var(--gg-ink); }
+.gg-yard-addmore { align-self: stretch; }

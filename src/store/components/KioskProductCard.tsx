@@ -6,16 +6,21 @@ import { CONDITION_LABELS } from "../lib/conditionLabels";
 
 // Visually identical to ProductCard (same brand-grade card grid the real
 // shop uses) but deliberately independent of CartContext — the kiosk never
-// touches a signed-in cart, only its own local pickup list.
+// touches a signed-in cart, only its own local pickup list. The yard sale
+// page (/yard-sale) uses it too, with the yard sale price next to the
+// website price.
 
 export default function KioskProductCard({
   card,
   quantityInList,
   onAdd,
+  salePriceCents = null,
 }: {
   card: CatalogCard;
   quantityInList: number;
   onAdd: () => void;
+  /** A lower price to show instead, with the regular price struck through. */
+  salePriceCents?: number | null;
 }) {
   const [justAdded, setJustAdded] = useState(false);
 
@@ -68,7 +73,17 @@ export default function KioskProductCard({
         )}
 
         <div className="gg-card-foot">
-          <span className="gg-price">{unpriced ? "—" : formatCents(card.priceCents)}</span>
+          {!unpriced && salePriceCents != null && salePriceCents < (card.priceCents ?? 0) ? (
+            <span className="gg-priceblock">
+              <span className="gg-price gg-price--deal">{formatCents(salePriceCents)}</span>
+              <span className="gg-price-original">
+                <span className="visually-hidden">Regular price </span>
+                {formatCents(card.priceCents)}
+              </span>
+            </span>
+          ) : (
+            <span className="gg-price">{unpriced ? "—" : formatCents(card.priceCents)}</span>
+          )}
           {!soldOut && unpriced && <span className="gg-card-meta">Not for sale</span>}
         </div>
 

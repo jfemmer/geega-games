@@ -39,6 +39,7 @@
     { "source": "/sell/offer", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/collection-sorting/quote", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/kiosk", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/yard-sale", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/account", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/account/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/spa.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
@@ -86,6 +87,7 @@
     { "source": "/sell/offer", "destination": "/spa.html" },
     { "source": "/collection-sorting/quote", "destination": "/spa.html" },
     { "source": "/kiosk", "destination": "/spa.html" },
+    { "source": "/yard-sale", "destination": "/spa.html" },
     { "source": "/account", "destination": "/spa.html" },
     { "source": "/account/:path*", "destination": "/spa.html" }
   ],

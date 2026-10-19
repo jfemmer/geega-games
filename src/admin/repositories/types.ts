@@ -34,7 +34,8 @@ import type {
   OrderQuery,
   OverviewMetrics,
   Page,
-  PickupRequest,
+  PickupQueue,
+  PickupRemoveResult,
   PosSaleItem,
   PosSaleResult,
   PosSettings,
@@ -54,6 +55,7 @@ import type {
   TimeSeriesPoint,
   TrendMetrics,
   SiteTraffic,
+  YardSaleCompleteResult,
 } from "../types";
 
 export interface InventoryRepository {
@@ -480,8 +482,8 @@ export interface PosRepository {
  * ------------------------------------------------------------------ */
 
 export interface PickupRequestRepository {
-  /** Waiting + ready requests, oldest first. */
-  list(): Promise<PickupRequest[]>;
+  /** Waiting + ready requests, oldest first, with the yard sales they belong to. */
+  list(): Promise<PickupQueue>;
   /** Toggle whether one line item has been physically pulled. */
   toggleItem(itemId: string): Promise<void>;
   /** Mark a request ready for checkout (all items pulled). */
@@ -494,6 +496,10 @@ export interface PickupRequestRepository {
    * fulfilled. The caller collects payment next via the normal Register flow.
    */
   completeSale(requestId: string, customerId?: string | null): Promise<PosSaleResult>;
+  /** Take a card (all its copies, or `quantity` of them) off an open list; it goes back on the website. */
+  removeItem(itemId: string, quantity?: number | null): Promise<PickupRemoveResult>;
+  /** A yard sale list paid in person: the cards are sold and off the website, the sale is recorded. */
+  completeYardSaleList(requestId: string, paymentMethod: "cash" | "venmo"): Promise<YardSaleCompleteResult>;
 }
 
 export interface AnalyticsRepository {

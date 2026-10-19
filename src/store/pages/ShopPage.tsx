@@ -242,7 +242,6 @@ export default function ShopPage() {
               <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Filters</h2>
               <button
                 className="gg-iconbtn"
-                style={{ color: "var(--gg-ink)", borderColor: "var(--gg-line)" }}
                 onClick={() => setMobileFiltersOpen(false)}
                 aria-label="Close filters"
               >

@@ -81,6 +81,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: `${ADMIN_BASE}/sale`,
   },
   {
+    key: "yard-sale",
+    label: "Yard Sale Mode",
+    icon: "tag",
+    path: `${ADMIN_BASE}/yard-sale`,
+  },
+  {
     key: "vacation",
     label: "Vacation Mode",
     icon: "pause",
@@ -111,6 +117,7 @@ export const SECTION_TITLES: Record<string, string> = {
   trends: "Trends",
   "market-insights": "Market Insights",
   sale: "Storewide Sale",
+  "yard-sale": "Yard Sale Mode",
   vacation: "Vacation Mode",
   "audit-log": "Audit Log",
 };

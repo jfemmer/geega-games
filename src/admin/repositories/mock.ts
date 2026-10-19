@@ -1049,9 +1049,34 @@ export const mockPosRepository: PosRepository = {
 export const mockPickupRequestRepository: PickupRequestRepository = {
   async list() {
     return delay(
-      pickupRequests.filter((r) => r.status === "waiting" || r.status === "ready"),
+      {
+        requests: pickupRequests.filter((r) => r.status === "waiting" || r.status === "ready"),
+        yardSales: [],
+        taxBps: posSettings.salesTaxBps,
+      },
       120,
     );
+  },
+
+  async removeItem(itemId, quantity) {
+    const request = pickupRequests.find((r) => r.items.some((it) => it.id === itemId));
+    const item = request?.items.find((it) => it.id === itemId);
+    if (!request || !item) throw new Error("That card isn't on the list anymore.");
+    const removed = Math.min(quantity ?? item.quantity, item.quantity);
+    const items = request.items
+      .map((it) => (it.id === itemId ? { ...it, quantity: it.quantity - removed } : it))
+      .filter((it) => it.quantity > 0);
+    pickupRequests = pickupRequests.map((r) =>
+      r.id === request.id ? { ...r, items, status: items.length === 0 ? "cancelled" : r.status } : r,
+    );
+    return delay(
+      { cardName: item.cardName, removed, itemsLeft: items.length, listClosed: items.length === 0 },
+      80,
+    );
+  },
+
+  async completeYardSaleList() {
+    throw new Error("Yard sale lists can't be completed in the demo admin.");
   },
 
   async toggleItem(itemId) {

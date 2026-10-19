@@ -48,6 +48,7 @@ import RespondToOfferPage from "./store/pages/RespondToOfferPage";
 import CollectionSortingPage from "./store/pages/CollectionSortingPage";
 import SortingQuotePage from "./store/pages/SortingQuotePage";
 import KioskPage from "./store/pages/KioskPage";
+import YardSalePage from "./store/pages/YardSalePage";
 
 function Routes() {
   const { path } = useRouter();
@@ -101,6 +102,11 @@ export default function App() {
   // can never touch or be confused with someone else's account/cart.
   if (window.location.pathname === "/kiosk") {
     return <KioskPage />;
+  }
+  // The yard sale page (the QR code at our yard sale) is standalone the same
+  // way: shoppers' phones send a pickup list, never touch a cart or checkout.
+  if (window.location.pathname === "/yard-sale") {
+    return <YardSalePage />;
   }
 
   return <Storefront />;

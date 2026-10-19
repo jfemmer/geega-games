@@ -699,8 +699,15 @@ export interface PickupRequestItem {
   finish: CardFinish;
   imageUrl: string | null;
   quantity: number;
+  /** The price when the card went on the list. */
   unitPriceCents: number;
   pulled: boolean;
+  /** Where the card is kept (inventory's storage location). */
+  storageLocation: string | null;
+  /** What the card sells for now; yard sale lists are charged at this, less the discount. */
+  currentPriceCents: number | null;
+  /** Still in inventory and priced, so the list can be completed. */
+  available: boolean;
 }
 
 export interface PickupRequest {
@@ -711,6 +718,64 @@ export interface PickupRequest {
   notes: string | null;
   createdAt: string;
   items: PickupRequestItem[];
+  /** Set for a list sent from /yard-sale (null for kiosk requests). */
+  yardSaleId: string | null;
+  /** The yard sale list's number, as the shopper's phone shows it. */
+  pickupNumber: number | null;
+}
+
+/** A yard sale, as the pickup queue needs it. */
+export interface PickupYardSale {
+  id: string;
+  startedAt: string;
+  endsAt: string;
+  endedAt: string | null;
+  active: boolean;
+  discountPercent: number;
+  minPriceCents: number;
+}
+
+/** Everything the Pickup Requests page shows. */
+export interface PickupQueue {
+  requests: PickupRequest[];
+  /** The sales the open yard sale lists belong to, and the latest sale. */
+  yardSales: PickupYardSale[];
+  /** The register's sales tax, which yard sale lists are charged too. */
+  taxBps: number;
+}
+
+export interface PickupRemoveResult {
+  cardName: string;
+  removed: number;
+  itemsLeft: number;
+  /** The list had no cards left, so it was closed. */
+  listClosed: boolean;
+}
+
+export interface YardSaleCompleteResult {
+  orderId: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+}
+
+/** Admin → Yard Sale Mode (GET /api/admin/yard-sale). */
+export interface YardSaleSnapshot {
+  sale: {
+    id: string;
+    startedAt: string;
+    endsAt: string;
+    endedAt: string | null;
+    active: boolean;
+    discountPercent: number;
+    minPriceCents: number;
+    listsSent: number;
+  } | null;
+  openLists: number;
+  openListsFromEndedSales: number;
+  completedLists: number;
+  completedTotalCents: number;
 }
 
 /* ------------------------------------------------------------------ *

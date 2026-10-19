@@ -12,7 +12,7 @@ export const STAFF_PUSH_KINDS = [
     label: "Partner leads",
     hint: "Sellers for partner stores, partner applications and seller check-ins.",
   },
-  { value: "pickup", label: "Pickup requests", hint: "Kiosk requests to pull cards for pickup." },
+  { value: "pickup", label: "Pickup requests", hint: "Kiosk requests and yard sale lists to pull cards for." },
   { value: "photo_request", label: "Photo requests", hint: "A shopper wants a photo of a card before buying." },
   {
     value: "sorting_request",

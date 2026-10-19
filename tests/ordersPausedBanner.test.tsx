@@ -7,6 +7,7 @@ const status = { ordersPaused: true, message: "We're at a tournament this week."
 vi.mock("../src/store/lib/storeStatus", () => ({
   useStoreStatus: () => status,
   formatReopenDate: () => "Saturday, October 3",
+  formatReopenShort: () => "Sat, Oct 3",
 }));
 
 const { default: OrdersPausedBanner } = await import("../src/store/components/OrdersPausedBanner");

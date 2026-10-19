@@ -18,6 +18,7 @@ import { PRODUCTION_ORIGIN } from "../../seo/site";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { FOR_STORES_PATH, REFERRAL_PARTNERS_PATH, SELL_HUB_PATH } from "../../store/lib/partnerTypes";
+import { DEFAULT_YARD_SALE_MIN_PRICE_CENTS, YARD_SALE_PATH, formatMinPrice } from "../../store/lib/yardSale";
 import {
   UNKNOWN_LEAD_SOURCE,
   cleanCampaignToken,
@@ -73,6 +74,30 @@ function referralFlyerCopy(noun: string): FlyerCopy {
     stripLabel: `Selling ${noun}?`,
   };
 }
+
+/**
+ * The table sign for a yard sale (Yard Sale Mode): shoppers scan it to see
+ * our cards at or above the sale's minimum price on their phone and send a
+ * pickup list. Printed for one sale, so it can say the minimum.
+ */
+export function yardSaleFlyerCopy(minPriceCents: number = DEFAULT_YARD_SALE_MIN_PRICE_CENTS): FlyerCopy {
+  const cards = minPriceCents > 0 ? `our cards ${formatMinPrice(minPriceCents)} and up` : "all our cards";
+  return {
+    headline: "Looking for something better?",
+    sub: `Scan to see ${cards} — we'll grab them for you.`,
+    points: [
+      "Pick the cards you want on your phone",
+      "We grab them while you keep browsing",
+      "Pay for everything together when you're done",
+    ],
+    // The table sign shows only the headline and this line, so it carries the minimum price.
+    cta: `Scan to see ${cards}`,
+    finePrint: null,
+    stripLabel: "More cards inside",
+  };
+}
+
+export const YARD_SALE_MARKETING_KEY = "yard_sale";
 
 export const MARKETING_PAGES: MarketingPage[] = [
   {
@@ -172,6 +197,12 @@ export const MARKETING_PAGES: MarketingPage[] = [
         "The referral fee is a percentage of what your client is paid, agreed with you in writing when you join.",
       stripLabel: "Referral partners",
     },
+  },
+  {
+    key: YARD_SALE_MARKETING_KEY,
+    label: "Yard sale — cards to pick up (Yard Sale Mode)",
+    path: YARD_SALE_PATH,
+    copy: yardSaleFlyerCopy(),
   },
   {
     key: "home",

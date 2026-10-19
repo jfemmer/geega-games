@@ -75,13 +75,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (rawItems.length === 0) {
       throw new HttpError(400, "Add at least one card to your pickup list.");
     }
-    const items = rawItems.map((raw) => {
+    // One line per card: a pickup list holds each card once (a unique index
+    // since 20261019050000_yard_sale_mode), so the same card twice is merged.
+    const merged = new Map<string, number>();
+    for (const raw of rawItems) {
       const inventoryItemId = cleanString(raw.inventoryItemId, 64);
       const quantity = Math.floor(Number(raw.quantity));
       if (!inventoryItemId || !Number.isFinite(quantity) || quantity < 1 || quantity > 20) {
         throw new HttpError(400, "One of the items in your list isn't valid.");
       }
-      return { inventory_item_id: inventoryItemId, quantity };
+      merged.set(inventoryItemId, (merged.get(inventoryItemId) ?? 0) + quantity);
+    }
+    const items = [...merged].map(([inventory_item_id, quantity]) => {
+      if (quantity > 20) throw new HttpError(400, "One of the items in your list isn't valid.");
+      return { inventory_item_id, quantity };
     });
 
     const admin = getSupabaseAdmin();
