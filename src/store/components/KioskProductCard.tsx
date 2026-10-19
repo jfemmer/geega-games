@@ -5,10 +5,10 @@ import { formatCents } from "../lib/money";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 
 // Visually identical to ProductCard (same brand-grade card grid the real
-// shop uses) but deliberately independent of CartContext — the kiosk never
-// touches a signed-in cart, only its own local pickup list. The yard sale
-// page (/yard-sale) uses it too, with the yard sale price next to the
-// website price.
+// shop uses, foil shimmer included) but deliberately independent of
+// CartContext — the kiosk never touches a signed-in cart, only its own local
+// pickup list. The yard sale page (/yard-sale) uses it too, with the yard
+// sale price next to the website price.
 
 export default function KioskProductCard({
   card,
@@ -29,21 +29,26 @@ export default function KioskProductCard({
   const atLimit = quantityInList >= card.quantity;
   const canAdd = !soldOut && !unpriced && !atLimit;
   const srcSet = card.imageUrl ? scryfallSrcSet(card.imageUrl) : null;
+  const foil = card.finish !== "nonfoil";
 
   return (
     <div className="gg-card">
-      <div className="gg-card-imgwrap">
+      {/* The same foil treatment as ProductCard (store.css, "Foil card treatment"). */}
+      <div className={`gg-card-imgwrap${foil ? " gg-card-imgwrap--foil" : ""}`}>
         {card.imageUrl ? (
-          <img
-            className="gg-card-img"
-            src={card.imageUrl}
-            srcSet={srcSet ?? undefined}
-            sizes="(max-width: 420px) 45vw, (max-width: 800px) 30vw, 200px"
-            alt={`${card.name}${card.setName ? `, ${card.setName}` : ""}`}
-            loading="lazy"
-            width={488}
-            height={680}
-          />
+          <>
+            <img
+              className="gg-card-img"
+              src={card.imageUrl}
+              srcSet={srcSet ?? undefined}
+              sizes="(max-width: 420px) 45vw, (max-width: 800px) 30vw, 200px"
+              alt={`${card.name}${card.setName ? `, ${card.setName}` : ""}`}
+              loading="lazy"
+              width={488}
+              height={680}
+            />
+            {foil && <span className="gg-card-foil-shimmer" aria-hidden="true" />}
+          </>
         ) : (
           <div className="gg-card-img gg-card-img--none" role="img" aria-label={`${card.name} (no image available)`}>
             No image
