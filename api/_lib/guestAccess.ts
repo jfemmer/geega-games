@@ -18,8 +18,13 @@ import { ServerEnv } from "./env.js";
 // "checkin" tokens sign a partner referral id: they let the seller answer the
 // "did the store get in touch?" email (api/partner-referrals/checkin.ts) and
 // nothing else.
+//
+// "sorting" tokens sign a collection sorting request id: the link in the
+// quote email carries one, and it's what lets a customer approve, decline
+// or pay their quote (api/sorting-quote.ts) without signing in. Looking at
+// the quote only needs the reference number and email.
 
-export type GuestRecordKind = "order" | "sell" | "checkin";
+export type GuestRecordKind = "order" | "sell" | "checkin" | "sorting";
 
 const ID_RE = /^[0-9a-f-]{36}$/i;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;

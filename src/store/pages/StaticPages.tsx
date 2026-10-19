@@ -24,6 +24,13 @@ import { SHIPPING, formatCents, formatCentsShort } from "../lib/money";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
 import { SHIPS_TO_SUMMARY } from "../lib/usAddress";
 import { REPLY_WITHIN_HOURS, RETURN_WINDOW_DAYS, SHIPS_WITHIN_BUSINESS_DAYS } from "../lib/storePolicies";
+import {
+  SORTING_INBOUND_RESPONSIBILITIES,
+  SORTING_NO_INBOUND_LABELS,
+  SORTING_PATH,
+  SORTING_RETURN_POLICY,
+  SORTING_SHIPPING_NOTICE,
+} from "../lib/sortingService";
 
 export const SUPPORT_EMAIL =
   (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
@@ -234,6 +241,29 @@ export function ShippingPage() {
         <strong>Free on orders of {freeFrom} or more.</strong>
       </p>
       <p>Your exact shipping cost is always shown in your cart before you pay — no surprises.</p>
+
+      <h2 id="collection-sorting">Collection sorting: shipping your cards to us</h2>
+      <p>
+        Our <Link to={SORTING_PATH}>collection sorting service</Link> works differently from card
+        orders — free shipping on orders doesn&rsquo;t apply to it.
+      </p>
+      <p>
+        <strong>{SORTING_SHIPPING_NOTICE}</strong>
+      </p>
+      <p>If you ship your collection to us, you&rsquo;re responsible for:</p>
+      <ul>
+        {SORTING_INBOUND_RESPONSIBILITIES.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      <p>{SORTING_NO_INBOUND_LABELS}</p>
+      <h3>Return shipping for sorted collections</h3>
+      <ul>
+        {SORTING_RETURN_POLICY.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      <p>Dropping your collection off locally instead? There&rsquo;s nothing to ship either way.</p>
 
       <h2>Something wrong with your delivery?</h2>
       <p>

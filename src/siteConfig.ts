@@ -36,6 +36,7 @@ export const FOOTER_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: "Sell",
     links: [
       { label: "Sell your collection", href: "/sell-my-collection" },
+      { label: "Collection sorting", href: "/collection-sorting" },
       { label: "Sell cards in St. Louis", href: "/sell-magic-cards/st-louis" },
       { label: "Sell Pokémon cards", href: "/sell-pokemon-cards" },
       { label: "Sell One Piece cards", href: "/sell-one-piece-cards" },

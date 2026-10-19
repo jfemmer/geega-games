@@ -14,6 +14,7 @@ import { ScanReviewPage } from "./pages/scan/ScanReviewPage";
 import { QuickApprovePage } from "./pages/scan/QuickApprovePage";
 import { AnnouncementsPage } from "./pages/AnnouncementsPage";
 import { BuyingLeadsPage } from "./pages/BuyingLeadsPage";
+import { SortingPage } from "./pages/sorting/SortingPage";
 import { ReferralLeadsPage } from "./pages/ReferralLeadsPage";
 import { PartnersPage } from "./pages/PartnersPage";
 import { MarketingPage } from "./pages/MarketingPage";
@@ -102,6 +103,8 @@ function AdminDashboard() {
         return <AnnouncementsPage />;
       case "buying-leads":
         return <BuyingLeadsPage query={query} />;
+      case "sorting":
+        return <SortingPage query={query} />;
       case "partner-leads":
         return <ReferralLeadsPage query={query} onNavigate={navigate} />;
       case "partners":

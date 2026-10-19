@@ -45,6 +45,8 @@ import { ST_LOUIS_PATH } from "./seo/sellAreas";
 import { AccountPage } from "./store/pages/AccountPages";
 import TrackOrderPage from "./store/pages/TrackOrderPage";
 import RespondToOfferPage from "./store/pages/RespondToOfferPage";
+import CollectionSortingPage from "./store/pages/CollectionSortingPage";
+import SortingQuotePage from "./store/pages/SortingQuotePage";
 import KioskPage from "./store/pages/KioskPage";
 
 function Routes() {
@@ -64,6 +66,8 @@ function Routes() {
   if (path === "/checkout") return <CheckoutPage />;
   if (path === "/track-order") return <TrackOrderPage />;
   if (path === "/sell/offer") return <RespondToOfferPage />;
+  if (path === "/collection-sorting") return <CollectionSortingPage />;
+  if (path === "/collection-sorting/quote") return <SortingQuotePage />;
   if (path === "/sell") return <SellPage />;
   if (path === "/sell-my-collection") return <SellCollectionPage />;
   if (path === ST_LOUIS_PATH) return <SellStLouisPage />;

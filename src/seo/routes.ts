@@ -36,6 +36,8 @@ const SEO_REFRESH = "2026-09-26";
 // 2026-10-11: the partner program — partner stores, three new categories,
 // the referral fee said plainly on every partner-store page.
 const PARTNER_PROGRAM = "2026-10-11";
+// 2026-10-17: collection sorting — the service page and its shipping policy.
+const COLLECTION_SORTING = "2026-10-17";
 
 const STATIC_ROUTES: SeoRoute[] = [
   // 2026-10-05: the email-list signup replaced the launch notice.
@@ -48,11 +50,12 @@ const STATIC_ROUTES: SeoRoute[] = [
   { path: SELL_HUB_PATH, changefreq: "monthly", priority: "0.8", lastmod: PARTNER_PROGRAM },
   { path: FOR_STORES_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: REFERRAL_PARTNERS_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
+  { path: "/collection-sorting", changefreq: "monthly", priority: "0.7", lastmod: COLLECTION_SORTING },
   { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: SEO_REFRESH },
   { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: SEO_REFRESH },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
-  // 2026-10-05: "Where we ship" (the United States only).
-  { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: "2026-10-05" },
+  // 2026-10-17: shipping for collection sorting (shipping in, return shipping in the quote).
+  { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: COLLECTION_SORTING },
   { path: "/returns", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/contact", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/privacy", changefreq: "yearly", priority: "0.1", lastmod: PARTNER_PROGRAM },

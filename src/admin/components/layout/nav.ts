@@ -43,6 +43,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: `${ADMIN_BASE}/buying-leads`,
   },
   {
+    key: "sorting",
+    label: "Collection Sorting",
+    icon: "layers",
+    path: `${ADMIN_BASE}/sorting`,
+  },
+  {
     key: "partner-leads",
     label: "Partner Leads",
     icon: "users",
@@ -97,6 +103,7 @@ export const SECTION_TITLES: Record<string, string> = {
   scanning: "Card Scanning",
   announcements: "Announcements",
   "buying-leads": "Buying Leads",
+  sorting: "Collection Sorting",
   "partner-leads": "Partner Leads",
   partners: "Partners",
   marketing: "Marketing",

@@ -37,6 +37,7 @@
     { "source": "/reset-password", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/checkout", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/sell/offer", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
+    { "source": "/collection-sorting/quote", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/kiosk", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/account", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/account/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
@@ -61,6 +62,7 @@
     { "source": "/sell-cards-and-games", "destination": "/sell-cards-and-games/index.html" },
     { "source": "/for-stores", "destination": "/for-stores/index.html" },
     { "source": "/referral-partners", "destination": "/referral-partners/index.html" },
+    { "source": "/collection-sorting", "destination": "/collection-sorting/index.html" },
     { "source": "/guides", "destination": "/guides/index.html" },
     { "source": "/guides/:slug", "destination": "/guides/:slug/index.html" },
     { "source": "/condition-guide", "destination": "/condition-guide/index.html" },
@@ -82,6 +84,7 @@
     { "source": "/checkout", "destination": "/spa.html" },
     { "source": "/track-order", "destination": "/spa.html" },
     { "source": "/sell/offer", "destination": "/spa.html" },
+    { "source": "/collection-sorting/quote", "destination": "/spa.html" },
     { "source": "/kiosk", "destination": "/spa.html" },
     { "source": "/account", "destination": "/spa.html" },
     { "source": "/account/:path*", "destination": "/spa.html" }

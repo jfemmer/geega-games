@@ -1388,3 +1388,108 @@ export interface PhotoRequest {
     status: string;
   } | null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Collection sorting — customers drop off or ship in a collection, staff
+ * sort it and send an itemized quote the customer approves and pays
+ * (sorting_requests / sorting_quotes / sorting_payments; rates in
+ * sorting_service_options). Shared wording and math:
+ * src/store/lib/sortingService.ts.
+ * ------------------------------------------------------------------ */
+
+export type SortingStatus =
+  | "new"
+  | "awaiting_cards"
+  | "received"
+  | "quoted"
+  | "approved"
+  | "sorting"
+  | "ready"
+  | "returned"
+  | "cancelled";
+
+export type SortingQuoteState = "draft" | "sent" | "accepted" | "declined" | "superseded";
+
+export interface SortingOptionAdmin {
+  id: string;
+  name: string;
+  description: string | null;
+  ratePerThousandCents: number;
+  sortOrder: number;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface SortingQuoteAdmin {
+  id: string;
+  version: number;
+  status: SortingQuoteState;
+  countedCards: number | null;
+  sortingServiceCents: number;
+  returnShippingCents: number;
+  returnPackagingCents: number;
+  otherCharges: { label: string; amountCents: number }[];
+  /** Always the sum of the items (the database computes it). */
+  totalCents: number;
+  noteToCustomer: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sentAt: string | null;
+  acceptedAt: string | null;
+  declinedAt: string | null;
+  declineReason: string | null;
+  supersededAt: string | null;
+}
+
+export interface SortingPaymentAdmin {
+  id: string;
+  amountCents: number;
+  method: "card_online" | "in_store_card" | "cash" | "other";
+  providerReference: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface SortingRequestSummary {
+  id: string;
+  referenceNumber: string;
+  createdAt: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  deliveryMethod: "drop_off" | "ship";
+  optionName: string;
+  estimatedCards: number;
+  countedCards: number | null;
+  status: SortingStatus;
+  acceptedQuoteId: string | null;
+  amountPaidCents: number;
+}
+
+export interface SortingRequestDetail extends SortingRequestSummary {
+  userId: string | null;
+  phone: string | null;
+  ratePerThousandCents: number;
+  estimatedSortingCents: number;
+  customerNotes: string | null;
+  internalNotes: string | null;
+  statusChangedAt: string;
+  returnAddress: {
+    recipient: string | null;
+    line1: string | null;
+    line2: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+  } | null;
+  shippingTermsAcceptedAt: string | null;
+  shippingTermsText: string | null;
+  returnCarrier: string | null;
+  returnTrackingNumber: string | null;
+  receivedAt: string | null;
+  returnedAt: string | null;
+  cancelledAt: string | null;
+  /** Newest first. */
+  quotes: SortingQuoteAdmin[];
+  payments: SortingPaymentAdmin[];
+}

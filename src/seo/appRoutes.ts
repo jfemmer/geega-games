@@ -25,6 +25,7 @@ export const APP_SHELL_ROUTES = [
   "/checkout",
   "/track-order",
   "/sell/offer",
+  "/collection-sorting/quote",
   "/kiosk",
   "/account",
   "/account/:path*",

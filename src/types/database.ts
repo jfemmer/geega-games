@@ -3080,6 +3080,315 @@ export type Database = {
         }
         Relationships: []
       }
+      sorting_payments: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          id: string
+          method: string
+          note: string | null
+          provider_reference: string | null
+          quote_id: string | null
+          recorded_by: string | null
+          request_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          id?: string
+          method: string
+          note?: string | null
+          provider_reference?: string | null
+          quote_id?: string | null
+          recorded_by?: string | null
+          request_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          id?: string
+          method?: string
+          note?: string | null
+          provider_reference?: string | null
+          quote_id?: string | null
+          recorded_by?: string | null
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sorting_payments_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "sorting_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sorting_payments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "sorting_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sorting_quotes: {
+        Row: {
+          accepted_at: string | null
+          counted_cards: number | null
+          created_at: string
+          created_by: string | null
+          decline_reason: string | null
+          declined_at: string | null
+          id: string
+          note_to_customer: string | null
+          other_charges: Json
+          request_id: string
+          return_packaging_cents: number
+          return_shipping_cents: number
+          sent_at: string | null
+          sent_by: string | null
+          sorting_service_cents: number
+          status: string
+          superseded_at: string | null
+          total_cents: number
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          accepted_at?: string | null
+          counted_cards?: number | null
+          created_at?: string
+          created_by?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          note_to_customer?: string | null
+          other_charges?: Json
+          request_id: string
+          return_packaging_cents?: number
+          return_shipping_cents?: number
+          sent_at?: string | null
+          sent_by?: string | null
+          sorting_service_cents?: number
+          status?: string
+          superseded_at?: string | null
+          total_cents?: number
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          accepted_at?: string | null
+          counted_cards?: number | null
+          created_at?: string
+          created_by?: string | null
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          note_to_customer?: string | null
+          other_charges?: Json
+          request_id?: string
+          return_packaging_cents?: number
+          return_shipping_cents?: number
+          sent_at?: string | null
+          sent_by?: string | null
+          sorting_service_cents?: number
+          status?: string
+          superseded_at?: string | null
+          total_cents?: number
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sorting_quotes_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "sorting_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sorting_requests: {
+        Row: {
+          accepted_quote_id: string | null
+          amount_paid_cents: number
+          cancelled_at: string | null
+          counted_cards: number | null
+          created_at: string
+          customer_notes: string | null
+          delivery_method: string
+          email: string
+          estimated_cards: number
+          estimated_sorting_cents: number
+          first_name: string
+          id: string
+          internal_notes: string | null
+          last_name: string
+          option_id: string | null
+          option_name: string
+          phone: string | null
+          rate_per_thousand_cents: number
+          received_at: string | null
+          reference_number: string
+          return_address_id: string | null
+          return_carrier: string | null
+          return_city: string | null
+          return_country: string | null
+          return_line1: string | null
+          return_line2: string | null
+          return_postal_code: string | null
+          return_recipient: string | null
+          return_state: string | null
+          return_tracking_number: string | null
+          returned_at: string | null
+          shipping_terms_accepted_at: string | null
+          shipping_terms_text: string | null
+          status: string
+          status_changed_at: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          accepted_quote_id?: string | null
+          amount_paid_cents?: number
+          cancelled_at?: string | null
+          counted_cards?: number | null
+          created_at?: string
+          customer_notes?: string | null
+          delivery_method: string
+          email: string
+          estimated_cards: number
+          estimated_sorting_cents: number
+          first_name: string
+          id?: string
+          internal_notes?: string | null
+          last_name: string
+          option_id?: string | null
+          option_name: string
+          phone?: string | null
+          rate_per_thousand_cents: number
+          received_at?: string | null
+          reference_number?: string
+          return_address_id?: string | null
+          return_carrier?: string | null
+          return_city?: string | null
+          return_country?: string | null
+          return_line1?: string | null
+          return_line2?: string | null
+          return_postal_code?: string | null
+          return_recipient?: string | null
+          return_state?: string | null
+          return_tracking_number?: string | null
+          returned_at?: string | null
+          shipping_terms_accepted_at?: string | null
+          shipping_terms_text?: string | null
+          status?: string
+          status_changed_at?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          accepted_quote_id?: string | null
+          amount_paid_cents?: number
+          cancelled_at?: string | null
+          counted_cards?: number | null
+          created_at?: string
+          customer_notes?: string | null
+          delivery_method?: string
+          email?: string
+          estimated_cards?: number
+          estimated_sorting_cents?: number
+          first_name?: string
+          id?: string
+          internal_notes?: string | null
+          last_name?: string
+          option_id?: string | null
+          option_name?: string
+          phone?: string | null
+          rate_per_thousand_cents?: number
+          received_at?: string | null
+          reference_number?: string
+          return_address_id?: string | null
+          return_carrier?: string | null
+          return_city?: string | null
+          return_country?: string | null
+          return_line1?: string | null
+          return_line2?: string | null
+          return_postal_code?: string | null
+          return_recipient?: string | null
+          return_state?: string | null
+          return_tracking_number?: string | null
+          returned_at?: string | null
+          shipping_terms_accepted_at?: string | null
+          shipping_terms_text?: string | null
+          status?: string
+          status_changed_at?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sorting_requests_accepted_quote_fk"
+            columns: ["accepted_quote_id", "id"]
+            isOneToOne: false
+            referencedRelation: "sorting_quotes"
+            referencedColumns: ["id", "request_id"]
+          },
+          {
+            foreignKeyName: "sorting_requests_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "sorting_service_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sorting_requests_return_address_id_fkey"
+            columns: ["return_address_id"]
+            isOneToOne: false
+            referencedRelation: "addresses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sorting_service_options: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          rate_per_thousand_cents: number
+          sort_order: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          rate_per_thousand_cents: number
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          rate_per_thousand_cents?: number
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       store_credit_transactions: {
         Row: {
           amount_cents: number
@@ -4013,6 +4322,73 @@ export type Database = {
           to: "scryfall_bulk_cards"
           isOneToOne: false
           isSetofReturn: true
+        }
+      }
+      my_sorting_requests: {
+        Args: never
+        Returns: {
+          accepted_total_cents: number
+          amount_paid_cents: number
+          created_at: string
+          delivery_method: string
+          email: string
+          estimated_cards: number
+          id: string
+          option_name: string
+          quote_status: string
+          quote_total_cents: number
+          reference_number: string
+          status: string
+        }[]
+      }
+      sorting_accept_quote: {
+        Args: { p_quote_id: string; p_request_id: string }
+        Returns: Json
+      }
+      sorting_decline_quote: {
+        Args: { p_quote_id: string; p_reason?: string; p_request_id: string }
+        Returns: Json
+      }
+      sorting_record_payment: {
+        Args: {
+          p_actor?: string
+          p_amount_cents: number
+          p_method: string
+          p_note?: string
+          p_reference?: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      sorting_send_quote: {
+        Args: { p_actor?: string; p_quote_id: string }
+        Returns: {
+          accepted_at: string | null
+          counted_cards: number | null
+          created_at: string
+          created_by: string | null
+          decline_reason: string | null
+          declined_at: string | null
+          id: string
+          note_to_customer: string | null
+          other_charges: Json
+          request_id: string
+          return_packaging_cents: number
+          return_shipping_cents: number
+          sent_at: string | null
+          sent_by: string | null
+          sorting_service_cents: number
+          status: string
+          superseded_at: string | null
+          total_cents: number
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "sorting_quotes"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       sell_submission_offer_lookup: {

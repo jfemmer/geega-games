@@ -14,6 +14,11 @@ export const STAFF_PUSH_KINDS = [
   },
   { value: "pickup", label: "Pickup requests", hint: "Kiosk requests to pull cards for pickup." },
   { value: "photo_request", label: "Photo requests", hint: "A shopper wants a photo of a card before buying." },
+  {
+    value: "sorting_request",
+    label: "Collection sorting",
+    hint: "New sorting requests, quotes approved or declined, and card payments.",
+  },
 ] as const;
 
 export type StaffPushKind = (typeof STAFF_PUSH_KINDS)[number]["value"];
