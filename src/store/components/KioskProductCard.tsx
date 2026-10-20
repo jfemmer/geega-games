@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CatalogCard } from "../lib/useCatalog";
 import { scryfallSrcSet } from "../../cards";
 import { formatCents } from "../lib/money";
@@ -23,6 +23,10 @@ export default function KioskProductCard({
   salePriceCents?: number | null;
 }) {
   const [justAdded, setJustAdded] = useState(false);
+  // The "Added ✓" flash: one timer at a time (another tap restarts it), and
+  // none left running once the card is gone.
+  const addedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(addedTimer.current), []);
 
   const soldOut = card.quantity <= 0;
   const unpriced = card.priceCents == null || card.priceCents <= 0;
@@ -98,7 +102,8 @@ export default function KioskProductCard({
           onClick={() => {
             onAdd();
             setJustAdded(true);
-            window.setTimeout(() => setJustAdded(false), 1200);
+            window.clearTimeout(addedTimer.current);
+            addedTimer.current = window.setTimeout(() => setJustAdded(false), 1200);
           }}
         >
           {justAdded ? "Added ✓" : atLimit ? "Max in list" : "Add to list"}

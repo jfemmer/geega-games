@@ -60,6 +60,26 @@ describe("yard sale prices", () => {
     expect(migration).not.toMatch(/v_inv\.price_cents\s*[<*]/);
   });
 
+  it("checks the minimum against the website price, before the discount", () => {
+    // Holding a card on a list: the card's website price against the minimum.
+    const holdStart = migration.indexOf("create or replace function public.yard_sale_hold_card(");
+    const hold = migration.slice(holdStart, migration.indexOf("$$;", holdStart));
+    const priced = hold.indexOf(
+      "v_price := public.storefront_effective_price(v_inv.price_cents, v_inv.original_price_cents, v_inv.is_deal);",
+    );
+    expect(priced).toBeGreaterThan(-1);
+    expect(hold.indexOf("if v_price < p_min_price_cents then")).toBeGreaterThan(priced);
+    expect(hold).not.toContain("yard_sale_price(");
+    // Shop your deck: the same.
+    const deckStart = wholeDollars.indexOf("create or replace function public.yard_sale_deck_matches(");
+    const deck = wholeDollars.slice(deckStart, wholeDollars.indexOf("$$;", deckStart));
+    expect(deck).toContain("public.storefront_effective_price(i.price_cents, i.original_price_cents, i.is_deal) as live_price");
+    expect(deck).toContain("and s.live_price >= sale.min_price_cents");
+    expect(deck).not.toContain("yard_sale_price(");
+    // So with a $3 minimum and 20% off, a $3 card is on the page, at $2.
+    expect(yardSalePriceCents(300, 20)).toBe(200);
+  });
+
   it("totals a list card by card, then adds tax rounded down", () => {
     const totals = yardSaleTotals(
       [

@@ -184,6 +184,29 @@ describe("the Yard Sale Mode page", () => {
     expect(screen.getByText("2 · $31.50")).toBeInTheDocument();
   });
 
+  it("explains that the minimum is the website price, before the discount", async () => {
+    yard.snapshot.mockResolvedValue(off);
+    const user = userEvent.setup();
+    wrap(<YardSaleModePage />);
+    const discount = await screen.findByLabelText("Discount on website cards (%)");
+    await user.clear(discount);
+    await user.type(discount, "20");
+    const min = screen.getByLabelText("Show cards priced at least ($)");
+    await user.clear(min);
+    await user.type(min, "3");
+    expect(
+      screen.getByText(
+        "Each card's website price, before the discount: a $3 card shows, and sells for $2 at 20% off. Cheaper cards stay off the yard sale page.",
+      ),
+    ).toBeInTheDocument();
+    await user.clear(discount);
+    await user.type(discount, "0");
+    expect(screen.getByText("Each card's website price, before the discount. Cheaper cards stay off the yard sale page.")).toBeInTheDocument();
+    await user.clear(min);
+    await user.type(min, "0");
+    expect(screen.getByText("0 shows all our cards.")).toBeInTheDocument();
+  });
+
   it("won't start with a discount it can't use", async () => {
     yard.snapshot.mockResolvedValue(off);
     const user = userEvent.setup();

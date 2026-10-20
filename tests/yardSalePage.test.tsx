@@ -120,6 +120,19 @@ describe("the yard sale page", () => {
     expect(within(bolt).getByText(/\$5\.00/)).toHaveClass("gg-price-original");
   });
 
+  it("goes by the website price for the minimum: a $3 card shows at a $3 minimum, at its $2 yard sale price", async () => {
+    catalog.cards = [card("baral", "Baral, Chief of Compliance", 300)];
+    render(<YardSalePage />);
+    // The page asks the catalog for cards at or above the minimum website
+    // price (search_inventory compares the website price), and shows each
+    // one it gets back at the yard sale price, even when that's under $3.
+    expect(await screen.findByText("Cards $3 and up · 20% off")).toBeInTheDocument();
+    expect(catalog.lastFilters?.minPriceCents).toBe(300);
+    const baral = screen.getByText("Baral, Chief of Compliance").closest(".gg-card") as HTMLElement;
+    expect(within(baral).getByText("$2.00")).toBeInTheDocument();
+    expect(within(baral).getByText(/\$3\.00/)).toHaveClass("gg-price-original");
+  });
+
   it("sends a list with a name and shows the pickup number", async () => {
     api.send.mockResolvedValue({ list: listView(), token: "tok" });
     const user = userEvent.setup();

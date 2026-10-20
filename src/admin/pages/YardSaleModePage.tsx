@@ -17,8 +17,10 @@ import {
   DEFAULT_YARD_SALE_MIN_PRICE_CENTS,
   YARD_SALE_LIMITS,
   YARD_SALE_PATH,
+  formatMinPrice,
   parseDiscountPercent,
   parseMinPriceCents,
+  yardSalePriceCents,
   yardSaleTermsLine,
 } from "../../store/lib/yardSale";
 import type { YardSaleSnapshot } from "../types";
@@ -56,6 +58,21 @@ function timeLabel(iso: string): string {
 }
 
 type Settings = { endsAt: string; discountPercent: number; minPriceCents: number };
+
+/**
+ * The minimum is checked against each card's website price, before the yard
+ * sale discount (search_inventory, yard_sale_hold_card and
+ * yard_sale_deck_matches all compare the website price), so with $3 and 20%
+ * off a $3 card shows and sells for $2. Spelled out with the numbers in the
+ * form.
+ */
+function minimumHint(minPriceCents: number | null, discountPercent: number | null): string {
+  if (minPriceCents === 0) return "0 shows all our cards.";
+  const rest = "Cheaper cards stay off the yard sale page.";
+  if (minPriceCents === null || !discountPercent) return `Each card's website price, before the discount. ${rest}`;
+  const salePrice = formatMinPrice(yardSalePriceCents(minPriceCents, discountPercent));
+  return `Each card's website price, before the discount: a ${formatMinPrice(minPriceCents)} card shows, and sells for ${salePrice} at ${discountPercent}% off. ${rest}`;
+}
 
 export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => void }) {
   const toast = useToast();
@@ -117,6 +134,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
   const sale = snap?.sale ?? null;
   const active = !!sale?.active;
   const minPriceCents = parseMinPriceCents(minPrice);
+  const minHint = minimumHint(minPriceCents, parseDiscountPercent(discount));
 
   function readSettings(): Settings | null {
     const discountPercent = parseDiscountPercent(discount);
@@ -260,7 +278,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
                   inputMode="decimal"
                   value={minPrice}
                   onChange={(e) => setMinPrice(e.target.value)}
-                  hint="Cheaper cards stay off the yard sale page."
+                  hint={minHint}
                 />
                 <TextField
                   label="Ends at"
