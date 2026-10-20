@@ -1,4 +1,5 @@
 import qrcode from "qrcode-generator";
+import { triggerDownload } from "./saveFile";
 
 // QR codes for the Marketing page and referral partners' links, drawn from
 // qrcode-generator's module grid as one SVG path: crisp at any print size, and
@@ -26,15 +27,6 @@ export function qrSvgDocument(value: string, pixels = 1024): string {
   const { path, size } = qrPath(value);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${pixels}" height="${pixels}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
-}
-
-function triggerDownload(href: string, filename: string) {
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
 }
 
 export function downloadQrSvg(value: string, filename: string) {

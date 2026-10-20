@@ -1,6 +1,13 @@
 import { useRef, type CSSProperties } from "react";
 import { QrCode } from "./QrCode";
 import type { FlyerJob } from "./FlyerPrintView";
+import {
+  YARD_SALE_SIGN_LEDE,
+  YARD_SALE_SIGN_TAGLINE,
+  yardSaleSignFootnote,
+  yardSaleSignHand,
+} from "../../utils/yardSaleSign";
+import signLogoUrl from "../../assets/logo-black-background-print.jpg";
 
 // The printed sign for the yard sale table (FlyerPrintView, layout
 // "yard-sale"; utils/yardSaleSign.ts builds the job). Read from a few feet
@@ -11,6 +18,8 @@ import type { FlyerJob } from "./FlyerPrintView";
 // on the cards, so the sign stays right however prices change. Inter only,
 // as everywhere on the site; violet only on the QR frame and the step
 // numbers. Sizes are real inches and points, so it prints 1:1 on US Letter.
+// Save PDF (yardSaleSignPdf.ts) draws the same design into a PDF file: a
+// change to the layout here belongs there too.
 
 export function YardSaleSign({ job, onImagesSettled }: { job: FlyerJob; onImagesSettled?: () => void }) {
   const { copy } = job;
@@ -18,9 +27,7 @@ export function YardSaleSign({ job, onImagesSettled }: { job: FlyerJob; onImages
   // No cards for the hand (no newer ones with a picture, or they couldn't be
   // loaded): the QR code gets the room instead.
   const plain = showcase.length === 0;
-  // Held the way you'd hold them: each card over the one before, so the
-  // most valuable goes last, on top.
-  const hand = [...showcase].reverse();
+  const hand = yardSaleSignHand(showcase);
   const discountPercent = job.yardSale?.discountPercent ?? 0;
 
   // Print waits for the card pictures (FlyerPrintView), so tell it once each
@@ -34,17 +41,14 @@ export function YardSaleSign({ job, onImagesSettled }: { job: FlyerJob; onImages
   return (
     <article className={`gg-flyer gg-ysign${plain ? " gg-ysign--plain" : ""}`} data-testid="yard-sale-sign">
       <header className="gg-ysign__band">
-        <img className="gg-ysign__logo" src="/logo-black-background.png" alt="Geega Games" />
-        <p className="gg-ysign__what">Magic: The Gathering singles</p>
+        <img className="gg-ysign__logo" src={signLogoUrl} alt="Geega Games" />
+        <p className="gg-ysign__what">{YARD_SALE_SIGN_TAGLINE}</p>
       </header>
 
       <div className="gg-ysign__body">
         <div className="gg-ysign__intro">
           <h1 className="gg-ysign__headline">{copy.headline}</h1>
-          <p className="gg-ysign__lede">
-            Our best cards aren&rsquo;t on these tables. They&rsquo;re on our website, and we&rsquo;ll grab them
-            for you.
-          </p>
+          <p className="gg-ysign__lede">{YARD_SALE_SIGN_LEDE}</p>
           {job.extraLine && <p className="gg-ysign__extra">{job.extraLine}</p>}
         </div>
 
@@ -86,11 +90,7 @@ export function YardSaleSign({ job, onImagesSettled }: { job: FlyerJob; onImages
       </div>
 
       <footer className="gg-ysign__foot">
-        <p>
-          {discountPercent > 0
-            ? `Yard sale prices are ${discountPercent}% off our website prices, rounded to whole dollars.`
-            : "Yard sale prices are our website prices, rounded down to whole dollars."}
-        </p>
+        <p>{yardSaleSignFootnote(discountPercent)}</p>
       </footer>
     </article>
   );

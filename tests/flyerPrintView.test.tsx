@@ -73,6 +73,14 @@ describe("FlyerPrintView", () => {
     expect(page.querySelectorAll(".gg-flyer__strip")).toHaveLength(0);
   });
 
+  it("has no Save PDF for flyers and table signs (only the yard sale sign has one)", () => {
+    render(<FlyerPrintView job={job()} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /PDF/ })).toBeNull();
+    cleanup();
+    render(<FlyerPrintView job={job({ layout: "sign" })} onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: /PDF/ })).toBeNull();
+  });
+
   it("closes with Close or Escape", () => {
     const onClose = vi.fn();
     render(<FlyerPrintView job={job()} onClose={onClose} />);

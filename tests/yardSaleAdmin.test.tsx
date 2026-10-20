@@ -27,6 +27,8 @@ vi.mock("../src/admin/repositories", () => ({
 
 const yard = vi.hoisted(() => ({ snapshot: vi.fn(), start: vi.fn(), update: vi.fn(), end: vi.fn(), showcase: vi.fn() }));
 vi.mock("../src/admin/repositories/yardSale.supabase", () => ({ yardSaleRepository: yard }));
+// The sign preview makes its PDF as it opens (tested in yardSaleSign*.test.ts*).
+vi.mock("../src/admin/utils/yardSaleSignPdf", () => ({ makeYardSaleSignPdf: () => new Promise(() => {}) }));
 
 const { PickupRequestsPage } = await import("../src/admin/pages/PickupRequestsPage");
 const { YardSaleModePage } = await import("../src/admin/pages/YardSaleModePage");

@@ -1659,7 +1659,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-labelprint-heading { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 320px; }
 .gg-labelprint-heading strong { font-size: 1.05rem; color: var(--gg-ink); }
 .gg-labelprint-heading span { font-size: 0.85rem; color: var(--gg-text-soft); line-height: 1.45; }
-.gg-labelprint-actions { display: flex; gap: 8px; flex: none; }
+.gg-labelprint-actions { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
 .gg-labelprint-toolbar .gg-alert { width: 100%; margin: 0; }
 .gg-labelprint-stage { width: 100%; max-width: 920px; display: flex; justify-content: center; }
 .gg-labelpage {

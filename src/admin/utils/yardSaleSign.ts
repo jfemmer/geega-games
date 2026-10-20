@@ -13,6 +13,30 @@ import type { YardSaleShowcaseCard } from "../types";
 /** Cards in the hand on the sign. */
 export const SIGN_HAND_SIZE = 5;
 
+// The sign's words, shared by the printed page (YardSaleSign.tsx) and the
+// PDF file (yardSaleSignPdf.ts) so the two always say the same thing.
+export const YARD_SALE_SIGN_TAGLINE = "Magic: The Gathering singles";
+export const YARD_SALE_SIGN_LEDE =
+  "Our best cards aren’t on these tables. They’re on our website, and we’ll grab them for you.";
+
+/** The file name for Save PDF. */
+export const YARD_SALE_SIGN_PDF_NAME = "geega-games-yard-sale-sign.pdf";
+
+/** The fine print at the bottom: how yard sale prices work. */
+export function yardSaleSignFootnote(discountPercent: number): string {
+  return discountPercent > 0
+    ? `Yard sale prices are ${discountPercent}% off our website prices, rounded to whole dollars.`
+    : "Yard sale prices are our website prices, rounded down to whole dollars.";
+}
+
+/**
+ * The cards in the order they're laid down in the hand: each one over the
+ * one before, so the most valuable (first in the showcase) goes last, on top.
+ */
+export function yardSaleSignHand<T>(showcase: readonly T[]): T[] {
+  return [...showcase].reverse();
+}
+
 /** "Newer" cards are printings released in the last this many years. */
 export const NEWER_CARDS_YEARS = 2;
 

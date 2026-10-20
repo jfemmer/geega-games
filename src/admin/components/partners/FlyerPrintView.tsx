@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../ui/Button";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { YARD_SALE_SIGN_PDF_ERROR, useYardSaleSignPdf } from "../../hooks/useYardSaleSignPdf";
 import { QrCode } from "./QrCode";
 import { YardSaleSign } from "./YardSaleSign";
 import type { FlyerCopy } from "../../utils/marketing";
@@ -22,7 +23,8 @@ import type { YardSaleShowcaseCard } from "../../types";
 //          (fits a standard 8½ × 11 sign holder).
 //   yard-sale  the yard sale table sign: a hand of the most valuable newer
 //          cards at the sale, fanned out, and the QR code for /yard-sale
-//          with how it works (YardSaleSign.tsx).
+//          with how it works (YardSaleSign.tsx). It can also be saved as a
+//          PDF file (Save PDF), to print anywhere else.
 //
 // Sizes are real inches so the page prints 1:1 at 100% scale.
 
@@ -53,7 +55,7 @@ const HINTS: Record<FlyerLayout, string> = {
   sign:
     "Prints on US Letter paper and fits a standard 8½ × 11 sign holder. Keep the scale at 100% (Default) and turn off headers and footers. Scan the QR code with your phone before you set it out.",
   "yard-sale":
-    "Prints on US Letter paper and fits a standard 8½ × 11 sign holder. Print in color so the cards show, keep the scale at 100% (Default) and turn off headers and footers. Scan the QR code with your phone before you set it out.",
+    "Prints on US Letter paper and fits a standard 8½ × 11 sign holder. Print in color so the cards show, keep the scale at 100% (Default) and turn off headers and footers. Scan the QR code with your phone before you set it out. Save PDF makes a file you can print anywhere else, like a print shop.",
 };
 
 const TITLES: Record<FlyerLayout, string> = { flyer: "Flyer", sign: "Table sign", "yard-sale": "Yard sale sign" };
@@ -69,8 +71,12 @@ export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () =>
   // The yard sale sign prints card pictures from Scryfall: hold Print until
   // they've loaded, so none print blank (but never for more than 10 seconds).
   const pictures = job.layout === "yard-sale" ? (job.yardSale?.showcase.length ?? 0) : 0;
-  // A yard sale sign without cards prints like any table sign.
-  const hint = job.layout === "yard-sale" && pictures === 0 ? HINTS.sign : HINTS[job.layout];
+  // A yard sale sign without cards prints like any table sign (and still saves as a PDF).
+  const hint =
+    job.layout === "yard-sale" && pictures === 0
+      ? `${HINTS.sign} Save PDF makes a file you can print anywhere else, like a print shop.`
+      : HINTS[job.layout];
+  const pdf = useYardSaleSignPdf(job.layout === "yard-sale" ? job : null);
   const [picturesReady, setPicturesReady] = useState(pictures === 0);
   useEffect(() => {
     if (pictures === 0) return;
@@ -121,10 +127,20 @@ export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () =>
           <Button variant="primary" icon="printer" disabled={!picturesReady} onClick={() => window.print()}>
             {picturesReady ? "Print" : "Loading cards…"}
           </Button>
+          {pdf && (
+            <Button variant="secondary" icon="download" loading={pdf.status === "preparing"} onClick={pdf.save}>
+              {pdf.status === "preparing" ? "Making PDF…" : pdf.status === "failed" ? "Retry PDF" : "Save PDF"}
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>
         </div>
+        {pdf?.status === "failed" && (
+          <p className="gg-alert gg-alert-error" role="alert">
+            {YARD_SALE_SIGN_PDF_ERROR}
+          </p>
+        )}
       </div>
 
       <div ref={stageRef} className="gg-flyerprint-stage">

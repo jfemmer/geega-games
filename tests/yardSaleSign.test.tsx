@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { FlyerPrintView, type FlyerJob } from "../src/admin/components/partners/FlyerPrintView";
 import { newerCardsSince, pickYardSaleShowcase, yardSaleSignJob } from "../src/admin/utils/yardSaleSign";
 import { mapCatalogRow, type CatalogSearchRow } from "../src/store/lib/useCatalog";
 import type { YardSaleShowcaseCard } from "../src/admin/types";
+
+// The PDF itself is tested in yardSaleSignPdf.test.ts; here, the preview's Save PDF button.
+const pdfFile = vi.hoisted(() => ({ make: vi.fn() }));
+vi.mock("../src/admin/utils/yardSaleSignPdf", () => ({ makeYardSaleSignPdf: pdfFile.make }));
 
 // The printed yard sale sign (Yard Sale Mode → Print QR sign, Marketing →
 // the yard sale page → Print table sign): a hand of the most valuable newer
@@ -123,6 +127,8 @@ function handPictures() {
 describe("the printed yard sale sign", () => {
   beforeEach(() => {
     window.print = vi.fn();
+    pdfFile.make.mockReset();
+    pdfFile.make.mockReturnValue(new Promise(() => {}));
   });
   afterEach(() => {
     cleanup();
@@ -214,5 +220,94 @@ describe("the printed yard sale sign", () => {
     expect(sign.querySelector("footer")).toHaveTextContent(
       /^Yard sale prices are our website prices, rounded down to whole dollars\.$/,
     );
+  });
+});
+
+describe("saving the sign as a PDF", () => {
+  const PDF = new Blob(["%PDF-1.7"], { type: "application/pdf" });
+  const realMatchMedia = window.matchMedia;
+  let clicked: { download: string; href: string }[];
+
+  beforeEach(() => {
+    window.print = vi.fn();
+    pdfFile.make.mockReset();
+    pdfFile.make.mockResolvedValue(PDF);
+    URL.createObjectURL = vi.fn(() => "blob:yard-sale-sign");
+    URL.revokeObjectURL = vi.fn();
+    clicked = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push({ download: this.download, href: this.href });
+    });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    window.matchMedia = realMatchMedia;
+    Reflect.deleteProperty(navigator, "share");
+    Reflect.deleteProperty(navigator, "canShare");
+  });
+
+  function onAPhone(share: () => Promise<void>) {
+    window.matchMedia = (query: string) =>
+      ({ ...realMatchMedia(query), matches: query === "(pointer: coarse)" }) as MediaQueryList;
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: vi.fn(() => true) });
+    Object.defineProperty(navigator, "share", { configurable: true, value: vi.fn(share) });
+  }
+
+  it("makes the PDF while the preview is open, then downloads it", async () => {
+    const job = signJob();
+    render(<FlyerPrintView job={job} onClose={() => {}} />);
+    expect(screen.getByRole("button", { name: "Making PDF…" })).toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF" }));
+    expect(pdfFile.make).toHaveBeenCalledWith(job);
+    expect(URL.createObjectURL).toHaveBeenCalledWith(PDF);
+    expect(clicked).toEqual([{ download: "geega-games-yard-sale-sign.pdf", href: "blob:yard-sale-sign" }]);
+  });
+
+  it("opens the share sheet on a phone, to save, print or send it", async () => {
+    onAPhone(() => Promise.resolve());
+    render(<FlyerPrintView job={signJob()} onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF" }));
+    expect(navigator.share).toHaveBeenCalledTimes(1);
+    const shared = vi.mocked(navigator.share).mock.calls[0][0] as ShareData;
+    expect(shared.title).toBe("Yard sale sign");
+    expect(shared.files?.map((f) => [f.name, f.type])).toEqual([["geega-games-yard-sale-sign.pdf", "application/pdf"]]);
+    await act(async () => {});
+    expect(clicked).toEqual([]);
+  });
+
+  it("does nothing more when the share sheet is closed", async () => {
+    onAPhone(() => Promise.reject(new DOMException("Share canceled", "AbortError")));
+    render(<FlyerPrintView job={signJob()} onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF" }));
+    await act(async () => {});
+    expect(clicked).toEqual([]);
+  });
+
+  it("downloads it when the phone won't share it", async () => {
+    onAPhone(() => Promise.reject(new DOMException("Not allowed", "NotAllowedError")));
+    render(<FlyerPrintView job={signJob()} onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF" }));
+    await act(async () => {});
+    expect(clicked).toEqual([{ download: "geega-games-yard-sale-sign.pdf", href: "blob:yard-sale-sign" }]);
+  });
+
+  it("says so when the PDF can't be made, and tries again", async () => {
+    pdfFile.make.mockRejectedValueOnce(new Error("offline"));
+    render(<FlyerPrintView job={signJob()} onClose={() => {}} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't make the PDF.");
+    fireEvent.click(screen.getByRole("button", { name: "Retry PDF" }));
+    expect(screen.getByRole("button", { name: "Making PDF…" })).toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF" }));
+    await waitFor(() => expect(pdfFile.make).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(clicked).toHaveLength(1);
+  });
+
+  it("saves the sign without cards too", async () => {
+    render(<FlyerPrintView job={signJob({ showcase: [] })} onClose={() => {}} />);
+    expect(screen.getByText(/Save PDF makes a file you can print anywhere else/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF" }));
+    expect(clicked).toHaveLength(1);
   });
 });
