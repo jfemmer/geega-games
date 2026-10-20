@@ -85,8 +85,8 @@ describe("the sale's terms, in words", () => {
   });
 
   it("puts the minimum on the QR sign", () => {
-    expect(yardSaleFlyerCopy(300).sub).toBe("Scan to see our cards $3 and up — we'll grab them for you.");
-    expect(yardSaleFlyerCopy(0).sub).toBe("Scan to see all our cards — we'll grab them for you.");
+    expect(yardSaleFlyerCopy(300).sub).toBe("Scan to see our cards $3 and up — we’ll grab them for you.");
+    expect(yardSaleFlyerCopy(0).sub).toBe("Scan to see all our cards — we’ll grab them for you.");
     expect(yardSaleFlyerCopy().headline).toBe("Looking for something better?");
     // The table sign prints only the headline and the call to action.
     expect(yardSaleFlyerCopy(300).cta).toBe("Scan to see our cards $3 and up");

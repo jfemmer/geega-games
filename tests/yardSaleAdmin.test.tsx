@@ -25,7 +25,7 @@ vi.mock("../src/admin/repositories", () => ({
   posRepository: { markCashPaid: vi.fn(), terminalCreateIntent: vi.fn(), voidSale: vi.fn() },
 }));
 
-const yard = vi.hoisted(() => ({ snapshot: vi.fn(), start: vi.fn(), update: vi.fn(), end: vi.fn() }));
+const yard = vi.hoisted(() => ({ snapshot: vi.fn(), start: vi.fn(), update: vi.fn(), end: vi.fn(), showcase: vi.fn() }));
 vi.mock("../src/admin/repositories/yardSale.supabase", () => ({ yardSaleRepository: yard }));
 
 const { PickupRequestsPage } = await import("../src/admin/pages/PickupRequestsPage");
@@ -213,5 +213,55 @@ describe("the Yard Sale Mode page", () => {
     await user.click(within(screen.getByRole("dialog", { name: "End the yard sale now?" })).getByRole("button", { name: "End yard sale" }));
     expect(yard.end).toHaveBeenCalledWith("sale-1");
     expect(await screen.findByText("Yard Sale Mode is off.")).toBeInTheDocument();
+  });
+
+  it("prints the QR sign with the most valuable cards at the sale's prices", async () => {
+    yard.snapshot.mockResolvedValue(on);
+    yard.showcase.mockResolvedValue([
+      { id: "ring", name: "The One Ring", imageUrl: "https://img.test/ring.jpg", foil: false, priceCents: 12000, salePriceCents: 9000 },
+    ]);
+    const user = userEvent.setup();
+    wrap(<YardSaleModePage />);
+    await user.click(await screen.findByRole("button", { name: "Print QR sign" }));
+    expect(yard.showcase).toHaveBeenCalledWith(500, 25);
+    const dialog = await screen.findByRole("dialog", { name: "Yard sale sign preview" });
+    const shelf = within(dialog).getByRole("region", { name: "Featured cards" });
+    expect(shelf).toHaveTextContent("The One Ring$90$120");
+    expect(dialog).toHaveTextContent("Scan to see our cards $5 and up");
+    expect(dialog).toHaveTextContent("Yard sale prices are 25% off our website prices, rounded to whole dollars.");
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Yard sale sign preview" })).not.toBeInTheDocument();
+  });
+
+  it("prints the sign for the next sale's terms when none is on", async () => {
+    yard.snapshot.mockResolvedValue(off);
+    yard.showcase.mockResolvedValue([]);
+    const user = userEvent.setup();
+    wrap(<YardSaleModePage />);
+    const discount = await screen.findByLabelText("Discount on website cards (%)");
+    await user.clear(discount);
+    await user.type(discount, "30");
+    const min = screen.getByLabelText("Show cards priced at least ($)");
+    await user.clear(min);
+    await user.type(min, "4");
+    await user.click(screen.getByRole("button", { name: "Print QR sign" }));
+    expect(yard.showcase).toHaveBeenCalledWith(400, 30);
+    const dialog = await screen.findByRole("dialog", { name: "Yard sale sign preview" });
+    expect(dialog).toHaveTextContent("Scan to see our cards $4 and up");
+    // Nothing to feature: just the QR code, and Print is ready right away.
+    expect(within(dialog).queryByRole("region", { name: "Featured cards" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Print" })).toBeEnabled();
+  });
+
+  it("still prints the sign, without cards, when they can't be loaded", async () => {
+    yard.snapshot.mockResolvedValue(on);
+    yard.showcase.mockRejectedValue(new Error("Could not load the cards to feature."));
+    const user = userEvent.setup();
+    wrap(<YardSaleModePage />);
+    await user.click(await screen.findByRole("button", { name: "Print QR sign" }));
+    expect(await screen.findByText("Couldn't load cards to feature, so the sign shows the QR code without them.")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Yard sale sign preview" });
+    expect(within(dialog).getByRole("img", { name: "QR code for geega-games.com/yard-sale" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("region", { name: "Featured cards" })).toBeNull();
   });
 });

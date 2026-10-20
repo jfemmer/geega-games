@@ -26,6 +26,8 @@ import {
   type LeadSourceSummary,
 } from "../utils/marketing";
 import { yardSaleRepository } from "../repositories/yardSale.supabase";
+import { useYardSaleSign } from "../hooks/useYardSaleSign";
+import { DEFAULT_YARD_SALE_MIN_PRICE_CENTS } from "../../store/lib/yardSale";
 import { SOURCE_PRESETS, cleanCampaignToken, sourceLabel } from "../../store/lib/attribution";
 
 // Marketing: make a tagged link and QR code for wherever sellers will see it
@@ -77,6 +79,9 @@ export function MarketingPage() {
     [isYardSale],
   );
   const flyerCopy = isYardSale ? yardSaleFlyerCopy(yardSale.data?.sale?.minPriceCents) : page.copy;
+  // The yard sale's table sign is its own design, featuring a few of the
+  // most valuable cards at the sale (or the last sale's terms).
+  const yardSaleSign = useYardSaleSign();
   const referrers = useMemo(
     () =>
       (partners.data ?? []).filter((p) => p.kind === "referrer" && p.status === "active" && p.referralCode),
@@ -285,7 +290,23 @@ export function MarketingPage() {
               <Button size="sm" variant="primary" icon="printer" onClick={() => setPrinting("flyer")}>
                 Print flyer
               </Button>
-              <Button size="sm" variant="primary" icon="printer" onClick={() => setPrinting("sign")}>
+              <Button
+                size="sm"
+                variant="primary"
+                icon="printer"
+                loading={isYardSale && yardSaleSign.preparing}
+                onClick={() =>
+                  isYardSale
+                    ? void yardSaleSign.open(
+                        {
+                          minPriceCents: yardSale.data?.sale?.minPriceCents ?? DEFAULT_YARD_SALE_MIN_PRICE_CENTS,
+                          discountPercent: yardSale.data?.sale?.discountPercent ?? 0,
+                        },
+                        extraLine.trim() || null,
+                      )
+                    : setPrinting("sign")
+                }
+              >
                 Print table sign
               </Button>
             </div>
@@ -341,6 +362,7 @@ export function MarketingPage() {
           onClose={() => setPrinting(null)}
         />
       )}
+      {yardSaleSign.job && <FlyerPrintView job={yardSaleSign.job} onClose={yardSaleSign.close} />}
     </div>
   );
 }

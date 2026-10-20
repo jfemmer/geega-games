@@ -1,9 +1,11 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../ui/Button";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { QrCode } from "./QrCode";
+import { YardSaleSign } from "./YardSaleSign";
 import type { FlyerCopy } from "../../utils/marketing";
+import type { YardSaleShowcaseCard } from "../../types";
 
 // Printable flyer and table sign, from the Marketing page (and a referral
 // partner's drawer on Partners). A full-window preview with Print / Close;
@@ -18,10 +20,13 @@ import type { FlyerCopy } from "../../utils/marketing";
 //          laundromats and estate sales.
 //   sign   one big QR code and headline, for a card-show table or a counter
 //          (fits a standard 8½ × 11 sign holder).
+//   yard-sale  the yard sale table sign: a few of the most valuable cards at
+//          the sale with their yard sale prices, and the QR code for
+//          /yard-sale with how it works (YardSaleSign.tsx).
 //
 // Sizes are real inches so the page prints 1:1 at 100% scale.
 
-export type FlyerLayout = "flyer" | "sign";
+export type FlyerLayout = "flyer" | "sign" | "yard-sale";
 
 export interface FlyerJob {
   layout: FlyerLayout;
@@ -32,6 +37,8 @@ export interface FlyerJob {
   address: string;
   /** An optional line the owner typed, e.g. "Find us at table 12 today". */
   extraLine?: string | null;
+  /** For the yard sale sign: its featured cards and the discount, as of printedAt (ISO). */
+  yardSale?: { showcase: YardSaleShowcaseCard[]; discountPercent: number; printedAt: string };
 }
 
 const PRINTING_BODY_CLASS = "gg-printing-flyer";
@@ -45,13 +52,29 @@ const HINTS: Record<FlyerLayout, string> = {
     "Prints on US Letter paper. In the print dialog keep the scale at 100% (Default) and turn off headers and footers. Scan the QR code with your phone before printing a stack, then cut between the tear-off strips.",
   sign:
     "Prints on US Letter paper and fits a standard 8½ × 11 sign holder. Keep the scale at 100% (Default) and turn off headers and footers. Scan the QR code with your phone before you set it out.",
+  "yard-sale":
+    "Prints on US Letter paper and fits a standard 8½ × 11 sign holder. Print in color so the cards show, keep the scale at 100% (Default) and turn off headers and footers. Scan the QR code with your phone before you set it out.",
 };
+
+const TITLES: Record<FlyerLayout, string> = { flyer: "Flyer", sign: "Table sign", "yard-sale": "Yard sale sign" };
+
+/** Longest Print waits for the yard sale sign's card pictures before allowing it anyway. */
+const CARD_PICTURES_WAIT_MS = 10_000;
 
 export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
-  const title = job.layout === "flyer" ? "Flyer" : "Table sign";
+  const title = TITLES[job.layout];
+  // The yard sale sign prints card pictures from Scryfall: hold Print until
+  // they've loaded, so none print blank (but never for more than 10 seconds).
+  const pictures = job.layout === "yard-sale" ? (job.yardSale?.showcase.length ?? 0) : 0;
+  const [picturesReady, setPicturesReady] = useState(pictures === 0);
+  useEffect(() => {
+    if (pictures === 0) return;
+    const timer = window.setTimeout(() => setPicturesReady(true), CARD_PICTURES_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [pictures]);
 
   useFocusTrap(rootRef, true, onClose);
 
@@ -93,8 +116,8 @@ export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () =>
           <span>{HINTS[job.layout]}</span>
         </div>
         <div className="gg-labelprint-actions">
-          <Button variant="primary" icon="printer" onClick={() => window.print()}>
-            Print
+          <Button variant="primary" icon="printer" disabled={!picturesReady} onClick={() => window.print()}>
+            {picturesReady ? "Print" : "Loading cards…"}
           </Button>
           <Button variant="ghost" onClick={onClose}>
             Close
@@ -104,7 +127,13 @@ export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () =>
 
       <div ref={stageRef} className="gg-flyerprint-stage">
         <div className="gg-flyerprint-zoom" style={{ zoom }}>
-          {job.layout === "flyer" ? <Flyer job={job} /> : <TableSign job={job} />}
+          {job.layout === "flyer" ? (
+            <Flyer job={job} />
+          ) : job.layout === "yard-sale" ? (
+            <YardSaleSign job={job} onImagesSettled={() => setPicturesReady(true)} />
+          ) : (
+            <TableSign job={job} />
+          )}
         </div>
       </div>
     </div>,

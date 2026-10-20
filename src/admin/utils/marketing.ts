@@ -84,11 +84,11 @@ export function yardSaleFlyerCopy(minPriceCents: number = DEFAULT_YARD_SALE_MIN_
   const cards = minPriceCents > 0 ? `our cards ${formatMinPrice(minPriceCents)} and up` : "all our cards";
   return {
     headline: "Looking for something better?",
-    sub: `Scan to see ${cards} — we'll grab them for you.`,
+    sub: `Scan to see ${cards} — we’ll grab them for you.`,
     points: [
       "Pick the cards you want on your phone",
       "We grab them while you keep browsing",
-      "Pay for everything together when you're done",
+      "Pay for everything together when you’re done",
     ],
     // The table sign shows only the headline and this line, so it carries the minimum price.
     cta: `Scan to see ${cards}`,

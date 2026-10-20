@@ -11,7 +11,7 @@ import { FlyerPrintView } from "../components/partners/FlyerPrintView";
 import { useToast } from "../hooks/useToast";
 import { ADMIN_BASE } from "../hooks/useRouter";
 import { formatCents } from "../utils/format";
-import { marketingLink, printedAddress, yardSaleFlyerCopy } from "../utils/marketing";
+import { useYardSaleSign } from "../hooks/useYardSaleSign";
 import { yardSaleRepository } from "../repositories/yardSale.supabase";
 import {
   DEFAULT_YARD_SALE_MIN_PRICE_CENTS,
@@ -68,7 +68,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState<null | "save">(null);
   const [confirming, setConfirming] = useState<null | { kind: "start"; settings: Settings } | { kind: "end" }>(null);
-  const [printing, setPrinting] = useState(false);
+  const sign = useYardSaleSign();
 
   const apply = useCallback((next: YardSaleSnapshot) => {
     setSnap(next);
@@ -182,6 +182,20 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
     } finally {
       setConfirming(null);
     }
+  }
+
+  // The QR sign features a few of the most valuable cards at the sale's
+  // terms: the sale's own while it's on, otherwise what's in the form (the
+  // next sale's).
+  function openSign() {
+    void sign.open(
+      active && sale
+        ? { minPriceCents: sale.minPriceCents, discountPercent: sale.discountPercent }
+        : {
+            minPriceCents: minPriceCents ?? DEFAULT_YARD_SALE_MIN_PRICE_CENTS,
+            discountPercent: parseDiscountPercent(discount) ?? 0,
+          },
+    );
   }
 
   function goToPickup(e: React.MouseEvent) {
@@ -315,7 +329,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
                     </div>
                   </dl>
                   <div className="gg-btn-row">
-                    <Button variant="secondary" icon="printer" onClick={() => setPrinting(true)}>
+                    <Button variant="secondary" icon="printer" loading={sign.preparing} onClick={openSign}>
                       Print QR sign
                     </Button>
                     <a className="gg-btn gg-btn--secondary gg-btn--md" href={pageUrl} target="_blank" rel="noopener noreferrer">
@@ -341,7 +355,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
                     <p>The yard sale page says there&rsquo;s no sale on until you start one.</p>
                   )}
                   <div className="gg-btn-row">
-                    <Button variant="secondary" icon="printer" onClick={() => setPrinting(true)}>
+                    <Button variant="secondary" icon="printer" loading={sign.preparing} onClick={openSign}>
                       Print QR sign
                     </Button>
                   </div>
@@ -392,17 +406,7 @@ export function YardSaleModePage({ onNavigate }: { onNavigate?: (to: string) => 
         onConfirm={() => end()}
         onCancel={() => setConfirming(null)}
       />
-      {printing && (
-        <FlyerPrintView
-          job={{
-            layout: "sign",
-            copy: yardSaleFlyerCopy(sale?.minPriceCents ?? minPriceCents ?? DEFAULT_YARD_SALE_MIN_PRICE_CENTS),
-            url: marketingLink(YARD_SALE_PATH, {}),
-            address: printedAddress(YARD_SALE_PATH),
-          }}
-          onClose={() => setPrinting(false)}
-        />
-      )}
+      {sign.job && <FlyerPrintView job={sign.job} onClose={sign.close} />}
     </div>
   );
 }

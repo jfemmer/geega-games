@@ -3288,6 +3288,159 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-flyer--sign .gg-flyer__address { font-size: 13pt; }
 .gg-flyer--sign .gg-flyer__extra { font-size: 20pt; }
 
+/* The yard sale table sign (YardSaleSign.tsx). The logo band is pure black
+   because the logo art is on black; the body is ink on white, with violet
+   only on prices, the QR frame and the step numbers. Real inches and points. */
+.gg-ysign {
+  --ys-ink: #17121f;
+  --ys-soft: #4f465c;
+  --ys-violet: #6a0fd6;
+  --ys-lilac: #f2ebff;
+  --ys-line: #e4daf3;
+  padding: 0;
+  align-items: stretch;
+  text-align: left;
+  color: var(--ys-ink);
+  font-family: var(--gg-sans);
+}
+.gg-ysign__band {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3in;
+  padding: 0.14in 0.45in;
+  background: #000;
+}
+.gg-ysign__logo { display: block; height: 1in; width: auto; }
+.gg-ysign__what {
+  color: #fff;
+  font-size: 15pt;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+.gg-ysign__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.18in;
+  padding: 0.3in 0.45in 0.22in;
+}
+.gg-ysign__intro { display: flex; flex-direction: column; gap: 0.08in; }
+.gg-ysign__headline {
+  font-size: 31pt;
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  color: var(--ys-ink);
+  text-wrap: balance;
+}
+.gg-ysign__lede { max-width: 6.2in; font-size: 14pt; line-height: 1.35; color: var(--ys-soft); text-wrap: pretty; }
+.gg-ysign__extra { font-size: 14pt; font-weight: 600; color: var(--ys-ink); text-wrap: balance; }
+
+/* Spacing by gap, not margins: .gg-flyer p { margin: 0 } outranks a single class. */
+.gg-ysign__shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12in;
+  padding: 0.16in 0.16in 0.18in;
+  border-radius: 0.12in;
+  background: var(--ys-lilac);
+}
+.gg-ysign__shelfnote { font-size: 11.5pt; font-weight: 600; color: var(--ys-violet); }
+.gg-ysign__cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  /* Always the width of a quarter of the shelf, so one to three cards stay card-sized and centered. */
+  grid-template-columns: repeat(var(--gg-ysign-cols, 4), 1.46in);
+  justify-content: center;
+  gap: 0.16in;
+}
+/* Cards in a row stretch to the tallest; the price sits at the bottom so a
+   two-line name doesn't push its price out of line with the others. */
+.gg-ysign__card { display: flex; flex-direction: column; gap: 0.05in; min-width: 0; }
+.gg-ysign__art {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 488 / 680;
+  object-fit: cover;
+  border-radius: 0.07in;
+  background: #ddd3ec;
+  box-shadow: 0 0.02in 0.05in rgba(23, 18, 31, 0.28);
+}
+.gg-ysign__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 0.03in;
+  font-size: 9.5pt;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  color: var(--ys-ink);
+}
+.gg-ysign__foil { margin-left: 0.05in; font-size: 8pt; font-weight: 600; color: var(--ys-violet); }
+.gg-ysign__price { display: flex; align-items: baseline; gap: 0.07in; margin-top: auto; font-variant-numeric: tabular-nums; }
+.gg-ysign__price strong { font-size: 17pt; font-weight: 600; letter-spacing: -0.01em; color: var(--ys-violet); }
+.gg-ysign__price s { font-size: 9.5pt; color: var(--ys-soft); }
+
+.gg-ysign__scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.32in; }
+.gg-ysign__qr { padding: 0.09in; border: 0.04in solid var(--ys-violet); border-radius: 0.14in; background: #fff; line-height: 0; }
+.gg-ysign__qr .gg-qr { display: block; width: 2.15in; height: 2.15in; }
+.gg-ysign__how { display: flex; flex-direction: column; gap: 0.12in; min-width: 0; }
+.gg-ysign__cta { font-size: 19pt; font-weight: 600; line-height: 1.15; letter-spacing: -0.015em; color: var(--ys-ink); text-wrap: balance; }
+.gg-ysign__steps { list-style: none; counter-reset: ysign-step; margin: 0; padding: 0; display: grid; gap: 0.07in; }
+.gg-ysign__steps li {
+  counter-increment: ysign-step;
+  display: grid;
+  grid-template-columns: 0.27in minmax(0, 1fr);
+  align-items: center;
+  font-size: 12.5pt;
+  line-height: 1.25;
+  color: var(--ys-ink);
+  text-wrap: pretty;
+}
+.gg-ysign__steps li::before {
+  content: counter(ysign-step);
+  width: 0.21in;
+  height: 0.21in;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--ys-violet);
+  color: #fff;
+  font-size: 9pt;
+  font-weight: 600;
+}
+.gg-ysign__url { font-size: 13pt; font-weight: 600; color: var(--ys-ink); overflow-wrap: anywhere; }
+.gg-ysign__foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.02in;
+  padding: 0.12in 0.45in 0.14in;
+  border-top: 1px solid var(--ys-line);
+  font-size: 8.5pt;
+  line-height: 1.35;
+  color: var(--ys-soft);
+}
+
+/* No featured cards: the headline and a bigger QR code, centered on the page. */
+.gg-ysign--plain .gg-ysign__body { justify-content: center; gap: 0.75in; }
+.gg-ysign--plain .gg-ysign__headline { font-size: 36pt; }
+.gg-ysign--plain .gg-ysign__qr .gg-qr { width: 2.9in; height: 2.9in; }
+.gg-ysign--plain .gg-ysign__cta { font-size: 22pt; }
+.gg-ysign--plain .gg-ysign__steps li { font-size: 13.5pt; }
+.gg-ysign--plain .gg-ysign__url { font-size: 14pt; }
+
 @media print {
   html, body.gg-printing-flyer { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   body.gg-printing-flyer > :not(.gg-flyerprint-root) { display: none !important; }

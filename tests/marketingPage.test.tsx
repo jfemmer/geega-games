@@ -15,6 +15,9 @@ vi.mock("../src/admin/repositories/partners.supabase", () => ({
   leadSourcesRepository: { since: (iso: string) => since(iso) },
 }));
 
+const yardSale = vi.hoisted(() => ({ snapshot: vi.fn(), showcase: vi.fn() }));
+vi.mock("../src/admin/repositories/yardSale.supabase", () => ({ yardSaleRepository: yardSale }));
+
 const { MarketingPage } = await import("../src/admin/pages/MarketingPage");
 
 function renderPage() {
@@ -107,6 +110,35 @@ describe("MarketingPage", () => {
     // The address for typing in: under the QR code and on all 8 tear-off strips.
     const addresses = [...dialog.querySelectorAll(".gg-flyer__address")].map((a) => a.textContent);
     expect(addresses).toEqual(Array(9).fill("geega-games.com/sell-cards-and-games"));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("prints the yard sale's own sign, with its featured cards and the extra line", async () => {
+    yardSale.snapshot.mockResolvedValue({
+      sale: { id: "sale-1", startedAt: "2026-10-24T13:00:00Z", endsAt: "2026-10-24T19:00:00Z", endedAt: null, active: true, discountPercent: 25, minPriceCents: 500, listsSent: 0 },
+      openLists: 0,
+      openListsFromEndedSales: 0,
+      completedLists: 0,
+      completedTotalCents: 0,
+    });
+    yardSale.showcase.mockResolvedValue([
+      { id: "fow", name: "Force of Will", imageUrl: "https://img.test/fow.jpg", foil: false, priceCents: 9150, salePriceCents: 6900 },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.selectOptions(screen.getByLabelText("Link to"), "Yard sale — cards to pick up (Yard Sale Mode)");
+    // No lead tags on the yard sale link.
+    expect(shownLink()).toBe("https://geega-games.com/yard-sale");
+    await waitFor(() => expect(yardSale.snapshot).toHaveBeenCalled());
+    await user.type(screen.getByLabelText("Extra line for the flyer or sign (optional)"), "Saturday 8 to 2");
+    await user.click(screen.getByRole("button", { name: "Print table sign" }));
+    // The sale's own terms, from Yard Sale Mode.
+    expect(yardSale.showcase).toHaveBeenCalledWith(500, 25);
+    const dialog = await screen.findByRole("dialog", { name: "Yard sale sign preview" });
+    expect(dialog).toHaveTextContent("Saturday 8 to 2");
+    expect(dialog).toHaveTextContent("Scan to see our cards $5 and up");
+    expect(within(dialog).getByRole("region", { name: "Featured cards" })).toHaveTextContent("Force of Will$69$91.50");
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
