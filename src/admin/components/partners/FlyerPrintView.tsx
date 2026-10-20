@@ -20,9 +20,9 @@ import type { YardSaleShowcaseCard } from "../../types";
 //          laundromats and estate sales.
 //   sign   one big QR code and headline, for a card-show table or a counter
 //          (fits a standard 8½ × 11 sign holder).
-//   yard-sale  the yard sale table sign: a few of the most valuable cards at
-//          the sale with their yard sale prices, and the QR code for
-//          /yard-sale with how it works (YardSaleSign.tsx).
+//   yard-sale  the yard sale table sign: a hand of the most valuable newer
+//          cards at the sale, fanned out, and the QR code for /yard-sale
+//          with how it works (YardSaleSign.tsx).
 //
 // Sizes are real inches so the page prints 1:1 at 100% scale.
 
@@ -37,8 +37,8 @@ export interface FlyerJob {
   address: string;
   /** An optional line the owner typed, e.g. "Find us at table 12 today". */
   extraLine?: string | null;
-  /** For the yard sale sign: its featured cards and the discount, as of printedAt (ISO). */
-  yardSale?: { showcase: YardSaleShowcaseCard[]; discountPercent: number; printedAt: string };
+  /** For the yard sale sign: the cards in its hand and the sale's discount. */
+  yardSale?: { showcase: YardSaleShowcaseCard[]; discountPercent: number };
 }
 
 const PRINTING_BODY_CLASS = "gg-printing-flyer";
@@ -69,6 +69,8 @@ export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () =>
   // The yard sale sign prints card pictures from Scryfall: hold Print until
   // they've loaded, so none print blank (but never for more than 10 seconds).
   const pictures = job.layout === "yard-sale" ? (job.yardSale?.showcase.length ?? 0) : 0;
+  // A yard sale sign without cards prints like any table sign.
+  const hint = job.layout === "yard-sale" && pictures === 0 ? HINTS.sign : HINTS[job.layout];
   const [picturesReady, setPicturesReady] = useState(pictures === 0);
   useEffect(() => {
     if (pictures === 0) return;
@@ -113,7 +115,7 @@ export function FlyerPrintView({ job, onClose }: { job: FlyerJob; onClose: () =>
       <div className="gg-labelprint-toolbar no-print">
         <div className="gg-labelprint-heading">
           <strong>{title}</strong>
-          <span>{HINTS[job.layout]}</span>
+          <span>{hint}</span>
         </div>
         <div className="gg-labelprint-actions">
           <Button variant="primary" icon="printer" disabled={!picturesReady} onClick={() => window.print()}>

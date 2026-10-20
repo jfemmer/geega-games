@@ -3290,12 +3290,11 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 /* The yard sale table sign (YardSaleSign.tsx). The logo band is pure black
    because the logo art is on black; the body is ink on white, with violet
-   only on prices, the QR frame and the step numbers. Real inches and points. */
+   only on the QR frame and the step numbers. Real inches and points. */
 .gg-ysign {
   --ys-ink: #17121f;
   --ys-soft: #4f465c;
   --ys-violet: #6a0fd6;
-  --ys-lilac: #f2ebff;
   --ys-line: #e4daf3;
   padding: 0;
   align-items: stretch;
@@ -3342,55 +3341,40 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-ysign__lede { max-width: 6.2in; font-size: 14pt; line-height: 1.35; color: var(--ys-soft); text-wrap: pretty; }
 .gg-ysign__extra { font-size: 14pt; font-weight: 600; color: var(--ys-ink); text-wrap: balance; }
 
-/* Spacing by gap, not margins: .gg-flyer p { margin: 0 } outranks a single class. */
-.gg-ysign__shelf {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12in;
-  padding: 0.16in 0.16in 0.18in;
-  border-radius: 0.12in;
-  background: var(--ys-lilac);
-}
-.gg-ysign__shelfnote { font-size: 11.5pt; font-weight: 600; color: var(--ys-violet); }
-.gg-ysign__cards {
+/* The hand: the cards fanned out the way you'd hold them, each one turned a
+   few degrees about a point well below the hand, each over the one before.
+   --gg-ysign-n (how many cards) and --gg-ysign-i (each card's place) are set
+   inline. */
+.gg-ysign__fan {
+  --ys-card-w: 2.2in;
+  --ys-turn: 6.5deg;
+  position: relative;
   list-style: none;
-  padding: 0;
   margin: 0;
-  display: grid;
-  /* Always the width of a quarter of the shelf, so one to three cards stay card-sized and centered. */
-  grid-template-columns: repeat(var(--gg-ysign-cols, 4), 1.46in);
-  justify-content: center;
-  gap: 0.16in;
+  padding: 0;
+  /* A card's height, and room for the outer cards' corners as they turn
+     (more the more cards there are), so the hand sits centered. */
+  height: calc(var(--ys-card-w) * 680 / 488 + 0.07in + (var(--gg-ysign-n, 5) - 1) * 0.105in);
 }
-/* Cards in a row stretch to the tallest; the price sits at the bottom so a
-   two-line name doesn't push its price out of line with the others. */
-.gg-ysign__card { display: flex; flex-direction: column; gap: 0.05in; min-width: 0; }
+.gg-ysign__card {
+  position: absolute;
+  top: 0.06in;
+  left: calc(50% - var(--ys-card-w) / 2);
+  width: var(--ys-card-w);
+  transform-origin: 50% 300%;
+  transform: rotate(calc((var(--gg-ysign-i, 0) - (var(--gg-ysign-n, 1) - 1) / 2) * var(--ys-turn)));
+}
 .gg-ysign__art {
   display: block;
   width: 100%;
   height: auto;
   aspect-ratio: 488 / 680;
   object-fit: cover;
-  border-radius: 0.07in;
+  /* A Magic card's rounded corners: 1/8in on a 2.5 x 3.5in card. */
+  border-radius: 5% / 3.6%;
   background: #ddd3ec;
-  box-shadow: 0 0.02in 0.05in rgba(23, 18, 31, 0.28);
+  box-shadow: -0.02in 0.03in 0.09in rgba(23, 18, 31, 0.38);
 }
-.gg-ysign__name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  margin-top: 0.03in;
-  font-size: 9.5pt;
-  font-weight: 600;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-  color: var(--ys-ink);
-}
-.gg-ysign__foil { margin-left: 0.05in; font-size: 8pt; font-weight: 600; color: var(--ys-violet); }
-.gg-ysign__price { display: flex; align-items: baseline; gap: 0.07in; margin-top: auto; font-variant-numeric: tabular-nums; }
-.gg-ysign__price strong { font-size: 17pt; font-weight: 600; letter-spacing: -0.01em; color: var(--ys-violet); }
-.gg-ysign__price s { font-size: 9.5pt; color: var(--ys-soft); }
 
 .gg-ysign__scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.32in; }
 .gg-ysign__qr { padding: 0.09in; border: 0.04in solid var(--ys-violet); border-radius: 0.14in; background: #fff; line-height: 0; }
@@ -3423,9 +3407,6 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-ysign__url { font-size: 13pt; font-weight: 600; color: var(--ys-ink); overflow-wrap: anywhere; }
 .gg-ysign__foot {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.02in;
   padding: 0.12in 0.45in 0.14in;
   border-top: 1px solid var(--ys-line);
   font-size: 8.5pt;
@@ -3433,7 +3414,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   color: var(--ys-soft);
 }
 
-/* No featured cards: the headline and a bigger QR code, centered on the page. */
+/* No cards for the hand: the headline and a bigger QR code, centered on the page. */
 .gg-ysign--plain .gg-ysign__body { justify-content: center; gap: 0.75in; }
 .gg-ysign--plain .gg-ysign__headline { font-size: 36pt; }
 .gg-ysign--plain .gg-ysign__qr .gg-qr { width: 2.9in; height: 2.9in; }

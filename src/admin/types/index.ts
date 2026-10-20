@@ -760,16 +760,12 @@ export interface YardSaleCompleteResult {
   totalCents: number;
 }
 
-/** A card featured on the printed yard sale sign (one of the most valuable at the sale). */
+/** A card in the hand on the printed yard sale sign (one of the most valuable newer cards at the sale). */
 export interface YardSaleShowcaseCard {
   id: string;
+  /** For the picture's alt text: the front face's name. */
   name: string;
   imageUrl: string;
-  foil: boolean;
-  /** The website price. */
-  priceCents: number;
-  /** The yard sale price (whole dollars, see yardSalePriceCents). */
-  salePriceCents: number;
 }
 
 /** Admin → Yard Sale Mode (GET /api/admin/yard-sale). */

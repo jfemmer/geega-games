@@ -114,7 +114,7 @@ describe("MarketingPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("prints the yard sale's own sign, with its featured cards and the extra line", async () => {
+  it("prints the yard sale's own sign, with its hand of cards and the extra line", async () => {
     yardSale.snapshot.mockResolvedValue({
       sale: { id: "sale-1", startedAt: "2026-10-24T13:00:00Z", endsAt: "2026-10-24T19:00:00Z", endedAt: null, active: true, discountPercent: 25, minPriceCents: 500, listsSent: 0 },
       openLists: 0,
@@ -122,9 +122,7 @@ describe("MarketingPage", () => {
       completedLists: 0,
       completedTotalCents: 0,
     });
-    yardSale.showcase.mockResolvedValue([
-      { id: "fow", name: "Force of Will", imageUrl: "https://img.test/fow.jpg", foil: false, priceCents: 9150, salePriceCents: 6900 },
-    ]);
+    yardSale.showcase.mockResolvedValue([{ id: "ugin", name: "Ugin, Eye of the Storms", imageUrl: "https://img.test/ugin.jpg" }]);
     const user = userEvent.setup();
     renderPage();
     await user.selectOptions(screen.getByLabelText("Link to"), "Yard sale — cards to pick up (Yard Sale Mode)");
@@ -134,11 +132,13 @@ describe("MarketingPage", () => {
     await user.type(screen.getByLabelText("Extra line for the flyer or sign (optional)"), "Saturday 8 to 2");
     await user.click(screen.getByRole("button", { name: "Print table sign" }));
     // The sale's own terms, from Yard Sale Mode.
-    expect(yardSale.showcase).toHaveBeenCalledWith(500, 25);
+    expect(yardSale.showcase).toHaveBeenCalledWith(500);
     const dialog = await screen.findByRole("dialog", { name: "Yard sale sign preview" });
     expect(dialog).toHaveTextContent("Saturday 8 to 2");
     expect(dialog).toHaveTextContent("Scan to see our cards $5 and up");
-    expect(within(dialog).getByRole("region", { name: "Featured cards" })).toHaveTextContent("Force of Will$69$91.50");
+    expect(dialog).toHaveTextContent("Yard sale prices are 25% off our website prices");
+    const hand = within(dialog).getByRole("region", { name: "A few of our newer cards" });
+    expect(within(hand).getByRole("img", { name: "Ugin, Eye of the Storms" })).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });

@@ -2,20 +2,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { FlyerPrintView, type FlyerJob } from "../src/admin/components/partners/FlyerPrintView";
-import { formatSignPrice, pickYardSaleShowcase, yardSaleSignJob } from "../src/admin/utils/yardSaleSign";
+import { newerCardsSince, pickYardSaleShowcase, yardSaleSignJob } from "../src/admin/utils/yardSaleSign";
 import { mapCatalogRow, type CatalogSearchRow } from "../src/store/lib/useCatalog";
 import type { YardSaleShowcaseCard } from "../src/admin/types";
 
 // The printed yard sale sign (Yard Sale Mode → Print QR sign, Marketing →
-// the yard sale page → Print table sign): a few of the most valuable cards at
-// the sale with their yard sale prices, and the QR code for /yard-sale with
-// how it works.
+// the yard sale page → Print table sign): a hand of the most valuable newer
+// cards at the sale, fanned out, with no prices, and the QR code for
+// /yard-sale with how it works.
 
 function row(id: string, name: string, priceCents: number | null, overrides: Partial<CatalogSearchRow> = {}) {
   return {
     id,
     card_name: name,
-    set_code: "set",
+    set_code: "SET",
     set_name: "A Set",
     collector_number: "1",
     rarity: "mythic",
@@ -25,95 +25,82 @@ function row(id: string, name: string, priceCents: number | null, overrides: Par
     quantity: 1,
     price_cents: priceCents,
     total_count: 9,
-    scryfall_id: null,
+    scryfall_id: `sf-${id}`,
     image_url: `https://cards.scryfall.io/large/front/a/b/${id}.jpg`,
     ...overrides,
   } as CatalogSearchRow;
 }
 
-describe("picking the cards to feature", () => {
-  // As search_inventory returns them for the sign: most valuable first.
-  const rows = [
-    row("ring-foil", "The One Ring", 12000, { finish: "foil" }),
-    row("no-picture", "Mox Opal", 11000, { image_url: null } as Partial<CatalogSearchRow>),
-    row("ring", "the one ring", 9999), // the same card again (names compared ignoring case)
-    row("fow", "Force of Will", 9150),
-    row("gone", "Ragavan, Nimble Pilferer", 7000, { quantity: 0 }),
-    row("sheoldred", "Sheoldred, the Apocalypse", 6499, { finish: "etched" }),
-    row("fable", "Fable of the Mirror-Breaker // Reflection of Kiki-Jiki", 4250),
-    row("bowmasters", "Orcish Bowmasters", 3999),
-  ];
-
-  it("takes the four most valuable, one per card, with a picture and in stock", () => {
-    const picked = pickYardSaleShowcase(rows.map(mapCatalogRow), 20);
-    expect(picked.map((c) => c.id)).toEqual(["ring-foil", "fow", "sheoldred", "fable"]);
-    expect(picked[0]).toEqual({
-      id: "ring-foil",
-      name: "The One Ring",
-      imageUrl: "https://cards.scryfall.io/large/front/a/b/ring-foil.jpg",
-      foil: true,
-      priceCents: 12000,
-      salePriceCents: 9600,
-    });
-  });
-
-  it("prices each one like the yard sale page: the discount, in whole dollars", () => {
-    const picked = pickYardSaleShowcase(rows.map(mapCatalogRow), 20);
-    expect(picked.map((c) => [c.priceCents, c.salePriceCents])).toEqual([
-      [12000, 9600],
-      [9150, 7300], // $73.20 -> $73
-      [6499, 5200], // $51.99 -> $52
-      [4250, 3400],
-    ]);
-    // No discount: the website price, rounded down to the dollar.
-    expect(pickYardSaleShowcase(rows.map(mapCatalogRow), 0).map((c) => c.salePriceCents)).toEqual([12000, 9100, 6400, 4200]);
-  });
-
-  it("names a double-faced card by its front and marks foils and etched foils", () => {
-    const picked = pickYardSaleShowcase(rows.map(mapCatalogRow), 20);
-    expect(picked.find((c) => c.id === "fable")?.name).toBe("Fable of the Mirror-Breaker");
-    expect(picked.map((c) => c.foil)).toEqual([true, false, true, false]);
-  });
-
-  it("skips cards without a price and stops at the limit", () => {
-    const picked = pickYardSaleShowcase(
-      [row("free", "Unpriced Card", null), row("zero", "Zero Card", 0), ...rows].map(mapCatalogRow),
-      20,
-      2,
-    );
-    expect(picked.map((c) => c.id)).toEqual(["ring-foil", "fow"]);
-    expect(pickYardSaleShowcase([], 20)).toEqual([]);
+describe("newer cards", () => {
+  it("are printings released in the last two years", () => {
+    expect(newerCardsSince(new Date(2026, 9, 20, 13, 0))).toBe("2024-10-20");
+    expect(newerCardsSince(new Date(2026, 0, 5))).toBe("2024-01-05");
+    // February 29 two years back is March 1.
+    expect(newerCardsSince(new Date(2028, 1, 29))).toBe("2026-03-01");
   });
 });
 
-describe("sign prices", () => {
-  it("leaves off the cents on whole dollars", () => {
-    expect(formatSignPrice(5800)).toBe("$58");
-    expect(formatSignPrice(120000)).toBe("$1,200");
-    expect(formatSignPrice(6499)).toBe("$64.99");
-    expect(formatSignPrice(9150)).toBe("$91.50");
+describe("picking the cards for the hand", () => {
+  // As search_inventory returns them for the sign: most valuable first.
+  const rows = [
+    row("lobotomy", "Lobotomy", 12500), // an older printing
+    row("ring", "The One Ring", 12000),
+    row("no-picture", "Mox Opal", 11000, { image_url: null } as Partial<CatalogSearchRow>),
+    row("ring-2", "the one ring", 9999), // the same card again (names compared ignoring case)
+    row("sephiroth", "Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel", 5500),
+    row("gone", "Vampiric Tutor", 5200, { quantity: 0 }),
+    row("jeska", "Jeska's Will", 4338),
+    row("ugin", "Ugin, Eye of the Storms", 3900),
+    row("splendor", "Gleaming Splendor", 3098),
+    row("emrakul", "Emrakul, the Exigent Doom", 1745),
+  ];
+  const newer = new Set(rows.filter((r) => r.id !== "lobotomy").map((r) => r.scryfall_id!));
+
+  it("takes the five most valuable newer cards, one per card, with a picture and in stock", () => {
+    const picked = pickYardSaleShowcase(rows.map(mapCatalogRow), newer);
+    expect(picked.map((c) => c.id)).toEqual(["ring", "sephiroth", "jeska", "ugin", "splendor"]);
+    // Just what the sign shows: the picture, and the name for its alt text.
+    expect(picked[0]).toEqual({ id: "ring", name: "The One Ring", imageUrl: "https://cards.scryfall.io/large/front/a/b/ring.jpg" });
+  });
+
+  it("names a double-faced card by its front", () => {
+    const picked = pickYardSaleShowcase(rows.map(mapCatalogRow), newer);
+    expect(picked.find((c) => c.id === "sephiroth")?.name).toBe("Sephiroth, Fabled SOLDIER");
+  });
+
+  it("leaves out older printings, unpriced cards and cards without a Scryfall id", () => {
+    const cards = [
+      row("free", "Unpriced Card", null),
+      row("zero", "Zero Card", 0),
+      row("unknown", "Mystery Card", 900, { scryfall_id: null }),
+      ...rows,
+    ].map(mapCatalogRow);
+    const all = new Set(cards.map((c) => c.scryfallId).filter((id): id is string => !!id));
+    expect(pickYardSaleShowcase(cards, all, 3).map((c) => c.id)).toEqual(["lobotomy", "ring", "sephiroth"]);
+    expect(pickYardSaleShowcase(cards, new Set(), 3)).toEqual([]);
+    expect(pickYardSaleShowcase([], newer)).toEqual([]);
   });
 });
 
 describe("the sign's print job", () => {
   it("points at the yard sale page with the sale's minimum, with no tracking tags", () => {
-    const printedAt = new Date(2026, 9, 20, 12, 0);
-    const job = yardSaleSignJob({ minPriceCents: 500, discountPercent: 25, showcase: [], extraLine: "Table 4", printedAt });
+    const job = yardSaleSignJob({ minPriceCents: 500, discountPercent: 25, showcase: [], extraLine: "Table 4" });
     expect(job).toEqual({
       layout: "yard-sale",
       copy: expect.objectContaining({ headline: "Looking for something better?", cta: "Scan to see our cards $5 and up" }),
       url: "https://geega-games.com/yard-sale",
       address: "geega-games.com/yard-sale",
       extraLine: "Table 4",
-      yardSale: { showcase: [], discountPercent: 25, printedAt: printedAt.toISOString() },
+      yardSale: { showcase: [], discountPercent: 25 },
     });
   });
 });
 
+// Most valuable first, as the repository returns them.
 const SHOWCASE: YardSaleShowcaseCard[] = [
-  { id: "ring", name: "The One Ring", imageUrl: "https://img.test/ring.jpg", foil: true, priceCents: 12000, salePriceCents: 9600 },
-  { id: "fow", name: "Force of Will", imageUrl: "https://img.test/fow.jpg", foil: false, priceCents: 9150, salePriceCents: 7300 },
-  { id: "bolt", name: "Lightning Bolt", imageUrl: "https://img.test/bolt.jpg", foil: false, priceCents: 500, salePriceCents: 500 },
+  { id: "ring", name: "The One Ring", imageUrl: "https://img.test/ring.jpg" },
+  { id: "sephiroth", name: "Sephiroth, Fabled SOLDIER", imageUrl: "https://img.test/sephiroth.jpg" },
+  { id: "jeska", name: "Jeska's Will", imageUrl: "https://img.test/jeska.jpg" },
 ];
 
 function signJob(overrides: { showcase?: YardSaleShowcaseCard[]; discountPercent?: number; extraLine?: string | null } = {}): FlyerJob {
@@ -122,12 +109,15 @@ function signJob(overrides: { showcase?: YardSaleShowcaseCard[]; discountPercent
     discountPercent: overrides.discountPercent ?? 20,
     showcase: overrides.showcase ?? SHOWCASE,
     extraLine: overrides.extraLine ?? null,
-    printedAt: new Date(2026, 9, 20, 12, 0), // Tuesday, October 20
   });
 }
 
 function printButton() {
   return screen.getByRole("button", { name: /^(Print|Loading cards…)$/ });
+}
+
+function handPictures() {
+  return within(screen.getByRole("region", { name: "A few of our newer cards" })).getAllByRole("img");
 }
 
 describe("the printed yard sale sign", () => {
@@ -139,7 +129,7 @@ describe("the printed yard sale sign", () => {
     vi.useRealTimers();
   });
 
-  it("features the cards with their yard sale and website prices", () => {
+  it("shows the cards as a hand, the most valuable last and on top, with no prices", () => {
     render(<FlyerPrintView job={signJob({ extraLine: "Find us at table 4" })} onClose={() => {}} />);
     screen.getByRole("dialog", { name: "Yard sale sign preview" });
     const sign = screen.getByTestId("yard-sale-sign");
@@ -147,18 +137,20 @@ describe("the printed yard sale sign", () => {
     expect(sign).toHaveTextContent("Our best cards aren’t on these tables.");
     expect(sign).toHaveTextContent("Find us at table 4");
 
-    const shelf = within(sign).getByRole("region", { name: "Featured cards" });
-    const cards = within(shelf).getAllByRole("listitem");
-    expect(cards).toHaveLength(3);
-    expect(within(cards[0]).getByRole("img", { name: "The One Ring" })).toHaveAttribute("src", "https://img.test/ring.jpg");
-    expect(cards[0]).toHaveTextContent("The One RingFoil");
-    expect(cards[0].querySelector("strong")).toHaveTextContent("$96");
-    expect(within(cards[0]).getByLabelText("was $120")).toHaveTextContent("$120");
-    expect(cards[1]).not.toHaveTextContent("Foil");
-    expect(within(cards[1]).getByLabelText("was $91.50")).toBeInTheDocument();
-    // Already a whole dollar with no discount to show: just the one price.
-    expect(cards[2].querySelector("strong")).toHaveTextContent("$5");
-    expect(cards[2].querySelector("s")).toBeNull();
+    const pictures = handPictures();
+    expect(pictures.map((img) => img.getAttribute("alt"))).toEqual(["Jeska's Will", "Sephiroth, Fabled SOLDIER", "The One Ring"]);
+    expect(pictures.map((img) => img.getAttribute("src"))).toEqual([
+      "https://img.test/jeska.jpg",
+      "https://img.test/sephiroth.jpg",
+      "https://img.test/ring.jpg",
+    ]);
+    // Each card's place in the fan, for its turn.
+    const fan = sign.querySelector(".gg-ysign__fan") as HTMLElement;
+    expect(fan.style.getPropertyValue("--gg-ysign-n")).toBe("3");
+    expect([...fan.querySelectorAll("li")].map((li) => (li as HTMLElement).style.getPropertyValue("--gg-ysign-i"))).toEqual(["0", "1", "2"]);
+    // No prices on the cards (the only $ is the sale's minimum in the call to scan).
+    expect(screen.getByRole("region", { name: "A few of our newer cards" }).textContent).toBe("");
+    expect(sign.textContent?.match(/\$\d/g)).toEqual(["$3"]);
   });
 
   it("has the QR code for the yard sale page and how it works", () => {
@@ -174,20 +166,19 @@ describe("the printed yard sale sign", () => {
     expect(scan).toHaveTextContent("geega-games.com/yard-sale");
   });
 
-  it("says how the prices work and when the featured prices are from", () => {
+  it("says how yard sale prices work", () => {
     render(<FlyerPrintView job={signJob()} onClose={() => {}} />);
-    const footer = screen.getByTestId("yard-sale-sign").querySelector("footer")!;
-    expect([...footer.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
-      "Yard sale prices are 20% off our website prices, rounded to whole dollars.",
-      "Featured prices as of Tuesday, October 20, while they last.",
-    ]);
+    expect(screen.getByTestId("yard-sale-sign").querySelector("footer")).toHaveTextContent(
+      /^Yard sale prices are 20% off our website prices, rounded to whole dollars\.$/,
+    );
+    expect(screen.getByText(/Print in color so the cards show/)).toBeInTheDocument();
   });
 
   it("holds Print until every card picture has loaded or failed", () => {
     render(<FlyerPrintView job={signJob()} onClose={() => {}} />);
     expect(printButton()).toBeDisabled();
     expect(printButton()).toHaveTextContent("Loading cards…");
-    const pictures = within(screen.getByRole("region", { name: "Featured cards" })).getAllByRole("img");
+    const pictures = handPictures();
     fireEvent.load(pictures[0]);
     fireEvent.error(pictures[1]);
     expect(printButton()).toBeDisabled();
@@ -212,13 +203,14 @@ describe("the printed yard sale sign", () => {
     expect(printButton()).toHaveTextContent("Print");
   });
 
-  it("gives the QR code the room when there are no cards to feature", () => {
+  it("gives the QR code the room when there are no cards for the hand", () => {
     render(<FlyerPrintView job={signJob({ showcase: [], discountPercent: 0 })} onClose={() => {}} />);
     const sign = screen.getByTestId("yard-sale-sign");
     expect(sign).toHaveClass("gg-ysign--plain");
-    expect(screen.queryByRole("region", { name: "Featured cards" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "A few of our newer cards" })).toBeNull();
     expect(within(sign).getByRole("img", { name: "QR code for geega-games.com/yard-sale" })).toBeInTheDocument();
     expect(printButton()).toBeEnabled();
+    expect(screen.queryByText(/Print in color so the cards show/)).toBeNull();
     expect(sign.querySelector("footer")).toHaveTextContent(
       /^Yard sale prices are our website prices, rounded down to whole dollars\.$/,
     );

@@ -215,18 +215,23 @@ describe("the Yard Sale Mode page", () => {
     expect(await screen.findByText("Yard Sale Mode is off.")).toBeInTheDocument();
   });
 
-  it("prints the QR sign with the most valuable cards at the sale's prices", async () => {
+  it("prints the QR sign with a hand of the most valuable newer cards at the sale", async () => {
     yard.snapshot.mockResolvedValue(on);
     yard.showcase.mockResolvedValue([
-      { id: "ring", name: "The One Ring", imageUrl: "https://img.test/ring.jpg", foil: false, priceCents: 12000, salePriceCents: 9000 },
+      { id: "ring", name: "The One Ring", imageUrl: "https://img.test/ring.jpg" },
+      { id: "ugin", name: "Ugin, Eye of the Storms", imageUrl: "https://img.test/ugin.jpg" },
     ]);
     const user = userEvent.setup();
     wrap(<YardSaleModePage />);
     await user.click(await screen.findByRole("button", { name: "Print QR sign" }));
-    expect(yard.showcase).toHaveBeenCalledWith(500, 25);
+    // The sale's minimum price.
+    expect(yard.showcase).toHaveBeenCalledWith(500);
     const dialog = await screen.findByRole("dialog", { name: "Yard sale sign preview" });
-    const shelf = within(dialog).getByRole("region", { name: "Featured cards" });
-    expect(shelf).toHaveTextContent("The One Ring$90$120");
+    const hand = within(dialog).getByRole("region", { name: "A few of our newer cards" });
+    expect(within(hand).getAllByRole("img").map((img) => img.getAttribute("alt"))).toEqual([
+      "Ugin, Eye of the Storms",
+      "The One Ring",
+    ]);
     expect(dialog).toHaveTextContent("Scan to see our cards $5 and up");
     expect(dialog).toHaveTextContent("Yard sale prices are 25% off our website prices, rounded to whole dollars.");
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
@@ -245,11 +250,12 @@ describe("the Yard Sale Mode page", () => {
     await user.clear(min);
     await user.type(min, "4");
     await user.click(screen.getByRole("button", { name: "Print QR sign" }));
-    expect(yard.showcase).toHaveBeenCalledWith(400, 30);
+    expect(yard.showcase).toHaveBeenCalledWith(400);
     const dialog = await screen.findByRole("dialog", { name: "Yard sale sign preview" });
     expect(dialog).toHaveTextContent("Scan to see our cards $4 and up");
-    // Nothing to feature: just the QR code, and Print is ready right away.
-    expect(within(dialog).queryByRole("region", { name: "Featured cards" })).toBeNull();
+    expect(dialog).toHaveTextContent("Yard sale prices are 30% off our website prices");
+    // No cards for the hand: just the QR code, and Print is ready right away.
+    expect(within(dialog).queryByRole("region", { name: "A few of our newer cards" })).toBeNull();
     expect(within(dialog).getByRole("button", { name: "Print" })).toBeEnabled();
   });
 
@@ -262,6 +268,6 @@ describe("the Yard Sale Mode page", () => {
     expect(await screen.findByText("Couldn't load cards to feature, so the sign shows the QR code without them.")).toBeInTheDocument();
     const dialog = screen.getByRole("dialog", { name: "Yard sale sign preview" });
     expect(within(dialog).getByRole("img", { name: "QR code for geega-games.com/yard-sale" })).toBeInTheDocument();
-    expect(within(dialog).queryByRole("region", { name: "Featured cards" })).toBeNull();
+    expect(within(dialog).queryByRole("region", { name: "A few of our newer cards" })).toBeNull();
   });
 });
