@@ -95,10 +95,27 @@ export function formatMinPrice(cents: number): string {
   return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
+/** "Cards $3 and up" (by website price), or "All our cards" with no minimum. */
+export function yardSaleCardsLine(minPriceCents: number): string {
+  return minPriceCents > 0 ? `Cards ${formatMinPrice(minPriceCents)} and up` : "All our cards";
+}
+
 /** "Cards $3 and up · 20% off" — the sale's terms in one line. */
 export function yardSaleTermsLine(minPriceCents: number, discountPercent: number): string {
-  const cards = minPriceCents > 0 ? `Cards ${formatMinPrice(minPriceCents)} and up` : "All our cards";
+  const cards = yardSaleCardsLine(minPriceCents);
   return discountPercent > 0 ? `${cards} · ${discountPercent}% off` : cards;
+}
+
+// What shoppers are told about the discount: it's only at the yard sale.
+// The discount is taken off the website price at the yard sale alone (only
+// a completed yard sale list is charged it), so it truly can't be had online.
+
+/** The yard sale page's offer: "Only for shoppers at our yard sale…". */
+export const YARD_SALE_EXCLUSIVE_LINE = "Only for shoppers at our yard sale. You won’t get this discount on our website.";
+
+/** Next to the savings in a list: "Your exclusive 20% off, only at the yard sale". */
+export function yardSaleExclusiveNote(discountPercent: number): string {
+  return `Your exclusive ${discountPercent}% off, only at the yard sale`;
 }
 
 /** Parses "20", "20%" or " 20 % " to a whole discount percent; null when it isn't one we allow. */

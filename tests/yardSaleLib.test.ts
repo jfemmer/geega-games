@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  YARD_SALE_EXCLUSIVE_LINE,
   formatMinPrice,
   parseDiscountPercent,
   parseMinPriceCents,
+  yardSaleCardsLine,
+  yardSaleExclusiveNote,
   yardSalePriceCents,
   yardSaleTermsLine,
   yardSaleTotals,
@@ -102,6 +105,15 @@ describe("the sale's terms, in words", () => {
     expect(yardSaleTermsLine(300, 20)).toBe("Cards $3 and up · 20% off");
     expect(yardSaleTermsLine(300, 0)).toBe("Cards $3 and up");
     expect(yardSaleTermsLine(0, 10)).toBe("All our cards · 10% off");
+  });
+
+  it("tells shoppers the discount is only at the yard sale", () => {
+    expect(yardSaleCardsLine(300)).toBe("Cards $3 and up");
+    expect(yardSaleCardsLine(350)).toBe("Cards $3.50 and up");
+    expect(yardSaleCardsLine(0)).toBe("All our cards");
+    expect(YARD_SALE_EXCLUSIVE_LINE).toBe("Only for shoppers at our yard sale. You won’t get this discount on our website.");
+    expect(yardSaleExclusiveNote(20)).toBe("Your exclusive 20% off, only at the yard sale");
+    expect(yardSaleExclusiveNote(35)).toBe("Your exclusive 35% off, only at the yard sale");
   });
 
   it("puts the minimum on the QR sign", () => {

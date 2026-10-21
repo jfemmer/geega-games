@@ -15,12 +15,15 @@ export default function KioskProductCard({
   quantityInList,
   onAdd,
   salePriceCents = null,
+  regularPriceLabel = null,
 }: {
   card: CatalogCard;
   quantityInList: number;
   onAdd: () => void;
   /** A lower price to show instead, with the regular price struck through. */
   salePriceCents?: number | null;
+  /** Says where the struck-through price is from ("Website"), so it's clear the lower one isn't. */
+  regularPriceLabel?: string | null;
 }) {
   const [justAdded, setJustAdded] = useState(false);
   // The "Added ✓" flash: one timer at a time (another tap restarts it), and
@@ -85,10 +88,17 @@ export default function KioskProductCard({
           {!unpriced && salePriceCents != null && salePriceCents < (card.priceCents ?? 0) ? (
             <span className="gg-priceblock">
               <span className="gg-price gg-price--deal">{formatCents(salePriceCents)}</span>
-              <span className="gg-price-original">
-                <span className="visually-hidden">Regular price </span>
-                {formatCents(card.priceCents)}
-              </span>
+              {regularPriceLabel ? (
+                <span className="gg-price-was">
+                  <span className="gg-price-was__label">{regularPriceLabel}</span>
+                  <span className="gg-price-original">{formatCents(card.priceCents)}</span>
+                </span>
+              ) : (
+                <span className="gg-price-original">
+                  <span className="visually-hidden">Regular price </span>
+                  {formatCents(card.priceCents)}
+                </span>
+              )}
             </span>
           ) : (
             <span className="gg-price">{unpriced ? "—" : formatCents(card.priceCents)}</span>

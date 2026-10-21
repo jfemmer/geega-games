@@ -141,7 +141,10 @@ export default function YardSaleDeckSheet({
             }}
           >
             <p className="gg-yard-deck__intro">
-              Paste your decklist and we&rsquo;ll find the cards we have here, at yard sale prices.
+              Paste your decklist and we&rsquo;ll find the cards we have here
+              {discountPercent > 0
+                ? `, with your yard sale exclusive ${discountPercent}% off.`
+                : ", at yard sale prices."}
             </p>
             <p className="gg-card-meta gg-yard-fine">
               Lists from Moxfield, Archidekt, TCGplayer, ManaBox and MTGGoldfish all work: use your deck&rsquo;s

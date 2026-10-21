@@ -3212,6 +3212,9 @@
   text-decoration: line-through;
   text-decoration-thickness: 1.5px;
 }
+/* A struck-through price that says where it's from ("Website $5.00"). */
+.gg-price-was { display: inline-flex; align-items: baseline; gap: .25rem; }
+.gg-price-was__label { color: #8b8490; font-size: .72rem; }
 .gg-card:has(.gg-deal-ribbon) {
   border-color: rgba(124, 0, 230, .28);
 }
@@ -6290,6 +6293,7 @@
 .gg-yard-page--browsing {
   padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
 }
+.gg-yard-topbar { align-items: flex-start; }
 .gg-yard-topbar h1 { font-size: 1.5rem; }
 .gg-yard-terms {
   display: inline-block;
@@ -6300,6 +6304,48 @@
   color: var(--gg-ink);
   font-weight: 800;
   font-size: 0.95rem;
+}
+/* The discount, as a coupon at the top of the page: a yard sale exclusive,
+   with the same dashed edge as the pickup ticket a list ends up on. */
+.gg-yard-offer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  max-width: 36rem;
+  margin: 0.45rem 0 0.6rem;
+  padding: 0.8rem 1rem;
+  border: 2px dashed var(--gg-gold);
+  border-radius: 14px;
+  background: linear-gradient(160deg, var(--gg-purple), var(--gg-ink));
+  color: #fff;
+}
+.gg-yard-offer p { margin: 0; max-width: none; }
+.gg-yard-offer__amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-right: 1rem;
+  border-right: 2px dashed rgba(255, 255, 255, 0.3);
+  line-height: 1;
+}
+.gg-yard-offer__amount strong { font-size: 2.6rem; font-weight: 900; letter-spacing: -0.02em; }
+.gg-yard-offer__amount span { margin-top: 0.15rem; font-size: 1rem; font-weight: 800; }
+.gg-yard-offer__text { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.gg-yard-offer__title { font-size: 1.1rem; font-weight: 800; line-height: 1.2; }
+.gg-yard-offer__line { font-size: 0.92rem; line-height: 1.35; color: rgba(255, 255, 255, 0.92); }
+.gg-yard-offer__fine { font-size: 0.8rem; line-height: 1.35; color: rgba(255, 255, 255, 0.72); }
+/* The smallest phones: the amount on its own line, so the words get the width. */
+@media (max-width: 359px) {
+  .gg-yard-offer { grid-template-columns: minmax(0, 1fr); gap: 0.55rem; }
+  .gg-yard-offer__amount {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0 0 0.5rem;
+    border-right: 0;
+    border-bottom: 2px dashed rgba(255, 255, 255, 0.3);
+  }
 }
 .gg-yard-message { max-width: 34rem; margin: 0 auto; }
 .gg-yard-message h2 { color: var(--gg-ink); margin-top: 0; }
@@ -6396,6 +6442,7 @@
 .gg-yard-totals div { display: flex; justify-content: space-between; gap: 1rem; }
 .gg-yard-totals dt, .gg-yard-totals dd { margin: 0; }
 .gg-yard-totals dd { font-weight: 600; white-space: nowrap; }
+.gg-yard-totals__note { display: block; margin-top: 0.1rem; font-size: 0.8rem; font-weight: 600; color: var(--gg-purple); }
 .gg-yard-totals__total {
   margin-top: 0.25rem;
   padding-top: 0.5rem;

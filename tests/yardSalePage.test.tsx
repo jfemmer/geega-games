@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CatalogCard, CatalogFilters } from "../src/store/lib/useCatalog";
 import type { YardSaleListView } from "../src/store/lib/yardSale";
@@ -113,11 +113,50 @@ describe("the yard sale page", () => {
 
   it("shows cards at or above the minimum with the yard sale price", async () => {
     render(<YardSalePage />);
-    expect(await screen.findByText("Cards $3 and up · 20% off")).toBeInTheDocument();
+    expect(await screen.findByText("Cards $3 and up")).toBeInTheDocument();
     expect(catalog.lastFilters?.minPriceCents).toBe(300);
     const bolt = screen.getByText("Lightning Bolt").closest(".gg-card") as HTMLElement;
     expect(within(bolt).getByText("$4.00")).toBeInTheDocument();
     expect(within(bolt).getByText(/\$5\.00/)).toHaveClass("gg-price-original");
+  });
+
+  it("tells shoppers the discount is a yard sale exclusive they won't get on the website", async () => {
+    render(<YardSalePage />);
+    const offer = await screen.findByRole("region", { name: "Yard sale exclusive: 20% off" });
+    expect(offer).toHaveTextContent("20%off");
+    expect(within(offer).getByText("Yard sale exclusive")).toBeInTheDocument();
+    expect(within(offer).getByText("Only for shoppers at our yard sale. You won’t get this discount on our website.")).toBeInTheDocument();
+    expect(within(offer).getByText("The prices below already include it, rounded to the nearest dollar.")).toBeInTheDocument();
+    // Each card: its yard sale price, and the website's next to it.
+    const bolt = screen.getByText("Lightning Bolt").closest(".gg-card") as HTMLElement;
+    expect(within(bolt).getByText("$4.00")).toHaveClass("gg-price--deal");
+    expect(within(bolt).getByText("Website")).toBeInTheDocument();
+    expect(within(bolt).getByText("Website").nextSibling).toHaveTextContent("$5.00");
+  });
+
+  it("shows the discount the owner chose, and keeps up when it changes", async () => {
+    api.status.mockResolvedValue({ ...SALE, discountPercent: 35 });
+    render(<YardSalePage />);
+    expect(await screen.findByRole("region", { name: "Yard sale exclusive: 35% off" })).toHaveTextContent("35%off");
+    api.status.mockResolvedValue({ ...SALE, discountPercent: 10 });
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByRole("region", { name: "Yard sale exclusive: 10% off" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /35% off/ })).not.toBeInTheDocument();
+  });
+
+  it("doesn't offer a discount when the sale has none", async () => {
+    api.status.mockResolvedValue({ ...SALE, discountPercent: 0 });
+    const user = userEvent.setup();
+    render(<YardSalePage />);
+    expect(await screen.findByText("Cards $3 and up")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Yard sale exclusive/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/exclusive/)).not.toBeInTheDocument();
+    const bolt = screen.getByText("Lightning Bolt").closest(".gg-card") as HTMLElement;
+    await user.click(within(bolt).getByRole("button", { name: "Add to list" }));
+    await user.click(screen.getByRole("button", { name: "Review & send" }));
+    expect(screen.queryByText(/exclusive/)).not.toBeInTheDocument();
   });
 
   it("goes by the website price for the minimum: a $3 card shows at a $3 minimum, at its $2 yard sale price", async () => {
@@ -126,7 +165,7 @@ describe("the yard sale page", () => {
     // The page asks the catalog for cards at or above the minimum website
     // price (search_inventory compares the website price), and shows each
     // one it gets back at the yard sale price, even when that's under $3.
-    expect(await screen.findByText("Cards $3 and up · 20% off")).toBeInTheDocument();
+    expect(await screen.findByText("Cards $3 and up")).toBeInTheDocument();
     expect(catalog.lastFilters?.minPriceCents).toBe(300);
     const baral = screen.getByText("Baral, Chief of Compliance").closest(".gg-card") as HTMLElement;
     expect(within(baral).getByText("$2.00")).toBeInTheDocument();
@@ -144,6 +183,9 @@ describe("the yard sale page", () => {
     await user.click(screen.getByRole("button", { name: "Review & send" }));
     const sheet = screen.getByRole("dialog", { name: "Your list" });
     expect(within(sheet).getByText("You don’t pay here. Pay us in person when you’re done, together with anything from the tables.")).toBeInTheDocument();
+    // The savings are the yard sale's exclusive discount.
+    expect(within(sheet).getByText("Yard sale savings")).toHaveTextContent("Your exclusive 20% off, only at the yard sale");
+    expect(within(sheet).getByText("−$1.00")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Send my list" }));
     expect(api.send).not.toHaveBeenCalled();
 
@@ -152,6 +194,9 @@ describe("the yard sale page", () => {
     expect(api.send).toHaveBeenCalledWith("Ann", [{ inventoryItemId: "bolt", quantity: 1 }], "");
     expect(await screen.findByText("#7")).toBeInTheDocument();
     expect(screen.getByText(/Thanks, Ann! We’re grabbing your card now\./)).toBeInTheDocument();
+    // The pickup number comes first; the list's savings say whose discount it is.
+    expect(screen.queryByRole("region", { name: /Yard sale exclusive/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Yard sale savings")).toHaveTextContent("Your exclusive 20% off, only at the yard sale");
     expect(api.saved).toEqual({ requestId: "req-1", token: "tok", saleId: "sale-1" });
     expect(catalog.refetch).toHaveBeenCalled();
   });
@@ -188,7 +233,7 @@ describe("the yard sale page", () => {
     api.saved = { requestId: "req-1", token: "tok", saleId: "sale-1" };
     api.get.mockResolvedValue(listView({ status: "completed", canAdd: false }));
     render(<YardSalePage />);
-    expect(await screen.findByText("Cards $3 and up · 20% off")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Yard sale exclusive: 20% off" })).toBeInTheDocument();
     expect(api.cleared).toBe(1);
     expect(screen.queryByText("#7")).not.toBeInTheDocument();
   });
@@ -243,7 +288,7 @@ describe("the yard sale page", () => {
     render(<YardSalePage />);
     expect(await screen.findByRole("heading", { name: "We couldn’t load the yard sale" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Cards $3 and up · 20% off")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Yard sale exclusive: 20% off" })).toBeInTheDocument();
   });
 });
 
@@ -266,6 +311,7 @@ describe("shop your deck", () => {
     render(<YardSalePage />);
     await user.click(await screen.findByRole("button", { name: "Shop your deck" }));
     const sheet = screen.getByRole("dialog", { name: "Shop your deck" });
+    expect(sheet).toHaveTextContent("Paste your decklist and we’ll find the cards we have here, with your yard sale exclusive 20% off.");
     expect(within(sheet).getByRole("button", { name: "Find my cards" })).toBeDisabled();
     await user.type(within(sheet).getByLabelText("Your decklist"), "4 Lightning Bolt (2XM) 141{enter}1 Tarmogoyf{enter}1 Mox Diamond");
     await user.click(within(sheet).getByRole("button", { name: "Find my cards" }));

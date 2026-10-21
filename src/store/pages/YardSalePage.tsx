@@ -19,9 +19,11 @@ import { Icon } from "../components/Icon";
 import type { DeckFoundLine } from "../lib/yardSaleDeck";
 import CatalogFiltersPanel from "../components/CatalogFiltersPanel";
 import {
+  YARD_SALE_EXCLUSIVE_LINE,
   YARD_SALE_LIMITS,
+  yardSaleCardsLine,
+  yardSaleExclusiveNote,
   yardSalePriceCents,
-  yardSaleTermsLine,
   yardSaleTotals,
   type YardSaleListAccess,
   type YardSaleListView,
@@ -43,6 +45,9 @@ import {
 // /yard-sale — what the QR code at our yard sale opens. A shopper sees our
 // in-stock cards at or above the sale's minimum price, with the yard sale
 // discount, taps the ones they want and sends the list with their name.
+// The discount is shown as what it is, a yard sale exclusive: the offer at
+// the top, the website price next to each card's, and the savings in a list
+// all say it can't be had on the website.
 // Their phone shows a pickup number; staff grab the cards while they keep
 // browsing the tables, and they pay in person for everything together.
 //
@@ -374,7 +379,7 @@ export default function YardSalePage() {
   if (phase === "list" && list) {
     return (
       <div className="gg-page gg-kiosk-page gg-yard-page">
-        <YardSaleTopBar status={status.active ? status : null} />
+        <YardSaleTopBar status={status.active ? status : null} offer={false} />
         <YardSaleListScreen
           list={list}
           saleOn={status.active}
@@ -520,6 +525,7 @@ export default function YardSalePage() {
                   salePriceCents={
                     c.priceCents != null ? yardSalePriceCents(c.priceCents, status.discountPercent) : null
                   }
+                  regularPriceLabel="Website"
                 />
               ))}
             </div>
@@ -640,15 +646,22 @@ export default function YardSalePage() {
   );
 }
 
-function YardSaleTopBar({ status }: { status: YardSaleStatus | null }) {
+/**
+ * The page's header: while a sale is on, its exclusive discount (not on the
+ * pickup screen, where the pickup number comes first and the list's savings
+ * say it), the minimum price and how it works.
+ */
+function YardSaleTopBar({ status, offer = true }: { status: YardSaleStatus | null; offer?: boolean }) {
+  const discount = status?.active && offer ? status.discountPercent : 0;
   return (
     <header className="gg-kiosk-topbar gg-yard-topbar">
       <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />
-      <div>
+      <div className="gg-yard-topbar__text">
         <h1>Yard sale cards</h1>
         {status?.active && (
           <>
-            <p className="gg-yard-terms">{yardSaleTermsLine(status.minPriceCents, status.discountPercent)}</p>
+            {discount > 0 && <YardSaleOffer discountPercent={discount} />}
+            <p className="gg-yard-terms">{yardSaleCardsLine(status.minPriceCents)}</p>
             <p className="gg-card-meta">
               Tap the cards you want and send us your list. We&rsquo;ll grab them while you keep browsing, and you
               pay for everything together when you&rsquo;re done.
@@ -660,14 +673,40 @@ function YardSaleTopBar({ status }: { status: YardSaleStatus | null }) {
   );
 }
 
+/**
+ * The sale's discount as a coupon at the top of the page: how much, and
+ * that it's a yard sale exclusive they won't get on the website. The prices
+ * below already include it (rounded to whole dollars, so a card's saving
+ * can be a little more or less than the percent).
+ */
+function YardSaleOffer({ discountPercent }: { discountPercent: number }) {
+  return (
+    <section className="gg-yard-offer" aria-label={`Yard sale exclusive: ${discountPercent}% off`}>
+      <p className="gg-yard-offer__amount" aria-hidden="true">
+        <strong>{discountPercent}%</strong>
+        <span>off</span>
+      </p>
+      <div className="gg-yard-offer__text">
+        <p className="gg-yard-offer__title">Yard sale exclusive</p>
+        <p className="gg-yard-offer__line">{YARD_SALE_EXCLUSIVE_LINE}</p>
+        <p className="gg-yard-offer__fine">The prices below already include it, rounded to the nearest dollar.</p>
+      </div>
+    </section>
+  );
+}
+
 // "Savings", not "discount (20%)": prices round to whole dollars, so the
-// savings aren't exactly the sale's percent (and there are some at 0%).
-function TotalsBlock({ totals }: { totals: YardSaleTotals }) {
+// savings aren't exactly the sale's percent (and there are some at 0%). The
+// note under it says whose discount it is: the yard sale's exclusive one.
+function TotalsBlock({ totals, discountPercent }: { totals: YardSaleTotals; discountPercent: number }) {
   return (
     <dl className="gg-yard-totals">
       {totals.discountCents > 0 && (
-        <div>
-          <dt>Yard sale savings</dt>
+        <div className="gg-yard-totals__savings">
+          <dt>
+            Yard sale savings
+            {discountPercent > 0 && <span className="gg-yard-totals__note">{yardSaleExclusiveNote(discountPercent)}</span>}
+          </dt>
           <dd>−{formatCents(totals.discountCents)}</dd>
         </div>
       )}
@@ -800,7 +839,7 @@ function YardSaleSheet({
             </ul>
           )}
 
-          <TotalsBlock totals={totals} />
+          <TotalsBlock totals={totals} discountPercent={discountPercent} />
           <p className="gg-card-meta gg-yard-fine">
             You don&rsquo;t pay here. Pay us in person when you&rsquo;re done, together with anything from the tables.
           </p>
@@ -903,7 +942,7 @@ function YardSaleListScreen({
           </li>
         ))}
       </ul>
-      <TotalsBlock totals={list.totals} />
+      <TotalsBlock totals={list.totals} discountPercent={list.discountPercent} />
       <p className="gg-card-meta gg-yard-fine">
         Changed your mind about a card? Just tell us when you pay. Your total is confirmed when you pay.
       </p>
