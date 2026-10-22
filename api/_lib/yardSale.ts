@@ -114,6 +114,28 @@ export async function loadLivePrices(inventoryIds: string[]): Promise<Map<string
   return prices;
 }
 
+/**
+ * Each card's special printing ("Artist Proof"), by inventory item, for the
+ * shopper's list to mark it the way the card is marked on the page. A
+ * nice-to-have: if the lookup fails, the list just goes without.
+ */
+export async function loadVariantTypes(inventoryIds: string[]): Promise<Map<string, string>> {
+  const variants = new Map<string, string>();
+  const ids = [...new Set(inventoryIds)];
+  if (ids.length === 0) return variants;
+  try {
+    const { data, error } = await getSupabaseAdmin().from("inventory_items").select("id, variant_type").in("id", ids);
+    if (error) throw error;
+    for (const row of (data ?? []) as { id: string; variant_type: string | null }[]) {
+      const variant = row.variant_type?.trim();
+      if (variant) variants.set(row.id, variant);
+    }
+  } catch (err) {
+    console.error("[yardSale] card variants unavailable", err);
+  }
+  return variants;
+}
+
 function listStatus(status: RequestRow["status"]): YardSaleListStatus {
   if (status === "completed") return "completed";
   if (status === "cancelled") return "cancelled";
@@ -157,15 +179,16 @@ export async function loadYardSaleListView(requestId: string): Promise<YardSaleL
   const taxBps = Number((posRes.data as { sales_tax_bps?: number } | null)?.sales_tax_bps ?? 0) || 0;
 
   const inventoryIds = items.map((i) => i.inventory_item_id).filter((id): id is string => !!id);
-  let livePrices = new Map<string, number>();
-  try {
-    livePrices = await loadLivePrices(inventoryIds);
-  } catch (err) {
-    // Show the list at the prices it was sent with (the website's then)
-    // rather than fail: a list that was just saved must still reach the
-    // phone with its number. Complete works out the final total anyway.
-    console.error("[yardSale] live prices unavailable", err);
-  }
+  const [livePrices, variants] = await Promise.all([
+    loadLivePrices(inventoryIds).catch((err) => {
+      // Show the list at the prices it was sent with (the website's then)
+      // rather than fail: a list that was just saved must still reach the
+      // phone with its number. Complete works out the final total anyway.
+      console.error("[yardSale] live prices unavailable", err);
+      return new Map<string, number>();
+    }),
+    loadVariantTypes(inventoryIds),
+  ]);
 
   const discountPercent = sale.discount_percent;
   const lines: YardSaleListLine[] = items.map((item) => {
@@ -179,6 +202,7 @@ export async function loadYardSaleListView(requestId: string): Promise<YardSaleL
       collectorNumber: item.collector_number,
       condition: item.condition,
       finish: item.finish,
+      variantType: (item.inventory_item_id && variants.get(item.inventory_item_id)) || null,
       imageUrl: item.image_url,
       quantity: item.quantity,
       priceCents,

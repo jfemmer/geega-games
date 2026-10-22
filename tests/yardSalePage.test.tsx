@@ -84,7 +84,7 @@ function listView(overrides: Partial<YardSaleListView> = {}): YardSaleListView {
     lines: [
       {
         itemId: "i1", inventoryItemId: "bolt", cardName: "Lightning Bolt", setName: "Alpha", setCode: "lea", collectorNumber: "1",
-        condition: "NM", finish: "nonfoil", imageUrl: null, quantity: 1, priceCents: 500, salePriceCents: 400,
+        condition: "NM", finish: "nonfoil", variantType: null, imageUrl: null, quantity: 1, priceCents: 500, salePriceCents: 400,
       },
     ],
     totals: { subtotalCents: 500, discountCents: 100, cardsCents: 400, taxCents: 0, totalCents: 400 },
@@ -144,6 +144,35 @@ describe("the yard sale page", () => {
     });
     expect(await screen.findByRole("region", { name: "Yard sale exclusive: 10% off" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /35% off/ })).not.toBeInTheDocument();
+  });
+
+  it("marks an artist proof on its card, in the list and on the pickup screen", async () => {
+    catalog.cards = [{ ...card("lobotomy", "Lobotomy", 10000), setName: "Tempest", variantType: "Artist Proof" }, card("bolt", "Lightning Bolt", 500)];
+    api.send.mockResolvedValue({
+      list: listView({
+        lines: [{ ...listView().lines[0], inventoryItemId: "lobotomy", cardName: "Lobotomy", setName: "Tempest", variantType: "Artist Proof", priceCents: 10000, salePriceCents: 8000 }],
+      }),
+      token: "tok",
+    });
+    const user = userEvent.setup();
+    render(<YardSalePage />);
+    const lobotomy = (await screen.findByText("Lobotomy")).closest(".gg-card") as HTMLElement;
+    expect(lobotomy).toHaveClass("gg-card--variant");
+    expect(within(lobotomy).getByText("Artist Proof", { selector: ".gg-badge" })).toBeInTheDocument();
+    const bolt = screen.getByText("Lightning Bolt").closest(".gg-card") as HTMLElement;
+    expect(within(bolt).queryByText(/Artist Proof/)).not.toBeInTheDocument();
+
+    await user.click(within(lobotomy).getByRole("button", { name: "Add to list" }));
+    await user.click(screen.getByRole("button", { name: "Review & send" }));
+    const sheet = screen.getByRole("dialog", { name: "Your list" });
+    const line = within(sheet).getByText("Lobotomy").closest(".gg-yard-line") as HTMLElement;
+    expect(within(line).getByText("Artist Proof")).toHaveClass("gg-yard-variant");
+
+    await user.type(within(sheet).getByLabelText("Your name"), "Ann");
+    await user.click(within(sheet).getByRole("button", { name: "Send my list" }));
+    expect(await screen.findByText("#7")).toBeInTheDocument();
+    const sent = screen.getByText("Lobotomy").closest(".gg-yard-line") as HTMLElement;
+    expect(within(sent).getByText("Artist Proof")).toHaveClass("gg-yard-variant");
   });
 
   it("doesn't offer a discount when the sale has none", async () => {
@@ -324,6 +353,7 @@ describe("shop your deck", () => {
     expect(await within(sheet).findByRole("status")).toHaveTextContent("We have 3 of your 6 cards here.");
     expect(within(sheet).getByText(/only 2 of 4 here/)).toBeInTheDocument();
     expect(within(sheet).getByText("Not here (1 card)")).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Artist Proof/)).not.toBeInTheDocument();
     expect(within(sheet).getByRole("link", { name: "Create a free account" })).toHaveAttribute("href", "/signup?next=%2Faccount%2Fdecks");
 
     // Leave the Tarmogoyf: two Bolts at $4 (20% off $5.00).
@@ -335,6 +365,33 @@ describe("shop your deck", () => {
     expect(within(list).getByLabelText("2 on your list")).toBeInTheDocument();
     expect(within(list).queryByText("Tarmogoyf")).not.toBeInTheDocument();
     expect(screen.getByText("2 cards · $8.00")).toBeInTheDocument();
+  });
+
+  it("marks an artist proof among the cards it found", async () => {
+    const proof = { ...card("lobotomy", "Lobotomy", 10000), variantType: "Artist Proof" };
+    const ringProof = { ...card("ring-ap", "Sol Ring", 900), variantType: "Artist Proof" };
+    const ring = card("ring", "Sol Ring", 300);
+    deck.find.mockResolvedValue({
+      wantedCopies: 3,
+      foundCopies: 3,
+      found: [
+        { name: "Lobotomy", wanted: 1, found: 1, lines: [{ card: proof, quantity: 1 }] },
+        { name: "Sol Ring", wanted: 2, found: 2, lines: [{ card: ring, quantity: 1 }, { card: ringProof, quantity: 1 }] },
+      ],
+      missing: [],
+    });
+    const user = userEvent.setup();
+    render(<YardSalePage />);
+    await user.click(await screen.findByRole("button", { name: "Shop your deck" }));
+    const sheet = screen.getByRole("dialog", { name: "Shop your deck" });
+    await user.type(within(sheet).getByLabelText("Your decklist"), "1 Lobotomy{enter}2 Sol Ring");
+    await user.click(within(sheet).getByRole("button", { name: "Find my cards" }));
+    await within(sheet).findByRole("status");
+    const lobotomy = within(sheet).getByText("Lobotomy").closest(".gg-yard-line") as HTMLElement;
+    expect(within(lobotomy).getByText("Artist Proof")).toHaveClass("gg-yard-variant");
+    // Two printings, one of them a proof: says how many of the copies are.
+    const solRing = within(sheet).getByText(/Sol Ring/).closest(".gg-yard-line") as HTMLElement;
+    expect(within(solRing).getByText("1 Artist Proof")).toHaveClass("gg-yard-variant");
   });
 
   it("asks for a list it can read", async () => {

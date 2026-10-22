@@ -148,6 +148,16 @@ describe("sending a list", () => {
     ]);
   });
 
+  it("marks a special printing, like an artist proof, on the list", async () => {
+    (state.tables.inventory_items as Record<string, unknown>[])[0].variant_type = "Artist Proof";
+    (state.tables.inventory_items as Record<string, unknown>[])[1].variant_type = "";
+    const res = await post(SEND);
+    expect(res.body.list.lines.map((l: { cardName: string; variantType: string | null }) => [l.cardName, l.variantType])).toEqual([
+      ["Lightning Bolt", "Artist Proof"],
+      ["Tarmogoyf", null],
+    ]);
+  });
+
   it("still gives the phone its new list if today's prices can't be loaded", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     state.rpc.inventory_live_prices = () => ({ data: null, error: { code: "XX000", message: "boom" } });

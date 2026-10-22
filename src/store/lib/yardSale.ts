@@ -150,6 +150,8 @@ export interface YardSaleListLine {
   collectorNumber: string | null;
   condition: string;
   finish: string;
+  /** A special printing ("Artist Proof"), or null for a regular one. */
+  variantType: string | null;
   imageUrl: string | null;
   quantity: number;
   /** Website price of one copy. */

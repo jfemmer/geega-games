@@ -13,6 +13,7 @@ import {
   type DeckResult,
 } from "../lib/yardSaleDeck";
 import PriceCell from "./YardSalePriceCell";
+import VariantBadge from "./YardSaleVariantBadge";
 
 // "Shop your deck" on the yard sale page: paste (or upload) a decklist, see
 // which of its cards are here at yard sale prices, and add them to the
@@ -35,6 +36,20 @@ function firstSelection(result: DeckResult, linesLeft: number): Set<string> {
     selected.add(card.name.toLowerCase());
   }
   return selected;
+}
+
+/**
+ * The special printing to mark on a found card: its own ("Artist Proof"),
+ * or with more than one printing, how many of the copies are one
+ * ("1 Artist Proof"), so a regular copy isn't taken for one.
+ */
+function variantLabels(card: DeckFoundCard): string[] {
+  const variants = card.lines.filter((line) => line.card.variantType);
+  if (variants.length === 0) return [];
+  if (card.lines.length === 1) return [variants[0].card.variantType as string];
+  const counts = new Map<string, number>();
+  for (const line of variants) counts.set(line.card.variantType as string, (counts.get(line.card.variantType as string) ?? 0) + line.quantity);
+  return [...counts].map(([variant, copies]) => `${copies} ${variant}`);
 }
 
 function cardTotals(card: DeckFoundCard, discountPercent: number): { websiteCents: number; saleCents: number } {
@@ -231,6 +246,9 @@ export default function YardSaleDeckSheet({
                             : `${card.lines.length} printings`}
                           {card.found < card.wanted ? ` · only ${card.found} of ${card.wanted} here` : ""}
                         </span>
+                        {variantLabels(card).map((label) => (
+                          <VariantBadge key={label} variant={label} />
+                        ))}
                       </label>
                       <PriceCell priceCents={totals.websiteCents} salePriceCents={totals.saleCents} quantity={1} />
                     </li>

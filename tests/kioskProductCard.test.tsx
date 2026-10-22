@@ -34,6 +34,24 @@ describe("the kiosk and yard sale card", () => {
     expect(container.querySelector(".gg-card-foil-shimmer")).toBeNull();
   });
 
+  it("marks a special printing, like an artist proof, as the shop's cards do", () => {
+    const { container } = render(
+      <KioskProductCard card={card({ name: "Lobotomy", variantType: "Artist Proof" })} quantityInList={0} onAdd={() => {}} salePriceCents={8000} />,
+    );
+    expect(container.querySelector(".gg-card")).toHaveClass("gg-card--variant");
+    // The ribbon on the picture (hidden from screen readers, which get the badge).
+    expect(container.querySelector(".gg-variant-ribbon")).toHaveTextContent("★ Artist Proof");
+    expect(container.querySelector(".gg-variant-ribbon")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByText("Artist Proof", { selector: ".gg-badge" })).toHaveClass("gg-badge-variant");
+  });
+
+  it("leaves a regular printing unmarked", () => {
+    const { container } = render(<KioskProductCard card={card()} quantityInList={0} onAdd={() => {}} />);
+    expect(container.querySelector(".gg-card")).not.toHaveClass("gg-card--variant");
+    expect(container.querySelector(".gg-variant-ribbon")).toBeNull();
+    expect(container.querySelector(".gg-badge-variant")).toBeNull();
+  });
+
   it("gives etched and other foil finishes the shimmer too", () => {
     const { container } = render(<KioskProductCard card={card({ finish: "etched", foil: true })} quantityInList={0} onAdd={() => {}} />);
     expect(container.querySelector(".gg-card-foil-shimmer")).not.toBeNull();

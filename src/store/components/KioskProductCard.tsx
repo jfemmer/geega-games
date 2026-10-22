@@ -5,10 +5,11 @@ import { formatCents } from "../lib/money";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 
 // Visually identical to ProductCard (same brand-grade card grid the real
-// shop uses, foil shimmer included) but deliberately independent of
-// CartContext — the kiosk never touches a signed-in cart, only its own local
-// pickup list. The yard sale page (/yard-sale) uses it too, with the yard
-// sale price next to the website price.
+// shop uses, foil shimmer and special-printing ribbon included) but
+// deliberately independent of CartContext — the kiosk never touches a
+// signed-in cart, only its own local pickup list. The yard sale page
+// (/yard-sale) uses it too, with the yard sale price next to the website
+// price.
 
 export default function KioskProductCard({
   card,
@@ -39,9 +40,16 @@ export default function KioskProductCard({
   const foil = card.finish !== "nonfoil";
 
   return (
-    <div className="gg-card">
+    <div className={`gg-card${card.variantType ? " gg-card--variant" : ""}`}>
       {/* The same foil treatment as ProductCard (store.css, "Foil card treatment"). */}
       <div className={`gg-card-imgwrap${foil ? " gg-card-imgwrap--foil" : ""}`}>
+        {/* A special printing (an artist proof…), marked like the shop marks it.
+            The badge below says it for screen readers. */}
+        {card.variantType && (
+          <span className="gg-variant-ribbon" aria-hidden="true">
+            ★ {card.variantType}
+          </span>
+        )}
         {card.imageUrl ? (
           <>
             <img
@@ -74,6 +82,7 @@ export default function KioskProductCard({
         <div className="gg-card-badges">
           <span className="gg-badge">{CONDITION_LABELS[card.condition] ?? card.condition}</span>
           {card.finish !== "nonfoil" && <span className="gg-badge gg-badge-foil">{card.finish}</span>}
+          {card.variantType && <span className="gg-badge gg-badge-variant">{card.variantType}</span>}
         </div>
 
         {!soldOut && card.quantity <= 3 && !unpriced && (

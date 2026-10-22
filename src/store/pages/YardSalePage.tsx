@@ -13,6 +13,7 @@ import { formatCents } from "../lib/money";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 import KioskProductCard from "../components/KioskProductCard";
 import PriceCell from "../components/YardSalePriceCell";
+import VariantBadge from "../components/YardSaleVariantBadge";
 import YardSaleDeckSheet from "../components/YardSaleDeckSheet";
 import { useSheet } from "../lib/useSheet";
 import { Icon } from "../components/Icon";
@@ -805,6 +806,7 @@ function YardSaleSheet({
                         {CONDITION_LABELS[line.card.condition] ?? line.card.condition}
                         {line.card.finish !== "nonfoil" ? ` · ${line.card.finish}` : ""}
                       </span>
+                      <VariantBadge variant={line.card.variantType} />
                     </div>
                     <div className="gg-kiosk-qty">
                       <button
@@ -937,6 +939,7 @@ function YardSaleListScreen({
                 {line.setName ?? line.setCode?.toUpperCase()} · {CONDITION_LABELS[line.condition] ?? line.condition}
                 {line.finish !== "nonfoil" ? ` · ${line.finish}` : ""}
               </span>
+              <VariantBadge variant={line.variantType} />
             </div>
             <PriceCell priceCents={line.priceCents} salePriceCents={line.salePriceCents} quantity={line.quantity} />
           </li>

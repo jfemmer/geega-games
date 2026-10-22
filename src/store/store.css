@@ -6433,6 +6433,20 @@
 .gg-yard-line--sent { grid-template-columns: minmax(0, 1fr) auto; }
 .gg-yard-line--sent .gg-yard-line__price { grid-row: auto; }
 .gg-yard-line__info { display: flex; flex-direction: column; min-width: 0; }
+/* A special printing on a list line: a small version of the card's gold ribbon (.gg-variant-ribbon). */
+.gg-yard-variant {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #a16207, #eab308);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .gg-yard-line__info .gg-card-name { display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere; min-height: 0; }
 .gg-yard-line__info .gg-card-name:hover { color: var(--gg-ink); text-decoration: none; }
 .gg-yard-line__price { justify-content: flex-end; text-align: right; white-space: nowrap; }
