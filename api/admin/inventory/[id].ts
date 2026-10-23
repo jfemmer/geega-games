@@ -35,9 +35,11 @@ import type { Database } from "../../../src/types/database.js";
 //        * constrains the finish to the printing's available finishes (400 when
 //          the requested finish is unavailable and can't be defaulted),
 //        * refreshes ALL denormalized printing columns + image together,
-//        * keeps the legacy `foil` column in sync with the finish,
-//        * blocks a duplicate identity (scryfall_id + condition + finish) among
-//          other active rows with a friendly 409,
+//        * never writes the legacy `foil` column: it's generated from the
+//          finish by the database, which refuses any value for it,
+//        * blocks a duplicate identity (the uq_inventory_sku key: printing +
+//          condition + finish + variant + language, archived lines included)
+//          with a friendly 409,
 //        * caches the printing in card_printings.
 //
 // HTTP: 400 invalid input · 404 missing item · 409 duplicate/conflict ·
@@ -242,26 +244,38 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
       nextFinish = availableFinishes[0] ?? ("nonfoil" as Finish);
     }
 
-    // Duplicate-identity guard among OTHER active rows: scryfall_id + condition
-    // + finish (or legacy set + collector + condition + finish when no id).
+    // Duplicate-identity guard against OTHER lines, on the same key as the
+    // uq_inventory_sku unique index: the printing (scryfall_id, else set +
+    // collector for a line without one), condition, finish, variant and
+    // language. The index covers archived lines too, so they count here.
+    const nextVariant =
+      body.variantType !== undefined
+        ? body.variantType?.trim() || ""
+        : current.variant_type;
+    const nextLanguage = printingCols?.language ?? current.language;
     const dupeQuery = admin
       .from("inventory_items")
-      .select("id")
+      .select("id, status")
       .neq("id", id)
-      .neq("status", "archived")
       .eq("condition", nextCondition)
       .eq("finish", nextFinish)
+      .eq("variant_type", nextVariant)
+      .eq("language", nextLanguage)
       .limit(1);
     const dupe = nextScryfallId
       ? await dupeQuery.eq("scryfall_id", nextScryfallId)
       : await dupeQuery
+          .is("scryfall_id", null)
           .eq("set_code", nextSetCode)
           .eq("collector_number", nextCollector);
     if (dupe.error) throw new HttpError(500, "Could not check for duplicates.");
-    if ((dupe.data ?? []).length > 0) {
+    const clash = dupe.data?.[0];
+    if (clash) {
       throw new HttpError(
         409,
-        "This exact printing, condition, and finish already exists in inventory. Adjust the existing inventory line instead.",
+        clash.status === "archived"
+          ? "An archived inventory line already has this exact printing, condition, and finish. Restore that line instead."
+          : "This exact printing, condition, and finish already exists in inventory. Adjust the existing inventory line instead.",
       );
     }
 
@@ -282,8 +296,7 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
     }
     patch.condition = nextCondition;
     patch.finish = nextFinish;
-    // Keep the legacy foil boolean in sync with the finish.
-    patch.foil = nextFinish !== "nonfoil";
+    // (No foil: the database derives it from the finish.)
   }
 
   // 3) Plain field edits (never quantity). Only include provided keys.
@@ -386,6 +399,8 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
           "This exact printing, condition, and finish already exists in inventory. Adjust the existing inventory line instead.",
         );
       }
+      // The UI only gets the generic message; the logs get the reason.
+      console.error("[admin/inventory] update failed", id, error);
       throw new HttpError(500, "Could not save the inventory changes.");
     }
   }

@@ -973,7 +973,7 @@ export type Database = {
           deal_source?: string | null
           deal_started_at?: string | null
           finish?: Database["public"]["Enums"]["card_finish"]
-          foil?: boolean | null
+          foil?: never
           id?: string
           image_url?: string | null
           is_deal?: boolean
@@ -1010,7 +1010,7 @@ export type Database = {
           deal_source?: string | null
           deal_started_at?: string | null
           finish?: Database["public"]["Enums"]["card_finish"]
-          foil?: boolean | null
+          foil?: never
           id?: string
           image_url?: string | null
           is_deal?: boolean

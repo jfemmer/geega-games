@@ -6,7 +6,8 @@
 // (signed photo and upload URLs, plus download/upload against state.files).
 //
 // It doesn't project columns (every select returns whole rows) and only knows
-// the constraints a test declares, so tests stay about the endpoint's logic.
+// the constraints (and generated columns) a test declares, so tests stay about
+// the endpoint's logic.
 
 type Row = Record<string, unknown>;
 type DbError = { message: string; code?: string };
@@ -23,6 +24,11 @@ export interface FakeState {
   /** Column defaults applied on insert, per table. */
   defaults: Record<string, Row | (() => Row)>;
   unique: Record<string, UniqueRule[]>;
+  /**
+   * Generated columns, per table: worked out from the row after every write,
+   * and refused in a write the way Postgres refuses them (428C9).
+   */
+  generated: Record<string, Record<string, (row: Row) => unknown>>;
   /** One-shot error for the next query on a table. */
   failNext: Record<string, DbError | undefined>;
   rpc: Record<string, (args: Record<string, unknown>) => { data: unknown; error: DbError | null }>;
@@ -37,7 +43,7 @@ export interface FakeState {
 }
 
 export function createFakeState(): FakeState {
-  return { tables: {}, defaults: {}, unique: {}, failNext: {}, rpc: {}, sessions: {}, users: {}, writes: [], files: {} };
+  return { tables: {}, defaults: {}, unique: {}, generated: {}, failNext: {}, rpc: {}, sessions: {}, users: {}, writes: [], files: {} };
 }
 
 let idCounter = 0;
@@ -175,6 +181,34 @@ class Query implements PromiseLike<Result> {
     return false;
   }
 
+  /** Postgres refuses a value for a generated column in any write. */
+  private generatedColumnError(rows: Row[]): DbError | null {
+    const generated = this.state.generated[this.table];
+    if (!generated) return null;
+    for (const row of rows) {
+      const column = Object.keys(row).find((key) => key in generated && row[key] !== undefined);
+      if (column) {
+        return {
+          code: "428C9",
+          message:
+            this.op === "update"
+              ? `column "${column}" can only be updated to DEFAULT`
+              : `cannot insert a non-DEFAULT value into column "${column}"`,
+        };
+      }
+    }
+    return null;
+  }
+
+  /** Works out the generated columns of rows being written. */
+  private fillGenerated(rows: Row[]) {
+    const generated = this.state.generated[this.table];
+    if (!generated) return;
+    for (const row of rows) {
+      for (const [column, compute] of Object.entries(generated)) row[column] = compute(row);
+    }
+  }
+
   private async run(): Promise<Result> {
     const failure = this.state.failNext[this.table];
     if (failure) {
@@ -182,6 +216,12 @@ class Query implements PromiseLike<Result> {
       return { data: null, error: failure, count: null };
     }
     const rows = (this.state.tables[this.table] ??= []);
+
+    if (this.op === "insert" || this.op === "upsert" || this.op === "update") {
+      const written = (Array.isArray(this.payload) ? this.payload : [this.payload]) as Row[];
+      const refused = this.generatedColumnError(written);
+      if (refused) return { data: null, error: refused, count: null };
+    }
 
     if (this.op === "insert") {
       const list = (Array.isArray(this.payload) ? this.payload : [this.payload]) as Row[];
@@ -192,6 +232,7 @@ class Query implements PromiseLike<Result> {
         ...(typeof defaults === "function" ? defaults() : (defaults ?? {})),
         ...row,
       }));
+      this.fillGenerated(created);
       for (const row of created) {
         if (this.violatesUnique(row, [...rows, ...created])) {
           return { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } };
@@ -211,10 +252,12 @@ class Query implements PromiseLike<Result> {
         if (existing) {
           if (this.upsertOptions.ignoreDuplicates) continue;
           Object.assign(existing, row);
+          this.fillGenerated([existing]);
           this.state.writes.push({ table: this.table, op: "update", payload: row });
           touched.push(existing);
         } else {
           const created = { id: fakeId(), created_at: new Date().toISOString(), ...row };
+          this.fillGenerated([created]);
           rows.push(created);
           this.state.writes.push({ table: this.table, op: "insert", payload: row });
           touched.push(created);
@@ -229,12 +272,14 @@ class Query implements PromiseLike<Result> {
       const patch = this.payload as Row;
       for (const row of matched) {
         const next = { ...row, ...patch };
+        this.fillGenerated([next]);
         // Compare against every other row (the row being updated doesn't clash with itself).
         if (this.violatesUnique(next, rows.filter((other) => other !== row))) {
           return { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" } };
         }
       }
       for (const row of matched) Object.assign(row, patch);
+      this.fillGenerated(matched);
       this.state.writes.push({ table: this.table, op: "update", payload: patch });
       return this.shape(this.returning ? matched : null);
     }
