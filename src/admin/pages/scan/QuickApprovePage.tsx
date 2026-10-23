@@ -16,6 +16,7 @@ import { inventoryRepository, scanRepository } from "../../repositories";
 import { formatCents } from "../../utils/format";
 import { CONDITION_LABELS, FINISH_LABELS, type BadgeTone } from "../../utils/labels";
 import {
+  carriedPrice,
   defaultFinish,
   inQuickApprove,
   QUICK_APPROVE_BATCH,
@@ -100,8 +101,11 @@ function shown(proposal: QuickProposal, picked: RecognitionCandidate | undefined
 /** The price approving will use, when it's known before asking Scryfall. */
 function knownPrice(scan: CardScan, p: QuickProposal, floors: InventoryPriceFloor[], typed: number | undefined): number | null {
   if (typed != null) return typed;
+  // The card's own price, when it goes with this printing (the server's rule).
+  const carried = p.scryfallId ? carriedPrice(scan, p.scryfallId) : null;
+  if (carried != null) return carried;
   if (!scan.selectedPrinting || p.scryfallId !== scan.selectedScryfallId) return null;
-  return scan.priceCents ?? suggestedPrice(scan.selectedPrinting, defaultFinish(scan, scan.selectedPrinting), floors);
+  return suggestedPrice(scan.selectedPrinting, defaultFinish(scan, scan.selectedPrinting), floors);
 }
 
 function finishLabel(scan: CardScan, p: QuickProposal): string {

@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
-import type { CardPrinting, CardRecognitionResult, CardScan, ScanSession } from "../src/admin/types";
+import type { CardPrinting, CardRecognitionResult, CardScan, ScanReviewPatch, ScanSession } from "../src/admin/types";
 
 // Scan Review with cards identified on the scanner PC: A / B / C to pick
 // between look-alikes, Enter approving with today's Scryfall price (and
 // suggestion A, for a card with no match yet), Quick approve for the whole
 // batch, The List's copy of a card never standing in for the original, and
-// "Re-run" going to the scanner PC first.
+// "Re-run" going to the scanner PC first. Then each card's changes saving in
+// order, so approving straight after typing a price (or pressing a condition
+// key, or picking B) keeps what was typed or picked.
 
 const repo = {
   getSession: vi.fn(),
@@ -342,5 +344,164 @@ describe("Scan Review with scanner-PC results", () => {
     await user.click(await screen.findByRole("button", { name: "Re-run" }));
     await waitFor(() => expect(repo.recognize).toHaveBeenCalledTimes(1));
     closeCall.recognitionData = recognition();
+  });
+});
+
+describe("Scan Review saves each card's changes in order", () => {
+  // A stand-in for PATCH /api/admin/scans/:id: each request waits until the
+  // test answers it; then the change is applied and the card sent back, with
+  // a fresh updated_at, the way the real one does.
+  let server: Map<string, CardScan>;
+  let waiting: { id: string; patch: ScanReviewPatch; answer: () => void; fail: (message: string) => void }[];
+
+  function serve(cards: CardScan[]) {
+    server = new Map(cards.map((c) => [c.id, c]));
+    waiting = [];
+    let clock = 0;
+    repo.listScans.mockImplementation(async () => ({ rows: cards, total: cards.length }));
+    repo.updateScan.mockImplementation(
+      (id: string, patch: ScanReviewPatch) =>
+        new Promise<CardScan>((resolve, reject) => {
+          waiting.push({
+            id,
+            patch,
+            answer: () => {
+              const fields: ScanReviewPatch = { ...patch };
+              delete fields.selectedPrinting;
+              const before = server.get(id)!;
+              const card: CardScan = {
+                ...before,
+                ...fields,
+                selectedPrinting: patch.selectedScryfallId ? printing(patch.selectedScryfallId) : before.selectedPrinting,
+                reviewStatus: patch.reviewStatus ?? (patch.selectedScryfallId ? "matched" : before.reviewStatus),
+                updatedAt: new Date(Date.UTC(2026, 9, 22, 20, 0, ++clock)).toISOString(),
+              };
+              server.set(id, card);
+              resolve(card);
+            },
+            fail: (message) => reject(new Error(message)),
+          });
+        }),
+    );
+  }
+
+  /** Answers the oldest request once it's been sent (or fails it, with a reason). */
+  async function answerNext(fail?: string) {
+    await waitFor(() => expect(waiting.length).toBeGreaterThan(0));
+    const request = waiting.shift()!;
+    await act(async () => {
+      if (fail) request.fail(fail);
+      else request.answer();
+    });
+    return request;
+  }
+
+  const matched = (id: string, seq: number, overrides: Partial<CardScan> = {}) =>
+    scan(id, seq, {
+      selectedScryfallId: "m10",
+      selectedPrinting: printing("m10"),
+      recognitionStatus: "recognized",
+      reviewStatus: "matched",
+      selectedFinish: "foil",
+      ...overrides,
+    });
+
+  it("keeps a price typed just before clicking Approve, instead of today's Scryfall price", async () => {
+    serve([matched("m-1", 1), matched("m-2", 2)]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#001"));
+    await user.type(screen.getByLabelText("Price (USD)"), "12.50");
+    await user.click(screen.getByRole("button", { name: "Approve → next (Enter)" }));
+
+    // Leaving the field sent the price; approving waits for it to save.
+    await waitFor(() => expect(waiting.map((w) => w.patch)).toEqual([{ priceCents: 1250 }]));
+    await answerNext();
+    expect((await answerNext()).patch).toEqual({ reviewStatus: "ready", confirmedCondition: "NM" });
+    expect(server.get("m-1")).toMatchObject({ priceCents: 1250, reviewStatus: "ready", confirmedCondition: "NM" });
+    expect(repo.getByScryfallId).not.toHaveBeenCalled();
+    expect(screen.queryByText(/\(Scryfall price\)/)).toBeNull();
+
+    // On to the next card; going back, the price is still the one typed.
+    expect(await screen.findByText("My scan · #002")).toBeInTheDocument();
+    await user.click(screen.getByText("#001"));
+    expect(screen.getByLabelText("Price (USD)")).toHaveValue(12.5);
+  });
+
+  it("approves a card as the condition key pressed just before Enter", async () => {
+    serve([matched("m-1", 1, { priceCents: 300 }), matched("m-2", 2)]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#001"));
+    await user.keyboard("3{Enter}");
+    await waitFor(() => expect(waiting.map((w) => w.patch)).toEqual([{ confirmedCondition: "MP" }]));
+    await answerNext();
+    expect((await answerNext()).patch).toEqual({ reviewStatus: "ready" });
+    expect(server.get("m-1")).toMatchObject({ confirmedCondition: "MP", priceCents: 300, reviewStatus: "ready" });
+  });
+
+  it("keeps a typed price when approving suggestion A", async () => {
+    serve([scan("c-1", 1)]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#001"));
+    await user.type(screen.getByLabelText("Price (USD)"), "7");
+    await user.click(screen.getByRole("button", { name: "Approve A → next (Enter)" }));
+    expect((await answerNext()).patch).toEqual({ priceCents: 700 });
+    const approve = await answerNext();
+    expect(approve.patch).toMatchObject({ selectedScryfallId: "m10", reviewStatus: "ready", confirmedCondition: "NM", selectedFinish: "foil" });
+    expect(approve.patch).not.toHaveProperty("priceCents");
+    expect(server.get("c-1")).toMatchObject({ selectedScryfallId: "m10", priceCents: 700, reviewStatus: "ready" });
+    expect(await screen.findByText("Approved Lightning Bolt (M10 #146) at $7.00, NM.")).toBeInTheDocument();
+  });
+
+  it("approves the printing picked just before Enter, not suggestion A", async () => {
+    serve([scan("c-1", 1), scan("c-2", 2)]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#001"));
+    await user.keyboard("b{Enter}");
+    expect((await answerNext()).patch).toMatchObject({ selectedScryfallId: "m11", selectedFinish: "foil", priceCents: 420 });
+    expect((await answerNext()).patch).toEqual({ reviewStatus: "ready", confirmedCondition: "NM" });
+    expect(server.get("c-1")).toMatchObject({ selectedScryfallId: "m11", priceCents: 420, reviewStatus: "ready" });
+    expect(repo.getByScryfallId).not.toHaveBeenCalledWith("m10");
+  });
+
+  it("says when a typed price didn't save, puts the saved one back, and doesn't approve the card", async () => {
+    serve([matched("m-1", 1, { priceCents: 300 }), matched("m-2", 2)]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#001"));
+    const price = screen.getByLabelText("Price (USD)");
+    await user.clear(price);
+    await user.type(price, "12.50");
+    await user.click(screen.getByRole("button", { name: "Approve → next (Enter)" }));
+    await answerNext("Failed to fetch");
+
+    expect(await screen.findByText("Your change to #001 didn't save: Failed to fetch")).toBeInTheDocument();
+    expect(
+      await screen.findByText("#001 wasn't approved because a change to it didn't save. Check the card and approve it again."),
+    ).toBeInTheDocument();
+    expect(price).toHaveValue(3);
+    expect(waiting).toHaveLength(0);
+    expect(server.get("m-1")).toMatchObject({ priceCents: 300, reviewStatus: "matched" });
+    expect(screen.getByText("My scan · #001")).toBeInTheDocument();
+
+    // Approving again works from what's saved.
+    await user.click(screen.getByRole("button", { name: "Approve → next (Enter)" }));
+    expect((await answerNext()).patch).toEqual({ reviewStatus: "ready", confirmedCondition: "NM" });
+  });
+
+  it("stays on the card you moved to while an approve was saving", async () => {
+    serve([matched("m-1", 1, { priceCents: 300 }), matched("m-2", 2), matched("m-3", 3)]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("#001"));
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(waiting).toHaveLength(1));
+    await user.click(screen.getByText("#003"));
+    await answerNext();
+    expect(server.get("m-1")).toMatchObject({ reviewStatus: "ready" });
+    expect(screen.getByText("My scan · #003")).toBeInTheDocument();
   });
 });

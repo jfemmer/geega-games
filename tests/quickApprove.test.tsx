@@ -273,6 +273,14 @@ describe("Quick approve", () => {
     expect(screen.getByText(/Marked 4 cards ready\. They stay listed here/)).toBeInTheDocument();
   });
 
+  it("shows the price typed in review for a card that had no match yet", async () => {
+    rows = [closeCall, { ...confirm, priceCents: 700 }];
+    renderPage();
+    await screen.findByText("#002");
+    expect(within(tile("#002")).getByText("Non-foil · $7.00")).toBeInTheDocument();
+    expect(within(tile("#004")).getByText("Non-foil · today's price")).toBeInTheDocument();
+  });
+
   it("marks cards that couldn't be added, with a price box when Scryfall has no price", async () => {
     repo.quickApprove.mockImplementationOnce(async () => {
       // The two that went through are in inventory now; what's left is the one that didn't.

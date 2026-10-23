@@ -157,6 +157,14 @@ describe("POST /api/admin/scan-sessions/:id/approve", () => {
     expect(upserts()).toHaveLength(0);
   });
 
+  it("keeps a price typed in review for a card that had no match yet", async () => {
+    state.tables.card_scans = [scanRow(1, { price_cents: 350 })];
+    const res = await post({ items: [{ scanId: scanId(1), scryfallId: JAVELIN }], condition: "NM", addToInventory: true });
+    expect(res.body).toMatchObject({ addedCount: 1, failures: [] });
+    expect(scan(1)).toMatchObject({ selected_scryfall_id: JAVELIN, price_cents: 350, review_status: "added" });
+    expect(upserts()[0]).toMatchObject({ p_price_cents: 350 });
+  });
+
   it("uses a price typed in Quick approve", async () => {
     state.tables.card_scans = [scanRow(1)];
     const res = await post({ items: [{ scanId: scanId(1), scryfallId: NO_PRICE, priceCents: 150 }], condition: "NM", addToInventory: true });

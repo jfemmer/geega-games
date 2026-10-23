@@ -60,6 +60,20 @@ export function matchDefaults(
   return { selectedFinish, priceCents };
 }
 
+/**
+ * The price a scan brings to being approved as `scryfallId`: its own when
+ * it's matched to that printing, or when it isn't matched to any yet (then
+ * staff typed it for this card, so it goes with whichever printing they
+ * approve). A price for a different printing stays behind, and the card is
+ * priced afresh for the new one.
+ */
+export function carriedPrice(
+  scan: { selectedScryfallId: string | null; priceCents: number | null },
+  scryfallId: string,
+): number | null {
+  return scan.selectedScryfallId == null || scan.selectedScryfallId === scryfallId ? scan.priceCents : null;
+}
+
 export type ApprovalResult = { ok: true; patch: ScanReviewPatch } | { ok: false; reason: string };
 
 /**

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   approvalPatch,
+  carriedPrice,
   defaultFinish,
   inQuickApprove,
   isSureMatch,
@@ -84,6 +85,17 @@ describe("matchDefaults", () => {
   it("never overwrites a price staff typed", () => {
     expect(matchDefaults(scan({ priceCents: 999, recognitionData: recognition("foil") }), printing(), floors)).toEqual({ selectedFinish: "foil", priceCents: 999 });
     expect(matchDefaults(scan({ recognitionData: recognition("foil") }), printing(), floors)).toEqual({ selectedFinish: "foil", priceCents: 400 });
+  });
+});
+
+describe("carriedPrice", () => {
+  it("brings a card's price to its own printing, or to any printing when it had no match yet", () => {
+    expect(carriedPrice({ selectedScryfallId: "m10", priceCents: 500 }, "m10")).toBe(500);
+    // Typed before there was a match: it goes with whichever printing is approved.
+    expect(carriedPrice({ selectedScryfallId: null, priceCents: 500 }, "m11")).toBe(500);
+    // Priced for another printing: priced afresh.
+    expect(carriedPrice({ selectedScryfallId: "m10", priceCents: 500 }, "m11")).toBeNull();
+    expect(carriedPrice({ selectedScryfallId: null, priceCents: null }, "m11")).toBeNull();
   });
 });
 

@@ -4,6 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Button } from "../../components/ui/Button";
@@ -30,8 +32,9 @@ import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents } from "../../utils/format";
 import { CONDITION_LABELS, CONDITION_TONE, FINISH_LABELS, SCAN_MODE_LABELS } from "../../utils/labels";
 import { listTieAdvice, preferOriginals } from "../../utils/listReprints";
-import { approvalPatch, listTieOriginal, matchDefaults } from "../../utils/scanApproval";
+import { approvalPatch, carriedPrice, listTieOriginal, matchDefaults } from "../../utils/scanApproval";
 import { matchesScanFilter } from "../../utils/scanFilters";
+import { keyedQueue, newestScan } from "../../utils/scanSaves";
 import { BridgeUnreachableError, postToBridge } from "../../utils/scannerBridge";
 import type {
   BatchCommitPreview,
@@ -45,6 +48,7 @@ import type {
   RecognitionStatus,
   ScanFilterKey,
   ScanRecognitionMode,
+  ScanReviewPatch,
   ScanSession,
 } from "../../types";
 import type { BadgeTone } from "../../utils/labels";
@@ -84,6 +88,16 @@ function centsFromInput(v: string): number | null {
   if (v.trim() === "") return null;
   const n = Number.parseFloat(v);
   return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
+/** A price or cost the way its field shows it: "4.20", or blank. */
+function centsText(cents: number | null): string {
+  return cents != null ? (cents / 100).toFixed(2) : "";
+}
+
+/** "#007": how the page names a scanned card. */
+function scanLabel(scan: { sequenceNumber: number }): string {
+  return `#${String(scan.sequenceNumber).padStart(3, "0")}`;
 }
 
 const NO_SCANS: CardScan[] = [];
@@ -211,61 +225,117 @@ export function ScanReviewPage({
     [scans, activeId],
   );
 
-  // Update one scan then refresh derived views.
-  const patchActive = useCallback(
-    async (patch: Parameters<typeof scanRepository.updateScan>[1]) => {
-      if (!active) return;
-      const updated = await scanRepository.updateScan(active.id, patch);
-      applyLocal({ ...patch, ...updated, id: active.id });
+  // Each card's changes are saved one at a time, in the order they were made
+  // (a typed price, a condition key, a picked printing, approving), and each
+  // builds on what the ones before it saved; see utils/scanSaves.ts. So
+  // clicking Approve right after typing a price keeps that price: approving
+  // waits for the price to save instead of filling in today's Scryfall price
+  // over it.
+  const [queueForCard] = useState(() => keyedQueue());
+  /** What each card's latest save returned: newer than the queue's copy until the page re-renders. */
+  const lastSaved = useRef(new Map<string, Partial<CardScan>>());
+  const activeIdRef = useRef(activeId);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  /** Saves a change to a card and shows it. Call it from inside the card's queue (changeCard). */
+  const save = useCallback(
+    async (scanId: string, patch: ScanReviewPatch, expected: Partial<CardScan> = {}) => {
+      const updated = await scanRepository.updateScan(scanId, patch);
+      // The server's copy of the card wins when it sends one back.
+      const saved = { ...patch, ...expected, ...updated, id: scanId };
+      lastSaved.current.set(scanId, saved);
+      applyLocal(saved);
     },
-    [active, applyLocal],
+    [applyLocal],
+  );
+
+  /**
+   * Makes a change to a card once its earlier changes are done, working from
+   * the newest copy of the card. If the change fails it says so, starting
+   * with `failure` (what didn't happen), and resolves false; an approve
+   * that was waiting behind it doesn't go ahead.
+   */
+  const changeCard = useCallback(
+    (scan: CardScan, failure: string, change: (card: CardScan, earlierFailed: boolean) => Promise<void>): Promise<boolean> =>
+      queueForCard(scan.id, (earlierFailed) => change(newestScan(scan, lastSaved.current.get(scan.id)), earlierFailed)).then(
+        () => true,
+        (err: unknown) => {
+          toast.error(`${failure}: ${err instanceof Error && err.message ? err.message : "try again."}`);
+          return false;
+        },
+      ),
+    [queueForCard, toast],
+  );
+
+  /** One field (or a few) of a card; false when it didn't save. */
+  const patchScan = useCallback(
+    (scan: CardScan, patch: ScanReviewPatch) =>
+      changeCard(scan, `Your change to ${scanLabel(scan)} didn't save`, () => save(scan.id, patch)),
+    [changeCard, save],
+  );
+
+  const patchActive = useCallback(
+    (patch: ScanReviewPatch) => (active ? patchScan(active, patch) : Promise.resolve(false)),
+    [active, patchScan],
   );
 
   // Enter: approve with the defaults a confirmed match gets — finish from
   // the batch's foil switch, today's Scryfall price for that finish (raised
   // to the price floors) unless a price was typed, and the default condition
   // when nobody graded the card (keys 1–5 set one). A card with no match yet
-  // but suggestions gets the first one (A) in the same step.
+  // but suggestions gets the first one (A) in the same step, keeping a typed
+  // price. It goes after the card's changes still being saved and builds on
+  // them.
   const approveActive = useCallback(async () => {
     if (!active) return;
-    const suggestion = active.selectedScryfallId ? null : (suggestions(active)[0] ?? null);
-    const scryfallId = active.selectedScryfallId ?? suggestion?.scryfallId ?? null;
-    if (!scryfallId) {
-      toast.error("Find a Scryfall match before approving.");
-      return;
-    }
-    let printing = suggestion ? null : active.selectedPrinting;
-    const fillsPrice = suggestion !== null || active.priceCents == null;
-    if (fillsPrice || !active.selectedFinish || !printing) {
-      printing = (await scryfallRepository.getByScryfallId(scryfallId).catch(() => null)) ?? printing;
-    }
-    if (!printing) {
-      toast.error("Couldn't load this printing's details — try again.");
-      return;
-    }
-    const result = approvalPatch(suggestion ? { ...active, priceCents: null } : active, printing, priceFloors, defaultCondition);
-    if (!result.ok) {
-      toast.error(result.reason);
-      return;
-    }
-    const patch = suggestion
-      ? { selectedScryfallId: printing.scryfallId, selectedPrinting: printing, ...result.patch }
-      : result.patch;
-    const next = neighborOf(active.id);
-    const updated = await scanRepository.updateScan(active.id, patch);
-    applyLocal({ ...patch, ...updated, id: active.id });
-    const what = suggestion ? `${printing.cardName} (${printing.setCode} #${printing.collectorNumber})` : null;
-    const price = result.patch.priceCents ?? active.priceCents;
-    if (what) {
-      toast.success(`Approved ${what}${price != null ? ` at ${formatCents(price)}` : ""}${result.patch.confirmedCondition ? `, ${result.patch.confirmedCondition}` : ""}.`);
-    } else if (fillsPrice && result.patch.priceCents != null) {
-      toast.success(`Approved at ${formatCents(result.patch.priceCents)} (Scryfall price).`);
-    }
-    if (next) {
-      setActiveId(next);
-      rowRefs.current.get(next)?.scrollIntoView({ block: "nearest" });
-    }
-  }, [active, applyLocal, neighborOf, toast, priceFloors, defaultCondition]);
+    const shown = active;
+    const label = scanLabel(shown);
+    const next = neighborOf(shown.id);
+    await changeCard(shown, `${label} wasn't approved`, async (card, earlierFailed) => {
+      if (earlierFailed) {
+        toast.error(`${label} wasn't approved because a change to it didn't save. Check the card and approve it again.`);
+        return;
+      }
+      const suggestion = card.selectedScryfallId ? null : (suggestions(card)[0] ?? null);
+      const scryfallId = card.selectedScryfallId ?? suggestion?.scryfallId ?? null;
+      if (!scryfallId) {
+        toast.error("Find a Scryfall match before approving.");
+        return;
+      }
+      const price = carriedPrice(card, scryfallId);
+      let printing = suggestion ? null : card.selectedPrinting;
+      if (price == null || !card.selectedFinish || !printing) {
+        printing = (await scryfallRepository.getByScryfallId(scryfallId).catch(() => null)) ?? printing;
+      }
+      if (!printing) {
+        toast.error("Couldn't load this printing's details — try again.");
+        return;
+      }
+      const result = approvalPatch({ ...card, priceCents: price }, printing, priceFloors, defaultCondition);
+      if (!result.ok) {
+        toast.error(result.reason);
+        return;
+      }
+      const patch = suggestion
+        ? { selectedScryfallId: printing.scryfallId, selectedPrinting: printing, ...result.patch }
+        : result.patch;
+      await save(shown.id, patch);
+      const approvedAt = result.patch.priceCents ?? price;
+      if (suggestion) {
+        const what = `${printing.cardName} (${printing.setCode} #${printing.collectorNumber})`;
+        toast.success(`Approved ${what}${approvedAt != null ? ` at ${formatCents(approvedAt)}` : ""}${result.patch.confirmedCondition ? `, ${result.patch.confirmedCondition}` : ""}.`);
+      } else if (price == null && result.patch.priceCents != null) {
+        toast.success(`Approved at ${formatCents(result.patch.priceCents)} (Scryfall price).`);
+      }
+      // On to the next card, unless you've already moved on.
+      if (next && activeIdRef.current === shown.id) {
+        setActiveId(next);
+        rowRefs.current.get(next)?.scrollIntoView({ block: "nearest" });
+      }
+    });
+  }, [active, changeCard, neighborOf, save, toast, priceFloors, defaultCondition]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -278,32 +348,38 @@ export function ScanReviewPage({
 
   // Shared by the "Find match" modal and one-click acceptance of a
   // recognition candidate — both are a human confirming an exact printing.
-  const applyPrinting = useCallback(
-    async (scan: CardScan, printing: CardPrinting) => {
+  // Runs inside the card's queue, on its newest copy.
+  const matchCard = useCallback(
+    async (card: CardScan, printing: CardPrinting) => {
       // Finish: kept if valid, else the batch's foil switch, else the first
       // finish; price: kept if typed, else Scryfall's for that finish, floored.
-      const defaults = matchDefaults(scan, printing, priceFloors);
+      const defaults = matchDefaults(card, printing, priceFloors);
       const patch = {
         selectedScryfallId: printing.scryfallId,
         selectedPrinting: printing,
         selectedFinish: defaults.selectedFinish,
         priceCents: defaults.priceCents,
       };
-      const updated = await scanRepository.updateScan(scan.id, patch);
       // A newly chosen match moves the card to "matched" (the server does the
       // same, and its copy of the card wins when it sends one back).
-      const expected: Partial<CardScan> = { ...patch, reviewStatus: scan.reviewStatus === "added" ? scan.reviewStatus : "matched" };
-      applyLocal({ ...expected, ...updated, id: scan.id });
-      setActiveId(scan.id);
+      await save(card.id, patch, { reviewStatus: card.reviewStatus === "added" ? card.reviewStatus : "matched" });
+      setActiveId(card.id);
       toast.success(`Matched to ${printing.cardName} (${printing.setName}).`);
     },
-    [applyLocal, toast, priceFloors],
+    [save, toast, priceFloors],
+  );
+
+  /** Matches a card to a printing; false when it didn't save. */
+  const applyPrinting = useCallback(
+    (scan: CardScan, printing: CardPrinting) =>
+      changeCard(scan, `${scanLabel(scan)} wasn't matched`, (card) => matchCard(card, printing)),
+    [changeCard, matchCard],
   );
 
   async function handleMatchChosen(printing: CardPrinting) {
     if (!findMatchFor) return;
-    await applyPrinting(findMatchFor, printing);
-    setFindMatchFor(null);
+    // The search stays open when the match doesn't save, to try again.
+    if (await applyPrinting(findMatchFor, printing)) setFindMatchFor(null);
   }
 
   const [recognizingId, setRecognizingId] = useState<string | null>(null);
@@ -350,16 +426,16 @@ export function ScanReviewPage({
     [reloadAll, toast],
   );
 
+  // The printing is looked up inside the card's queue too, so Enter pressed
+  // straight after B approves B, not suggestion A.
   const selectCandidate = useCallback(
-    async (scan: CardScan, candidate: RecognitionCandidate) => {
-      const printing = await scryfallRepository.getByScryfallId(candidate.scryfallId);
-      if (!printing) {
-        toast.error("Couldn't load that printing's details — try Find match instead.");
-        return;
-      }
-      await applyPrinting(scan, printing);
-    },
-    [applyPrinting, toast],
+    (scan: CardScan, candidate: RecognitionCandidate) =>
+      changeCard(scan, `${scanLabel(scan)} wasn't matched`, async (card) => {
+        const printing = await scryfallRepository.getByScryfallId(candidate.scryfallId);
+        if (!printing) throw new Error("Couldn't load that printing's details — try Find match instead.");
+        await matchCard(card, printing);
+      }),
+    [changeCard, matchCard],
   );
 
   // Keyboard workflow.
@@ -420,7 +496,7 @@ export function ScanReviewPage({
         return next;
       });
       if (activeId === deleteTarget.id) setActiveId(null);
-      toast.success(`Deleted scan #${String(deleteTarget.sequenceNumber).padStart(3, "0")}.`);
+      toast.success(`Deleted scan ${scanLabel(deleteTarget)}.`);
       setDeleteTarget(null);
       reloadAll();
     } catch (err) {
@@ -610,7 +686,7 @@ export function ScanReviewPage({
         {findMatchFor && (
           <div className="gg-findmatch">
             <div className="gg-findmatch__scan">
-              <span className="gg-comparelabel">My scan · #{String(findMatchFor.sequenceNumber).padStart(3, "0")}</span>
+              <span className="gg-comparelabel">My scan · {scanLabel(findMatchFor)}</span>
               <CardImage
                 images={scanImages(findMatchFor.frontPreviewUrl ?? findMatchFor.frontImageUrl)}
                 alt="Scanned card"
@@ -678,7 +754,7 @@ export function ScanReviewPage({
             {commitPreview.errors.length > 0 && (
               <div className="gg-commit__errors">
                 {commitPreview.errors.slice(0, 6).map((e) => (
-                  <div key={e.scanId}>#{String(e.sequenceNumber).padStart(3, "0")} — {e.reason}</div>
+                  <div key={e.scanId}>{scanLabel(e)} — {e.reason}</div>
                 ))}
               </div>
             )}
@@ -694,7 +770,7 @@ export function ScanReviewPage({
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete this card scan?"
-        message={deleteTarget ? `Scan #${String(deleteTarget.sequenceNumber).padStart(3, "0")} and its uploaded scan images will be permanently deleted. This cannot be undone.` : ""}
+        message={deleteTarget ? `Scan ${scanLabel(deleteTarget)} and its uploaded scan images will be permanently deleted. This cannot be undone.` : ""}
         confirmLabel={deleting ? "Deleting…" : "Delete scan"}
         tone="danger"
         onCancel={() => !deleting && setDeleteTarget(null)}
@@ -799,7 +875,7 @@ function ScanRow({
         onChange={onToggleSelect}
         aria-label={`Select scan ${scan.sequenceNumber}`}
       />
-      <span className="gg-scanrow__seq">#{String(scan.sequenceNumber).padStart(3, "0")}</span>
+      <span className="gg-scanrow__seq">{scanLabel(scan)}</span>
       <CardImage
         images={scanImages(scan.frontPreviewUrl ?? scan.frontImageUrl)}
         alt="Scan"
@@ -864,28 +940,34 @@ function ScanDetail({
   defaultCondition: CardCondition;
   scanMode: ScanRecognitionMode;
   onFindMatch: () => void;
-  onPatch: (patch: Parameters<typeof scanRepository.updateScan>[1]) => Promise<void>;
+  /** Saves a change to this card; false when it didn't save (the page says why). */
+  onPatch: (patch: ScanReviewPatch) => Promise<boolean>;
   onApprove: () => void;
   onReject: () => void;
   onRerunRecognition: () => void;
   recognizing: boolean;
-  onSelectCandidate: (candidate: RecognitionCandidate) => Promise<void>;
+  onSelectCandidate: (candidate: RecognitionCandidate) => Promise<boolean>;
   onDelete: () => void;
 }) {
-  const [price, setPrice] = useState(
-    scan.priceCents != null ? (scan.priceCents / 100).toFixed(2) : "",
-  );
-  const [cost, setCost] = useState(
-    scan.costCents != null ? (scan.costCents / 100).toFixed(2) : "",
-  );
+  const [price, setPrice] = useState(centsText(scan.priceCents));
+  const [cost, setCost] = useState(centsText(scan.costCents));
   const [location, setLocation] = useState(scan.storageLocation ?? "");
 
   // Re-sync local fields when the active scan changes.
   useEffect(() => {
-    setPrice(scan.priceCents != null ? (scan.priceCents / 100).toFixed(2) : "");
-    setCost(scan.costCents != null ? (scan.costCents / 100).toFixed(2) : "");
+    setPrice(centsText(scan.priceCents));
+    setCost(centsText(scan.costCents));
     setLocation(scan.storageLocation ?? "");
   }, [scan.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Typed fields save when they're left. One that doesn't save goes back to
+  // what's saved (unless it's been changed again since), so the card always
+  // shows what approving it will use.
+  function saveTyped(patch: ScanReviewPatch, typed: string, saved: string, setText: Dispatch<SetStateAction<string>>) {
+    void onPatch(patch).then((ok) => {
+      if (!ok) setText((now) => (now === typed ? saved : now));
+    });
+  }
 
   const finishes = scan.selectedPrinting?.availableFinishes ?? [];
   const offered = suggestions(scan);
@@ -897,7 +979,7 @@ function ScanDetail({
       <div className="gg-compare">
         <div className="gg-compare__side">
           <span className="gg-comparelabel gg-comparelabel--scan">
-            My scan · #{String(scan.sequenceNumber).padStart(3, "0")}
+            My scan · {scanLabel(scan)}
           </span>
           {scan.frontPreviewUrl ?? scan.frontImageUrl ? (
             <img
@@ -1016,7 +1098,7 @@ function ScanDetail({
             step="0.01"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            onBlur={() => onPatch({ priceCents: centsFromInput(price) })}
+            onBlur={() => saveTyped({ priceCents: centsFromInput(price) }, price, centsText(scan.priceCents), setPrice)}
             hint={
               scan.selectedPrinting?.scryfallPriceCents != null
                 ? scan.priceCents == null && price.trim() === ""
@@ -1032,13 +1114,13 @@ function ScanDetail({
             step="0.01"
             value={cost}
             onChange={(e) => setCost(e.target.value)}
-            onBlur={() => onPatch({ costCents: centsFromInput(cost) })}
+            onBlur={() => saveTyped({ costCents: centsFromInput(cost) }, cost, centsText(scan.costCents), setCost)}
           />
           <TextField
             label="Storage location"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            onBlur={() => onPatch({ storageLocation: location || null })}
+            onBlur={() => saveTyped({ storageLocation: location || null }, location, scan.storageLocation ?? "", setLocation)}
           />
         </div>
 
@@ -1164,7 +1246,7 @@ function CandidateSuggestions({
   candidates: RecognitionCandidate[];
   /** The scanner PC narrowed it to look-alikes (vs. the cloud's low confidence). */
   closeCall: boolean;
-  onSelect: (candidate: RecognitionCandidate) => Promise<void>;
+  onSelect: (candidate: RecognitionCandidate) => Promise<boolean>;
   onSearchInstead: () => void;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1394,7 +1476,7 @@ function ShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void 
   const rows: [string, string][] = [
     ["J / ↓", "Next card"],
     ["K / ↑", "Previous card"],
-    ["Enter", "Approve (mark ready) → next. No match yet: approves suggestion A. Fills in today's Scryfall price, and the default condition if none is set"],
+    ["Enter", "Approve (mark ready) → next. No match yet: approves suggestion A. Fills in today's Scryfall price if no price was typed, and the default condition if none is set"],
     ["F", "Find Scryfall match"],
     ["1–5", "Set condition (NM, LP, MP, HP, DMG)"],
     ["A / B / C", "Use a suggested printing (when there's no match yet)"],

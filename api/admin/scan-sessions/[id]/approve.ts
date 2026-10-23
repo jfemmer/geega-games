@@ -6,7 +6,7 @@ import { cachePrinting } from "../../../_lib/inventory.js";
 import { scryfallCollection } from "../../../_lib/scryfall.js";
 import { commitScanToInventory, getSessionOr404, recomputeSession } from "../../../_lib/scan.js";
 import { normalizeScryfallCard } from "../../../../src/admin/services/scryfall.js";
-import { approvalPatch, QUICK_APPROVE_BATCH } from "../../../../src/admin/utils/scanApproval.js";
+import { approvalPatch, carriedPrice, QUICK_APPROVE_BATCH } from "../../../../src/admin/utils/scanApproval.js";
 import type { CardCondition, CardFinish, FloorableRarity, InventoryPriceFloor } from "../../../../src/admin/types/index.js";
 import type { Database } from "../../../../src/types/database.js";
 
@@ -161,12 +161,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
       const printing = normalizeScryfallCard(card);
-      // A different printing than before: the old price was for that one.
-      const samePrinting = scan.selected_scryfall_id === printing.scryfallId;
+      // A price typed in Quick approve, else the card's own price unless that
+      // was for a different printing (see carriedPrice).
+      const startPrice =
+        item.priceCents ?? carriedPrice({ selectedScryfallId: scan.selected_scryfall_id, priceCents: scan.price_cents }, printing.scryfallId);
       const approval = approvalPatch(
         {
           selectedFinish: scan.selected_finish,
-          priceCents: item.priceCents ?? (samePrinting ? scan.price_cents : null),
+          priceCents: startPrice,
           confirmedCondition: scan.confirmed_condition,
           recognitionData: { finishGuess: (scan.recognition_data as { finishGuess?: CardFinish | null } | null)?.finishGuess ?? null },
         },
@@ -187,7 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const patch: CardScanUpdate = {
           selected_scryfall_id: printing.scryfallId,
           selected_finish: approval.patch.selectedFinish ?? scan.selected_finish,
-          price_cents: approval.patch.priceCents ?? item.priceCents ?? (samePrinting ? scan.price_cents : null),
+          price_cents: approval.patch.priceCents ?? startPrice,
           confirmed_condition: approval.patch.confirmedCondition ?? scan.confirmed_condition,
           storage_location: scan.storage_location ?? storageLocation,
           review_status: "ready",
