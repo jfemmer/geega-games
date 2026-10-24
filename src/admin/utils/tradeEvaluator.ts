@@ -1,21 +1,36 @@
 // The trade evaluator (Admin → Trade Evaluator): a customer trades cards in
-// for cards from the shop. Both sides are priced at TCG low, typed in by
-// staff; the customer's cards count at the trade credit percentage chosen
-// for the trade, and the shop's cards at their full TCG low. What's left is
-// what the customer pays, or the trade credit the shop owes them.
+// for cards from the shop. Their cards are priced at TCG low, typed in by
+// staff, and count at the trade credit percentage chosen for the trade. The
+// shop's cards come from inventory at their regular website price: never a
+// deal, storewide-sale or member price. What's left is what the customer
+// pays, or the trade credit the shop owes them.
 //
-// Plain TypeScript: no React, no I/O. Money is whole cents throughout.
+// Shared by the page and by api/admin/trades.ts, which works the numbers out
+// again when a trade is confirmed. Plain TypeScript: no React, no I/O. Money
+// is whole cents throughout.
 
 export const DEFAULT_TRADE_CREDIT_PERCENT = 70;
 export const TRADE_CREDIT_PRESETS = [50, 60, 70, 75, 80] as const;
 export const MAX_TRADE_CREDIT_PERCENT = 150;
 export const MAX_TRADE_QUANTITY = 999;
+/** Lines per side of one trade. */
+export const MAX_TRADE_LINES = 200;
+export const MAX_CUSTOMER_NAME = 80;
+export const MAX_CARD_NAME = 120;
+/** $99,999.99: more than any single card's TCG low. */
+export const MAX_TCG_LOW_CENTS = 9_999_999;
 
-/** One card on either side of a trade, as typed: any field may be blank. */
+/** One of the customer's cards, as typed: any field may be blank. */
 export interface TradeLineInput {
   name: string;
   quantity: string;
   price: string;
+}
+
+/** One of the shop's cards on a trade: its regular website price, and how many. */
+export interface PricedLine {
+  priceCents: number;
+  quantity: number;
 }
 
 /**
@@ -84,6 +99,39 @@ export function sideTotal(lines: TradeLineInput[]): TradeSideTotal {
   return total;
 }
 
+/** The customer's cards that count, as numbers: what a confirmed trade records. */
+export function countedLines(lines: TradeLineInput[]): { name: string | null; quantity: number; tcgLowCents: number }[] {
+  return lines.flatMap((line) =>
+    lineStatus(line) === "counted" && parseQuantity(line.quantity)! > 0
+      ? [{ name: line.name.trim() || null, quantity: parseQuantity(line.quantity)!, tcgLowCents: parsePriceCents(line.price)! }]
+      : [],
+  );
+}
+
+/**
+ * A card's regular website price: what it's listed at before any discount.
+ * A deal keeps its regular price in originalPriceCents; a storewide sale or a
+ * member discount is never stored on the card at all.
+ */
+export function regularPriceCents(item: {
+  priceCents: number | null;
+  originalPriceCents?: number | null;
+  isDeal?: boolean | null;
+}): number | null {
+  if (item.priceCents == null) return null;
+  return item.isDeal && item.originalPriceCents != null ? item.originalPriceCents : item.priceCents;
+}
+
+export function pricedTotal(lines: PricedLine[]): { cents: number; cards: number } {
+  let cents = 0;
+  let cards = 0;
+  for (const line of lines) {
+    cents += line.priceCents * line.quantity;
+    cards += line.quantity;
+  }
+  return { cents, cards };
+}
+
 /** What cards worth `tcgLowCents` at TCG low are worth in trade credit, to the cent. */
 export function tradeCreditCents(tcgLowCents: number, percent: number): number {
   return Math.round((tcgLowCents * percent) / 100);
@@ -91,28 +139,28 @@ export function tradeCreditCents(tcgLowCents: number, percent: number): number {
 
 export type TradeOutcome = "empty" | "they_pay" | "credit_left" | "even";
 
-export interface TradeEvaluation {
-  theirs: TradeSideTotal;
-  yours: TradeSideTotal;
+export interface TradeTotals {
+  /** Their cards at TCG low. */
+  theirTcgLowCents: number;
   /** Their cards in trade credit. */
   creditCents: number;
+  /** Your cards at their regular website price. */
+  yourCents: number;
   /** Trade credit less your cards: below zero they pay the rest, above zero you owe them credit. */
   balanceCents: number;
   outcome: TradeOutcome;
   /**
    * They pay: TCG low of further cards they could trade in to cover it.
-   * Credit left: TCG low of further cards of yours they could take with it.
+   * Credit left: website price of further cards of yours they could take with it.
    */
   makeEvenCents: number;
 }
 
-export function evaluateTrade(theirs: TradeLineInput[], yours: TradeLineInput[], percent: number): TradeEvaluation {
-  const their = sideTotal(theirs);
-  const your = sideTotal(yours);
-  const creditCents = tradeCreditCents(their.tcgLowCents, percent);
-  const balanceCents = creditCents - your.tcgLowCents;
+export function tradeTotals(theirTcgLowCents: number, yourCents: number, percent: number): TradeTotals {
+  const creditCents = tradeCreditCents(theirTcgLowCents, percent);
+  const balanceCents = creditCents - yourCents;
   const outcome: TradeOutcome =
-    their.tcgLowCents === 0 && your.tcgLowCents === 0
+    theirTcgLowCents === 0 && yourCents === 0
       ? "empty"
       : balanceCents < 0
         ? "they_pay"
@@ -121,5 +169,42 @@ export function evaluateTrade(theirs: TradeLineInput[], yours: TradeLineInput[],
           : "even";
   const makeEvenCents =
     outcome === "they_pay" ? Math.ceil((-balanceCents * 100) / percent) : outcome === "credit_left" ? balanceCents : 0;
-  return { theirs: their, yours: your, creditCents, balanceCents, outcome, makeEvenCents };
+  return { theirTcgLowCents, creditCents, yourCents, balanceCents, outcome, makeEvenCents };
+}
+
+export interface TradeEvaluation extends TradeTotals {
+  theirs: TradeSideTotal;
+  yours: { cents: number; cards: number };
+}
+
+export function evaluateTrade(theirs: TradeLineInput[], yours: PricedLine[], percent: number): TradeEvaluation {
+  const their = sideTotal(theirs);
+  const your = pricedTotal(yours);
+  return { ...tradeTotals(their.tcgLowCents, your.cents, percent), theirs: their, yours: your };
+}
+
+/** A phone number a text can go to: 7 to 15 digits, however it's written. */
+export function isTextablePhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+/** Looks like an email address (the server checks it properly when it sends). */
+export function isEmailAddress(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+/**
+ * Opens the phone's messaging app with the message filled in. "?&body=" is
+ * the form both iPhone and Android read.
+ */
+export function smsHref(phone: string, message: string): string {
+  const number = phone.trim().startsWith("+") ? `+${phone.replace(/\D/g, "")}` : phone.replace(/\D/g, "");
+  return `sms:${number}?&body=${encodeURIComponent(message)}`;
+}
+
+/** The text sent with a trade's link. */
+export function tradeLinkMessage(trade: { customerName: string; tradeNumber: number; link: string }): string {
+  const first = trade.customerName.trim().split(/\s+/)[0] || "there";
+  return `Hi ${first}, here's the full breakdown of your trade with Geega Games (#${trade.tradeNumber}): ${trade.link}`;
 }

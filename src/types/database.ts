@@ -3474,6 +3474,75 @@ export type Database = {
         }
         Relationships: []
       }
+      trades: {
+        Row: {
+          balance_cents: number
+          confirmed_by: string | null
+          confirmed_by_email: string | null
+          created_at: string
+          credit_cents: number
+          credit_percent: number
+          customer_email: string | null
+          customer_name: string
+          customer_phone: string | null
+          emailed_at: string | null
+          emailed_to: string | null
+          id: string
+          share_token: string
+          texted_at: string | null
+          texted_to: string | null
+          their_cards: Json
+          their_tcg_low_cents: number
+          trade_number: number
+          your_cards: Json
+          your_cards_cents: number
+        }
+        Insert: {
+          balance_cents: number
+          confirmed_by?: string | null
+          confirmed_by_email?: string | null
+          created_at?: string
+          credit_cents: number
+          credit_percent: number
+          customer_email?: string | null
+          customer_name: string
+          customer_phone?: string | null
+          emailed_at?: string | null
+          emailed_to?: string | null
+          id?: string
+          share_token: string
+          texted_at?: string | null
+          texted_to?: string | null
+          their_cards?: Json
+          their_tcg_low_cents: number
+          trade_number?: never
+          your_cards?: Json
+          your_cards_cents: number
+        }
+        Update: {
+          balance_cents?: number
+          confirmed_by?: string | null
+          confirmed_by_email?: string | null
+          created_at?: string
+          credit_cents?: number
+          credit_percent?: number
+          customer_email?: string | null
+          customer_name?: string
+          customer_phone?: string | null
+          emailed_at?: string | null
+          emailed_to?: string | null
+          id?: string
+          share_token?: string
+          texted_at?: string | null
+          texted_to?: string | null
+          their_cards?: Json
+          their_tcg_low_cents?: number
+          trade_number?: never
+          your_cards?: Json
+          your_cards_cents?: number
+        }
+        Relationships: []
+      }
       yard_sales: {
         Row: {
           created_at: string

@@ -6538,3 +6538,67 @@
 .gg-yard-steps { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.3rem; color: var(--gg-ink); }
 .gg-yard-list__heading { margin: 0.5rem 0 0; font-size: 1.1rem; color: var(--gg-ink); }
 .gg-yard-addmore { align-self: stretch; }
+
+/* A confirmed trade, for the customer (/trade?t=…; pages/TradeSummaryPage.tsx):
+ * what it comes to first, then every card on both sides with its price. */
+.gg-tradepage { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+.gg-tradepage h1 { margin: 0.75rem 0 0; color: var(--gg-ink); }
+.gg-tradepage__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; }
+.gg-tradepage__date { margin: 0; font-size: 0.88rem; color: #6d6575; }
+.gg-tradepage__intro { margin: 0; color: #3b3346; line-height: 1.5; }
+
+.gg-tradepage__bottom {
+  padding: 1.1rem 1.25rem 1.2rem;
+  border-radius: 16px;
+  border-top: 4px solid var(--gg-gold);
+  background: linear-gradient(160deg, var(--gg-purple), var(--gg-ink));
+  color: #fff;
+}
+.gg-tradepage__bottom p { margin: 0; }
+.gg-tradepage__bottom-label { font-size: 1rem; font-weight: 600; color: #e7e0f2; }
+.gg-tradepage__bottom-amount {
+  margin-top: 0.1rem !important;
+  font-size: clamp(2.2rem, 9vw, 3rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.gg-tradepage__bottom-math { margin-top: 0.5rem !important; font-size: 0.9rem; color: #d9cfeb; font-variant-numeric: tabular-nums; }
+
+.gg-tradepage__side {
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border: 1px solid var(--gg-line);
+  border-radius: 16px;
+}
+.gg-tradepage__side h2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--gg-ink);
+}
+.gg-tradepage__side h2 span { font-size: 0.85rem; font-weight: 500; color: #6d6575; }
+.gg-tradepage__lines { list-style: none; margin: 0.25rem 0 0; padding: 0; }
+.gg-tradepage__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #efe8f7;
+}
+.gg-tradepage__line-name { font-weight: 600; color: #2a2133; overflow-wrap: anywhere; }
+.gg-tradepage__line-total { text-align: right; font-weight: 700; color: var(--gg-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gg-tradepage__line-detail { font-size: 0.82rem; line-height: 1.4; color: #6d6575; }
+.gg-tradepage__line-each { text-align: right; font-size: 0.82rem; color: #6d6575; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gg-tradepage__sums { display: flex; flex-direction: column; gap: 0.3rem; margin: 0; padding-top: 0.7rem; }
+.gg-tradepage__sums div { display: flex; justify-content: space-between; gap: 1rem; }
+.gg-tradepage__sums dt { color: #3b3346; }
+.gg-tradepage__sums dd { margin: 0; font-weight: 700; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
+.gg-tradepage__credit dt,
+.gg-tradepage__credit dd { color: var(--gg-purple); font-weight: 700; }
+.gg-tradepage__empty { margin: 0.5rem 0 0; color: #6d6575; }
+.gg-tradepage__note { margin: 0; font-size: 0.88rem; line-height: 1.55; color: #5b5362; }

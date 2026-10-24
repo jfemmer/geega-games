@@ -1,22 +1,159 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TradeEvaluatorPage } from "../src/admin/pages/TradeEvaluatorPage";
+import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
 import { NAV_ITEMS, SECTION_TITLES } from "../src/admin/components/layout/nav";
 import { adminSection } from "../src/admin/hooks/useRouter";
+import type { InventoryItem } from "../src/admin/types";
+import type { StaffTradeView } from "../src/store/lib/trades";
 
-// Admin → Trade Evaluator: type each card's TCG low on both sides of a trade,
-// pick the trade credit percentage, and see what the customer pays or the
-// credit they have left. Kept on the device until it's cleared.
+// Admin → Trade Evaluator: the customer's cards typed at TCG low, the cards
+// they want picked from inventory at the regular website price (never a deal
+// price), the trade credit percentage, and what they pay or the credit they
+// have left. Confirming needs their name, saves the trade, and gives it a link
+// to text or email them. Kept on the device until it's cleared.
 
-const price = (line: number, side: "their" | "your") => screen.getByLabelText(`TCG low price, line ${line} of ${side} cards`);
-const quantity = (line: number, side: "their" | "your") => screen.getByLabelText(`Quantity, line ${line} of ${side} cards`);
-const summary = () => screen.getByRole("region", { name: "The trade" });
+const inventory = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn() }));
+vi.mock("../src/admin/repositories", () => ({
+  inventoryRepository: inventory,
+  scryfallRepository: { resolveExact: vi.fn().mockResolvedValue(null) },
+}));
+const trades = vi.hoisted(() => ({ recent: vi.fn(), confirm: vi.fn(), email: vi.fn(), texted: vi.fn() }));
+vi.mock("../src/admin/repositories/trades.supabase", () => ({ tradeRepository: trades }));
+
+const { TradeEvaluatorPage } = await import("../src/admin/pages/TradeEvaluatorPage");
+
+const NOW = "2026-10-24T17:00:00.000Z";
+const SIGNET_ID = "11111111-1111-4111-8111-111111111111";
+const SOL_ID = "22222222-2222-4222-8222-222222222222";
+const TRADE_ID = "33333333-3333-4333-8333-333333333333";
+const LINK = `https://geega-games.com/trade?t=${"a".repeat(32)}`;
+
+function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
+  return {
+    id: SIGNET_ID,
+    scryfallId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    cardName: "Arcane Signet",
+    setName: "Commander Legends",
+    setCode: "cmr",
+    collectorNumber: "297",
+    rarity: "common",
+    cardType: "Artifact",
+    imageUrl: "https://cards.scryfall.io/small/front/a/a/signet.jpg",
+    condition: "NM",
+    finish: "nonfoil",
+    variantType: null,
+    quantity: 3,
+    priceCents: 1000,
+    costCents: null,
+    storageLocation: null,
+    sku: null,
+    notes: null,
+    status: "active",
+    scryfallPriceCents: null,
+    isDeal: false,
+    originalPriceCents: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+const signet = item();
+// On the website's deals for $8.00; its regular price is $10.00.
+const solRing = item({
+  id: SOL_ID,
+  cardName: "Sol Ring",
+  collectorNumber: "263",
+  imageUrl: "https://cards.scryfall.io/small/front/s/o/sol.jpg",
+  quantity: 1,
+  priceCents: 800,
+  isDeal: true,
+  dealSource: "aged_inventory",
+  originalPriceCents: 1000,
+});
+
+function staffTrade(overrides: Partial<StaffTradeView> = {}): StaffTradeView {
+  return {
+    id: TRADE_ID,
+    tradeNumber: 1001,
+    createdAt: NOW,
+    customerName: "Sam Rivera",
+    creditPercent: 70,
+    theirCards: [{ name: "Rhystic Study", quantity: 1, tcgLowCents: 4000 }],
+    yourCards: [],
+    theirTcgLowCents: 4000,
+    creditCents: 2800,
+    yourCardsCents: 3000,
+    balanceCents: -200,
+    link: LINK,
+    customerPhone: "314-555-0100",
+    customerEmail: null,
+    confirmedByEmail: "staff@example.com",
+    emailedTo: null,
+    emailedAt: null,
+    textedTo: null,
+    textedAt: null,
+    ...overrides,
+  };
+}
+
+/** A card of yours as the page keeps it on this device. */
+function savedLine(from: InventoryItem, quantity: number, priceCents: number) {
+  return {
+    id: from.id,
+    cardName: from.cardName,
+    setName: from.setName,
+    setCode: from.setCode,
+    collectorNumber: from.collectorNumber,
+    scryfallId: from.scryfallId,
+    imageUrl: from.imageUrl,
+    condition: from.condition,
+    finish: from.finish,
+    variantType: null,
+    priceCents,
+    dealPriceCents: null,
+    stock: 3,
+    quantity,
+    unavailable: null,
+  };
+}
+
+const renderPage = () => render(<ToastProvider>{<TradeEvaluatorPage />}</ToastProvider>);
+const theirs = () => screen.getByRole("region", { name: "They're trading in" });
+const yours = () => screen.getByRole("region", { name: "They want from you" });
+const recentTrades = () => screen.getByRole("region", { name: "Recent trades" });
+const summary = (name = "The trade") => screen.getByRole("region", { name });
 const result = () => within(summary()).getByRole("status");
+const total = (label: string, name?: string) => within(summary(name)).getByText(label).nextElementSibling;
+const theirPrice = (line: number) => screen.getByLabelText(`TCG low price, line ${line} of their cards`);
+const nameField = () => screen.getByLabelText(/^Customer name/);
+
+/** Searches inventory and taps the card, `times` times. */
+async function addFromInventory(user: ReturnType<typeof userEvent.setup>, search: string, card: InventoryItem, times = 1) {
+  inventory.list.mockResolvedValue({ rows: [card], total: 1 });
+  const box = within(yours()).getByLabelText("Find a card in your inventory");
+  await user.clear(box);
+  await user.type(box, search);
+  const hit = await within(yours()).findByRole("button", { name: new RegExp(`${card.cardName}.*in stock`) });
+  for (let i = 0; i < times; i++) await user.click(hit);
+}
+
+/** Their Rhystic Study at $40, your Sol Ring and two Arcane Signets: $28.00 credit against $30.00. */
+async function buildTrade(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("Card, line 1 of their cards"), "Rhystic Study");
+  await user.type(theirPrice(1), "40");
+  await addFromInventory(user, "sol", solRing);
+  await addFromInventory(user, "arcane", signet, 2);
+}
 
 beforeEach(() => {
   window.localStorage.clear();
+  for (const fn of [...Object.values(inventory), ...Object.values(trades)]) fn.mockReset();
+  inventory.list.mockResolvedValue({ rows: [], total: 0 });
+  inventory.get.mockImplementation(async (id: string) => [signet, solRing].find((i) => i.id === id) ?? null);
+  trades.recent.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -24,116 +161,325 @@ afterEach(() => {
 });
 
 describe("Trade Evaluator", () => {
-  it("works out what the customer pays at 70% trade credit", async () => {
+  it("prices their cards at TCG low and yours at the regular website price, never a deal price", async () => {
     const user = userEvent.setup();
-    render(<TradeEvaluatorPage />);
-    expect(within(result()).getByText("Type TCG low prices to see the trade.")).toBeInTheDocument();
+    renderPage();
+    expect(within(result()).getByText("Add cards to see the trade.")).toBeInTheDocument();
+    await buildTrade(user);
 
-    // Two $50 cards, and Enter for a $20 one on the next line.
-    await user.clear(quantity(1, "their"));
-    await user.type(quantity(1, "their"), "2");
-    await user.type(price(1, "their"), "50{Enter}");
-    expect(price(2, "their")).toHaveFocus();
-    await user.type(price(2, "their"), "20");
-    await user.type(price(1, "your"), "100");
+    expect(inventory.list).toHaveBeenLastCalledWith({ search: "arcane", stock: "in", status: "active", pageSize: 8 });
+    const sol = within(yours()).getByText("Sol Ring", { selector: ".gg-trade__your-name" }).closest("li")!;
+    expect(sol).toHaveTextContent("On deal for $8.00. Trades use the regular price.");
+    expect(sol).toHaveTextContent("$10.00");
+    const signetLine = within(yours()).getByText("Arcane Signet", { selector: ".gg-trade__your-name" }).closest("li")!;
+    expect(signetLine).toHaveTextContent("$20.00$10.00 each");
+    expect(within(yours()).getByText("3 cards")).toBeInTheDocument();
+    expect(within(yours()).getByText("Website price total").nextElementSibling).toHaveTextContent("$30.00");
 
-    const theirs = screen.getByRole("region", { name: "They're trading in" });
-    expect(within(theirs).getByText("3 cards")).toBeInTheDocument();
-    expect(within(theirs).getByText("$120.00")).toBeInTheDocument();
-    expect(within(summary()).getByText("Trade credit at 70%").nextElementSibling).toHaveTextContent("$84.00");
-    expect(within(summary()).getByText("Your cards at TCG low").nextElementSibling).toHaveTextContent("$100.00");
-    expect(result()).toHaveTextContent("They pay you$16.00Or they trade in $22.86 more at TCG low to cover it.");
-  });
+    expect(total("Their cards at TCG low")).toHaveTextContent("$40.00");
+    expect(total("Trade credit at 70%")).toHaveTextContent("$28.00");
+    expect(total("Your cards at website price")).toHaveTextContent("$30.00");
+    expect(result()).toHaveTextContent("They pay you$2.00Or they trade in $2.86 more at TCG low to cover it.");
 
-  it("changes the trade credit with a preset or a typed percentage", async () => {
-    const user = userEvent.setup();
-    render(<TradeEvaluatorPage />);
-    await user.type(price(1, "their"), "120");
-    await user.type(price(1, "your"), "100");
-
+    // A different percentage, or a typed one that isn't a percentage.
     await user.click(screen.getByRole("button", { name: "80%" }));
-    expect(screen.getByRole("button", { name: "80%" })).toHaveAttribute("aria-pressed", "true");
-    expect(result()).toHaveTextContent("They pay you$4.00");
-
+    expect(result()).toHaveTextContent("You owe them in trade credit$2.00Or they pick $2.00 more of your cards.");
     const percent = screen.getByLabelText("Trade credit");
-    await user.clear(percent);
-    await user.type(percent, "90");
-    expect(result()).toHaveTextContent("You owe them in trade credit$8.00Or they take $8.00 more of your cards at TCG low.");
-
     await user.clear(percent);
     await user.type(percent, "0");
     expect(screen.getByText("Enter a whole number from 1 to 150.")).toBeInTheDocument();
     expect(within(summary()).queryByRole("status")).toBeNull();
   });
 
-  it("calls an exact match an even trade", async () => {
+  it("needs the customer's name to confirm", async () => {
     const user = userEvent.setup();
-    render(<TradeEvaluatorPage />);
-    await user.click(screen.getByRole("button", { name: "75%" }));
-    await user.type(price(1, "their"), "40");
-    await user.type(price(1, "your"), "30");
-    expect(result()).toHaveTextContent("Even trade");
+    renderPage();
+    await user.type(theirPrice(1), "10");
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+
+    expect(within(summary()).getByRole("alert")).toHaveTextContent("Enter their name to confirm the trade.");
+    expect(screen.getByText("Enter their name.")).toBeInTheDocument();
+    expect(nameField()).toHaveFocus();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trades.confirm).not.toHaveBeenCalled();
+
+    // Typing it clears both.
+    await user.type(nameField(), "Sam");
+    expect(within(summary()).queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Enter their name.")).toBeNull();
+  });
+
+  it("confirms the trade, then texts, emails or copies them the link", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(nameField(), "Sam Rivera");
+    await user.type(screen.getByLabelText("Phone"), "314-555-0100");
+    await buildTrade(user);
+    trades.confirm.mockResolvedValue(staffTrade());
+
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm the trade with Sam Rivera?" });
+    expect(dialog).toHaveTextContent("They pay you $2.00. This saves the trade, so you can text or email them the full breakdown.");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm trade" }));
+
+    // The shop's cards go up with the regular price the page showed: the server checks it again.
+    expect(trades.confirm).toHaveBeenCalledWith({
+      customer: { name: "Sam Rivera", phone: "314-555-0100", email: null },
+      creditPercent: 70,
+      theirs: [{ name: "Rhystic Study", quantity: 1, tcgLowCents: 4000 }],
+      yours: [
+        { inventoryItemId: SOL_ID, quantity: 1, priceCents: 1000 },
+        { inventoryItemId: SIGNET_ID, quantity: 2, priceCents: 1000 },
+      ],
+    });
+    const confirmed = await screen.findByRole("region", { name: "Trade #1001" });
+    expect(confirmed).toHaveTextContent("Confirmed for Sam Rivera");
+    expect(within(recentTrades()).getByText("#1001 Sam Rivera")).toBeInTheDocument();
+
+    // Nothing on the trade can change now.
+    expect(screen.queryByRole("button", { name: "Confirm trade" })).toBeNull();
+    expect(within(theirs()).queryByRole("textbox")).toBeNull();
+    expect(within(theirs()).getByText("Rhystic Study")).toBeInTheDocument();
+    expect(within(yours()).queryByLabelText("Find a card in your inventory")).toBeNull();
+    expect(nameField()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New trade" })).toBeInTheDocument();
+
+    // Text: the phone's messages open with the number and the link filled in.
+    const text = within(confirmed).getByRole("link", { name: "Text the link" });
+    const message = `Hi Sam, here's the full breakdown of your trade with Geega Games (#1001): ${LINK}`;
+    expect(text).toHaveAttribute("href", `sms:3145550100?&body=${encodeURIComponent(message)}`);
+    trades.texted.mockResolvedValue(staffTrade({ textedTo: "314-555-0100", textedAt: NOW }));
+    const stay = (e: Event) => e.preventDefault(); // jsdom can't open an sms: link
+    document.addEventListener("click", stay, true);
+    await user.click(text);
+    document.removeEventListener("click", stay, true);
+    expect(trades.texted).toHaveBeenCalledWith(TRADE_ID, "314-555-0100");
+    expect(await within(confirmed).findByText(/Texted to 314-555-0100/)).toBeInTheDocument();
+
+    // Email: once there's an address to send it to.
+    const email = within(confirmed).getByRole("button", { name: "Email the link" });
+    expect(email).toBeDisabled();
+    await user.type(screen.getByLabelText("Email"), "sam@example.com");
+    trades.email.mockResolvedValue(staffTrade({ customerEmail: "sam@example.com", emailedTo: "sam@example.com", emailedAt: NOW }));
+    await user.click(email);
+    expect(trades.email).toHaveBeenCalledWith(TRADE_ID, "sam@example.com");
+    expect(await screen.findByText("Emailed trade #1001 to sam@example.com.")).toBeInTheDocument();
+    expect(within(confirmed).getByText(/Emailed to sam@example.com/)).toBeInTheDocument();
+
+    await user.click(within(confirmed).getByRole("button", { name: "Copy link" }));
+    expect(await navigator.clipboard.readText()).toBe(LINK);
+    expect(within(confirmed).getByRole("link", { name: "Open" })).toHaveAttribute("href", LINK);
+  });
+
+  it("keeps a confirmed trade on the device, and starts a new one when asked", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "gg-trade-draft",
+      JSON.stringify({
+        creditPercent: "75",
+        customer: { name: "Sam Rivera", phone: "314-555-0100", email: "" },
+        theirs: [{ name: "Rhystic Study", quantity: "1", price: "40" }],
+        yours: [savedLine(signet, 3, 1000)],
+        confirmed: staffTrade(),
+      }),
+    );
+    renderPage();
+    expect(screen.getByRole("region", { name: "Trade #1001" })).toHaveTextContent("Send them the full breakdown");
+    // A confirmed trade isn't checked against inventory again: it's done.
+    expect(inventory.get).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "New trade" }));
+    expect(summary()).toBeInTheDocument();
+    expect(nameField()).toHaveValue("");
+    expect(theirPrice(1)).toHaveValue("");
+    expect(within(yours()).getByText("Search your inventory to add the cards they want.")).toBeInTheDocument();
+    // The percentage stays for the next trade.
+    expect(screen.getByRole("button", { name: "75%" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("won't confirm at a website price that has changed, and shows the new price", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(nameField(), "Sam Rivera");
+    await addFromInventory(user, "arcane", signet);
+    trades.confirm.mockRejectedValue(
+      new Error(
+        "The website price changed since you added this card: Arcane Signet (cmr NM) is now $12.00, not $10.00. Check the new total with them, then confirm again.",
+      ),
+    );
+    inventory.get.mockResolvedValue(item({ priceCents: 1200 }));
+
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm trade" }));
+
+    expect(await within(summary()).findByRole("alert")).toHaveTextContent("Arcane Signet (cmr NM) is now $12.00, not $10.00");
+    await waitFor(() => expect(total("Your cards at website price")).toHaveTextContent("$12.00"));
+    expect(screen.getByRole("button", { name: "Confirm trade" })).toBeInTheDocument();
+  });
+
+  it("checks the cards again when it opens a trade left from before", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      "gg-trade-draft",
+      JSON.stringify({
+        creditPercent: "70",
+        customer: { name: "Sam Rivera", phone: "", email: "" },
+        theirs: [{ name: "", quantity: "1", price: "40" }],
+        yours: [savedLine(signet, 2, 1000), savedLine(solRing, 1, 1000)],
+        confirmed: null,
+      }),
+    );
+    // Since then: the Signet went up to $11.00 with one left, and the Sol Ring sold.
+    inventory.get.mockImplementation(async (id: string) =>
+      id === SIGNET_ID ? item({ priceCents: 1100, quantity: 1 }) : { ...solRing, quantity: 0 },
+    );
+    renderPage();
+
+    const notice = await within(summary()).findByRole("alert");
+    expect(notice).toHaveTextContent(
+      "Updated from inventory: Arcane Signet is now $11.00, not $10.00; only 1 Arcane Signet is in stock; Sol Ring is sold out. Check the new total with them.",
+    );
+    const signetLine = within(yours()).getByText("Arcane Signet", { selector: ".gg-trade__your-name" }).closest("li")!;
+    expect(signetLine).toHaveTextContent("$11.00");
+    expect(within(signetLine).getByRole("button", { name: "One more Arcane Signet" })).toBeDisabled();
+    expect(within(yours()).getByText("Sol Ring is sold out: take it off the trade.")).toBeInTheDocument();
+    // The sold card stays listed until it's taken off, but isn't part of the trade.
+    expect(within(yours()).queryByRole("button", { name: "One more Sol Ring" })).toBeNull();
+    expect(within(yours()).getByText("1 card")).toBeInTheDocument();
+    expect(total("Your cards at website price")).toHaveTextContent("$11.00");
+
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+    expect(within(summary()).getByRole("alert")).toHaveTextContent("Take Sol Ring off the trade: it isn't for sale any more.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Remove Sol Ring" }));
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+    expect(await screen.findByRole("dialog", { name: "Confirm the trade with Sam Rivera?" })).toBeInTheDocument();
+  });
+
+  it("won't add more of a card than are in stock", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await addFromInventory(user, "sol", solRing, 2);
+    expect(await screen.findByText("Only 1 in stock.")).toBeInTheDocument();
+    expect(within(yours()).getByRole("button", { name: "One more Sol Ring" })).toBeDisabled();
+    expect(within(yours()).getByText("1 card")).toBeInTheDocument();
+    expect(within(yours()).getByText("1 on the trade")).toBeInTheDocument();
+  });
+
+  it("asks for the TCG low of a card typed without one", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(nameField(), "Sam");
+    await user.type(screen.getByLabelText("Card, line 1 of their cards"), "Sol Ring");
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+    expect(within(summary()).getByRole("alert")).toHaveTextContent("Add the TCG low on line 1 of their cards, or remove it.");
+    expect(trades.confirm).not.toHaveBeenCalled();
   });
 
   it("leaves out a price that isn't a number, and says so", async () => {
     const user = userEvent.setup();
-    render(<TradeEvaluatorPage />);
-    await user.type(price(1, "your"), "12.345");
-    expect(price(1, "your")).toHaveAttribute("aria-invalid", "true");
+    renderPage();
+    await user.type(theirPrice(1), "12.345");
+    expect(theirPrice(1)).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByText(/1 line isn't counted: fix the\s+price or quantity outlined in red\./)).toBeInTheDocument();
-    expect(within(summary()).getByText("Your cards at TCG low").nextElementSibling).toHaveTextContent("$0.00");
+    expect(total("Their cards at TCG low")).toHaveTextContent("$0.00");
   });
 
-  it("adds and removes cards", async () => {
+  it("adds and removes their cards, Enter moving down a column", async () => {
     const user = userEvent.setup();
-    render(<TradeEvaluatorPage />);
-    await user.type(price(1, "your"), "5");
-    await user.click(within(screen.getByRole("region", { name: "They want from you" })).getByRole("button", { name: "Add card" }));
-    expect(screen.getByLabelText("Card, line 2 of your cards")).toHaveFocus();
-    await user.type(price(2, "your"), "7");
-    expect(within(summary()).getByText("Your cards at TCG low").nextElementSibling).toHaveTextContent("$12.00");
+    renderPage();
+    await user.type(theirPrice(1), "5{Enter}");
+    expect(theirPrice(2)).toHaveFocus();
+    await user.type(theirPrice(2), "7");
+    expect(total("Their cards at TCG low")).toHaveTextContent("$12.00");
 
-    await user.click(screen.getByRole("button", { name: "Remove line 1 of your cards" }));
-    expect(price(1, "your")).toHaveValue("7");
-    expect(screen.queryByLabelText("TCG low price, line 2 of your cards")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Remove line 1 of their cards" }));
+    expect(theirPrice(1)).toHaveValue("7");
+    expect(screen.queryByLabelText("TCG low price, line 2 of their cards")).toBeNull();
     // The last line empties rather than going away.
-    await user.click(screen.getByRole("button", { name: "Remove line 1 of your cards" }));
-    expect(price(1, "your")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Remove line 1 of their cards" }));
+    expect(theirPrice(1)).toHaveValue("");
   });
 
   it("keeps the trade on this device until it's cleared, and the percentage after that", async () => {
     const user = userEvent.setup();
-    const first = render(<TradeEvaluatorPage />);
+    const first = renderPage();
     expect(screen.getByRole("button", { name: "Clear trade" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "60%" }));
+    await user.type(nameField(), "Sam");
     await user.type(screen.getByLabelText("Card, line 1 of their cards"), "Sol Ring");
-    await user.type(price(1, "their"), "3.50");
+    await user.type(theirPrice(1), "3.50");
     first.unmount();
 
     // Back from another page (or the app reloading).
-    render(<TradeEvaluatorPage />);
+    renderPage();
+    expect(nameField()).toHaveValue("Sam");
     expect(screen.getByLabelText("Card, line 1 of their cards")).toHaveValue("Sol Ring");
-    expect(price(1, "their")).toHaveValue("3.50");
+    expect(theirPrice(1)).toHaveValue("3.50");
     expect(screen.getByRole("button", { name: "60%" })).toHaveAttribute("aria-pressed", "true");
 
     await user.click(screen.getByRole("button", { name: "Clear trade" }));
     const dialog = await screen.findByRole("dialog", { name: "Clear this trade?" });
-    expect(dialog).toHaveTextContent("Both lists are emptied. The trade credit stays at 60%.");
+    expect(dialog).toHaveTextContent("The customer and both lists are emptied. The trade credit stays at 60%.");
     await user.click(within(dialog).getByRole("button", { name: "Clear trade" }));
-    expect(screen.getByLabelText("Card, line 1 of their cards")).toHaveValue("");
-    expect(price(1, "their")).toHaveValue("");
+    expect(nameField()).toHaveValue("");
+    expect(theirPrice(1)).toHaveValue("");
     expect(screen.getByRole("button", { name: "60%" })).toHaveAttribute("aria-pressed", "true");
-    expect(JSON.parse(window.localStorage.getItem("gg-trade-evaluator") ?? "{}")).toMatchObject({
+    expect(JSON.parse(window.localStorage.getItem("gg-trade-draft") ?? "{}")).toMatchObject({
       creditPercent: "60",
+      customer: { name: "", phone: "", email: "" },
       theirs: [{ name: "", quantity: "1", price: "" }],
+      yours: [],
+      confirmed: null,
     });
   });
 
+  it("picks up a trade left in the first version, without its typed cards of yours", () => {
+    window.localStorage.setItem(
+      "gg-trade-evaluator",
+      JSON.stringify({
+        creditPercent: "60",
+        theirs: [{ name: "Sol Ring", quantity: "2", price: "3.50" }],
+        yours: [{ name: "Arcane Signet", quantity: "1", price: "1.00" }],
+      }),
+    );
+    renderPage();
+    expect(screen.getByLabelText("Card, line 1 of their cards")).toHaveValue("Sol Ring");
+    expect(theirPrice(1)).toHaveValue("3.50");
+    expect(screen.getByRole("button", { name: "60%" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(yours()).getByText("Search your inventory to add the cards they want.")).toBeInTheDocument();
+    expect(window.localStorage.getItem("gg-trade-evaluator")).toBeNull();
+    expect(window.localStorage.getItem("gg-trade-draft")).not.toBeNull();
+  });
+
   it("starts afresh when what's stored can't be read", () => {
-    window.localStorage.setItem("gg-trade-evaluator", "{not json");
-    render(<TradeEvaluatorPage />);
+    window.localStorage.setItem("gg-trade-draft", "{not json");
+    renderPage();
     expect(screen.getByLabelText("Trade credit")).toHaveValue("70");
-    expect(price(1, "their")).toHaveValue("");
+    expect(theirPrice(1)).toHaveValue("");
+  });
+
+  it("lists recent trades to send again, and copes when they don't load", async () => {
+    const user = userEvent.setup();
+    trades.recent.mockRejectedValueOnce(new Error("offline"));
+    renderPage();
+    expect(await within(recentTrades()).findByText(/Couldn't load recent trades\./)).toBeInTheDocument();
+
+    trades.recent.mockResolvedValue([staffTrade({ customerEmail: "sam@example.com" })]);
+    await user.click(within(recentTrades()).getByRole("button", { name: "Try again" }));
+    const row = (await within(recentTrades()).findByText("#1001 Sam Rivera")).closest("li")!;
+    expect(row).toHaveTextContent("Not sent yet");
+    expect(row).toHaveTextContent("They pay $2.00");
+    expect(within(row).getByRole("link", { name: "Text trade #1001 to Sam Rivera" })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/^sms:3145550100\?&body=/),
+    );
+
+    trades.email.mockResolvedValue(staffTrade({ customerEmail: "sam@example.com", emailedTo: "sam@example.com", emailedAt: NOW }));
+    await user.click(within(row).getByRole("button", { name: "Email trade #1001 to Sam Rivera" }));
+    expect(trades.email).toHaveBeenCalledWith(TRADE_ID, "sam@example.com");
+    expect(await within(recentTrades()).findByText(/Emailed$/)).toBeInTheDocument();
   });
 
   it("is in the admin menu, next to the register", () => {

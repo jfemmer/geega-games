@@ -1722,6 +1722,110 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-trade__row { grid-template-columns: minmax(0, 1fr) 48px 92px 30px; gap: 6px; }
 }
 
+/* Who the trade is with: a name to confirm it, a phone or email to send it. */
+.gg-trade__customer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px 16px;
+  padding: 16px 18px;
+}
+.gg-trade__customer .gg-field__hint,
+.gg-trade__customer .gg-field__error { margin: 0; }
+/* ".gg-page" to beat the storefront's input colors (brand-refresh.css), as above. */
+.gg-page .gg-trade__customer .gg-field--error .gg-input { border-color: var(--gg-danger); }
+.gg-page .gg-trade__customer .gg-input:disabled { color: var(--gg-ink); background: var(--gg-surface-2); }
+
+/* A confirmed trade's cards: read-only, in the same columns. */
+.gg-trade__row--locked { min-height: 30px; font-size: 0.9rem; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
+.gg-trade__row--locked span:first-child { overflow-wrap: anywhere; }
+.gg-trade__row--locked span:nth-child(2) { text-align: center; }
+.gg-trade__row--locked span:nth-child(3) { text-align: right; padding-right: 12px; }
+.gg-trade__empty { margin: 0; }
+
+/* Finding the cards they want in inventory (the results look like the register's). */
+.gg-trade__search { display: flex; flex-direction: column; gap: 8px; }
+.gg-trade__hits .gg-pos__results { max-height: 340px; overflow-y: auto; }
+.gg-trade__hits--stale { opacity: 0.6; }
+.gg-trade__hit-added { font-size: 0.78rem; font-weight: 600; color: var(--gg-success); }
+
+/* The cards they want: picture, card, how many, price, remove. */
+.gg-trade__yours { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.gg-trade__your {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto minmax(64px, auto) 38px;
+  grid-template-areas: "img body qty price remove";
+  gap: 4px 10px;
+  align-items: center;
+}
+.gg-trade__your-img { grid-area: img; align-self: start; }
+.gg-trade__your-body { grid-area: body; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gg-trade__your-name { font-weight: 600; font-size: 0.92rem; color: var(--gg-ink); overflow-wrap: anywhere; }
+.gg-trade__your-meta { font-size: 0.8rem; color: var(--gg-text-soft); }
+.gg-trade__your-note { font-size: 0.78rem; line-height: 1.35; color: var(--gg-text-soft); }
+.gg-trade__your-note--problem { font-weight: 600; color: var(--gg-danger); }
+.gg-trade__your--gone .gg-trade__your-img,
+.gg-trade__your--gone .gg-trade__your-price { opacity: 0.55; }
+.gg-trade__your-qty { grid-area: qty; display: flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.gg-trade__your-qty span { min-width: 1.6em; text-align: center; font-weight: 600; color: var(--gg-ink); }
+.gg-trade__your-qty .gg-icon-btn { font-size: 1.1rem; }
+.gg-trade__your-qty .gg-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.gg-trade__your-price {
+  grid-area: price; display: flex; flex-direction: column; align-items: flex-end;
+  font-weight: 600; color: var(--gg-ink); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.gg-trade__your-price small { font-size: 0.74rem; font-weight: 400; color: var(--gg-text-soft); }
+.gg-trade__your--gone .gg-trade__your-price { text-decoration: line-through; }
+.gg-trade__your > .gg-trade__remove,
+.gg-trade__your > span:last-child { grid-area: remove; }
+@container (max-width: 460px) {
+  .gg-trade__your {
+    grid-template-columns: 30px auto minmax(0, 1fr) 38px;
+    grid-template-areas:
+      "img body body remove"
+      "img qty price price";
+  }
+  .gg-trade__your-price { justify-self: end; }
+}
+.gg-trade__note { margin: 4px 0 0; font-size: 0.78rem; line-height: 1.4; color: var(--gg-text-soft); }
+
+/* Confirming, and sending the customer their link. */
+.gg-trade__confirmed { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 0.86rem; font-weight: 600; line-height: 1.4; color: var(--gg-success); }
+.gg-trade__confirmed svg { flex: none; margin-top: 1px; }
+.gg-trade__problem { margin: 0; font-size: 0.84rem; font-weight: 500; line-height: 1.45; color: var(--gg-danger); }
+.gg-trade__confirm { width: 100%; justify-content: center; }
+.gg-trade__share { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--gg-line); }
+.gg-trade__share-title { margin: 0; font-size: 0.92rem; font-weight: 600; color: var(--gg-ink); }
+/* Text and email, a row each; copying and opening the link side by side under them. */
+.gg-trade__share-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.gg-trade__share-actions .gg-btn { width: 100%; justify-content: center; text-decoration: none; }
+.gg-trade__share-actions .gg-btn svg { flex: none; }
+.gg-trade__share-send { grid-column: 1 / -1; }
+.gg-trade__share .gg-field__hint { margin: 0; }
+.gg-trade__sent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; color: var(--gg-text-soft); }
+
+/* Trades confirmed lately, to send a link again. */
+.gg-trade__recent { container-type: inline-size; display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }
+.gg-trade__recent-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.gg-trade__recent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px 16px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--gg-line);
+}
+.gg-trade__recent-row:first-child { border-top: 0; padding-top: 2px; }
+.gg-trade__recent-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gg-trade__recent-name { font-weight: 600; color: var(--gg-ink); overflow-wrap: anywhere; }
+.gg-trade__recent-when { font-size: 0.8rem; color: var(--gg-text-soft); }
+.gg-trade__recent-balance { font-weight: 600; font-size: 0.9rem; color: var(--gg-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gg-trade__recent-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.gg-trade__recent-actions .gg-btn { text-decoration: none; }
+@container (max-width: 600px) {
+  .gg-trade__recent-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .gg-trade__recent-actions { grid-column: 1 / -1; justify-content: flex-start; margin-left: -8px; }
+}
+
 /* ------------------------------------------------------------------ *
  * Shipping — buy/print a label (Orders → Ship)
  * ------------------------------------------------------------------ */
