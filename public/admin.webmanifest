@@ -17,6 +17,7 @@
   "shortcuts": [
     { "name": "Orders", "url": "/admin_dashboard/orders", "icons": [{ "src": "/admin-icon-192.png", "sizes": "192x192" }] },
     { "name": "Buying Leads", "url": "/admin_dashboard/buying-leads", "icons": [{ "src": "/admin-icon-192.png", "sizes": "192x192" }] },
-    { "name": "Register", "url": "/admin_dashboard/pos", "icons": [{ "src": "/admin-icon-192.png", "sizes": "192x192" }] }
+    { "name": "Register", "url": "/admin_dashboard/pos", "icons": [{ "src": "/admin-icon-192.png", "sizes": "192x192" }] },
+    { "name": "Trade Evaluator", "url": "/admin_dashboard/trade-evaluator", "icons": [{ "src": "/admin-icon-192.png", "sizes": "192x192" }] }
   ]
 }

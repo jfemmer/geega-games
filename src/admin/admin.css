@@ -946,6 +946,13 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-filters__selects { width: 100%; }
   .gg-filters__selects .gg-field { flex: 1; min-width: 130px; }
   .gg-barchart__row { grid-template-columns: 96px 1fr auto; }
+  /* The top bar shows just the page's name, on one line: a two-word name
+   * ("Trade Evaluator", "Pickup Requests") wrapped and ran under the search
+   * button. */
+  .gg-breadcrumb__item:not(:last-child),
+  .gg-breadcrumb__sep { display: none; }
+  .gg-breadcrumb__item:last-child { min-width: 0; }
+  .gg-breadcrumb__current { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* ------------------------------- Reduced motion ------------------------------- */
@@ -1595,6 +1602,124 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 @media (max-width: 900px) {
   .gg-pos { grid-template-columns: 1fr; }
   .gg-pos__ticket { position: static; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Trade evaluator — a customer's trade, at TCG low
+ * ------------------------------------------------------------------ */
+
+/* Laid out by the room the page has (the sidebar may be open or collapsed):
+ * one column on a phone, in the order a trade is worked out; then both
+ * lists beside the trade, which stays in view while the lists grow; and on
+ * a wide screen the two lists side by side. */
+.gg-trade-wrap { container-type: inline-size; }
+.gg-trade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.gg-trade__list,
+.gg-trade__summary { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; min-width: 0; }
+@container (min-width: 700px) {
+  .gg-trade {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-areas: "theirs summary" "yours summary";
+  }
+  .gg-trade__list--theirs { grid-area: theirs; }
+  .gg-trade__list--yours { grid-area: yours; }
+  .gg-trade__summary { grid-area: summary; position: sticky; top: 16px; }
+}
+@container (min-width: 1180px) {
+  .gg-trade {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
+    grid-template-areas: "theirs yours summary";
+  }
+}
+.gg-trade__list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.gg-trade__heading { margin: 0; font-size: 1rem; font-weight: 600; color: var(--gg-ink); }
+.gg-trade__count { font-size: 0.82rem; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
+
+/* Card, quantity, TCG low, remove: one grid for the column names and the rows. */
+.gg-trade__cols,
+.gg-trade__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 104px 32px;
+  gap: 8px;
+  align-items: center;
+}
+.gg-trade__cols { margin-bottom: -6px; font-size: 0.78rem; font-weight: 600; color: var(--gg-text-soft); }
+.gg-trade__cols span:nth-child(2) { text-align: center; }
+.gg-trade__cols span:nth-child(3) { text-align: right; padding-right: 12px; }
+.gg-trade__rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gg-trade__row .gg-input { width: 100%; min-width: 0; }
+.gg-trade__qty { text-align: center; font-variant-numeric: tabular-nums; }
+.gg-trade__money { position: relative; }
+.gg-trade__money span {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--gg-text-faint); font-size: 0.9rem; pointer-events: none;
+}
+.gg-trade__money .gg-input { padding-left: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+/* Specific enough to beat the storefront's input colors (brand-refresh.css,
+ * ".gg-page input:not(…):not(…)"), which reach admin pages too. */
+.gg-trade .gg-trade__row .gg-input[aria-invalid="true"],
+.gg-trade .gg-trade__percent .gg-input[aria-invalid="true"] { border-color: var(--gg-danger); }
+.gg-trade .gg-trade__row .gg-input[aria-invalid="true"]:focus,
+.gg-trade .gg-trade__percent .gg-input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.14); }
+.gg-trade__remove { justify-self: center; color: var(--gg-text-faint); }
+.gg-trade__remove:hover { color: var(--gg-danger); }
+.gg-trade__add { align-self: flex-start; }
+
+.gg-trade__foot { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--gg-line); }
+.gg-trade__sum { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
+.gg-trade__sum span:last-child { font-weight: 600; color: var(--gg-ink); }
+.gg-trade__sum--credit span:last-child { color: var(--gg-brand); }
+.gg-trade__invalid { margin: 0 0 4px; font-size: 0.8rem; font-weight: 500; color: var(--gg-danger); }
+
+/* The trade: the credit percentage, the totals, and what's owed. */
+.gg-trade__credit { display: flex; flex-direction: column; gap: 8px; }
+.gg-trade__credit .gg-field__hint,
+.gg-trade__credit .gg-field__error { margin: 0; }
+.gg-trade__credit-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gg-trade__presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.gg-trade__preset {
+  min-height: 36px; padding: 0 4px; border-radius: 999px;
+  border: 1px solid var(--gg-line-strong); background: var(--gg-surface); color: var(--gg-text);
+  font: inherit; font-size: 0.86rem; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.gg-trade__preset:hover { background: var(--gg-brand-tint); }
+.gg-trade__preset[aria-pressed="true"] { background: var(--gg-brand); border-color: var(--gg-brand); color: #fff; }
+.gg-trade__preset:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-trade__percent { position: relative; width: 84px; }
+.gg-trade__percent .gg-input { width: 100%; padding-right: 26px; text-align: right; font-variant-numeric: tabular-nums; }
+.gg-trade__percent span {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--gg-text-faint); pointer-events: none;
+}
+
+.gg-trade__totals {
+  display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 12px 0;
+  border-top: 1px solid var(--gg-line); border-bottom: 1px solid var(--gg-line);
+}
+.gg-trade__totals div { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.gg-trade__totals dt { color: var(--gg-text-soft); }
+.gg-trade__totals dd { margin: 0; font-weight: 600; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
+
+.gg-trade__result { display: flex; flex-direction: column; gap: 2px; }
+.gg-trade__result p { margin: 0; }
+.gg-trade__result-label { font-size: 0.86rem; font-weight: 600; color: var(--gg-text-soft); }
+.gg-trade__result-amount {
+  font-size: 2rem; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em;
+  color: var(--gg-ink); font-variant-numeric: tabular-nums;
+}
+.gg-trade__result--credit_left .gg-trade__result-amount { color: var(--gg-success); }
+.gg-trade__result-note { margin-top: 4px; font-size: 0.84rem; line-height: 1.45; color: var(--gg-text-soft); }
+
+/* Each list sizes its own rows, tighter when the list is narrow. */
+.gg-trade__list { container-type: inline-size; }
+@container (max-width: 360px) {
+  .gg-trade__cols,
+  .gg-trade__row { grid-template-columns: minmax(0, 1fr) 48px 92px 30px; gap: 6px; }
 }
 
 /* ------------------------------------------------------------------ *
