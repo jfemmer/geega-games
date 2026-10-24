@@ -9,8 +9,8 @@ import {
   TRADE_PRICING_NOTE,
   theirCardLabel,
   tradeBalanceLabel,
+  type TradeCardPrinting,
   type TradeView,
-  type TradeYourCard,
 } from "../lib/trades";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
@@ -36,7 +36,8 @@ function finishLabel(finish: string): string | null {
   return finish && finish !== "nonfoil" ? finish.charAt(0).toUpperCase() + finish.slice(1) : null;
 }
 
-function cardDetail(card: TradeYourCard): string {
+/** Set, number, condition, finish and any special variant: "Commander Legends · #263 · Near Mint · Foil". */
+function cardDetail(card: Omit<TradeCardPrinting, "scryfallId"> & { variantType?: string | null }): string {
   return [
     card.setName ?? card.setCode.toUpperCase(),
     card.collectorNumber ? `#${card.collectorNumber}` : null,
@@ -133,7 +134,9 @@ function TradeBreakdown({ trade }: { trade: TradeView }) {
               <li key={i} className="gg-tradepage__line">
                 <span className="gg-tradepage__line-name">{theirCardLabel(card, i)}</span>
                 <span className="gg-tradepage__line-total">{formatCents(card.tcgLowCents * card.quantity)}</span>
-                <span className="gg-tradepage__line-detail">TCG low</span>
+                <span className="gg-tradepage__line-detail">
+                  {card.printing ? `${cardDetail(card.printing)} · TCG low` : "TCG low"}
+                </span>
                 <span className="gg-tradepage__line-each">
                   {card.quantity} × {formatCents(card.tcgLowCents)}
                 </span>

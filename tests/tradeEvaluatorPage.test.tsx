@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
 import { NAV_ITEMS, SECTION_TITLES } from "../src/admin/components/layout/nav";
 import { adminSection } from "../src/admin/hooks/useRouter";
-import type { InventoryItem } from "../src/admin/types";
+import type { CardPrinting, InventoryItem } from "../src/admin/types";
 import type { StaffTradeView } from "../src/store/lib/trades";
 
 // Admin → Trade Evaluator: the customer's cards typed at TCG low, the cards
@@ -15,10 +15,8 @@ import type { StaffTradeView } from "../src/store/lib/trades";
 // to text or email them. Kept on the device until it's cleared.
 
 const inventory = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn() }));
-vi.mock("../src/admin/repositories", () => ({
-  inventoryRepository: inventory,
-  scryfallRepository: { resolveExact: vi.fn().mockResolvedValue(null) },
-}));
+const scryfall = vi.hoisted(() => ({ searchPrintingsPage: vi.fn(), resolveExact: vi.fn() }));
+vi.mock("../src/admin/repositories", () => ({ inventoryRepository: inventory, scryfallRepository: scryfall }));
 const trades = vi.hoisted(() => ({ recent: vi.fn(), confirm: vi.fn(), email: vi.fn(), texted: vi.fn() }));
 vi.mock("../src/admin/repositories/trades.supabase", () => ({ tradeRepository: trades }));
 
@@ -73,6 +71,44 @@ const solRing = item({
   dealSource: "aged_inventory",
   originalPriceCents: 1000,
 });
+
+// One of the customer's cards, as the card search (the one Add Inventory uses) finds it.
+const SOL_PRINTING_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const solRingPrinting = {
+  id: SOL_PRINTING_ID,
+  cardName: "Sol Ring",
+  setName: "Commander Legends",
+  setCode: "cmr",
+  collectorNumber: "263",
+  rarity: "uncommon",
+  cardType: "Artifact",
+  imageUrl: "https://cards.scryfall.io/normal/front/s/o/sol.jpg",
+  availableFinishes: ["nonfoil", "foil"],
+  scryfallPriceCents: 150,
+  scryfallId: SOL_PRINTING_ID,
+  oracleId: "o",
+  images: {
+    small: "https://cards.scryfall.io/small/front/s/o/sol.jpg",
+    normal: "https://cards.scryfall.io/normal/front/s/o/sol.jpg",
+    large: null,
+    png: null,
+    artCrop: null,
+  },
+  faces: [],
+  layout: "normal",
+  artist: null,
+  releasedAt: null,
+  language: "en",
+  frame: null,
+  frameEffects: [],
+  borderColor: null,
+  fullArt: false,
+  textless: false,
+  promo: false,
+  promoTypes: [],
+  treatments: [],
+  prices: { usd: 150, usdFoil: 400, usdEtched: null },
+} as CardPrinting;
 
 function staffTrade(overrides: Partial<StaffTradeView> = {}): StaffTradeView {
   return {
@@ -150,7 +186,9 @@ async function buildTrade(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  for (const fn of [...Object.values(inventory), ...Object.values(trades)]) fn.mockReset();
+  for (const fn of [...Object.values(inventory), ...Object.values(trades), ...Object.values(scryfall)]) fn.mockReset();
+  scryfall.resolveExact.mockResolvedValue(null);
+  scryfall.searchPrintingsPage.mockResolvedValue({ printings: [solRingPrinting], hasMore: false, totalCards: 1 });
   inventory.list.mockResolvedValue({ rows: [], total: 0 });
   inventory.get.mockImplementation(async (id: string) => [signet, solRing].find((i) => i.id === id) ?? null);
   trades.recent.mockResolvedValue([]);
@@ -191,6 +229,84 @@ describe("Trade Evaluator", () => {
     expect(within(summary()).queryByRole("status")).toBeNull();
   });
 
+  it("finds their cards with the same search as Add Inventory", async () => {
+    const user = userEvent.setup();
+    const first = renderPage();
+    await user.type(nameField(), "Sam Rivera");
+
+    // Search, pick the printing, then the condition, finish, how many and the TCG low.
+    await user.click(within(theirs()).getByRole("button", { name: "Add card" }));
+    let drawer = await screen.findByRole("dialog", { name: "Add a card they're trading in" });
+    await user.type(within(drawer).getByLabelText("Search every Magic printing"), "sol ring");
+    await user.click(await within(drawer).findByRole("button", { name: /Commander Legends \(cmr\) · #263/ }));
+    expect(scryfall.searchPrintingsPage).toHaveBeenLastCalledWith("sol ring", 1);
+    await user.selectOptions(within(drawer).getByLabelText("Condition"), "LP");
+    await user.selectOptions(within(drawer).getByLabelText("Finish"), "foil");
+    // Scryfall's price is a guide, not the TCG low.
+    expect(within(drawer).getByText("Scryfall Foil: $4.00, for reference. You can also add it on the trade.")).toBeInTheDocument();
+    expect(within(drawer).getByLabelText("TCG low (each)")).toHaveValue("");
+    await user.clear(within(drawer).getByLabelText("Quantity"));
+    await user.type(within(drawer).getByLabelText("Quantity"), "2");
+    await user.type(within(drawer).getByLabelText("TCG low (each)"), "3.25{Enter}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // It takes the place of the empty line the trade started with.
+    const line = within(theirs()).getByText("Sol Ring").closest("li")!;
+    expect(line).toHaveTextContent("CMR #263 · Lightly Played · Foil · Scryfall $4.00");
+    expect(within(theirs()).queryByLabelText("Card, line 1 of their cards")).toBeNull();
+    expect(screen.getByLabelText("Quantity, line 1 of their cards")).toHaveValue("2");
+    expect(theirPrice(1)).toHaveValue("3.25");
+    expect(within(theirs()).getByText("TCG low total").nextElementSibling).toHaveTextContent("$6.50");
+
+    // The same printing, condition and finish again adds to that line.
+    await user.click(within(theirs()).getByRole("button", { name: "Add card" }));
+    drawer = await screen.findByRole("dialog", { name: "Add a card they're trading in" });
+    await user.type(within(drawer).getByLabelText("Search every Magic printing"), "sol ring");
+    await user.click(await within(drawer).findByRole("button", { name: /Commander Legends \(cmr\) · #263/ }));
+    await user.selectOptions(within(drawer).getByLabelText("Condition"), "LP");
+    await user.selectOptions(within(drawer).getByLabelText("Finish"), "foil");
+    await user.click(within(drawer).getByRole("button", { name: "Add to trade" }));
+    expect(await screen.findByText("Added 1 more Sol Ring (3 on the trade).")).toBeInTheDocument();
+    expect(screen.getByLabelText("Quantity, line 1 of their cards")).toHaveValue("3");
+    expect(theirPrice(1)).toHaveValue("3.25");
+
+    // A line can still be typed by hand.
+    await user.click(within(theirs()).getByRole("button", { name: "Enter by hand" }));
+    expect(screen.getByLabelText("Card, line 2 of their cards")).toHaveFocus();
+
+    // Kept on the device with the rest of the trade.
+    first.unmount();
+    renderPage();
+    expect(within(theirs()).getByText("Sol Ring").closest("li")).toHaveTextContent("CMR #263 · Lightly Played · Foil");
+
+    trades.confirm.mockResolvedValue(staffTrade());
+    await user.click(screen.getByRole("button", { name: "Confirm trade" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm trade" }));
+    expect(trades.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theirs: [
+          {
+            name: "Sol Ring",
+            quantity: 3,
+            tcgLowCents: 325,
+            printing: {
+              scryfallId: SOL_PRINTING_ID,
+              setName: "Commander Legends",
+              setCode: "cmr",
+              collectorNumber: "263",
+              condition: "LP",
+              finish: "foil",
+            },
+          },
+        ],
+        yours: [],
+      }),
+    );
+    // Confirmed, the card still shows its printing.
+    expect(await within(theirs()).findByText("Sol Ring")).toBeInTheDocument();
+    expect(within(theirs()).getByText("Sol Ring").closest("li")).toHaveTextContent("CMR #263 · Lightly Played · Foil");
+  });
+
   it("needs the customer's name to confirm", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -226,7 +342,7 @@ describe("Trade Evaluator", () => {
     expect(trades.confirm).toHaveBeenCalledWith({
       customer: { name: "Sam Rivera", phone: "314-555-0100", email: null },
       creditPercent: 70,
-      theirs: [{ name: "Rhystic Study", quantity: 1, tcgLowCents: 4000 }],
+      theirs: [{ name: "Rhystic Study", quantity: 1, tcgLowCents: 4000, printing: null }],
       yours: [
         { inventoryItemId: SOL_ID, quantity: 1, priceCents: 1000 },
         { inventoryItemId: SIGNET_ID, quantity: 2, priceCents: 1000 },

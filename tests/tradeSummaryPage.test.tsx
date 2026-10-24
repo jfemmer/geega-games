@@ -26,8 +26,20 @@ function trade(overrides: Partial<TradeView> = {}): TradeView {
     customerName: "Sam Rivera",
     creditPercent: 70,
     theirCards: [
-      { name: "Rhystic Study", quantity: 1, tcgLowCents: 3000 },
-      { name: null, quantity: 2, tcgLowCents: 500 },
+      {
+        name: "Rhystic Study",
+        quantity: 1,
+        tcgLowCents: 3000,
+        printing: {
+          scryfallId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          setName: "Prophecy",
+          setCode: "pcy",
+          collectorNumber: "45",
+          condition: "MP",
+          finish: "nonfoil",
+        },
+      },
+      { name: null, quantity: 2, tcgLowCents: 500, printing: null },
     ],
     yourCards: [
       {
@@ -93,7 +105,7 @@ describe("the customer's trade page", () => {
     const traded = screen.getByRole("region", { name: /You traded in/ });
     expect(within(traded).getByText("3 cards")).toBeInTheDocument();
     const [study, unnamed] = within(traded).getAllByRole("listitem");
-    expect(study).toHaveTextContent("Rhystic Study$30.00TCG low1 × $30.00");
+    expect(study).toHaveTextContent("Rhystic Study$30.00Prophecy · #45 · Moderately Played · TCG low1 × $30.00");
     expect(unnamed).toHaveTextContent("Card 2$10.00TCG low2 × $5.00");
     expect(within(traded).getByText("TCG low total").nextElementSibling).toHaveTextContent("$40.00");
     expect(within(traded).getByText("Trade credit at 70%").nextElementSibling).toHaveTextContent("$28.00");

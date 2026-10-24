@@ -17,7 +17,7 @@ import {
   regularPriceCents,
   tradeTotals,
 } from "../../src/admin/utils/tradeEvaluator.js";
-import type { TradeTheirCard } from "../../src/store/lib/trades.js";
+import type { TradeCardPrinting, TradeTheirCard } from "../../src/store/lib/trades.js";
 
 // Trades from Admin → Trade Evaluator (public.trades).
 //
@@ -27,8 +27,9 @@ import type { TradeTheirCard } from "../../src/store/lib/trades.js";
 //   POST { action: "texted", tradeId, phone } → { trade }         notes a text went out
 //
 // Confirming works the numbers out here, not in the browser. The customer's
-// cards come as typed (TCG low, quantity, an optional name) and count at the
-// trade credit percentage. The shop's cards come as inventory ids and
+// cards come as typed (TCG low, quantity, an optional name, and the exact
+// printing and condition when staff found the card with the card search) and
+// count at the trade credit percentage. The shop's cards come as inventory ids and
 // quantities: each is read fresh from inventory, must be listed (active,
 // with a price) and in stock, and is priced at its regular website price —
 // never a deal, storewide-sale or member price (regularPriceCents). Each also
@@ -85,6 +86,23 @@ function readCustomer(raw: unknown): { name: string; phone: string | null; email
   return { name, phone, email };
 }
 
+const CONDITIONS = new Set(["NM", "LP", "MP", "HP", "DMG"]);
+
+/** The printing of a card found with the card search; null for a line typed by hand. */
+function readPrinting(raw: unknown): TradeCardPrinting | null {
+  if (raw === undefined || raw === null) return null;
+  const o = (typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const scryfallId = typeof o.scryfallId === "string" && UUID.test(o.scryfallId) ? o.scryfallId.toLowerCase() : null;
+  const setCode = cleanText(o.setCode, 12);
+  const collectorNumber = cleanText(o.collectorNumber, 16);
+  const condition = typeof o.condition === "string" && CONDITIONS.has(o.condition) ? o.condition : null;
+  const finish = typeof o.finish === "string" && /^[a-z]{2,20}$/.test(o.finish) ? o.finish : null;
+  if (!scryfallId || !setCode || !collectorNumber || !condition || !finish) {
+    throw new HttpError(400, "One of their cards didn't come through. Try again.");
+  }
+  return { scryfallId, setName: cleanText(o.setName, 120), setCode, collectorNumber, condition, finish };
+}
+
 function readTheirCards(raw: unknown): TradeTheirCard[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw) || raw.length > MAX_TRADE_LINES) throw new HttpError(400, "Their cards didn't come through. Try again.");
@@ -95,7 +113,7 @@ function readTheirCards(raw: unknown): TradeTheirCard[] {
     if (quantity === null || tcgLowCents === null) {
       throw new HttpError(400, "One of their cards has a price or quantity that isn't a number.");
     }
-    return { name: cleanText(o.name, MAX_CARD_NAME), quantity, tcgLowCents };
+    return { name: cleanText(o.name, MAX_CARD_NAME), quantity, tcgLowCents, printing: readPrinting(o.printing) };
   });
 }
 
@@ -211,7 +229,12 @@ async function confirm(staff: StaffContext, body: Record<string, unknown>) {
       customer_phone: customer.phone,
       customer_email: customer.email,
       credit_percent: creditPercent,
-      their_cards: theirCards.map(({ name, quantity, tcgLowCents }) => ({ name, quantity, tcgLowCents })),
+      their_cards: theirCards.map(({ name, quantity, tcgLowCents, printing }) => ({
+        name,
+        quantity,
+        tcgLowCents,
+        printing: printing && { ...printing },
+      })),
       your_cards: yourCards,
       their_tcg_low_cents: totals.theirTcgLowCents,
       credit_cents: totals.creditCents,

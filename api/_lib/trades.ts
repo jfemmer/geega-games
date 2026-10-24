@@ -2,6 +2,7 @@ import { siteUrl } from "./assets.js";
 import {
   TRADE_PATH,
   type StaffTradeView,
+  type TradeCardPrinting,
   type TradeTheirCard,
   type TradeView,
   type TradeYourCard,
@@ -42,6 +43,19 @@ export function tradeLink(shareToken: string): string {
 const int = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) ? value : null);
 const str = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value : null);
 
+/** A stored printing, or null for a line typed by hand (and for anything unreadable). */
+function printingOf(value: unknown): TradeCardPrinting | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  const scryfallId = str(o.scryfallId);
+  const setCode = str(o.setCode);
+  const collectorNumber = str(o.collectorNumber);
+  const condition = str(o.condition);
+  const finish = str(o.finish);
+  if (!scryfallId || !setCode || !collectorNumber || !condition || !finish) return null;
+  return { scryfallId, setName: str(o.setName), setCode, collectorNumber, condition, finish };
+}
+
 /** their_cards as stored (jsonb), read defensively. */
 export function theirCardsOf(value: unknown): TradeTheirCard[] {
   if (!Array.isArray(value)) return [];
@@ -49,7 +63,9 @@ export function theirCardsOf(value: unknown): TradeTheirCard[] {
     const o = (item ?? {}) as Record<string, unknown>;
     const quantity = int(o.quantity);
     const tcgLowCents = int(o.tcgLowCents);
-    return quantity !== null && tcgLowCents !== null ? [{ name: str(o.name), quantity, tcgLowCents }] : [];
+    return quantity !== null && tcgLowCents !== null
+      ? [{ name: str(o.name), quantity, tcgLowCents, printing: printingOf(o.printing) }]
+      : [];
   });
 }
 

@@ -146,6 +146,38 @@ describe("POST /api/admin/trades confirm", () => {
     expect(state.tables.admin_audit_log.at(-1)).toMatchObject({ action: "trade.confirm", resource_id: trade.id });
   });
 
+  it("keeps the printing of a card found with the card search, and checks it", async () => {
+    const printing = {
+      scryfallId: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB",
+      setName: "Commander Legends",
+      setCode: "cmr",
+      collectorNumber: "263",
+      condition: "LP",
+      finish: "foil",
+    };
+    const res = await asStaff(
+      "POST",
+      confirmBody({ theirs: [{ name: "Sol Ring", quantity: 2, tcgLowCents: 325, printing }, { name: null, quantity: 1, tcgLowCents: 100 }] }),
+    );
+    expect(res.statusCode).toBe(200);
+    const stored = { ...printing, scryfallId: printing.scryfallId.toLowerCase() };
+    expect((res.body.trade as { theirCards: unknown }).theirCards).toEqual([
+      { name: "Sol Ring", quantity: 2, tcgLowCents: 325, printing: stored },
+      { name: null, quantity: 1, tcgLowCents: 100, printing: null },
+    ]);
+    expect(tradeRow().their_cards).toEqual([
+      { name: "Sol Ring", quantity: 2, tcgLowCents: 325, printing: stored },
+      { name: null, quantity: 1, tcgLowCents: 100, printing: null },
+    ]);
+
+    for (const bad of [{ ...printing, condition: "Mint" }, { ...printing, scryfallId: "nope" }, { ...printing, finish: "<b>" }, "Sol Ring"]) {
+      const refused = await asStaff("POST", confirmBody({ theirs: [{ name: "Sol Ring", quantity: 1, tcgLowCents: 325, printing: bad }] }));
+      expect(refused.statusCode).toBe(400);
+      expect(refused.body.message).toBe("One of their cards didn't come through. Try again.");
+    }
+    expect(state.tables.trades).toHaveLength(1);
+  });
+
   it("needs the customer's name", async () => {
     const res = await asStaff("POST", confirmBody({ customer: { name: "   ", phone: null, email: null } }));
     expect(res.statusCode).toBe(400);

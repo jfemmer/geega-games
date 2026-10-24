@@ -25,7 +25,10 @@ create table if not exists public.trades (
   customer_email text check (customer_email is null or char_length(customer_email) <= 254),
 
   credit_percent integer not null check (credit_percent between 1 and 150),
-  -- [{ "name": "Sol Ring" | null, "quantity": 2, "tcgLowCents": 350 }]
+  -- [{ "name": "Sol Ring" | null, "quantity": 2, "tcgLowCents": 350,
+  --    "printing": { "scryfallId", "setName", "setCode", "collectorNumber",
+  --                  "condition", "finish" } | null }]
+  -- (printing is null for a line staff typed instead of finding with the card search)
   their_cards jsonb not null default '[]'::jsonb check (jsonb_typeof(their_cards) = 'array'),
   -- [{ "inventoryItemId", "cardName", "setName", "setCode", "collectorNumber",
   --    "condition", "finish", "variantType", "quantity", "priceCents" }]

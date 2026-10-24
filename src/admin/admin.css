@@ -1668,7 +1668,28 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-trade .gg-trade__percent .gg-input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.14); }
 .gg-trade__remove { justify-self: center; color: var(--gg-text-faint); }
 .gg-trade__remove:hover { color: var(--gg-danger); }
-.gg-trade__add { align-self: flex-start; }
+.gg-trade__adds { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* A card found with the card search: its picture, name and printing in the
+ * card column; on a narrow list, a row of its own above its quantity and price. */
+.gg-trade__found { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gg-trade__found .gg-cardimg { flex: none; }
+.gg-trade__found-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gg-trade__found-name { font-size: 0.9rem; font-weight: 600; line-height: 1.3; color: var(--gg-ink); overflow-wrap: anywhere; }
+.gg-trade__found-meta { font-size: 0.78rem; line-height: 1.35; color: var(--gg-text-soft); }
+.gg-trade__row--found { grid-template-areas: "card qty price remove"; }
+.gg-trade__row--found > :nth-child(1) { grid-area: card; }
+.gg-trade__row--found > :nth-child(2) { grid-area: qty; }
+.gg-trade__row--found > :nth-child(3) { grid-area: price; }
+.gg-trade__row--found > :nth-child(4) { grid-area: remove; }
+@container (max-width: 460px) {
+  .gg-trade__row--found {
+    grid-template-areas:
+      "card card card remove"
+      ". qty price .";
+    row-gap: 6px;
+  }
+}
 
 .gg-trade__foot { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--gg-line); }
 .gg-trade__sum { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; color: var(--gg-text-soft); font-variant-numeric: tabular-nums; }
@@ -1737,9 +1758,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 
 /* A confirmed trade's cards: read-only, in the same columns. */
 .gg-trade__row--locked { min-height: 30px; font-size: 0.9rem; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
-.gg-trade__row--locked span:first-child { overflow-wrap: anywhere; }
-.gg-trade__row--locked span:nth-child(2) { text-align: center; }
-.gg-trade__row--locked span:nth-child(3) { text-align: right; padding-right: 12px; }
+.gg-trade__row--locked > span:first-child { overflow-wrap: anywhere; }
+.gg-trade__row--locked > span:nth-child(2) { text-align: center; }
+.gg-trade__row--locked > span:nth-child(3) { text-align: right; padding-right: 12px; }
 .gg-trade__empty { margin: 0; }
 
 /* Finding the cards they want in inventory (the results look like the register's). */

@@ -9,6 +9,8 @@
 // again when a trade is confirmed. Plain TypeScript: no React, no I/O. Money
 // is whole cents throughout.
 
+import type { TradeCardPrinting, TradeTheirCard } from "../../store/lib/trades.js";
+
 export const DEFAULT_TRADE_CREDIT_PERCENT = 70;
 export const TRADE_CREDIT_PRESETS = [50, 60, 70, 75, 80] as const;
 export const MAX_TRADE_CREDIT_PERCENT = 150;
@@ -16,7 +18,8 @@ export const MAX_TRADE_QUANTITY = 999;
 /** Lines per side of one trade. */
 export const MAX_TRADE_LINES = 200;
 export const MAX_CUSTOMER_NAME = 80;
-export const MAX_CARD_NAME = 120;
+/** Room for the longest real card names (one Un-card's runs to 141 characters). */
+export const MAX_CARD_NAME = 200;
 /** $99,999.99: more than any single card's TCG low. */
 export const MAX_TCG_LOW_CENTS = 9_999_999;
 
@@ -25,6 +28,8 @@ export interface TradeLineInput {
   name: string;
   quantity: string;
   price: string;
+  /** The exact printing, when the card was found with the card search; absent for a line typed by hand. */
+  printing?: TradeCardPrinting | null;
 }
 
 /** One of the shop's cards on a trade: its regular website price, and how many. */
@@ -100,10 +105,17 @@ export function sideTotal(lines: TradeLineInput[]): TradeSideTotal {
 }
 
 /** The customer's cards that count, as numbers: what a confirmed trade records. */
-export function countedLines(lines: TradeLineInput[]): { name: string | null; quantity: number; tcgLowCents: number }[] {
+export function countedLines(lines: TradeLineInput[]): TradeTheirCard[] {
   return lines.flatMap((line) =>
     lineStatus(line) === "counted" && parseQuantity(line.quantity)! > 0
-      ? [{ name: line.name.trim() || null, quantity: parseQuantity(line.quantity)!, tcgLowCents: parsePriceCents(line.price)! }]
+      ? [
+          {
+            name: line.name.trim() || null,
+            quantity: parseQuantity(line.quantity)!,
+            tcgLowCents: parsePriceCents(line.price)!,
+            printing: line.printing ?? null,
+          },
+        ]
       : [],
   );
 }

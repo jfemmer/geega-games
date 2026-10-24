@@ -84,9 +84,20 @@ describe("adding up their cards", () => {
   });
 
   it("turns the counted lines into what a confirmed trade records", () => {
-    expect(countedLines([card("3.50", "2", " Sol Ring "), card(""), card("abc"), card("1", "0"), card("12", "", "")])).toEqual([
-      { name: "Sol Ring", quantity: 2, tcgLowCents: 350 },
-      { name: null, quantity: 1, tcgLowCents: 1200 },
+    const printing = {
+      scryfallId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      setName: "Commander Legends",
+      setCode: "cmr",
+      collectorNumber: "263",
+      condition: "LP",
+      finish: "foil",
+    };
+    expect(
+      countedLines([card("3.50", "2", " Sol Ring "), card(""), card("abc"), card("1", "0"), card("12", "", ""), { ...card("4", "1", "Sol Ring"), printing }]),
+    ).toEqual([
+      { name: "Sol Ring", quantity: 2, tcgLowCents: 350, printing: null },
+      { name: null, quantity: 1, tcgLowCents: 1200, printing: null },
+      { name: "Sol Ring", quantity: 1, tcgLowCents: 400, printing },
     ]);
   });
 });

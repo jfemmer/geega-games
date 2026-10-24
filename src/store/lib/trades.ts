@@ -9,12 +9,26 @@ export const TRADE_PATH = "/trade";
 /** The secret in a trade's link: URL-safe base64, as api/_lib/tokens.ts makes it. */
 export const TRADE_TOKEN_RE = /^[A-Za-z0-9_-]{32,64}$/;
 
+/** The exact printing of one of the customer's cards, when staff found it with the card search. */
+export interface TradeCardPrinting {
+  scryfallId: string;
+  setName: string | null;
+  setCode: string;
+  collectorNumber: string;
+  /** NM, LP, MP, HP or DMG. */
+  condition: string;
+  /** "nonfoil", "foil", "etched"… */
+  finish: string;
+}
+
 /** One of the customer's cards: priced at TCG low. */
 export interface TradeTheirCard {
   /** Null when staff didn't type a name. */
   name: string | null;
   quantity: number;
   tcgLowCents: number;
+  /** Null for a line staff typed by hand. */
+  printing: TradeCardPrinting | null;
 }
 
 /** One of the shop's cards: at its regular website price when the trade was confirmed. */

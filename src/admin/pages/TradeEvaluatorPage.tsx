@@ -16,16 +16,19 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { SearchInput, TextField } from "../components/ui/Field";
 import { Spinner } from "../components/ui/States";
 import { InventoryCardImage } from "../components/cards/InventoryCardImage";
+import { AddTradeCardDrawer, type TradeCardPick } from "../components/trade/AddTradeCardDrawer";
 import { inventoryRepository } from "../repositories";
 import { tradeRepository } from "../repositories/trades.supabase";
 import { useToast } from "../hooks/useToast";
 import { formatCents, formatDateTime } from "../utils/format";
+import { priceForFinish } from "../utils/pricing";
 import { CONDITION_LABELS, FINISH_LABELS } from "../utils/labels";
 import {
   DEFAULT_TRADE_CREDIT_PERCENT,
   MAX_CUSTOMER_NAME,
   MAX_TRADE_CREDIT_PERCENT,
   MAX_TRADE_LINES,
+  MAX_TRADE_QUANTITY,
   TRADE_CREDIT_PRESETS,
   countedLines,
   evaluateTrade,
@@ -45,7 +48,7 @@ import {
   type TradeSideTotal,
   type TradeTotals,
 } from "../utils/tradeEvaluator";
-import type { StaffTradeView } from "../../store/lib/trades";
+import type { StaffTradeView, TradeCardPrinting } from "../../store/lib/trades";
 import type { CardCondition, CardFinish, InventoryItem } from "../types";
 
 // Trade evaluator: a customer trades cards in for cards from the shop. Staff
@@ -65,10 +68,13 @@ import type { CardCondition, CardFinish, InventoryItem } from "../types";
 // inventory are checked again when the page opens, in case a price or the
 // stock changed meanwhile.
 
-type Field = keyof TradeLineInput;
+type Field = "name" | "quantity" | "price";
 
 interface Line extends TradeLineInput {
   id: string;
+  /** A card found with the search: its picture, and Scryfall's price for its finish (a guide to the TCG low). */
+  imageUrl?: string | null;
+  referenceCents?: number | null;
 }
 
 /** A card from inventory on the trade, as it was when last checked. */
@@ -130,11 +136,34 @@ const count = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 const textOrNull = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
+function restorePrinting(value: unknown): TradeCardPrinting | null {
+  const o = (value ?? {}) as Record<string, unknown>;
+  const [scryfallId, setCode, collectorNumber, condition, finish] = [o.scryfallId, o.setCode, o.collectorNumber, o.condition, o.finish];
+  if (![scryfallId, setCode, collectorNumber, condition, finish].every((v) => typeof v === "string" && v !== "")) return null;
+  return {
+    scryfallId: scryfallId as string,
+    setName: textOrNull(o.setName),
+    setCode: setCode as string,
+    collectorNumber: collectorNumber as string,
+    condition: condition as string,
+    finish: finish as string,
+  };
+}
+
 function restoreTheirs(value: unknown): Line[] {
   const lines = (Array.isArray(value) ? value : []).slice(0, MAX_TRADE_LINES).flatMap((saved: unknown) => {
     if (!saved || typeof saved !== "object") return [];
     const fields = saved as Record<string, unknown>;
-    return [{ ...newLine(), name: text(fields.name), quantity: text(fields.quantity, "1"), price: text(fields.price) }];
+    const printing = restorePrinting(fields.printing);
+    return [
+      {
+        ...newLine(),
+        name: text(fields.name),
+        quantity: text(fields.quantity, "1"),
+        price: text(fields.price),
+        ...(printing && { printing, imageUrl: textOrNull(fields.imageUrl), referenceCents: count(fields.referenceCents) }),
+      },
+    ];
   });
   return lines.length > 0 ? lines : [newLine()];
 }
@@ -203,7 +232,17 @@ function saveDraft(draft: Draft) {
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ ...draft, theirs: draft.theirs.map(({ name, quantity, price }) => ({ name, quantity, price })) }),
+      JSON.stringify({
+        ...draft,
+        theirs: draft.theirs.map(({ name, quantity, price, printing, imageUrl, referenceCents }) => ({
+          name,
+          quantity,
+          price,
+          printing: printing ?? null,
+          imageUrl: imageUrl ?? null,
+          referenceCents: referenceCents ?? null,
+        })),
+      }),
     );
     // A trade from the first version has moved over by now.
     window.localStorage.removeItem(OLD_STORAGE_KEY);
@@ -234,11 +273,17 @@ function emailProblem(email: string): string | undefined {
   return email.trim() && !isEmailAddress(email) ? "Check the email address." : undefined;
 }
 
-function describeCard(card: { setCode: string; condition: CardCondition; finish: CardFinish; variantType: string | null }): string {
+function describeCard(card: {
+  setCode: string;
+  collectorNumber?: string;
+  condition: string;
+  finish: string;
+  variantType?: string | null;
+}): string {
   return [
-    card.setCode.toUpperCase(),
-    CONDITION_LABELS[card.condition] ?? card.condition,
-    card.finish !== "nonfoil" ? (FINISH_LABELS[card.finish] ?? card.finish) : null,
+    `${card.setCode.toUpperCase()}${card.collectorNumber ? ` #${card.collectorNumber}` : ""}`,
+    CONDITION_LABELS[card.condition as CardCondition] ?? card.condition,
+    card.finish !== "nonfoil" ? (FINISH_LABELS[card.finish as CardFinish] ?? card.finish) : null,
     card.variantType,
   ]
     .filter(Boolean)
@@ -363,6 +408,7 @@ export function TradeEvaluatorPage() {
   const [draft, setDraft] = useState<Draft>(loadDraft);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmTrade, setConfirmTrade] = useState(false);
+  const [addingCard, setAddingCard] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // Which customer fields show their errors: after leaving the field, or trying to confirm.
   const [checked, setChecked] = useState(NOT_CHECKED);
@@ -483,16 +529,63 @@ export function TradeEvaluatorPage() {
     change((prev) => ({ ...prev, theirs: prev.theirs.filter((l) => l.id !== id) }));
   }
 
-  // Enter moves down a column, spreadsheet style; on the last line it adds one.
+  // Enter moves down a column, spreadsheet style. On the last line typed by
+  // hand it adds another (a card found with the search gets Add card instead).
   function onFieldKeyDown(event: KeyboardEvent<HTMLInputElement>, index: number, field: Field) {
     if (event.key !== "Enter") return;
     event.preventDefault();
     const next = draft.theirs[index + 1];
     if (next) {
-      rootRef.current?.querySelector<HTMLInputElement>(`[data-trade-field="theirs:${next.id}:${field}"]`)?.focus();
-    } else {
+      const target = next.printing && field === "name" ? "quantity" : field;
+      rootRef.current?.querySelector<HTMLInputElement>(`[data-trade-field="theirs:${next.id}:${target}"]`)?.focus();
+    } else if (!draft.theirs[index]?.printing) {
       addLine(field);
     }
+  }
+
+  /** A card found with the search: a line of its own, or more of one already on the trade. */
+  function addTheirCard(pick: TradeCardPick) {
+    const { printing: found, condition, finish } = pick;
+    const printing: TradeCardPrinting = {
+      scryfallId: found.scryfallId,
+      setName: found.setName || null,
+      setCode: found.setCode,
+      collectorNumber: found.collectorNumber,
+      condition,
+      finish,
+    };
+    const same = draft.theirs.find(
+      (l) => l.printing?.scryfallId === printing.scryfallId && l.printing.condition === condition && l.printing.finish === finish,
+    );
+    if (same) {
+      const quantity = Math.min((parseQuantity(same.quantity) ?? 0) + pick.quantity, MAX_TRADE_QUANTITY);
+      change((prev) => ({
+        ...prev,
+        theirs: prev.theirs.map((l) =>
+          l.id === same.id ? { ...l, quantity: String(quantity), price: l.price.trim() ? l.price : pick.price } : l,
+        ),
+      }));
+      toast.success(`Added ${pick.quantity} more ${found.cardName} (${quantity} on the trade).`);
+      return;
+    }
+    if (draft.theirs.length >= MAX_TRADE_LINES) {
+      toast.error(`A trade can have up to ${MAX_TRADE_LINES} of their cards.`);
+      return;
+    }
+    const line: Line = {
+      ...newLine(),
+      name: found.cardName,
+      quantity: String(pick.quantity),
+      price: pick.price,
+      printing,
+      imageUrl: found.images?.small ?? found.imageUrl ?? null,
+      referenceCents: priceForFinish(found, finish),
+    };
+    // The empty line a new trade starts with gives way to the first card found.
+    change((prev) => ({
+      ...prev,
+      theirs: prev.theirs.length === 1 && isBlank(prev.theirs[0]) ? [line] : [...prev.theirs, line],
+    }));
   }
 
   function addYours(item: InventoryItem) {
@@ -663,7 +756,8 @@ export function TradeEvaluatorPage() {
               )
             }
             onChange={updateLine}
-            onAdd={() => addLine()}
+            onSearch={() => setAddingCard(true)}
+            onAddByHand={() => addLine()}
             onRemove={removeLine}
             onKeyDown={onFieldKeyDown}
           />
@@ -782,6 +876,8 @@ export function TradeEvaluatorPage() {
         onCopy={sharing.copy}
       />
 
+      {addingCard && <AddTradeCardDrawer onClose={() => setAddingCard(false)} onAdd={addTheirCard} />}
+
       <ConfirmDialog
         open={confirmClear}
         title="Clear this trade?"
@@ -811,13 +907,40 @@ function resultSentence(totals: TradeTotals): string {
   return "";
 }
 
+/** A card found with the search, in the card column: its picture, name and printing. */
+function FoundCard({ line, printing }: { line: Line; printing: TradeCardPrinting }) {
+  return (
+    <div className="gg-trade__found">
+      <InventoryCardImage
+        item={{
+          scryfallId: printing.scryfallId,
+          setCode: printing.setCode,
+          collectorNumber: printing.collectorNumber,
+          imageUrl: line.imageUrl ?? null,
+          cardName: line.name,
+        }}
+        size="xs"
+        loadingPriority="lazy"
+      />
+      <span className="gg-trade__found-body">
+        <span className="gg-trade__found-name">{line.name}</span>
+        <span className="gg-trade__found-meta">
+          {describeCard(printing)}
+          {line.referenceCents != null && ` · Scryfall ${formatCents(line.referenceCents)}`}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function TheirList({
   lines,
   total,
   locked,
   footer,
   onChange,
-  onAdd,
+  onSearch,
+  onAddByHand,
   onRemove,
   onKeyDown,
 }: {
@@ -826,7 +949,10 @@ function TheirList({
   locked: boolean;
   footer?: ReactNode;
   onChange: (id: string, field: Field, value: string) => void;
-  onAdd: () => void;
+  /** Add card: find it with the card search. */
+  onSearch: () => void;
+  /** Enter by hand: a line to type in. */
+  onAddByHand: () => void;
   onRemove: (id: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>, index: number, field: Field) => void;
 }) {
@@ -854,10 +980,11 @@ function TheirList({
           <ol className="gg-trade__rows">
             {counted.map((line, index) => {
               const n = index + 1;
+              const rowClass = `gg-trade__row${line.printing ? " gg-trade__row--found" : ""}`;
               if (locked) {
                 return (
-                  <li key={line.id} className="gg-trade__row gg-trade__row--locked">
-                    <span>{line.name.trim() || `Card ${n}`}</span>
+                  <li key={line.id} className={`${rowClass} gg-trade__row--locked`}>
+                    {line.printing ? <FoundCard line={line} printing={line.printing} /> : <span>{line.name.trim() || `Card ${n}`}</span>}
                     <span>{parseQuantity(line.quantity)}</span>
                     <span>{formatCents(parsePriceCents(line.price) ?? 0)}</span>
                     <span />
@@ -872,15 +999,19 @@ function TheirList({
                 autoComplete: "off",
               });
               return (
-                <li key={line.id} className="gg-trade__row">
-                  <input
-                    className="gg-input"
-                    type="text"
-                    placeholder="Name (optional)"
-                    aria-label={`Card, line ${n} of their cards`}
-                    value={line.name}
-                    {...field("name")}
-                  />
+                <li key={line.id} className={rowClass}>
+                  {line.printing ? (
+                    <FoundCard line={line} printing={line.printing} />
+                  ) : (
+                    <input
+                      className="gg-input"
+                      type="text"
+                      placeholder="Name (optional)"
+                      aria-label={`Card, line ${n} of their cards`}
+                      value={line.name}
+                      {...field("name")}
+                    />
+                  )}
                   <input
                     className="gg-input gg-trade__qty"
                     type="text"
@@ -906,7 +1037,7 @@ function TheirList({
                   <button
                     type="button"
                     className="gg-icon-btn gg-trade__remove"
-                    aria-label={`Remove line ${n} of their cards`}
+                    aria-label={line.printing ? `Remove ${line.name}` : `Remove line ${n} of their cards`}
                     onClick={() => onRemove(line.id)}
                   >
                     <Icon name="close" size={16} />
@@ -919,16 +1050,14 @@ function TheirList({
       )}
 
       {!locked && (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="plus"
-          className="gg-trade__add"
-          onClick={onAdd}
-          disabled={lines.length >= MAX_TRADE_LINES}
-        >
-          Add card
-        </Button>
+        <div className="gg-trade__adds">
+          <Button variant="secondary" size="sm" icon="plus" onClick={onSearch} disabled={lines.length >= MAX_TRADE_LINES}>
+            Add card
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onAddByHand} disabled={lines.length >= MAX_TRADE_LINES}>
+            Enter by hand
+          </Button>
+        </div>
       )}
 
       <div className="gg-trade__foot">
