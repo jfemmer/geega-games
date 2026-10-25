@@ -1128,6 +1128,7 @@ export type Database = {
           reserved_at: string
           reserved_by: string | null
           status: Database["public"]["Enums"]["reservation_status"]
+          trade_request_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1143,6 +1144,7 @@ export type Database = {
           reserved_at?: string
           reserved_by?: string | null
           status?: Database["public"]["Enums"]["reservation_status"]
+          trade_request_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1158,6 +1160,7 @@ export type Database = {
           reserved_at?: string
           reserved_by?: string | null
           status?: Database["public"]["Enums"]["reservation_status"]
+          trade_request_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1507,6 +1510,7 @@ export type Database = {
           tracking_checked_at: string | null
           tracking_number: string | null
           tracking_status: string | null
+          trade_request_id: string | null
           updated_at: string
           user_id: string | null
         }
@@ -1557,6 +1561,7 @@ export type Database = {
           tracking_checked_at?: string | null
           tracking_number?: string | null
           tracking_status?: string | null
+          trade_request_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -1607,6 +1612,7 @@ export type Database = {
           tracking_checked_at?: string | null
           tracking_number?: string | null
           tracking_status?: string | null
+          trade_request_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -3474,6 +3480,561 @@ export type Database = {
         }
         Relationships: []
       }
+      trade_events: {
+        Row: {
+          actor_id: string | null
+          actor_label: string | null
+          actor_type: string
+          created_at: string
+          detail: Json
+          event: string
+          from_status: string | null
+          id: string
+          to_status: string | null
+          trade_request_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_label?: string | null
+          actor_type: string
+          created_at?: string
+          detail?: Json
+          event: string
+          from_status?: string | null
+          id?: string
+          to_status?: string | null
+          trade_request_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_label?: string | null
+          actor_type?: string
+          created_at?: string
+          detail?: Json
+          event?: string
+          from_status?: string | null
+          id?: string
+          to_status?: string | null
+          trade_request_id?: string
+        }
+        Relationships: []
+      }
+      trade_messages: {
+        Row: {
+          author_id: string | null
+          author_label: string | null
+          author_type: string
+          body: string
+          created_at: string
+          id: string
+          trade_request_id: string
+          visible_to_customer: boolean
+        }
+        Insert: {
+          author_id?: string | null
+          author_label?: string | null
+          author_type: string
+          body: string
+          created_at?: string
+          id?: string
+          trade_request_id: string
+          visible_to_customer?: boolean
+        }
+        Update: {
+          author_id?: string | null
+          author_label?: string | null
+          author_type?: string
+          body?: string
+          created_at?: string
+          id?: string
+          trade_request_id?: string
+          visible_to_customer?: boolean
+        }
+        Relationships: []
+      }
+      trade_offer_cards: {
+        Row: {
+          approved_quantity: number | null
+          approved_unit_cents: number | null
+          authenticity: string
+          card_name: string
+          collector_number: string | null
+          condition_percent: number
+          created_at: string
+          customer_estimate_cents: number | null
+          customer_note: string | null
+          disposition: string
+          eligibility: string
+          estimated_unit_cents: number | null
+          final_quantity: number | null
+          final_unit_cents: number | null
+          finish: Database["public"]["Enums"]["card_finish"]
+          flags: string[]
+          id: string
+          image_url: string | null
+          imported_inventory_item_id: string | null
+          inspected_at: string | null
+          inspection_internal_note: string | null
+          inspection_note: string | null
+          internal_note: string | null
+          position: number
+          quantity: number
+          received_quantity: number | null
+          reference_checked_at: string | null
+          reference_price_cents: number | null
+          reported_condition: Database["public"]["Enums"]["card_condition"]
+          review_note: string | null
+          review_status: string
+          scryfall_id: string | null
+          set_code: string | null
+          set_name: string | null
+          stock_on_hand: number | null
+          trade_request_id: string
+          updated_at: string
+          verified_condition: Database["public"]["Enums"]["card_condition"] | null
+        }
+        Insert: {
+          approved_quantity?: number | null
+          approved_unit_cents?: number | null
+          authenticity?: string
+          card_name: string
+          collector_number?: string | null
+          condition_percent?: number
+          created_at?: string
+          customer_estimate_cents?: number | null
+          customer_note?: string | null
+          disposition?: string
+          eligibility?: string
+          estimated_unit_cents?: number | null
+          final_quantity?: number | null
+          final_unit_cents?: number | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          flags?: string[]
+          id?: string
+          image_url?: string | null
+          imported_inventory_item_id?: string | null
+          inspected_at?: string | null
+          inspection_internal_note?: string | null
+          inspection_note?: string | null
+          internal_note?: string | null
+          position?: number
+          quantity: number
+          received_quantity?: number | null
+          reference_checked_at?: string | null
+          reference_price_cents?: number | null
+          reported_condition?: Database["public"]["Enums"]["card_condition"]
+          review_note?: string | null
+          review_status?: string
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          stock_on_hand?: number | null
+          trade_request_id: string
+          updated_at?: string
+          verified_condition?: Database["public"]["Enums"]["card_condition"] | null
+        }
+        Update: {
+          approved_quantity?: number | null
+          approved_unit_cents?: number | null
+          authenticity?: string
+          card_name?: string
+          collector_number?: string | null
+          condition_percent?: number
+          created_at?: string
+          customer_estimate_cents?: number | null
+          customer_note?: string | null
+          disposition?: string
+          eligibility?: string
+          estimated_unit_cents?: number | null
+          final_quantity?: number | null
+          final_unit_cents?: number | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          flags?: string[]
+          id?: string
+          image_url?: string | null
+          imported_inventory_item_id?: string | null
+          inspected_at?: string | null
+          inspection_internal_note?: string | null
+          inspection_note?: string | null
+          internal_note?: string | null
+          position?: number
+          quantity?: number
+          received_quantity?: number | null
+          reference_checked_at?: string | null
+          reference_price_cents?: number | null
+          reported_condition?: Database["public"]["Enums"]["card_condition"]
+          review_note?: string | null
+          review_status?: string
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          stock_on_hand?: number | null
+          trade_request_id?: string
+          updated_at?: string
+          verified_condition?: Database["public"]["Enums"]["card_condition"] | null
+        }
+        Relationships: []
+      }
+      trade_request_items: {
+        Row: {
+          card_name: string
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          created_at: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          image_url: string | null
+          inventory_item_id: string | null
+          quantity: number
+          reservation_id: string | null
+          scryfall_id: string | null
+          set_code: string | null
+          set_name: string | null
+          status: string
+          trade_request_id: string
+          unit_price_cents: number
+          variant_type: string | null
+        }
+        Insert: {
+          card_name: string
+          collector_number?: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          created_at?: string
+          finish: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          inventory_item_id?: string | null
+          quantity: number
+          reservation_id?: string | null
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          status?: string
+          trade_request_id: string
+          unit_price_cents: number
+          variant_type?: string | null
+        }
+        Update: {
+          card_name?: string
+          collector_number?: string | null
+          condition?: Database["public"]["Enums"]["card_condition"]
+          created_at?: string
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          image_url?: string | null
+          inventory_item_id?: string | null
+          quantity?: number
+          reservation_id?: string | null
+          scryfall_id?: string | null
+          set_code?: string | null
+          set_name?: string | null
+          status?: string
+          trade_request_id?: string
+          unit_price_cents?: number
+          variant_type?: string | null
+        }
+        Relationships: []
+      }
+      trade_requests: {
+        Row: {
+          accepted_at: string | null
+          amount_due_cents: number | null
+          approval_conditions: string | null
+          approved_at: string | null
+          approved_value_cents: number | null
+          cash_paid_at: string | null
+          cash_payout_cents: number | null
+          close_reason: string | null
+          closed_at: string | null
+          completed_at: string | null
+          condition_percents: Json
+          created_at: string
+          credit_issued_cents: number | null
+          credit_rate_percent: number
+          customer_email: string | null
+          customer_name: string | null
+          customer_note: string | null
+          estimated_value_cents: number
+          excess_cents: number | null
+          excess_handling: string
+          final_credit_cents: number | null
+          final_offer_at: string | null
+          final_value_cents: number | null
+          hold_expires_at: string | null
+          id: string
+          inbound_carrier: string | null
+          inbound_shipped_at: string | null
+          inbound_tracking: string | null
+          min_card_value_cents: number
+          order_id: string | null
+          paid_at: string | null
+          payment_due_at: string | null
+          payment_reference: string | null
+          processing_fee_cents: number
+          received_at: string | null
+          return_carrier: string | null
+          return_tracking: string | null
+          returned_at: string | null
+          ship_by: string | null
+          ship_city: string | null
+          ship_line1: string | null
+          ship_line2: string | null
+          ship_name: string | null
+          ship_postal_code: string | null
+          ship_state: string | null
+          shipping_cents: number | null
+          status: string
+          submitted_at: string | null
+          trade_number: number
+          updated_at: string
+          user_id: string
+          wanted_total_cents: number
+        }
+        Insert: {
+          accepted_at?: string | null
+          amount_due_cents?: number | null
+          approval_conditions?: string | null
+          approved_at?: string | null
+          approved_value_cents?: number | null
+          cash_paid_at?: string | null
+          cash_payout_cents?: number | null
+          close_reason?: string | null
+          closed_at?: string | null
+          completed_at?: string | null
+          condition_percents: Json
+          created_at?: string
+          credit_issued_cents?: number | null
+          credit_rate_percent: number
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_note?: string | null
+          estimated_value_cents?: number
+          excess_cents?: number | null
+          excess_handling?: string
+          final_credit_cents?: number | null
+          final_offer_at?: string | null
+          final_value_cents?: number | null
+          hold_expires_at?: string | null
+          id?: string
+          inbound_carrier?: string | null
+          inbound_shipped_at?: string | null
+          inbound_tracking?: string | null
+          min_card_value_cents: number
+          order_id?: string | null
+          paid_at?: string | null
+          payment_due_at?: string | null
+          payment_reference?: string | null
+          processing_fee_cents?: number
+          received_at?: string | null
+          return_carrier?: string | null
+          return_tracking?: string | null
+          returned_at?: string | null
+          ship_by?: string | null
+          ship_city?: string | null
+          ship_line1?: string | null
+          ship_line2?: string | null
+          ship_name?: string | null
+          ship_postal_code?: string | null
+          ship_state?: string | null
+          shipping_cents?: number | null
+          status?: string
+          submitted_at?: string | null
+          trade_number?: never
+          updated_at?: string
+          user_id: string
+          wanted_total_cents?: number
+        }
+        Update: {
+          accepted_at?: string | null
+          amount_due_cents?: number | null
+          approval_conditions?: string | null
+          approved_at?: string | null
+          approved_value_cents?: number | null
+          cash_paid_at?: string | null
+          cash_payout_cents?: number | null
+          close_reason?: string | null
+          closed_at?: string | null
+          completed_at?: string | null
+          condition_percents?: Json
+          created_at?: string
+          credit_issued_cents?: number | null
+          credit_rate_percent?: number
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_note?: string | null
+          estimated_value_cents?: number
+          excess_cents?: number | null
+          excess_handling?: string
+          final_credit_cents?: number | null
+          final_offer_at?: string | null
+          final_value_cents?: number | null
+          hold_expires_at?: string | null
+          id?: string
+          inbound_carrier?: string | null
+          inbound_shipped_at?: string | null
+          inbound_tracking?: string | null
+          min_card_value_cents?: number
+          order_id?: string | null
+          paid_at?: string | null
+          payment_due_at?: string | null
+          payment_reference?: string | null
+          processing_fee_cents?: number
+          received_at?: string | null
+          return_carrier?: string | null
+          return_tracking?: string | null
+          returned_at?: string | null
+          ship_by?: string | null
+          ship_city?: string | null
+          ship_line1?: string | null
+          ship_line2?: string | null
+          ship_name?: string | null
+          ship_postal_code?: string | null
+          ship_state?: string | null
+          shipping_cents?: number | null
+          status?: string
+          submitted_at?: string | null
+          trade_number?: never
+          updated_at?: string
+          user_id?: string
+          wanted_total_cents?: number
+        }
+        Relationships: []
+      }
+      trade_settings: {
+        Row: {
+          cash_payout_enabled: boolean
+          cash_rate_percent: number
+          condition_dmg_percent: number
+          condition_hp_percent: number
+          condition_lp_percent: number
+          condition_mp_percent: number
+          condition_nm_percent: number
+          credit_rate_percent: number
+          enabled: boolean
+          excluded_card_names: string[]
+          excluded_set_codes: string[]
+          id: boolean
+          max_active_trades: number
+          max_expired_trades_30d: number
+          max_offered_lines: number
+          max_trade_value_cents: number | null
+          max_wanted_lines: number
+          min_card_value_cents: number
+          min_trade_value_cents: number
+          notify_customer: boolean
+          notify_staff: boolean
+          overstock_threshold: number
+          packing_instructions: string
+          pause_message: string
+          paused: boolean
+          payment_due_days: number
+          processing_fee_cents: number
+          reservation_hours: number
+          return_policy: string
+          revision_hours: number
+          ship_business_days: number
+          ship_grace_hours: number
+          ship_to_city: string | null
+          ship_to_line1: string | null
+          ship_to_line2: string | null
+          ship_to_name: string | null
+          ship_to_postal_code: string | null
+          ship_to_state: string | null
+          shipping_paid_by: string
+          transit_alert_days: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          cash_payout_enabled?: boolean
+          cash_rate_percent?: number
+          condition_dmg_percent?: number
+          condition_hp_percent?: number
+          condition_lp_percent?: number
+          condition_mp_percent?: number
+          condition_nm_percent?: number
+          credit_rate_percent?: number
+          enabled?: boolean
+          excluded_card_names?: string[]
+          excluded_set_codes?: string[]
+          id?: boolean
+          max_active_trades?: number
+          max_expired_trades_30d?: number
+          max_offered_lines?: number
+          max_trade_value_cents?: number | null
+          max_wanted_lines?: number
+          min_card_value_cents?: number
+          min_trade_value_cents?: number
+          notify_customer?: boolean
+          notify_staff?: boolean
+          overstock_threshold?: number
+          packing_instructions?: string
+          pause_message?: string
+          paused?: boolean
+          payment_due_days?: number
+          processing_fee_cents?: number
+          reservation_hours?: number
+          return_policy?: string
+          revision_hours?: number
+          ship_business_days?: number
+          ship_grace_hours?: number
+          ship_to_city?: string | null
+          ship_to_line1?: string | null
+          ship_to_line2?: string | null
+          ship_to_name?: string | null
+          ship_to_postal_code?: string | null
+          ship_to_state?: string | null
+          shipping_paid_by?: string
+          transit_alert_days?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          cash_payout_enabled?: boolean
+          cash_rate_percent?: number
+          condition_dmg_percent?: number
+          condition_hp_percent?: number
+          condition_lp_percent?: number
+          condition_mp_percent?: number
+          condition_nm_percent?: number
+          credit_rate_percent?: number
+          enabled?: boolean
+          excluded_card_names?: string[]
+          excluded_set_codes?: string[]
+          id?: boolean
+          max_active_trades?: number
+          max_expired_trades_30d?: number
+          max_offered_lines?: number
+          max_trade_value_cents?: number | null
+          max_wanted_lines?: number
+          min_card_value_cents?: number
+          min_trade_value_cents?: number
+          notify_customer?: boolean
+          notify_staff?: boolean
+          overstock_threshold?: number
+          packing_instructions?: string
+          pause_message?: string
+          paused?: boolean
+          payment_due_days?: number
+          processing_fee_cents?: number
+          reservation_hours?: number
+          return_policy?: string
+          revision_hours?: number
+          ship_business_days?: number
+          ship_grace_hours?: number
+          ship_to_city?: string | null
+          ship_to_line1?: string | null
+          ship_to_line2?: string | null
+          ship_to_name?: string | null
+          ship_to_postal_code?: string | null
+          ship_to_state?: string | null
+          shipping_paid_by?: string
+          transit_alert_days?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           balance_cents: number
@@ -4574,6 +5135,134 @@ export type Database = {
         }
         Returns: number
       }
+      trade_accept_final: {
+        Args: {
+          p_ship_city: string
+          p_ship_line1: string
+          p_ship_line2: string | null
+          p_ship_name: string | null
+          p_ship_postal_code: string
+          p_ship_state: string
+          p_trade_id: string
+          p_user_id: string
+        }
+        Returns: {
+          due_cents: number
+          new_order_id: string | null
+          new_status: string
+        }[]
+      }
+      trade_approve: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_conditions: string | null
+          p_ship_by: string
+          p_trade_id: string
+        }
+        Returns: number
+      }
+      trade_close: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_actor_type: string
+          p_from_statuses: string[]
+          p_reason: string | null
+          p_status: string
+          p_trade_id: string
+        }
+        Returns: boolean
+      }
+      trade_expire_due: {
+        Args: { p_limit?: number }
+        Returns: {
+          expired_from_status: string
+          expired_trade_id: string
+          expired_trade_number: number
+        }[]
+      }
+      trade_import_card: {
+        Args: {
+          p_actor: string
+          p_offer_card_id: string
+          p_price_cents: number
+          p_storage_location: string | null
+        }
+        Returns: string
+      }
+      trade_inspect_cards: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_cards: Json
+          p_trade_id: string
+        }
+        Returns: undefined
+      }
+      trade_record_payment: {
+        Args: {
+          p_paid_cents: number
+          p_reference: string
+          p_trade_id: string
+        }
+        Returns: string
+      }
+      trade_request_revision: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_message: string
+          p_trade_id: string
+        }
+        Returns: string
+      }
+      trade_review_cards: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_cards: Json
+          p_trade_id: string
+        }
+        Returns: undefined
+      }
+      trade_save_offer: {
+        Args: { p_cards: Json; p_trade_id: string; p_user_id: string }
+        Returns: number
+      }
+      trade_send_final_offer: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_cash_for_excess: boolean
+          p_trade_id: string
+        }
+        Returns: number
+      }
+      trade_set_wanted: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_actor_type: string
+          p_items: Json
+          p_statuses: string[]
+          p_trade_id: string
+        }
+        Returns: number
+      }
+      trade_start: {
+        Args: {
+          p_customer_email: string | null
+          p_customer_name: string | null
+          p_items: Json
+          p_user_id: string
+        }
+        Returns: string
+      }
+      trade_submit: {
+        Args: { p_note: string | null; p_trade_id: string; p_user_id: string }
+        Returns: undefined
+      }
       yard_sale_add_to_list: {
         Args: { p_items: Json; p_request_id: string }
         Returns: number
@@ -4804,6 +5493,7 @@ export type Database = {
         | "archive"
         | "restore"
         | "return_restock"
+        | "trade_in"
       inventory_status: "active" | "reserved" | "archived"
       order_channel: "online" | "pos"
       order_status:
@@ -5089,6 +5779,7 @@ export const Constants = {
         "archive",
         "restore",
         "return_restock",
+        "trade_in",
       ],
       inventory_status: ["active", "reserved", "archived"],
       order_channel: ["online", "pos"],

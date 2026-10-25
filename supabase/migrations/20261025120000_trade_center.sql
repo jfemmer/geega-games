@@ -818,7 +818,10 @@ begin
     v_total - v_trade.shipping_cents, v_trade.shipping_cents, 0, 0,
     v_spend, v_total, v_due,
     v_trade.ship_name, v_trade.ship_line1, v_trade.ship_line2, v_trade.ship_city, v_trade.ship_state, v_trade.ship_postal_code, 'US',
-    (case when v_due = 0 then 'store_credit' else 'stripe' end)::public.payment_provider,
+    -- A card payment (a Stripe PaymentIntent), or one staff recorded by hand.
+    (case when v_due = 0 then 'store_credit'
+          when left(coalesce(p_payment_reference, ''), 3) = 'pi_' then 'stripe'
+          else 'manual' end)::public.payment_provider,
     case when v_due = 0 then null else p_payment_reference end,
     'paid', 'paid', now(),
     p_trade_id, 'Trade TR-' || v_trade.trade_number

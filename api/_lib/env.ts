@@ -51,6 +51,13 @@ export const ServerEnv = {
       "SORTING_NOTIFICATION_EMAIL",
       optionalEnv("SELL_LEADS_NOTIFICATION_EMAIL", optionalEnv("RESEND_REPLY_TO", "support@geega-games.com")),
     ),
+  // Where Trade Center alerts go (a trade sent for review, tracking numbers,
+  // final offers answered, payments). Falls back like collection sorting.
+  tradeNotificationEmail: () =>
+    optionalEnv(
+      "TRADE_NOTIFICATION_EMAIL",
+      optionalEnv("SELL_LEADS_NOTIFICATION_EMAIL", optionalEnv("RESEND_REPLY_TO", "support@geega-games.com")),
+    ),
   // Stripe (server-only secrets; never expose to the browser). These are read
   // lazily so only the payment/webhook functions require them — the rest of the
   // API keeps working before Stripe is configured.

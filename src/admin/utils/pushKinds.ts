@@ -19,6 +19,11 @@ export const STAFF_PUSH_KINDS = [
     label: "Collection sorting",
     hint: "New sorting requests, quotes approved or declined, and card payments.",
   },
+  {
+    value: "trade",
+    label: "Trades",
+    hint: "Trades sent for review, tracking numbers, final offers answered, and payments.",
+  },
 ] as const;
 
 export type StaffPushKind = (typeof STAFF_PUSH_KINDS)[number]["value"];

@@ -19,6 +19,8 @@ export interface NavBadgeCounts {
   new_partner_applications: number;
   /** Collection sorting requests nobody has picked up yet. */
   new_sorting_requests: number;
+  /** Online trades waiting on staff: a list to review, a package to inspect, cards to mail back. */
+  trades_waiting: number;
   /** Sign-ups since this staff member last opened Users. */
   new_users: number;
 }
@@ -33,6 +35,7 @@ export const EMPTY_NAV_BADGES: NavBadgeCounts = {
   new_partner_leads: 0,
   new_partner_applications: 0,
   new_sorting_requests: 0,
+  trades_waiting: 0,
   new_users: 0,
 };
 
@@ -49,6 +52,7 @@ export const NAV_BADGES: Partial<Record<string, { count: NavBadgeKey; describe: 
   "buying-leads": { count: "new_leads", describe: (n) => `${n} new` },
   "partner-leads": { count: "new_partner_leads", describe: (n) => `${n} new` },
   sorting: { count: "new_sorting_requests", describe: (n) => `${n} new` },
+  trades: { count: "trades_waiting", describe: (n) => `${n} waiting on you` },
   partners: {
     count: "new_partner_applications",
     describe: (n) => `${n} application${n === 1 ? "" : "s"} waiting`,

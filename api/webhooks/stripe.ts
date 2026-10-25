@@ -6,6 +6,7 @@ import { ServerEnv } from "../_lib/env.js";
 import { readRawBody } from "../_lib/http.js";
 import { sendOrderConfirmation, sendOrderAdminNotification } from "../_lib/orderConfirmation.js";
 import { isSortingPaymentIntent, recordSortingCardPayment } from "../_lib/sortingPayments.js";
+import { isTradePaymentIntent, recordTradeCardPayment } from "../_lib/tradePayments.js";
 
 // POST /api/webhooks/stripe
 //
@@ -17,7 +18,9 @@ import { isSortingPaymentIntent, recordSortingCardPayment } from "../_lib/sortin
 //   3. On payment_intent.succeeded: mark_order_paid(order_id), then the
 //      confirmation + staff emails. All of these are idempotent. A
 //      collection sorting payment (metadata.sorting_request_id) is recorded
-//      against its approved quote instead (api/_lib/sortingPayments.ts).
+//      against its approved quote instead (api/_lib/sortingPayments.ts), and
+//      a trade's payment (metadata.trade_request_id) finishes that trade
+//      (api/_lib/tradePayments.ts).
 //   4. Only AFTER that succeeds, record the event in payment_events.
 //
 // Recording last matters: if marking the order paid fails we return 500 and
@@ -113,6 +116,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Not recorded yet, so Stripe's retry will run this again — unless
           // retrying can't help (no such request); then it's left to staff,
           // with the event kept in payment_events below.
+          if (result.retryable) return res.status(500).json({ ok: false });
+        }
+      } else if (isTradePaymentIntent(pi)) {
+        // The rest of a trade, paid by card: finishes the trade (its paid
+        // order, the credit issued and spent) once, whether the trade page
+        // or this webhook gets there first.
+        const result = await recordTradeCardPayment(pi);
+        if (!result.ok) {
+          console.error("[stripe] trade payment not recorded", pi.id, result.code, result.message);
           if (result.retryable) return res.status(500).json({ ok: false });
         }
       }

@@ -138,8 +138,32 @@ class Query implements PromiseLike<Result> {
     return this;
   }
   not(column: string, operator: string, value: unknown) {
+    if (operator === "in") {
+      // PostgREST's list syntax: "(a,b,c)".
+      const list = String(value).replace(/^\(|\)$/g, "").split(",").map((v) => v.trim());
+      this.filters.push((row) => !list.includes(String(row[column])));
+      return this;
+    }
     if (operator !== "is") throw new Error(`fakeSupabase: not(${operator}) isn't supported`);
     this.filters.push((row) => (row[column] ?? null) !== value);
+    return this;
+  }
+  /** PostgREST's or=(…) with eq and ilike conditions, e.g. "name.ilike.%sam%,email.ilike.%sam%". */
+  or(conditions: string) {
+    const parts = conditions.split(",").map((part) => {
+      const [column, op, ...rest] = part.split(".");
+      return { column, op, value: rest.join(".") };
+    });
+    const like = (pattern: string) =>
+      new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, "i");
+    this.filters.push((row) =>
+      parts.some(({ column, op, value }) => {
+        const cell = row[column];
+        if (op === "eq") return String(cell) === value;
+        if (op === "ilike") return cell != null && like(value).test(String(cell));
+        throw new Error(`fakeSupabase: or(${op}) isn't supported`);
+      }),
+    );
     return this;
   }
   order(column: string, opts?: { ascending?: boolean; nullsFirst?: boolean }) {
