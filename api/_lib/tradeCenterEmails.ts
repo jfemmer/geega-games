@@ -415,7 +415,11 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       return sendCustomer(b, settings, "trade_returned", `trade-returned-${t.id}-${t.return_tracking ?? t.returned_at}`, `Trade ${label}: your cards are on the way back`, {
         previewText: "Your cards are on their way back to you.",
         heading: "Your cards are on the way back",
-        paragraphs: [`${greet} we've mailed your cards from trade ${label} back to you.`],
+        paragraphs: [
+          t.status === "approved_for_fulfillment" || t.status === "completed"
+            ? `${greet} we've mailed the cards we didn't take from trade ${label} back to you.`
+            : `${greet} we've mailed your cards from trade ${label} back to you.`,
+        ],
         rows: t.return_tracking
           ? [
               ...(t.return_carrier ? [{ label: "Carrier", value: t.return_carrier }] : []),

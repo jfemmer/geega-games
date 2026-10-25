@@ -27,12 +27,14 @@ import {
   CARD_CONDITIONS,
   PRE_SHIPMENT_STATUSES,
   STAFF_REJECTABLE_STATUSES,
+  STAFF_WAITING_STATUSES,
   STAFF_WANTED_STATUSES,
   TRADE_LIMITS,
   TRADE_SETTING_RANGES,
   TRADE_STATUSES,
   addBusinessDays,
   cleanTrackingNumber,
+  copiesToReturn,
   endOfStoreDay,
   isConditionCode,
   isOpenTrade,
@@ -45,9 +47,10 @@ import {
 // Trade Cards page). Staff only (requireStaff); settings, recording a payment
 // by hand and marking cash paid are for the store owner (role admin).
 //
-//   GET ?view=list[&filter=open|all|<status>][&q=]   → { trades, counts }
-//   GET ?id=<trade id>                               → { trade, settings }
-//   GET ?view=settings                               → { settings }
+//   GET ?view=list[&filter=waiting|open|all|<status>][&q=] → { trades, counts, settings, owner }
+//   GET ?id=<trade id>                               → { trade, settings, owner }
+//   GET ?view=settings                               → { settings, owner }
+// (`owner`: the caller is the store owner, so the page shows owner-only controls.)
 //   POST { action, … }:
 //     saveSettings      { settings }                       owner
 //     review            { tradeId, cards: [...] }          per card: approve (how many, value each) or reject
@@ -80,15 +83,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const staff = await requireStaff(req);
     const admin = getSupabaseAdmin();
 
+    // `owner`: the page shows the owner-only controls (the server checks again).
+    const owner = staff.role === "admin";
     if (req.method === "GET") {
-      const settings = await loadTradeSettings(admin);
+      const settings = await settingsForStaff(admin);
       if (typeof req.query.id === "string") {
         const bundle = await loadTradeBundle(admin, readTradeId(req.query.id));
         if (!bundle) throw new HttpError(404, "That trade isn't there.");
-        return sendJson(res, 200, { ok: true, trade: staffTradeView(bundle, settings), settings: settingsView(settings) });
+        return sendJson(res, 200, { ok: true, trade: staffTradeView(bundle, settings), settings: settingsView(settings), owner });
       }
-      if (req.query.view === "settings") return sendJson(res, 200, { ok: true, settings: settingsView(settings) });
-      return sendJson(res, 200, { ok: true, ...(await listTrades(admin, req.query.filter, req.query.q)), settings: settingsView(settings) });
+      if (req.query.view === "settings") return sendJson(res, 200, { ok: true, settings: settingsView(settings), owner });
+      return sendJson(res, 200, {
+        ok: true,
+        ...(await listTrades(admin, req.query.filter, req.query.q)),
+        settings: settingsView(settings),
+        owner,
+      });
     }
     if (req.method !== "POST") return methodNotAllowed(res, ["GET", "POST"]);
 
@@ -97,15 +107,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (OWNER_ONLY.has(action) && staff.role !== "admin") {
       throw new HttpError(403, "Only the store owner can do that.");
     }
-    const settings = await loadTradeSettings(admin);
+    const settings = await settingsForStaff(admin);
 
     if (action === "saveSettings") {
       const next = await saveSettings(admin, staff, settings, body.settings);
-      return sendJson(res, 200, { ok: true, settings: settingsView(next) });
+      return sendJson(res, 200, { ok: true, settings: settingsView(next), owner });
     }
     if (action === "importCard") {
       const tradeId = await importCard(admin, staff, body);
-      return await sendFresh(res, admin, tradeId);
+      return await sendFresh(res, admin, tradeId, owner);
     }
 
     const tradeId = readTradeId(body.tradeId);
@@ -337,7 +347,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new HttpError(400, "Unknown action.");
     }
 
-    return await sendFresh(res, admin, tradeId);
+    return await sendFresh(res, admin, tradeId, owner);
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     const message = err instanceof HttpError ? err.message : "Unexpected server error.";
@@ -346,10 +356,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function sendFresh(res: VercelResponse, admin: Admin, tradeId: string) {
+/** trade_settings is missing until the Trade Center database update has run. */
+async function settingsForStaff(admin: Admin): Promise<TradeSettingsRow> {
+  try {
+    return await loadTradeSettings(admin);
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 503) {
+      throw new HttpError(503, "Trade settings aren't set up yet. Run the Trade Center database update first.");
+    }
+    throw err;
+  }
+}
+
+async function sendFresh(res: VercelResponse, admin: Admin, tradeId: string, owner: boolean) {
   const [bundle, settings] = await Promise.all([loadTradeBundle(admin, tradeId), loadTradeSettings(admin)]);
   if (!bundle) throw new HttpError(404, "That trade isn't there.");
-  return sendJson(res, 200, { ok: true, trade: staffTradeView(bundle, settings), settings: settingsView(settings) });
+  return sendJson(res, 200, { ok: true, trade: staffTradeView(bundle, settings), settings: settingsView(settings), owner });
 }
 
 async function emailCustomer(
@@ -395,6 +417,8 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown) {
   let query = admin.from("trade_requests").select("*").order("updated_at", { ascending: false }).limit(MAX_LISTED);
   if (filter === "open") {
     query = query.not("status", "in", "(completed,rejected,canceled,expired,returned)");
+  } else if (filter === "waiting") {
+    query = query.in("status", [...STAFF_WAITING_STATUSES]);
   } else if (isTradeStatus(filter)) {
     query = query.eq("status", filter);
   }
@@ -409,12 +433,13 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown) {
   }
   const [{ data, error }, statuses] = await Promise.all([query, admin.from("trade_requests").select("status").limit(10000)]);
   if (error || statuses.error) throw new HttpError(500, "We couldn't load trades. Try again.");
-  const counts: Record<string, number> = { open: 0, all: 0 };
+  const counts: Record<string, number> = { waiting: 0, open: 0, all: 0 };
   for (const s of TRADE_STATUSES) counts[s] = 0;
   for (const row of statuses.data ?? []) {
     counts.all += 1;
     counts[row.status] = (counts[row.status] ?? 0) + 1;
     if (isTradeStatus(row.status) && isOpenTrade(row.status)) counts.open += 1;
+    if (isTradeStatus(row.status) && STAFF_WAITING_STATUSES.includes(row.status)) counts.waiting += 1;
   }
   return { trades: (data ?? []).map(staffSummaryView), counts };
 }
@@ -543,18 +568,31 @@ async function markReturned(admin: Admin, staff: StaffContext, bundle: TradeBund
     return;
   }
   if (t.status === "approved_for_fulfillment" || t.status === "completed") {
-    // Cards we didn't take from a finished trade.
-    const rejected = bundle.offers.filter((c) => c.disposition === "rejected");
-    if (rejected.length === 0) throw new HttpError(409, "There are no rejected cards to return on this trade.");
-    const { error } = await admin.from("trade_requests").update(returnInfo).eq("id", t.id);
+    // From a finished trade: copies that arrived but we didn't take (a card
+    // we turned down at inspection, or the extra copies of one we took part of).
+    const back = bundle.offers.filter((c) => copiesToReturn(c) > 0);
+    if (back.length === 0) throw new HttpError(409, "Nothing on this trade is waiting to go back to the customer.");
+    if (t.returned_at) throw new HttpError(409, "These cards were already marked returned.");
+    const { data, error } = await admin
+      .from("trade_requests")
+      .update(returnInfo)
+      .eq("id", t.id)
+      .is("returned_at", null)
+      .select("id");
     if (error) throw new HttpError(500, "We couldn't save the return. Try again.");
-    const back = await admin
-      .from("trade_offer_cards")
-      .update({ disposition: "returned" })
-      .eq("trade_request_id", t.id)
-      .eq("disposition", "rejected");
-    if (back.error) console.error("[admin/trade-center] dispositions not updated", t.id, back.error.message);
-    await logEvent(admin, t.id, staff, "returned", t.status, t.status, { carrier, tracking, cards: rejected.length });
+    if (!data || data.length === 0) throw new HttpError(409, "These cards were already marked returned.");
+    // A card we took none of is now returned; one we took some of stays accepted.
+    const noneTaken = back.filter((c) => (c.final_quantity ?? 0) === 0).map((c) => c.id);
+    if (noneTaken.length > 0) {
+      const marked = await admin
+        .from("trade_offer_cards")
+        .update({ disposition: "returned" })
+        .in("id", noneTaken)
+        .eq("disposition", "rejected");
+      if (marked.error) console.error("[admin/trade-center] dispositions not updated", t.id, marked.error.message);
+    }
+    const copies = back.reduce((sum, c) => sum + copiesToReturn(c), 0);
+    await logEvent(admin, t.id, staff, "returned", t.status, t.status, { carrier, tracking, cards: back.length, copies });
     return;
   }
   throw new HttpError(409, "Mark cards returned once the trade is waiting for its return, or for rejected cards from a finished trade.");
@@ -680,7 +718,7 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
     cash_payout_enabled: o.cashPayoutEnabled === true,
     cash_rate_percent: num(o, "cashRatePercent", r.cashRatePercent, "Cash rate"),
     overstock_threshold: num(o, "overstockThreshold", r.overstockThreshold, "Overstock limit"),
-    excluded_set_codes: textList(o.excludedSetCodes, 200, 12, "Excluded sets").map((c) => c.toUpperCase()),
+    excluded_set_codes: [...new Set(textList(o.excludedSetCodes, 200, 12, "Excluded sets").map((c) => c.toUpperCase()))],
     excluded_card_names: textList(o.excludedCardNames, 500, 200, "Excluded cards"),
     notify_customer: o.notifyCustomer !== false,
     notify_staff: o.notifyStaff !== false,

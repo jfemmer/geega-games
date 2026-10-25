@@ -439,11 +439,37 @@ function baseView(t: TradeRow, items: TradeItemRow[], messages: TradeMessageRow[
   };
 }
 
+/**
+ * A card as its customer sees it. Staff's review stays private while they're
+ * still reviewing (pending_review), and the inspection while they're still
+ * inspecting (received, under_inspection): the customer sees the decisions
+ * once they're made (approval, a request for changes, the final offer).
+ */
+function customerOfferView(row: TradeOfferRow, status: string): TradeOfferCard {
+  const card = offerView(row);
+  if (status === "pending_review") {
+    return { ...card, reviewStatus: "pending", approvedQuantity: null, approvedUnitCents: null, reviewNote: null };
+  }
+  if (status === "received" || status === "under_inspection") {
+    return {
+      ...card,
+      receivedQuantity: null,
+      verifiedCondition: null,
+      finalQuantity: null,
+      finalUnitCents: null,
+      flags: [],
+      inspectionNote: null,
+      inspected: false,
+    };
+  }
+  return card;
+}
+
 export function customerTradeView(bundle: TradeBundle, settings: TradeSettingsRow): CustomerTrade {
   const { trade, items, offers, events, messages } = bundle;
   return {
     ...baseView(trade, items, messages, false, settings),
-    offered: offers.map(offerView),
+    offered: offers.map((row) => customerOfferView(row, trade.status)),
     timeline: events
       .filter((e) => CUSTOMER_TIMELINE_LABELS[e.event] !== undefined)
       .map((e) => ({ event: e.event, label: CUSTOMER_TIMELINE_LABELS[e.event], createdAt: e.created_at })),
@@ -529,6 +555,8 @@ export function staffSummaryView(t: TradeRow): StaffTradeSummary {
     finalValueCents: t.final_value_cents,
     holdExpiresAt: t.hold_expires_at,
     shipBy: t.ship_by,
+    paymentDueAt: t.payment_due_at,
+    inboundCarrier: t.inbound_carrier,
     inboundTracking: t.inbound_tracking,
     inboundShippedAt: t.inbound_shipped_at,
   };

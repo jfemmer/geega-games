@@ -10,6 +10,8 @@ import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { MyDecksSection } from "./MyDecksPage";
 import MySortingRequests from "../components/sorting/MySortingRequests";
+import MyTrades from "../components/trades/MyTrades";
+import TradeDetail from "../components/trades/TradeDetail";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
 import { SELLER_REFERRAL_REWARD_CENTS, SELL_HUB_PATH } from "../lib/partnerTypes";
 import { PRODUCTION_ORIGIN } from "../../seo/site";
@@ -59,6 +61,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account/wishlist", label: "Wishlist" },
   { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/sorting", label: "Sorting requests" },
+  { to: "/account/trades", label: "Trades" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
   { to: "/account/refer", label: "Refer a seller" },
@@ -1985,6 +1988,7 @@ export function AccountPage() {
   const { path } = useRouter();
   const orderMatch = matchRoute("/account/orders/:id", path);
   const deckMatch = matchRoute("/account/decks/:id", path);
+  const tradeMatch = matchRoute("/account/trades/:id", path);
 
   let title = "Dashboard";
   let subtitle: string | undefined;
@@ -2019,6 +2023,13 @@ export function AccountPage() {
     title = "Sorting requests";
     subtitle = "Collections you've asked us to sort, and their quotes.";
     body = <MySortingRequests />;
+  } else if (path === "/account/trades") {
+    title = "Trades";
+    subtitle = "Your trades: their cards, deadlines and messages.";
+    body = <MyTrades />;
+  } else if (tradeMatch) {
+    title = "Trade";
+    body = <TradeDetail tradeId={tradeMatch.id} />;
   } else if (path === "/account/notifications") {
     title = "Notifications";
     subtitle = "Choose which email updates you'd like to receive.";
@@ -2044,7 +2055,9 @@ export function AccountPage() {
     ? "/account/orders"
     : deckMatch
       ? "/account/decks"
-      : path;
+      : tradeMatch
+        ? "/account/trades"
+        : path;
 
   return (
     <RequireAuth>

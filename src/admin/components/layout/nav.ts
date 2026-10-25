@@ -25,6 +25,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: `${ADMIN_BASE}/trade-evaluator`,
   },
   {
+    key: "trades",
+    label: "Trades",
+    icon: "cards",
+    path: `${ADMIN_BASE}/trades`,
+  },
+  {
     key: "pickup",
     label: "Pickup Requests",
     icon: "package",
@@ -112,6 +118,7 @@ export const SECTION_TITLES: Record<string, string> = {
   orders: "Orders",
   pos: "Register",
   "trade-evaluator": "Trade Evaluator",
+  trades: "Trades",
   pickup: "Pickup Requests",
   scanning: "Card Scanning",
   announcements: "Announcements",

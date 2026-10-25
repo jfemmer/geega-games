@@ -19,6 +19,9 @@ const scryfall = vi.hoisted(() => ({ searchPrintingsPage: vi.fn(), resolveExact:
 vi.mock("../src/admin/repositories", () => ({ inventoryRepository: inventory, scryfallRepository: scryfall }));
 const trades = vi.hoisted(() => ({ recent: vi.fn(), confirm: vi.fn(), email: vi.fn(), texted: vi.fn() }));
 vi.mock("../src/admin/repositories/trades.supabase", () => ({ tradeRepository: trades }));
+// The online trade terms (admin Trades, Settings): not set up unless a test says so.
+const tradeCenter = vi.hoisted(() => ({ settings: vi.fn() }));
+vi.mock("../src/admin/repositories/tradeCenter.supabase", () => ({ tradeCenterRepository: tradeCenter }));
 
 const { TradeEvaluatorPage } = await import("../src/admin/pages/TradeEvaluatorPage");
 
@@ -192,6 +195,8 @@ beforeEach(() => {
   inventory.list.mockResolvedValue({ rows: [], total: 0 });
   inventory.get.mockImplementation(async (id: string) => [signet, solRing].find((i) => i.id === id) ?? null);
   trades.recent.mockResolvedValue([]);
+  tradeCenter.settings.mockReset();
+  tradeCenter.settings.mockRejectedValue(new Error("Trade settings aren't set up yet."));
 });
 
 afterEach(() => {
@@ -596,6 +601,37 @@ describe("Trade Evaluator", () => {
     await user.click(within(row).getByRole("button", { name: "Email trade #1001 to Sam Rivera" }));
     expect(trades.email).toHaveBeenCalledWith(TRADE_ID, "sam@example.com");
     expect(await within(recentTrades()).findByText(/Emailed$/)).toBeInTheDocument();
+  });
+
+  it("starts a first trade at the online rate, and points out cards under the trade-in minimum", async () => {
+    const user = userEvent.setup();
+    tradeCenter.settings.mockResolvedValue({ settings: { creditRatePercent: 80, minCardValueCents: 1500 }, owner: true });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Trade credit")).toHaveValue("80"));
+    await user.type(screen.getByLabelText("Card, line 1 of their cards"), "Llanowar Elves");
+    await user.type(theirPrice(1), "0.25");
+    const row = screen.getByLabelText("Card, line 1 of their cards").closest("li")!;
+    expect(row).toHaveTextContent("Under the $15.00 trade-in minimum");
+    // Only a note: the card still counts.
+    expect(total("Their cards at TCG low")).toHaveTextContent("$0.25");
+    await user.clear(theirPrice(1));
+    await user.type(theirPrice(1), "15");
+    expect(row).not.toHaveTextContent("trade-in minimum");
+  });
+
+  it("keeps the percentage last used on this device, and mentions the online rate", async () => {
+    window.localStorage.setItem("gg-trade-draft", JSON.stringify({ creditPercent: "70", customer: {}, theirs: [], yours: [], confirmed: null }));
+    tradeCenter.settings.mockResolvedValue({ settings: { creditRatePercent: 80, minCardValueCents: 1500 }, owner: true });
+    renderPage();
+    expect(await screen.findByText(/Online trades get 80%\./)).toBeInTheDocument();
+    expect(screen.getByLabelText("Trade credit")).toHaveValue("70");
+  });
+
+  it("works as before when the online trade terms aren't set up", async () => {
+    renderPage();
+    await waitFor(() => expect(tradeCenter.settings).toHaveBeenCalled());
+    expect(screen.getByLabelText("Trade credit")).toHaveValue("70");
+    expect(screen.queryByText(/Online trades get/)).toBeNull();
   });
 
   it("is in the admin menu, next to the register", () => {

@@ -21,6 +21,8 @@ export interface SellPrinting {
   scryfallPriceCents: number | null;
   /** ISO date ("YYYY-MM-DD") the printing was released, or null if Scryfall doesn't have one. */
   releasedAt: string | null;
+  /** Today's market prices per finish, in cents (the Trade Center's estimates use these). */
+  prices?: { usd: number | null; usdFoil: number | null; usdEtched: number | null } | null;
 }
 
 export type SellCondition = "NM" | "LP" | "MP" | "HP" | "DMG" | null;

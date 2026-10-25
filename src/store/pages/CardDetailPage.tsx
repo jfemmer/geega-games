@@ -15,6 +15,9 @@ import { PHOTO_REQUEST_MIN_PRICE_LABEL, photoRequestAllowed } from "../lib/photo
 import { useAuth } from "../lib/AuthContext";
 import { useWishlist } from "../lib/WishlistContext";
 import { authLinkWithReturn } from "../lib/authRedirect";
+import { useTradeTerms } from "../lib/tradeCenterApi";
+import { tradeCart } from "../lib/tradeCart";
+import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
 
 // One indexable page per unique card (grouped by oracle_id across every
 // in-stock printing/condition — see public.get_card_detail), distinct from
@@ -75,6 +78,10 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   const [notFound, setNotFound] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
+  // "Add to trade" (Trade Center): shown once staff switch trading on.
+  const tradeTerms = useTradeTerms();
+  const canTrade = tradingOpen(tradeTerms);
+  const [tradeAddedId, setTradeAddedId] = useState<string | null>(null);
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [notifyError, setNotifyError] = useState<string | null>(null);
@@ -336,6 +343,44 @@ export default function CardDetailPage({ slug }: { slug: string }) {
                   >
                     {addedId === l.id ? "Added ✓" : addingId === l.id ? "Adding…" : "Add to cart"}
                   </button>
+                  {canTrade && tradePriceCents(l) != null && (
+                    <span className="gg-card-detail__trade">
+                      <button
+                        type="button"
+                        className="gg-btn gg-btn-ghost gg-btn-sm"
+                        onClick={() => {
+                          tradeCart.add({
+                            inventoryItemId: l.id,
+                            cardName: detail.cardName,
+                            setCode: l.setCode,
+                            setName: l.setName,
+                            collectorNumber: l.collectorNumber,
+                            condition: l.condition,
+                            finish: l.finish,
+                            imageUrl: l.imageUrl,
+                            maxQuantity: l.quantity,
+                            tradePriceCents: tradePriceCents(l) as number,
+                            cardPath: `/shop/card/${slug}`,
+                          });
+                          setTradeAddedId(l.id);
+                          window.setTimeout(() => setTradeAddedId((cur) => (cur === l.id ? null : cur)), 2500);
+                        }}
+                      >
+                        {tradeAddedId === l.id ? "In your trade ✓" : "Add to trade"}
+                      </button>
+                      {tradeAddedId === l.id ? (
+                        <Link to={TRADE_CENTER_PATH} className="gg-card-detail__tradelink">
+                          View trade
+                        </Link>
+                      ) : (
+                        l.isDeal &&
+                        l.originalPriceCents != null &&
+                        l.originalPriceCents > (l.priceCents ?? 0) && (
+                          <span className="gg-card-detail__tradeprice">Trades at {formatCents(l.originalPriceCents)}</span>
+                        )
+                      )}
+                    </span>
+                  )}
                 </span>
                 {photoRequestAllowed(l.priceCents, l.originalPriceCents) && (
                   <span className="gg-card-detail__photoreq">

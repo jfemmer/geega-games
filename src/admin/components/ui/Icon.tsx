@@ -53,7 +53,8 @@ export type IconName =
   | "qr"
   | "tag"
   | "swap"
-  | "message";
+  | "message"
+  | "cards";
 
 const PATHS: Record<IconName, string> = {
   overview:
@@ -126,6 +127,8 @@ const PATHS: Record<IconName, string> = {
   // Two arrows passing each other: a trade.
   swap: "M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4",
   message: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
+  // A card with another behind it: online trades (cards traded for cards).
+  cards: "M9 3h9a2 2 0 0 1 2 2v12M6 7h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z",
 };
 
 interface IconProps {

@@ -313,6 +313,25 @@ body {
   }
 }
 
+/* Tablets: icon-only header buttons (each keeps its aria-label) and a
+   narrower search minimum, so a signed-in header (Account, Cart, Sign out)
+   fits beside the search box instead of pushing the page sideways. */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .gg-header-row {
+    grid-template-columns: auto minmax(200px, 1fr) auto;
+    gap: 1rem;
+  }
+  .gg-logo {
+    height: 64px;
+  }
+  .gg-iconbtn-label {
+    display: none;
+  }
+  .gg-iconbtn--icon {
+    padding: 0 .7rem;
+  }
+}
+
 
 /* ===== Signup shipping address autocomplete ===== */
 .gg-address-lookup {

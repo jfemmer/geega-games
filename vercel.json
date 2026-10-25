@@ -88,6 +88,7 @@
     { "source": "/sell/offer", "destination": "/spa.html" },
     { "source": "/collection-sorting/quote", "destination": "/spa.html" },
     { "source": "/trade", "destination": "/spa.html" },
+    { "source": "/trade-cards", "destination": "/spa.html" },
     { "source": "/kiosk", "destination": "/spa.html" },
     { "source": "/yard-sale", "destination": "/spa.html" },
     { "source": "/account", "destination": "/spa.html" },

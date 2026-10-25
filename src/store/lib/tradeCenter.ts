@@ -169,6 +169,17 @@ export const STAFF_REJECTABLE_STATUSES: readonly TradeStatus[] = [
   "awaiting_payment",
 ];
 
+/**
+ * Waiting on staff: a list to review, a package to inspect, cards to mail
+ * back. The admin sidebar's Trades number counts these (admin_nav_badges).
+ */
+export const STAFF_WAITING_STATUSES: readonly TradeStatus[] = [
+  "pending_review",
+  "received",
+  "under_inspection",
+  "return_pending",
+];
+
 /** Nothing has reached us, so rejecting closes the trade instead of returning cards. */
 export const PRE_SHIPMENT_STATUSES: readonly TradeStatus[] = [
   "awaiting_trade_list",
@@ -374,6 +385,16 @@ export function valueForCreditCents(creditCents: number, ratePercent: number, fe
   return Math.ceil(((creditCents + feeCents) * 100) / ratePercent);
 }
 
+/**
+ * What one of our cards counts for in a trade: its regular price, so a
+ * deal's price before the discount (sale and member pricing don't apply).
+ * The database does the same when it holds the card (trade_regular_price).
+ */
+export function tradePriceCents(listing: { priceCents: number | null; originalPriceCents: number | null; isDeal: boolean | null }): number | null {
+  if (listing.isDeal && listing.originalPriceCents != null) return listing.originalPriceCents;
+  return listing.priceCents;
+}
+
 /** Our cards ship tracked, free from $75 of cards: the same as checkout. */
 export const TRADE_TRACKED_SHIPPING_CENTS = 550;
 export const TRADE_FREE_SHIPPING_FROM_CENTS = 7500;
@@ -420,6 +441,21 @@ export function tradeComparison(input: {
     excessCents: Math.max(creditCents - due, 0),
     moreValueNeededCents: Math.max(valueForCreditCents(due, input.ratePercent, fee) - input.offeredValueCents, 0),
   };
+}
+
+/**
+ * Copies of one of the customer's cards that arrived but that we didn't
+ * take (turned down at inspection, or the extra copies of one we took part
+ * of): they go back to the customer. Works on the views and on table rows.
+ */
+export function copiesToReturn(card:
+  | { inspected: boolean; receivedQuantity: number | null; finalQuantity: number | null }
+  | { inspected_at: string | null; received_quantity: number | null; final_quantity: number | null }): number {
+  const inspected = "inspected" in card ? card.inspected : card.inspected_at !== null;
+  if (!inspected) return 0;
+  const received = "receivedQuantity" in card ? card.receivedQuantity : card.received_quantity;
+  const taken = "finalQuantity" in card ? card.finalQuantity : card.final_quantity;
+  return Math.max((received ?? 0) - (taken ?? 0), 0);
 }
 
 /** Cash for credit beyond the order, when staff offer it: the same card value at the cash rate. */
@@ -758,6 +794,8 @@ export interface StaffTradeSummary {
   finalValueCents: number | null;
   holdExpiresAt: string | null;
   shipBy: string | null;
+  paymentDueAt: string | null;
+  inboundCarrier: string | null;
   inboundTracking: string | null;
   inboundShippedAt: string | null;
 }
@@ -825,6 +863,13 @@ export const TRADE_SETTING_RANGES = {
 
 export function formatUsd(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+/** "DMU #107 · Foil": a printing's set, collector number and (if not non-foil) finish. */
+export function printingLabel(card: { setCode: string | null; collectorNumber: string | null; finish: string }): string {
+  const where = [card.setCode?.toUpperCase(), card.collectorNumber ? `#${card.collectorNumber}` : null].filter(Boolean).join(" ");
+  const finish = card.finish !== "nonfoil" ? (FINISH_NAMES[card.finish] ?? card.finish) : null;
+  return [where, finish].filter(Boolean).join(" · ");
 }
 
 /** "Sheoldred, the Apocalypse (DMU #107, foil)". */

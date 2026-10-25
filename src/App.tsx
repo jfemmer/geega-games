@@ -49,6 +49,8 @@ import CollectionSortingPage from "./store/pages/CollectionSortingPage";
 import SortingQuotePage from "./store/pages/SortingQuotePage";
 import TradeSummaryPage from "./store/pages/TradeSummaryPage";
 import { TRADE_PATH } from "./store/lib/trades";
+import TradeCardsPage from "./store/pages/TradeCardsPage";
+import { TRADE_CENTER_PATH } from "./store/lib/tradeCenter";
 import KioskPage from "./store/pages/KioskPage";
 import YardSalePage from "./store/pages/YardSalePage";
 
@@ -72,6 +74,7 @@ function Routes() {
   if (path === "/collection-sorting") return <CollectionSortingPage />;
   if (path === "/collection-sorting/quote") return <SortingQuotePage />;
   if (path === TRADE_PATH) return <TradeSummaryPage />;
+  if (path === TRADE_CENTER_PATH) return <TradeCardsPage />;
   if (path === "/sell") return <SellPage />;
   if (path === "/sell-my-collection") return <SellCollectionPage />;
   if (path === ST_LOUIS_PATH) return <SellStLouisPage />;

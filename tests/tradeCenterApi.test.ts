@@ -835,6 +835,44 @@ describe("paying the rest by card (9, 17)", () => {
 });
 
 describe("My Trades", () => {
+  it("keeps staff's review private until they decide, and the inspection until the final offer", async () => {
+    const offered = async (id: string) => ((await ann.get({ id })).body.trade as { offered: Record<string, unknown>[] }).offered[0];
+    const t = tradeRow({ status: "pending_review" });
+    trades().push(t);
+    state.tables.trade_offer_cards.push(offerRow(t.id, { review_status: "rejected", approved_quantity: 0, review_note: "Not this one" }));
+    expect(await offered(t.id)).toMatchObject({ reviewStatus: "pending", approvedQuantity: null, reviewNote: null });
+    t.status = "revision_requested";
+    expect(await offered(t.id)).toMatchObject({ reviewStatus: "rejected", reviewNote: "Not this one" });
+
+    const u = tradeRow({ status: "under_inspection" });
+    trades().push(u);
+    state.tables.trade_offer_cards.push(
+      offerRow(u.id, {
+        review_status: "approved",
+        approved_quantity: 1,
+        approved_unit_cents: 8000,
+        received_quantity: 1,
+        final_quantity: 1,
+        final_unit_cents: 6000,
+        verified_condition: "LP",
+        inspection_note: "Whitening on the back",
+        inspected_at: iso(Date.now()),
+        flags: ["damaged"],
+      }),
+    );
+    expect(await offered(u.id)).toMatchObject({
+      reviewStatus: "approved",
+      approvedUnitCents: 8000,
+      inspected: false,
+      finalUnitCents: null,
+      verifiedCondition: null,
+      inspectionNote: null,
+      flags: [],
+    });
+    u.status = "awaiting_final_approval";
+    expect(await offered(u.id)).toMatchObject({ inspected: true, finalUnitCents: 6000, verifiedCondition: "LP", inspectionNote: "Whitening on the back", flags: ["damaged"] });
+  });
+
   it("lists only the customer's own trades, with card counts", async () => {
     const mine = tradeRow();
     const theirs = tradeRow({ user_id: BOB });
@@ -897,6 +935,29 @@ describe("admin Trades: the list and a trade", () => {
     expect((byNumber.body.trades as { tradeNumber: number }[]).map((t) => t.tradeNumber)).toEqual([1002]);
     const byName = await staff.get({ filter: "all", q: "sam" });
     expect((byName.body.trades as { customerName: string }[]).map((t) => t.customerName)).toEqual(["Sam Rivera"]);
+  });
+
+  it("filters to what's waiting on staff, and says whether the caller is the owner", async () => {
+    trades().push(
+      tradeRow({ status: "pending_review" }),
+      tradeRow({ status: "received" }),
+      tradeRow({ status: "return_pending" }),
+      tradeRow({ status: "awaiting_shipment" }),
+      tradeRow({ status: "completed" }),
+    );
+    const waiting = await staff.get({ filter: "waiting" });
+    expect((waiting.body.trades as { status: string }[]).map((t) => t.status).sort()).toEqual(["pending_review", "received", "return_pending"]);
+    expect(waiting.body.counts).toMatchObject({ waiting: 3, open: 4, all: 5 });
+    expect(waiting.body.owner).toBe(false);
+    expect((await owner.get({ view: "settings" })).body.owner).toBe(true);
+    expect((await owner.get({ id: (trades()[0] as { id: string }).id })).body.owner).toBe(true);
+  });
+
+  it("tells staff to run the database update when the settings aren't there yet", async () => {
+    state.tables.trade_settings = [];
+    const res = await staff.get();
+    expect(res.statusCode).toBe(503);
+    expect(res.body.message).toBe("Trade settings aren't set up yet. Run the Trade Center database update first.");
   });
 
   it("shows staff everything, notes and history included", async () => {
@@ -1127,6 +1188,42 @@ describe("admin Trades: after the trade (10, 11, 14)", () => {
     expect(t).toMatchObject({ status: "returned", return_carrier: "USPS", return_tracking: "9400222233334444555566" });
     expect(card.disposition).toBe("returned");
     expect(emailTypes()).toEqual(["trade_returned"]);
+  });
+
+  it("mails back only what arrived and wasn't taken from a finished trade, once", async () => {
+    const t = tradeRow({ status: "completed" });
+    trades().push(t);
+    const inspected = iso(Date.now());
+    const partly = offerRow(t.id, { review_status: "approved", received_quantity: 3, final_quantity: 2, final_unit_cents: 7000, inspected_at: inspected, disposition: "imported" });
+    const none = offerRow(t.id, { review_status: "approved", received_quantity: 1, final_quantity: 0, inspected_at: inspected, disposition: "rejected" });
+    const neverSent = offerRow(t.id, { review_status: "rejected", approved_quantity: 0, disposition: "rejected" });
+    state.tables.trade_offer_cards.push(partly, none, neverSent);
+    const res = await staff.post({ action: "markReturned", tradeId: t.id, carrier: "USPS", trackingNumber: "9400111899223197428490" });
+    expect(res.statusCode).toBe(200);
+    expect(t).toMatchObject({ status: "completed", return_carrier: "USPS", return_tracking: "9400111899223197428490" });
+    expect(t.returned_at).toBeTruthy();
+    // The card we took two of stays ours; the one we took none of went back; the one never sent is untouched.
+    expect([partly.disposition, none.disposition, neverSent.disposition]).toEqual(["imported", "returned", "rejected"]);
+    const event = state.tables.trade_events.find((e) => e.event === "returned") as { detail: Record<string, unknown> };
+    expect(event.detail).toMatchObject({ carrier: "USPS", cards: 2, copies: 2 });
+    expect(emailTypes()).toEqual(["trade_returned"]);
+    expect(sent[0].text).toContain("the cards we didn't take");
+    const again = await staff.post({ action: "markReturned", tradeId: t.id });
+    expect(again.statusCode).toBe(409);
+    expect(again.body.message).toBe("These cards were already marked returned.");
+  });
+
+  it("has nothing to mail back when everything that arrived was taken", async () => {
+    const t = tradeRow({ status: "approved_for_fulfillment" });
+    trades().push(t);
+    state.tables.trade_offer_cards.push(
+      offerRow(t.id, { review_status: "approved", received_quantity: 1, final_quantity: 1, final_unit_cents: 7000, inspected_at: iso(Date.now()), disposition: "accepted" }),
+      offerRow(t.id, { review_status: "rejected", approved_quantity: 0, disposition: "rejected" }),
+    );
+    const res = await staff.post({ action: "markReturned", tradeId: t.id });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toBe("Nothing on this trade is waiting to go back to the customer.");
+    expect(sent).toHaveLength(0);
   });
 
   it("adds an accepted card to inventory through the database, logged", async () => {

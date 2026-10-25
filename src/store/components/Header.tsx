@@ -8,6 +8,9 @@ import { Icon } from "./Icon";
 import ShopByDeck from "./ShopByDeck";
 import StorewideSaleBanner from "./StorewideSaleBanner";
 import OrdersPausedBanner from "./OrdersPausedBanner";
+import { useTradeTerms } from "../lib/tradeCenterApi";
+import { tradeCartCount, useTradeCart } from "../lib/tradeCart";
+import { TRADE_CENTER_PATH } from "../lib/tradeCenter";
 
 const SUGGEST_DEBOUNCE_MS = 200;
 
@@ -21,6 +24,9 @@ export default function Header() {
   const { user, signOut } = useAuth();
   const { path, query, navigate } = useRouter();
   const [cartOpen, setCartOpen] = useState(false);
+  // Trade Cards shows once staff switch trading on (Trades → Settings).
+  const tradeTerms = useTradeTerms();
+  const tradeCount = tradeCartCount(useTradeCart());
 
   // The input is the single interactive source of truth for what's displayed
   // while typing; it's initialized from and kept in sync with the URL so
@@ -277,6 +283,16 @@ export default function Header() {
         <Link to="/shop?deals=1" className="gg-nav-deals">
           Deals & Specials
         </Link>
+        {tradeTerms?.enabled && (
+          <Link to={TRADE_CENTER_PATH} className="gg-nav-trade">
+            Trade Cards
+            {tradeCount > 0 && (
+              <span className="gg-nav-trade__count" aria-label={`, ${tradeCount} in your trade`}>
+                {tradeCount}
+              </span>
+            )}
+          </Link>
+        )}
         <Link to="/sell-my-collection" className="gg-nav-sell">
           Sell Your Cards
         </Link>

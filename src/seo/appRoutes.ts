@@ -27,6 +27,7 @@ export const APP_SHELL_ROUTES = [
   "/sell/offer",
   "/collection-sorting/quote",
   "/trade",
+  "/trade-cards",
   "/kiosk",
   "/yard-sale",
   "/account",
@@ -38,7 +39,7 @@ export const APP_SHELL_ROUTES = [
  * canonical once the app runs. Every other shell page is private or has
  * nothing to offer a searcher, and is sent with "X-Robots-Tag: noindex".
  */
-export const INDEXABLE_APP_SHELL_ROUTES: readonly string[] = ["/track-order"];
+export const INDEXABLE_APP_SHELL_ROUTES: readonly string[] = ["/track-order", "/trade-cards"];
 
 /** Where the catalog function answers, and what it's told about the address. */
 export const CATALOG_ROUTES = [

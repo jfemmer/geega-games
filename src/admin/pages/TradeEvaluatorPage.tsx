@@ -19,6 +19,7 @@ import { InventoryCardImage } from "../components/cards/InventoryCardImage";
 import { AddTradeCardDrawer, type TradeCardPick } from "../components/trade/AddTradeCardDrawer";
 import { inventoryRepository } from "../repositories";
 import { tradeRepository } from "../repositories/trades.supabase";
+import { tradeCenterRepository } from "../repositories/tradeCenter.supabase";
 import { useToast } from "../hooks/useToast";
 import { formatCents, formatDateTime } from "../utils/format";
 import { priceForFinish } from "../utils/pricing";
@@ -228,6 +229,27 @@ function loadDraft(): Draft {
   return emptyDraft();
 }
 
+/** Whether this device has kept a trade (and with it the last credit percentage used). */
+function hasSavedDraft(): boolean {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) !== null || window.localStorage.getItem(OLD_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** The online trade terms (admin Trades, Settings), when they're set up. */
+interface OnlineTerms {
+  creditRatePercent: number;
+  minCardValueCents: number;
+}
+
+/** A card typed in under the trade-in minimum (its TCG low each). Only a note: staff decide. */
+function underMinimum(line: Line, minCardValueCents: number): boolean {
+  const price = parsePriceCents(line.price);
+  return minCardValueCents > 0 && price !== null && price > 0 && price < minCardValueCents;
+}
+
 function saveDraft(draft: Draft) {
   try {
     window.localStorage.setItem(
@@ -406,6 +428,9 @@ function useTradeSharing(onUpdated: (trade: StaffTradeView) => void) {
 export function TradeEvaluatorPage() {
   const toast = useToast();
   const [draft, setDraft] = useState<Draft>(loadDraft);
+  // Read once, before the first save below writes a draft.
+  const [firstUseHere] = useState(() => !hasSavedDraft());
+  const [online, setOnline] = useState<OnlineTerms | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmTrade, setConfirmTrade] = useState(false);
   const [addingCard, setAddingCard] = useState(false);
@@ -421,6 +446,31 @@ export function TradeEvaluatorPage() {
   const creditId = useId();
 
   useEffect(() => saveDraft(draft), [draft]);
+
+  // The online trade terms: their rate starts a first trade on this device,
+  // and cards under their minimum are pointed out (nothing is blocked).
+  useEffect(() => {
+    let active = true;
+    tradeCenterRepository.settings().then(
+      ({ settings }) => {
+        if (!active) return;
+        setOnline({ creditRatePercent: settings.creditRatePercent, minCardValueCents: settings.minCardValueCents });
+        if (firstUseHere) {
+          const untouched = String(DEFAULT_TRADE_CREDIT_PERCENT);
+          setDraft((prev) =>
+            prev.creditPercent === untouched && !prev.confirmed && prev.theirs.every(isBlank) && prev.yours.length === 0
+              ? { ...prev, creditPercent: String(settings.creditRatePercent) }
+              : prev,
+          );
+        }
+      },
+      // Not set up yet (or not reachable): the evaluator works as before.
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [firstUseHere]);
 
   useEffect(() => {
     if (!pendingFocus.current) return;
@@ -746,6 +796,7 @@ export function TradeEvaluatorPage() {
             lines={draft.theirs}
             total={theirTotal}
             locked={locked}
+            minCardValueCents={online?.minCardValueCents ?? 0}
             footer={
               totals &&
               shownPercent !== null && (
@@ -815,6 +866,7 @@ export function TradeEvaluatorPage() {
                 ) : (
                   <p className="gg-field__hint" id={`${creditId}-hint`}>
                     Their cards count at {percent}% of TCG low. Kept for your next trade.
+                    {online && online.creditRatePercent !== percent ? ` Online trades get ${online.creditRatePercent}%.` : ""}
                   </p>
                 )}
               </div>
@@ -937,6 +989,7 @@ function TheirList({
   lines,
   total,
   locked,
+  minCardValueCents,
   footer,
   onChange,
   onSearch,
@@ -947,6 +1000,8 @@ function TheirList({
   lines: Line[];
   total: TradeSideTotal;
   locked: boolean;
+  /** The trade-in minimum per card (0: none): cards under it get a note. */
+  minCardValueCents: number;
   footer?: ReactNode;
   onChange: (id: string, field: Field, value: string) => void;
   /** Add card: find it with the card search. */
@@ -1042,6 +1097,9 @@ function TheirList({
                   >
                     <Icon name="close" size={16} />
                   </button>
+                  {underMinimum(line, minCardValueCents) && (
+                    <p className="gg-trade__under">Under the {formatCents(minCardValueCents)} trade-in minimum</p>
+                  )}
                 </li>
               );
             })}
