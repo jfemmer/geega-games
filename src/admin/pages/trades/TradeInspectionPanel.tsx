@@ -73,7 +73,7 @@ export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelP
     await run(
       "final",
       () => tradeCenterRepository.sendFinalOffer(trade.id, cash),
-      "Final offer sent. The customer was emailed to accept it.",
+      "Final offer sent.",
     );
   }
 

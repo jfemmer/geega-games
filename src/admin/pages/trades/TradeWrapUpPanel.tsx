@@ -257,7 +257,7 @@ function MailBack({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
     await run(
       "returned",
       () => tradeCenterRepository.markReturned(trade.id, { carrier, trackingNumber: raw }),
-      "Marked returned. The customer was emailed.",
+      "Marked returned.",
     );
   }
 

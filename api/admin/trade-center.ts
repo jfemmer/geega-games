@@ -123,6 +123,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!bundle) throw new HttpError(404, "That trade isn't there.");
     const status = bundle.trade.status as TradeStatus;
     const actor = { p_actor_id: staff.userId, p_actor_label: staff.email ?? "staff" };
+    // What happened to the email the customer gets for this change (if any), for the page to say.
+    let customerEmail: CustomerEmailOutcome | null = null;
     const audit = (what: string, after: Record<string, unknown> = {}) =>
       logAdminAction(admin, staff, {
         action: `trade.${what}`,
@@ -147,7 +149,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { error } = await admin.rpc("trade_request_revision", { p_trade_id: tradeId, p_message: message, ...actor });
         if (error) throw tradeDbError(error, "We couldn't ask for changes. Try again.");
         await audit("request_revision");
-        await emailCustomer(admin, settings, tradeId, { kind: "revision_requested", message });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "revision_requested", message });
         break;
       }
 
@@ -162,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         if (error) throw tradeDbError(error, "We couldn't approve the trade. Try again.");
         await audit("approve", { approvedValueCents: data, shipBy, conditions });
-        await emailCustomer(admin, settings, tradeId, { kind: "approved" });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "approved" });
         break;
       }
 
@@ -183,7 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (error) throw tradeDbError(error, "We couldn't reject the trade. Try again.");
         if (data !== true) throw new HttpError(409, "This trade changed. Refresh and try again.");
         await audit("reject", { reason, cardsGoBack: !beforeShipping });
-        await emailCustomer(admin, settings, tradeId, beforeShipping ? { kind: "rejected", reason } : { kind: "return_pending", reason });
+        customerEmail = await emailCustomer(admin, settings, tradeId, beforeShipping ? { kind: "rejected", reason } : { kind: "return_pending", reason });
         break;
       }
 
@@ -206,7 +208,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!data || data.length === 0) throw new HttpError(409, "Only a trade waiting for its package can be marked received.");
         await logEvent(admin, tradeId, staff, "received", status, "received");
         await audit("mark_received");
-        await emailCustomer(admin, settings, tradeId, { kind: "received" });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "received" });
         break;
       }
 
@@ -242,7 +244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { data, error } = await admin.rpc("trade_send_final_offer", { p_trade_id: tradeId, p_cash_for_excess: cash, ...actor });
         if (error) throw tradeDbError(error, "We couldn't send the final offer. Try again.");
         await audit("send_final_offer", { finalCreditCents: data, cashForExcess: cash });
-        await emailCustomer(admin, settings, tradeId, { kind: "final_offer" });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "final_offer" });
         break;
       }
 
@@ -278,7 +280,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "markReturned": {
         await markReturned(admin, staff, bundle, body);
         await audit("mark_returned");
-        await emailCustomer(admin, settings, tradeId, { kind: "returned" });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "returned" });
         break;
       }
 
@@ -339,7 +341,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .single();
         if (error || !data) throw new HttpError(500, "We couldn't save the message. Try again.");
         await audit(visible ? "message" : "note");
-        if (visible) await emailCustomer(admin, settings, tradeId, { kind: "message", messageId: data.id, body: text });
+        if (visible) customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "message", messageId: data.id, body: text });
         break;
       }
 
@@ -347,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new HttpError(400, "Unknown action.");
     }
 
-    return await sendFresh(res, admin, tradeId, owner);
+    return await sendFresh(res, admin, tradeId, owner, customerEmail);
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     const message = err instanceof HttpError ? err.message : "Unexpected server error.";
@@ -368,20 +370,32 @@ async function settingsForStaff(admin: Admin): Promise<TradeSettingsRow> {
   }
 }
 
-async function sendFresh(res: VercelResponse, admin: Admin, tradeId: string, owner: boolean) {
+async function sendFresh(
+  res: VercelResponse,
+  admin: Admin,
+  tradeId: string,
+  owner: boolean,
+  customerEmail: CustomerEmailOutcome | null = null,
+) {
   const [bundle, settings] = await Promise.all([loadTradeBundle(admin, tradeId), loadTradeSettings(admin)]);
   if (!bundle) throw new HttpError(404, "That trade isn't there.");
-  return sendJson(res, 200, { ok: true, trade: staffTradeView(bundle, settings), settings: settingsView(settings), owner });
+  return sendJson(res, 200, { ok: true, trade: staffTradeView(bundle, settings), settings: settingsView(settings), owner, customerEmail });
 }
+
+/** sent (or already sent), failed, or skipped with why (customer emails off, no address on file…). */
+type CustomerEmailOutcome = { status: "sent" | "failed" | "skipped"; reason?: string };
 
 async function emailCustomer(
   admin: Admin,
   settings: TradeSettingsRow,
   tradeId: string,
   email: Parameters<typeof sendTradeCustomerEmail>[2],
-): Promise<void> {
+): Promise<CustomerEmailOutcome> {
   const fresh = await loadTradeBundle(admin, tradeId);
-  if (fresh) await sendTradeCustomerEmail(fresh, settings, email);
+  if (!fresh) return { status: "skipped", reason: "no-trade" };
+  const result = await sendTradeCustomerEmail(fresh, settings, email);
+  if (result.status === "skipped") return { status: "skipped", reason: result.reason };
+  return { status: result.status === "failed" ? "failed" : "sent" };
 }
 
 async function logEvent(

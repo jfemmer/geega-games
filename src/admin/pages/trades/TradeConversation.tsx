@@ -19,7 +19,7 @@ export function TradeMessagesPanel({ trade, busy, run }: Pick<TradePanelProps, "
     const ok = await run(
       visibleToCustomer ? "message" : "note",
       () => tradeCenterRepository.message(trade.id, text, visibleToCustomer),
-      visibleToCustomer ? "Message sent. The customer was emailed." : "Note saved.",
+      visibleToCustomer ? "Message sent." : "Note saved.",
     );
     if (ok) setBody("");
   }

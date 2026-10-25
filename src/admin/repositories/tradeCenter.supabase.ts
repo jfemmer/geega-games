@@ -30,6 +30,8 @@ export interface TradeDetailResult {
   trade: StaffTrade;
   settings: TradeSettings;
   owner: boolean;
+  /** The email this change sends the customer, if it sends one: sent, failed, or skipped (and why). */
+  customerEmail?: { status: "sent" | "failed" | "skipped"; reason?: string } | null;
 }
 
 export interface TradeSettingsResult {

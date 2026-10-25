@@ -21,7 +21,7 @@ import {
   updateInspectDraft,
 } from "../src/admin/pages/trades/tradeMath";
 import { formOf, settingsInputOf } from "../src/admin/pages/trades/tradeSettingsForm";
-import { eventDetail, eventLabel, waitingOnStaff } from "../src/admin/pages/trades/tradeLabels";
+import { customerEmailNote, eventDetail, eventLabel, waitingOnStaff } from "../src/admin/pages/trades/tradeLabels";
 import { copiesToReturn } from "../src/store/lib/tradeCenter";
 import { PERCENTS, TRADE_SETTINGS, staffCard, staffTrade } from "./helpers/tradeFixtures";
 
@@ -194,6 +194,10 @@ describe("history and badges", () => {
     expect(eventDetail({ ...base, event: "hold_extended", detail: { hours: 48 } })).toBe("48 more hours");
     expect(eventDetail({ ...base, event: "reminder_sent", detail: { kind: "ship_by" } })).toBe("ship their cards");
     expect(eventDetail({ ...base, event: "rejected", detail: { reason: "Mostly bulk" } })).toBe("Mostly bulk");
+    expect(customerEmailNote({ status: "sent" })).toBe(" The customer was emailed.");
+    expect(customerEmailNote({ status: "failed" })).toBe(" The email to the customer didn't go out: let them know another way.");
+    expect(customerEmailNote({ status: "skipped", reason: "customer-emails-off" })).toBe(" Customer emails are off (Settings), so no email went out.");
+    expect(customerEmailNote(null)).toBe("");
     expect(waitingOnStaff("received")).toBe(true);
     expect(waitingOnStaff("in_transit")).toBe(false);
   });

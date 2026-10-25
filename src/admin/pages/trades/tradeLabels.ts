@@ -141,6 +141,15 @@ export function eventDetail(e: StaffTradeEvent): string | null {
   }
 }
 
+/** What a change's email to the customer came to, as a sentence to add to "Done." (or nothing). */
+export function customerEmailNote(outcome: { status: "sent" | "failed" | "skipped"; reason?: string } | null | undefined): string {
+  if (!outcome) return "";
+  if (outcome.status === "sent") return " The customer was emailed.";
+  if (outcome.status === "failed") return " The email to the customer didn't go out: let them know another way.";
+  if (outcome.reason === "customer-emails-off") return " Customer emails are off (Settings), so no email went out.";
+  return " No email went out to the customer.";
+}
+
 /** Who did it, as staff read it. */
 export function actorLabel(e: Pick<StaffTradeEvent, "actorType" | "actorLabel">): string {
   if (e.actorType === "system") return "Automatic";

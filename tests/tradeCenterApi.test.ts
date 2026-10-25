@@ -1033,6 +1033,19 @@ describe("admin Trades: review and approval (4, 5)", () => {
     expect(email.text).toContain("Leave out the card we didn't approve");
   });
 
+  it("says what happened to the customer's email: sent, failed, or off", async () => {
+    const approved = await staff.post({ action: "approve", tradeId: t.id });
+    expect(approved.body.customerEmail).toEqual({ status: "sent" });
+    Object.assign(t, { status: "pending_review" });
+    emailsFail = true;
+    expect((await staff.post({ action: "approve", tradeId: t.id })).body.customerEmail).toEqual({ status: "failed" });
+    Object.assign(t, { status: "pending_review" });
+    state.tables.trade_settings = [settingsRow({ notify_customer: false })];
+    expect((await staff.post({ action: "approve", tradeId: t.id })).body.customerEmail).toEqual({ status: "skipped", reason: "customer-emails-off" });
+    // A change that sends no email says nothing about one.
+    expect((await staff.post({ action: "extend", tradeId: t.id, hours: 24 })).body.customerEmail ?? null).toBeNull();
+  });
+
   it("explains when the address customers mail to isn't set", async () => {
     rpc("trade_approve", () => ({ data: null, error: { code: "GT011", message: "Add the address customers mail their cards to (Trades, Settings) before approving a trade." } }));
     const res = await staff.post({ action: "approve", tradeId: t.id });

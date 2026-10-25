@@ -93,7 +93,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
             ...(shipBy !== defaultShipBy ? { shipBy } : {}),
           });
         },
-        "Approved. The customer was emailed where and how to send their cards.",
+        "Approved: they can ship their cards now.",
       );
     } else if (outcome === "revise") {
       if (!revision.trim()) {
@@ -106,14 +106,14 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
           await saveFirst();
           return tradeCenterRepository.requestRevision(trade.id, revision.trim());
         },
-        "Sent back to the customer with your message.",
+        "Sent back with your message.",
       );
     } else {
       if (!reason.trim()) {
         toast.error("Give the customer a reason.");
         return;
       }
-      ok = await run("reject", () => tradeCenterRepository.reject(trade.id, reason.trim()), "Trade rejected. The customer was emailed.");
+      ok = await run("reject", () => tradeCenterRepository.reject(trade.id, reason.trim()), "Trade rejected.");
     }
     if (ok) setDrafts({});
   }

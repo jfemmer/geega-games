@@ -150,7 +150,7 @@ describe("review", () => {
     expect(within(preview).getByText("Store credit left over").nextElementSibling).toHaveTextContent("$316.45");
 
     repo.review.mockResolvedValue(answer(REVIEW));
-    repo.approve.mockResolvedValue(answer(staffTrade({ status: "awaiting_shipment", offered: APPROVED })));
+    repo.approve.mockResolvedValue({ ...answer(staffTrade({ status: "awaiting_shipment", offered: APPROVED })), customerEmail: { status: "sent" } });
     await user.type(within(dialog).getByLabelText("Conditions (optional)"), "Mox must be the Stronghold printing");
     await user.click(within(dialog).getByRole("button", { name: "Save the review and approve" }));
     await waitFor(() => expect(repo.approve).toHaveBeenCalled());
@@ -161,7 +161,7 @@ describe("review", () => {
     ]);
     // The usual ship-by date is the server's: none is sent unless staff pick one.
     expect(repo.approve).toHaveBeenCalledWith(TRADE_ID, { conditions: "Mox must be the Stronghold printing" });
-    expect(await screen.findByText("Approved. The customer was emailed where and how to send their cards.")).toBeInTheDocument();
+    expect(await screen.findByText("Approved: they can ship their cards now. The customer was emailed.")).toBeInTheDocument();
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Mark the package received" })).toBeInTheDocument();
   });
 
@@ -200,9 +200,10 @@ describe("receiving, inspection and the final offer", () => {
     const user = userEvent.setup();
     const dialog = await openTrade(staffTrade({ status: "in_transit", offered: APPROVED, inboundCarrier: "USPS", inboundTracking: "9400111899223197428490" }));
     expect(within(dialog).getByRole("link", { name: "9400111899223197428490" })).toHaveAttribute("href", expect.stringContaining("usps.com"));
-    repo.markReceived.mockResolvedValue(answer(INSPECTING));
+    repo.markReceived.mockResolvedValue({ ...answer(INSPECTING), customerEmail: { status: "failed" } });
     await user.click(within(dialog).getByRole("button", { name: "Mark the package received" }));
     await waitFor(() => expect(repo.markReceived).toHaveBeenCalledWith(TRADE_ID));
+    expect(await screen.findByText("Marked received. The email to the customer didn't go out: let them know another way.")).toBeInTheDocument();
     expect(await within(screen.getByRole("dialog")).findByText("Inspect their cards")).toBeInTheDocument();
   });
 

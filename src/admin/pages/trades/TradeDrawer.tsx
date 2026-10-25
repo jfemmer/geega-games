@@ -25,7 +25,7 @@ import {
   type TradeSettings,
   type TradeStatus,
 } from "../../../store/lib/tradeCenter";
-import { TRADE_STATUS_TONE } from "./tradeLabels";
+import { TRADE_STATUS_TONE, customerEmailNote } from "./tradeLabels";
 import { pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
 import { CardThumb, OfferCardHead } from "./TradeCardBits";
 import { TradeReviewPanel } from "./TradeReviewPanel";
@@ -115,7 +115,7 @@ function OpenTradeDrawer({ tradeId, onClose, onChanged, onOpenOrder }: DrawerPro
       try {
         const result: TradeDetailResult = await action();
         setLoaded({ trade: result.trade, settings: result.settings, owner: result.owner });
-        toast.success(done);
+        toast.success(`${done}${customerEmailNote(result.customerEmail)}`);
         onChanged();
         return true;
       } catch (err) {
@@ -371,7 +371,7 @@ function ReceivePanel({ trade, busy, run }: TradePanelProps) {
           icon="package"
           loading={busy === "received"}
           disabled={busy !== null}
-          onClick={() => void run("received", () => tradeCenterRepository.markReceived(trade.id), "Marked received. The customer was emailed.")}
+          onClick={() => void run("received", () => tradeCenterRepository.markReceived(trade.id), "Marked received.")}
         >
           Mark the package received
         </Button>
@@ -654,7 +654,7 @@ function RejectSection({ trade, busy, run }: TradePanelProps) {
                 void run(
                   "reject",
                   () => tradeCenterRepository.reject(trade.id, reason.trim()),
-                  beforeShipping ? "Trade rejected. The customer was emailed." : "Trade rejected. Mail their cards back, then mark them returned.",
+                  beforeShipping ? "Trade rejected." : "Trade rejected. Mail their cards back, then mark them returned.",
                 )
               }
             >
