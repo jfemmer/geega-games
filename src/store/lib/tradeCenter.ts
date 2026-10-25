@@ -4,9 +4,15 @@
 // the arithmetic, shared by the pages and the server (api/trade-center.ts,
 // api/admin/trade-center.ts, api/_lib/tradeCenter*.ts) so both always agree.
 // How a trade runs end to end, and the database side, is explained in
-// supabase/migrations/20261025120000_trade_center.sql.
+// supabase/migrations/20261025200000_trade_center.sql; deadlines are in
+// tradeDeadlines.ts, the deposit and reliability in tradeRules.ts, tracking
+// numbers and carrier scans in tradeTracking.ts.
 //
 // Pure module: no React, browser, Node or Supabase imports. Money is whole cents.
+
+import { formatStoreDeadline } from "./tradeDeadlines.js";
+import type { DepositOverride, DepositReason, CustomerRecord, Privileges } from "./tradeRules.js";
+import type { TrackingScan } from "./tradeTracking.js";
 
 export const TRADE_CENTER_PATH = "/trade-cards";
 export const MY_TRADES_PATH = "/account/trades";
@@ -30,7 +36,13 @@ export const TRADE_LIMITS = {
   maxEstimateCents: 10_000_000,
   /** Lines in one pasted list or CSV file. */
   maxImportLines: 200,
+  /** Proof of shipping: files, and each one's size. */
+  maxDisputeFiles: 5,
+  maxDisputeFileBytes: 10 * 1024 * 1024,
 } as const;
+
+/** File types accepted as proof of shipping (the bucket enforces the same). */
+export const DISPUTE_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"] as const;
 
 // ---------------------------------------------------------------------------
 // Statuses
@@ -40,7 +52,10 @@ export const TRADE_STATUSES = [
   "awaiting_trade_list",
   "pending_review",
   "revision_requested",
+  "awaiting_confirmation",
+  "awaiting_deposit",
   "awaiting_shipment",
+  "tracking_submitted",
   "in_transit",
   "received",
   "under_inspection",
@@ -49,10 +64,12 @@ export const TRADE_STATUSES = [
   "approved_for_fulfillment",
   "completed",
   "rejected",
+  "offer_expired",
   "canceled",
   "expired",
-  "return_pending",
-  "returned",
+  "canceled_after_shipment",
+  "declined_after_inspection",
+  "canceled_by_store",
 ] as const;
 
 export type TradeStatus = (typeof TRADE_STATUSES)[number];
@@ -63,105 +80,100 @@ export function isTradeStatus(value: unknown): value is TradeStatus {
 
 /** As customers read them (My Trades, emails). */
 export const TRADE_STATUS_LABELS: Record<TradeStatus, string> = {
-  awaiting_trade_list: "Waiting for your cards",
-  pending_review: "Pending review",
+  awaiting_trade_list: "Draft: add your cards",
+  pending_review: "Pending admin review",
   revision_requested: "Changes requested",
-  awaiting_shipment: "Approved: ship your cards",
-  in_transit: "On its way to us",
-  received: "Received",
-  under_inspection: "Inspecting your cards",
-  awaiting_final_approval: "Final offer ready",
-  awaiting_payment: "Waiting for payment",
-  approved_for_fulfillment: "Complete: packing your order",
-  completed: "Complete",
+  awaiting_confirmation: "Awaiting your confirmation",
+  awaiting_deposit: "Awaiting deposit payment",
+  awaiting_shipment: "Reserved: awaiting shipment",
+  tracking_submitted: "Tracking submitted: awaiting carrier scan",
+  in_transit: "Shipped: in transit",
+  received: "Delivered: awaiting inspection",
+  under_inspection: "Inspection in progress",
+  awaiting_final_approval: "Final offer: awaiting your response",
+  awaiting_payment: "Accepted: payment due",
+  approved_for_fulfillment: "Final trade approved",
+  completed: "Trade completed",
   rejected: "Not accepted",
-  canceled: "Canceled",
-  expired: "Expired",
-  return_pending: "Returning your cards",
-  returned: "Cards returned",
+  offer_expired: "Offer expired",
+  canceled: "Canceled before shipment",
+  expired: "Reservation expired",
+  canceled_after_shipment: "Canceled after shipment: no penalty",
+  declined_after_inspection: "Declined after inspection: no penalty",
+  canceled_by_store: "Canceled by Geega Games",
 };
 
 /** As staff read them (admin Trades). */
 export const TRADE_STATUS_ADMIN_LABELS: Record<TradeStatus, string> = {
-  awaiting_trade_list: "Building list",
+  awaiting_trade_list: "Draft",
   pending_review: "To review",
   revision_requested: "Changes requested",
-  awaiting_shipment: "Awaiting package",
-  in_transit: "In transit",
-  received: "Received",
+  awaiting_confirmation: "Awaiting confirmation",
+  awaiting_deposit: "Awaiting deposit",
+  awaiting_shipment: "Reserved: awaiting shipment",
+  tracking_submitted: "Awaiting carrier scan",
+  in_transit: "Shipped: in transit",
+  received: "Delivered: to inspect",
   under_inspection: "Inspecting",
   awaiting_final_approval: "Final offer sent",
   awaiting_payment: "Awaiting payment",
-  approved_for_fulfillment: "To fulfill",
+  approved_for_fulfillment: "Final trade approved",
   completed: "Completed",
   rejected: "Rejected",
-  canceled: "Canceled",
-  expired: "Expired",
-  return_pending: "Return to mail",
-  returned: "Returned",
+  offer_expired: "Offer expired",
+  canceled: "Canceled before shipment",
+  expired: "Reservation expired",
+  canceled_after_shipment: "Canceled after shipment",
+  declined_after_inspection: "Declined after inspection",
+  canceled_by_store: "Canceled by us",
 };
 
 /** What happens next, in the customer's words, for each status. */
 export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
-  awaiting_trade_list: "Add the cards you're trading in and send your list before the hold on our cards runs out.",
-  pending_review: "We're reviewing your cards. We'll email you as soon as we've decided.",
-  revision_requested: "We asked for a change. Update your list and send it again before the hold runs out.",
-  awaiting_shipment: "Mail your cards and add the tracking number here by the ship-by date.",
-  in_transit: "Your package is on its way. We'll email you when it arrives.",
+  awaiting_trade_list:
+    "Add the cards you're trading in and send your trade for review. Our cards aren't reserved yet: they stay on sale until your trade is confirmed.",
+  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards aren't reserved yet.",
+  revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
+  awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards.",
+  awaiting_deposit: "Pay the refundable deposit to reserve our cards. Nothing is reserved until it goes through.",
+  awaiting_shipment: "Our cards are reserved for you. Ship your cards and add the tracking number before the deadline.",
+  tracking_submitted: "We have your tracking number. Your shipment counts once the carrier scans the package.",
+  in_transit: "The carrier has your package. We'll email you when it arrives.",
   received: "Your package arrived. We'll inspect your cards next.",
-  under_inspection: "We're inspecting your cards. We'll email your final offer when we're done.",
-  awaiting_final_approval: "Your final offer is ready. Accept it, ask for an adjustment, or decline it.",
+  under_inspection: "We're inspecting your cards and will email your final offer when we're done.",
+  awaiting_final_approval: "Your final offer is ready. Accept it, ask for an adjustment, or decline it with no penalty.",
   awaiting_payment: "Pay the difference by card to finish your trade.",
   approved_for_fulfillment: "Your trade is done. We're packing your new cards.",
   completed: "Your new cards have shipped.",
-  rejected: "We couldn't accept this trade. Our cards were released.",
-  canceled: "This trade was canceled. Our cards were released.",
-  expired: "This trade expired before it was finished. Our cards were released.",
-  return_pending: "We're mailing your cards back to you.",
-  returned: "Your cards were mailed back to you.",
+  rejected: "We couldn't accept this trade.",
+  offer_expired: "This trade wasn't sent or confirmed in time, so it closed. Nothing was reserved or charged.",
+  canceled: "This trade was canceled before shipping. Our cards were released.",
+  expired: "Your cards weren't shipped by the deadline, so our cards were released.",
+  canceled_after_shipment: "You canceled after shipping, with no penalty. We'll mail your cards back.",
+  declined_after_inspection: "You declined the final offer, with no penalty. We'll mail your cards back.",
+  canceled_by_store: "We canceled this trade. Any deposit is refunded in full.",
 };
 
-/** Closed for good: nothing more happens. */
+/** Closed for good: nothing more happens to the trade itself. */
 export const CLOSED_TRADE_STATUSES: ReadonlySet<TradeStatus> = new Set([
   "completed",
   "rejected",
+  "offer_expired",
   "canceled",
   "expired",
-  "returned",
+  "canceled_after_shipment",
+  "declined_after_inspection",
+  "canceled_by_store",
 ]);
 
 export function isOpenTrade(status: TradeStatus): boolean {
   return !CLOSED_TRADE_STATUSES.has(status);
 }
 
-/** The customer can change their cards and ours. */
-export const CUSTOMER_EDITABLE_STATUSES: readonly TradeStatus[] = ["awaiting_trade_list", "revision_requested"];
-
-/** The customer can cancel: nothing has been mailed to us yet. */
-export const CUSTOMER_CANCELABLE_STATUSES: readonly TradeStatus[] = [
-  "awaiting_trade_list",
-  "pending_review",
-  "revision_requested",
+/** Our cards are held (inventory reservations) in these. */
+export const RESERVED_STATUSES: readonly TradeStatus[] = [
   "awaiting_shipment",
-];
-
-/** Staff can change which of our cards are on the trade (before the final offer). */
-export const STAFF_WANTED_STATUSES: readonly TradeStatus[] = [
-  "awaiting_trade_list",
-  "pending_review",
-  "revision_requested",
-  "awaiting_shipment",
-  "in_transit",
-  "received",
-  "under_inspection",
-];
-
-/** Staff can reject outright: before shipping it closes; after, the cards go back. */
-export const STAFF_REJECTABLE_STATUSES: readonly TradeStatus[] = [
-  "awaiting_trade_list",
-  "pending_review",
-  "revision_requested",
-  "awaiting_shipment",
+  "tracking_submitted",
   "in_transit",
   "received",
   "under_inspection",
@@ -169,29 +181,59 @@ export const STAFF_REJECTABLE_STATUSES: readonly TradeStatus[] = [
   "awaiting_payment",
 ];
 
-/**
- * Waiting on staff: a list to review, a package to inspect, cards to mail
- * back. The admin sidebar's Trades number counts these (admin_nav_badges).
- */
-export const STAFF_WAITING_STATUSES: readonly TradeStatus[] = [
+/** The customer can change their cards and ours. */
+export const CUSTOMER_EDITABLE_STATUSES: readonly TradeStatus[] = ["awaiting_trade_list", "revision_requested"];
+
+/** The customer can cancel: nothing has been mailed to us yet. Reserved ones put a paid deposit up for review. */
+export const CUSTOMER_CANCELABLE_STATUSES: readonly TradeStatus[] = [
+  "awaiting_trade_list",
   "pending_review",
-  "received",
-  "under_inspection",
-  "return_pending",
+  "revision_requested",
+  "awaiting_confirmation",
+  "awaiting_deposit",
+  "awaiting_shipment",
 ];
 
-/** Nothing has reached us, so rejecting closes the trade instead of returning cards. */
-export const PRE_SHIPMENT_STATUSES: readonly TradeStatus[] = [
+/** The customer can withdraw after the carrier accepted their package: no penalty, their cards come back. */
+export const CUSTOMER_WITHDRAW_STATUSES: readonly TradeStatus[] = ["in_transit", "received", "under_inspection"];
+
+/** Staff can change which of our cards are on the trade (not while the customer decides on an approval). */
+export const STAFF_WANTED_STATUSES: readonly TradeStatus[] = [
   "awaiting_trade_list",
   "pending_review",
   "revision_requested",
   "awaiting_shipment",
+  "tracking_submitted",
+  "in_transit",
+  "received",
+  "under_inspection",
+];
+
+/** Staff can reject: before the trade is confirmed (nothing held, nothing paid). */
+export const STAFF_REJECTABLE_STATUSES: readonly TradeStatus[] = [
+  "awaiting_trade_list",
+  "pending_review",
+  "revision_requested",
+  "awaiting_confirmation",
+  "awaiting_deposit",
+];
+
+/** Staff can cancel a confirmed trade (refunding any deposit, returning cards that reached us). */
+export const STAFF_CANCELABLE_STATUSES: readonly TradeStatus[] = [
+  "awaiting_shipment",
+  "tracking_submitted",
+  "in_transit",
+  "received",
+  "under_inspection",
+  "awaiting_final_approval",
+  "awaiting_payment",
 ];
 
 /** The progress bar on a trade. */
 export const TRADE_STEPS = [
   { key: "list", label: "Your cards" },
   { key: "review", label: "Review" },
+  { key: "confirm", label: "Confirm" },
   { key: "ship", label: "Ship" },
   { key: "inspect", label: "Inspection" },
   { key: "offer", label: "Final offer" },
@@ -206,18 +248,22 @@ export function tradeStepIndex(status: TradeStatus): number {
       return 0;
     case "pending_review":
       return 1;
-    case "awaiting_shipment":
-    case "in_transit":
+    case "awaiting_confirmation":
+    case "awaiting_deposit":
       return 2;
+    case "awaiting_shipment":
+    case "tracking_submitted":
+    case "in_transit":
+      return 3;
     case "received":
     case "under_inspection":
-      return 3;
+      return 4;
     case "awaiting_final_approval":
     case "awaiting_payment":
-      return 4;
+      return 5;
     case "approved_for_fulfillment":
     case "completed":
-      return 5;
+      return 6;
     default:
       return -1;
   }
@@ -225,13 +271,30 @@ export function tradeStepIndex(status: TradeStatus): number {
 
 /** History entries customers see on their trade, worded for them. Others are staff-only. */
 export const CUSTOMER_TIMELINE_LABELS: Readonly<Record<string, string>> = {
-  started: "Trade started; our cards are on hold",
+  started: "Trade started",
   wanted_changed: "Our cards on the trade changed",
-  submitted: "You sent your list",
+  submitted: "You sent your trade for review",
   resubmitted: "You sent your changes",
   revision_requested: "We asked for a change",
-  approved: "Preliminarily approved",
+  cards_unavailable: "Some of our cards sold before you confirmed",
+  approved: "Approved: waiting for your confirmation",
+  deposit_requirement_changed: "The deposit for this trade changed",
+  deposit_payment_started: "You agreed to the deposit terms",
+  deposit_paid: "Deposit paid",
+  reserved: "Our cards were reserved for you",
+  reservation_conflict: "Our cards sold before your deposit went through",
+  deadline_extended: "We gave you more time",
   tracking_added: "You added a tracking number",
+  tracking_changed: "You changed the tracking number",
+  shipment_verified: "The carrier accepted your package",
+  dispute_opened: "You sent proof of shipping",
+  dispute_accepted: "We accepted your proof of shipping",
+  dispute_rejected: "We reviewed your proof of shipping",
+  deposit_refund_pending: "Deposit refund started",
+  deposit_refunded: "Deposit refunded",
+  deposit_forfeiture_review: "Deposit under review",
+  deposit_forfeited: "Deposit kept under the cancellation policy",
+  delivered: "Your package was delivered",
   received: "We received your package",
   final_offer_sent: "Your final offer is ready",
   adjustment_requested: "You asked for an adjustment",
@@ -241,11 +304,64 @@ export const CUSTOMER_TIMELINE_LABELS: Readonly<Record<string, string>> = {
   completed: "Your new cards shipped",
   canceled: "Trade canceled",
   rejected: "Trade not accepted",
-  expired: "Trade expired",
-  return_pending: "We're returning your cards",
+  offer_expired: "Trade closed: not sent or confirmed in time",
+  expired: "Reservation expired",
+  reinstated: "We reinstated your reservation",
+  canceled_after_shipment: "You canceled after shipping",
+  declined_after_inspection: "You declined the final offer",
+  canceled_by_store: "We canceled the trade",
   returned: "Your cards were mailed back",
-  hold_extended: "We gave you more time",
 };
+
+// ---------------------------------------------------------------------------
+// The deposit
+// ---------------------------------------------------------------------------
+
+export const DEPOSIT_STATUSES = [
+  "not_required",
+  "payment_pending",
+  "paid",
+  "refund_pending",
+  "refunded",
+  "forfeiture_review",
+  "forfeited",
+  "refund_failed",
+  "canceled",
+] as const;
+export type DepositStatus = (typeof DEPOSIT_STATUSES)[number];
+
+export function isDepositStatus(value: unknown): value is DepositStatus {
+  return typeof value === "string" && (DEPOSIT_STATUSES as readonly string[]).includes(value);
+}
+
+/** As customers read them. */
+export const DEPOSIT_STATUS_LABELS: Record<DepositStatus, string> = {
+  not_required: "No deposit",
+  payment_pending: "Payment pending",
+  paid: "Paid (refundable)",
+  refund_pending: "Refund on its way",
+  refunded: "Refunded in full",
+  forfeiture_review: "Under review",
+  forfeited: "Kept under the cancellation policy",
+  refund_failed: "Refund delayed: we're on it",
+  canceled: "Not collected",
+};
+
+/** As staff read them. */
+export const DEPOSIT_STATUS_ADMIN_LABELS: Record<DepositStatus, string> = {
+  not_required: "Not required",
+  payment_pending: "Payment pending",
+  paid: "Paid",
+  refund_pending: "Refund pending",
+  refunded: "Refunded",
+  forfeiture_review: "Forfeiture review",
+  forfeited: "Forfeited",
+  refund_failed: "Refund failed",
+  canceled: "Not collected",
+};
+
+/** Deposits staff need to act on. */
+export const DEPOSIT_NEEDS_STAFF: ReadonlySet<DepositStatus> = new Set(["forfeiture_review", "refund_failed"]);
 
 // ---------------------------------------------------------------------------
 // Terms (trade_settings) as the storefront sees them
@@ -284,11 +400,22 @@ export interface TradeTerms {
   creditRatePercent: number;
   minCardValueCents: number;
   conditionPercents: ConditionPercents;
-  reservationHours: number;
+  /** A draft nobody sends closes after this many days. */
+  draftDays: number;
   revisionHours: number;
-  shipBusinessDays: number;
-  shipGraceHours: number;
+  /** Qualifying hours to confirm an approved trade (Sundays don't count). */
+  confirmationHours: number;
+  /** Qualifying days to ship once reserved: new customers, and after the loyalty tiers. */
+  shipDaysNew: number;
+  shipDaysTier1: number;
+  shipDaysTier2: number;
+  loyaltyTier1Trades: number;
+  loyaltyTier2Trades: number;
+  scanGraceHours: number;
+  /** Extra days that don't count toward a deadline ("YYYY-MM-DD"). */
+  excludedDates: string[];
   paymentDueDays: number;
+  disputeWindowDays: number;
   maxActiveTrades: number;
   maxWantedLines: number;
   maxOfferedLines: number;
@@ -304,6 +431,18 @@ export interface TradeTerms {
   overstockThreshold: number;
   /** Staff have set the address customers mail their cards to. */
   hasShipToAddress: boolean;
+  depositsEnabled: boolean;
+  depositThresholdCents: number;
+  depositBand1MaxCents: number;
+  depositBand2MaxCents: number;
+  depositBand3MaxCents: number;
+  depositBand1Cents: number;
+  depositBand2Cents: number;
+  depositBand3Cents: number;
+  depositBand4Cents: number;
+  /** The deposit and cancellation terms customers agree to. */
+  depositTerms: string;
+  depositTermsVersion: number;
 }
 
 /** Trading is open to new trades. */
@@ -388,7 +527,7 @@ export function valueForCreditCents(creditCents: number, ratePercent: number, fe
 /**
  * What one of our cards counts for in a trade: its regular price, so a
  * deal's price before the discount (sale and member pricing don't apply).
- * The database does the same when it holds the card (trade_regular_price).
+ * The database does the same when the card is added (trade_regular_price).
  */
 export function tradePriceCents(listing: { priceCents: number | null; originalPriceCents: number | null; isDeal: boolean | null }): number | null {
   if (listing.isDeal && listing.originalPriceCents != null) return listing.originalPriceCents;
@@ -464,64 +603,67 @@ export function cashForExcessCents(excessCreditCents: number, creditRatePercent:
   return Math.round((excessCreditCents * cashRatePercent) / creditRatePercent);
 }
 
+/** One card's change from what was approved to the final offer, with its reason. */
+export interface OfferChange {
+  cardId: string;
+  cardName: string;
+  approvedQuantity: number;
+  approvedUnitCents: number;
+  finalQuantity: number;
+  finalUnitCents: number;
+  /** final value less approved value (negative: less than approved). */
+  differenceCents: number;
+  /** Why, in the customer's words: the condition seen, flags and staff's note. */
+  reasons: string[];
+}
+
+const FLAG_REASONS: Record<string, string> = {
+  damaged: "Damaged",
+  counterfeit: "Not authentic",
+  incorrect: "Different printing, version or language than listed",
+  missing: "Not in the package",
+};
+
+/**
+ * The cards whose final value differs from what was approved before
+ * shipping, and why. Cards that arrived exactly as approved aren't listed.
+ */
+export function offerChanges(cards: readonly TradeOfferCard[]): OfferChange[] {
+  return cards.flatMap((c) => {
+    const approvedQuantity = c.reviewStatus === "approved" ? (c.approvedQuantity ?? 0) : 0;
+    const approvedUnitCents = c.approvedUnitCents ?? 0;
+    const finalQuantity = c.inspected ? (c.finalQuantity ?? 0) : 0;
+    const finalUnitCents = c.finalUnitCents ?? 0;
+    if (approvedQuantity === 0 && finalQuantity === 0) return [];
+    const same = finalQuantity === approvedQuantity && (finalQuantity === 0 || finalUnitCents === approvedUnitCents);
+    if (same) return [];
+    const reasons: string[] = [];
+    if (c.verifiedCondition && c.verifiedCondition !== c.reportedCondition) {
+      reasons.push(`Condition: ${CONDITION_NAMES[c.verifiedCondition]} (listed as ${CONDITION_NAMES[c.reportedCondition]})`);
+    }
+    for (const f of c.flags) if (FLAG_REASONS[f]) reasons.push(FLAG_REASONS[f]);
+    if (c.receivedQuantity !== null && c.receivedQuantity < approvedQuantity) {
+      reasons.push(`${c.receivedQuantity} of ${approvedQuantity} arrived`);
+    }
+    if (c.inspectionNote) reasons.push(c.inspectionNote);
+    return [
+      {
+        cardId: c.id,
+        cardName: cardLine(c),
+        approvedQuantity,
+        approvedUnitCents,
+        finalQuantity,
+        finalUnitCents,
+        differenceCents: finalQuantity * finalUnitCents - approvedQuantity * approvedUnitCents,
+        reasons,
+      },
+    ];
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Deadlines
 // ---------------------------------------------------------------------------
-
-const STORE_TIME_ZONE = "America/Chicago";
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function chicagoParts(ms: number): { year: number; month: number; day: number; weekday: string } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: STORE_TIME_ZONE,
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-  }).formatToParts(new Date(ms));
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return { year: Number(get("year")), month: Number(get("month")), day: Number(get("day")), weekday: get("weekday") };
-}
-
-/** The UTC instant of a wall-clock time in St. Louis on a given date. */
-function chicagoInstant(year: number, month: number, day: number, hour: number, minute: number, second: number): number {
-  const guess = Date.UTC(year, month - 1, day, hour, minute, second);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: STORE_TIME_ZONE,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-  }).formatToParts(new Date(guess));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  const wall = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
-  // St. Louis is 5 or 6 hours behind UTC; correct the guess by that offset.
-  return guess - (wall - guess);
-}
-
-/** 11:59:59 pm in St. Louis on the day `ms` falls on there. */
-export function endOfStoreDay(ms: number): number {
-  const { year, month, day } = chicagoParts(ms);
-  return chicagoInstant(year, month, day, 23, 59, 59);
-}
-
-/**
- * The end (11:59:59 pm in St. Louis) of the `days`th business day after
- * `fromMs`. Saturdays and Sundays don't count; holidays aren't skipped.
- */
-export function addBusinessDays(fromMs: number, days: number): number {
-  let t = fromMs;
-  let counted = 0;
-  while (counted < days) {
-    t += DAY_MS;
-    const { weekday } = chicagoParts(t);
-    if (weekday !== "Sat" && weekday !== "Sun") counted += 1;
-  }
-  return endOfStoreDay(t);
-}
 
 /** "2 days", "5 hours", "under an hour": time left until a deadline. */
 export function timeLeft(untilMs: number, nowMs: number): string {
@@ -533,16 +675,9 @@ export function timeLeft(untilMs: number, nowMs: number): string {
   return "under an hour";
 }
 
-/** A deadline as customers read it: "Tue, Oct 27, 11:59 PM CT". */
+/** A deadline as customers read it: "Tue, Oct 27, 2:00 PM CT". */
 export function formatDeadline(iso: string): string {
-  return `${new Date(iso).toLocaleString("en-US", {
-    timeZone: STORE_TIME_ZONE,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })} CT`;
+  return formatStoreDeadline(iso);
 }
 
 // ---------------------------------------------------------------------------
@@ -611,8 +746,10 @@ export interface TradeWantedItem {
   imageUrl: string | null;
   quantity: number;
   unitPriceCents: number;
-  /** reserved: held for the trade; released: let go; fulfilled: on the trade's order. */
-  status: "reserved" | "released" | "fulfilled";
+  /** requested: on the trade, not held; reserved: held; released: let go; removed: taken off; fulfilled: on the order. */
+  status: "requested" | "reserved" | "released" | "removed" | "fulfilled";
+  /** How many are free right now (for a trade that isn't reserved yet); null when it doesn't matter. */
+  available: number | null;
 }
 
 /** One of the customer's cards on a trade, as the customer sees it. */
@@ -676,6 +813,61 @@ export interface TradeAddress {
   postalCode: string;
 }
 
+/** The deposit on a trade, as its customer sees it. */
+export interface TradeDeposit {
+  /** What's required (0: none). */
+  cents: number;
+  status: DepositStatus;
+  reason: DepositReason | null;
+  paidCents: number | null;
+  paidAt: string | null;
+  refundRequestedAt: string | null;
+  refundedAt: string | null;
+}
+
+/** Their package, as tracked. */
+export interface TradeShipment {
+  carrier: string | null;
+  tracking: string | null;
+  trackingAddedAt: string | null;
+  /** The carrier's latest status (pre_transit, in_transit, …), when tracked automatically. */
+  carrierStatus: string | null;
+  scans: TrackingScan[];
+  checkedAt: string | null;
+  /** When the carrier first had it (or staff verified it). */
+  acceptedAt: string | null;
+  acceptanceSource: "carrier" | "staff" | "received" | null;
+  shippedOnTime: boolean | null;
+  deliveredAt: string | null;
+  /** The scans are checked automatically (otherwise staff verify by hand). */
+  autoTracked: boolean;
+}
+
+/** What the confirmation page needs, worked out by the server. */
+export interface TradeConfirmation {
+  confirmBy: string;
+  depositCents: number;
+  depositReason: DepositReason | null;
+  termsText: string;
+  termsVersion: number;
+  /** Qualifying days to ship once reserved (this customer's window). */
+  shipDays: number;
+  /** The shipping deadline if they confirmed now (the real one starts when the cards are reserved). */
+  shipByIfConfirmedNow: string;
+  /** Paying the deposit online works right now. */
+  canPayOnline: boolean;
+}
+
+/** Proof of shipping the customer sent. */
+export interface TradeDisputeView {
+  id: string;
+  status: "open" | "accepted" | "rejected";
+  note: string;
+  files: { name: string; size: number; type: string; url?: string | null }[];
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 /** A trade, as its customer sees it: nothing staff-only. */
 export interface CustomerTrade {
   id: string;
@@ -697,14 +889,23 @@ export interface CustomerTrade {
   excessCents: number | null;
   excessHandling: "store_credit" | "cash";
   cashPayoutCents: number | null;
-  holdExpiresAt: string | null;
+  /** A draft or revision closes after this. */
+  listDueAt: string | null;
+  /** An approved trade must be confirmed by this. */
+  confirmBy: string | null;
+  /** The carrier must accept their package by this. */
   shipBy: string | null;
+  shipDays: number | null;
   paymentDueAt: string | null;
+  confirmedAt: string | null;
+  reservedAt: string | null;
   approvalConditions: string | null;
-  inboundCarrier: string | null;
-  inboundTracking: string | null;
+  deposit: TradeDeposit;
+  shipment: TradeShipment;
+  returnStatus: "none" | "pending" | "returned";
   returnCarrier: string | null;
   returnTracking: string | null;
+  expiredStage: string | null;
   orderId: string | null;
   creditIssuedCents: number | null;
   customerNote: string | null;
@@ -715,10 +916,16 @@ export interface CustomerTrade {
   offered: TradeOfferCard[];
   messages: TradeMessage[];
   timeline: TradeTimelineEntry[];
-  /** Where to mail their cards: only once the trade is approved. */
+  /** Where to mail their cards: once our cards are reserved. */
   mailTo: TradeAddress | null;
   packingInstructions: string | null;
   returnPolicy: string;
+  /** While the trade waits for their confirmation or deposit. */
+  confirmation: TradeConfirmation | null;
+  disputes: TradeDisputeView[];
+  /** They can send proof of shipping now (until this time, for an expired reservation). */
+  canSendProof: boolean;
+  proofDueAt: string | null;
 }
 
 /** A row in My Trades. */
@@ -731,9 +938,12 @@ export interface CustomerTradeSummary {
   wantedTotalCents: number;
   wantedCount: number;
   offeredCount: number;
-  holdExpiresAt: string | null;
+  listDueAt: string | null;
+  confirmBy: string | null;
   shipBy: string | null;
   paymentDueAt: string | null;
+  depositStatus: DepositStatus;
+  depositCents: number;
 }
 
 /** One of the customer's cards, as staff see it. */
@@ -757,13 +967,69 @@ export interface StaffTradeEvent {
   createdAt: string;
 }
 
+/** The deposit, with what only staff see. */
+export interface StaffTradeDeposit extends TradeDeposit {
+  override: DepositOverride;
+  paymentIntentId: string | null;
+  refundId: string | null;
+  refundAttempts: number;
+  refundFailure: string | null;
+  /** Stripe's fee on it (kept by Stripe; never taken from the refund). */
+  feeCents: number | null;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+}
+
+export interface TradeExtensionView {
+  id: string;
+  kind: "list" | "confirmation" | "shipping" | "payment";
+  fromDeadline: string | null;
+  toDeadline: string;
+  hours: number | null;
+  customerRequested: boolean;
+  reason: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface TradeConsentView {
+  termsVersion: number;
+  termsText: string;
+  depositCents: number;
+  shipDays: number | null;
+  confirmBy: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export type TradeReviewFlag = "late_acceptance" | "early_scan" | "tracking_check" | "dispute";
+export type TradeCustomerFault = "canceled_while_reserved" | "missed_deadline" | "late_shipment";
+
 /** A trade, as staff see it: everything. */
-export interface StaffTrade extends Omit<CustomerTrade, "offered" | "timeline"> {
+export interface StaffTrade extends Omit<CustomerTrade, "offered" | "timeline" | "deposit" | "disputes"> {
   userId: string;
   customerName: string | null;
   customerEmail: string | null;
   offered: StaffTradeOfferCard[];
   events: StaffTradeEvent[];
+  deposit: StaffTradeDeposit;
+  disputes: (TradeDisputeView & { staffNote: string | null; resolvedBy: string | null })[];
+  extensions: TradeExtensionView[];
+  consents: TradeConsentView[];
+  reviewFlag: TradeReviewFlag | null;
+  reviewFlagAt: string | null;
+  customerFault: TradeCustomerFault | null;
+  faultAt: string | null;
+  faultClearedAt: string | null;
+  faultClearedBy: string | null;
+  confirmByOriginal: string | null;
+  shipByOriginal: string | null;
+  needsStaff: boolean;
+  /** The customer's record and what it earns them (null if it couldn't be loaded). */
+  customerRecord: CustomerRecord | null;
+  privileges: Privileges | null;
   submittedAt: string | null;
   approvedAt: string | null;
   receivedAt: string | null;
@@ -772,7 +1038,6 @@ export interface StaffTrade extends Omit<CustomerTrade, "offered" | "timeline"> 
   paidAt: string | null;
   completedAt: string | null;
   closedAt: string | null;
-  inboundShippedAt: string | null;
   returnedAt: string | null;
   cashPaidAt: string | null;
   paymentReference: string | null;
@@ -792,12 +1057,20 @@ export interface StaffTradeSummary {
   estimatedValueCents: number;
   approvedValueCents: number | null;
   finalValueCents: number | null;
-  holdExpiresAt: string | null;
+  listDueAt: string | null;
+  confirmBy: string | null;
   shipBy: string | null;
   paymentDueAt: string | null;
   inboundCarrier: string | null;
   inboundTracking: string | null;
-  inboundShippedAt: string | null;
+  inboundAcceptedAt: string | null;
+  depositStatus: DepositStatus;
+  depositCents: number;
+  depositPaidCents: number | null;
+  reviewFlag: TradeReviewFlag | null;
+  returnStatus: "none" | "pending" | "returned";
+  customerFault: TradeCustomerFault | null;
+  needsStaff: boolean;
 }
 
 /** trade_settings as staff edit it (admin Trades, Settings). */
@@ -808,18 +1081,42 @@ export interface TradeSettings {
   creditRatePercent: number;
   minCardValueCents: number;
   conditionPercents: ConditionPercents;
-  reservationHours: number;
+  draftDays: number;
   revisionHours: number;
-  shipBusinessDays: number;
-  shipGraceHours: number;
-  transitAlertDays: number;
+  confirmationHours: number;
+  shipDaysNew: number;
+  shipDaysTier1: number;
+  shipDaysTier2: number;
+  loyaltyTier1Trades: number;
+  loyaltyTier2Trades: number;
+  scanGraceHours: number;
+  excludedDates: string[];
   paymentDueDays: number;
+  maxTransitDays: number;
+  stallAlertDays: number;
+  confirmReminderHours: number;
+  shipReminderHours: number;
+  disputeWindowDays: number;
+  depositsEnabled: boolean;
+  depositThresholdCents: number;
+  depositBand1MaxCents: number;
+  depositBand2MaxCents: number;
+  depositBand3MaxCents: number;
+  depositBand1Cents: number;
+  depositBand2Cents: number;
+  depositBand3Cents: number;
+  depositBand4Cents: number;
+  allowForfeiture: boolean;
+  depositTerms: string;
+  depositTermsVersion: number;
+  abandonLimit: number;
+  abandonWindowDays: number;
+  abandonPolicy: "deposit" | "block";
   maxActiveTrades: number;
   maxWantedLines: number;
   maxOfferedLines: number;
   minTradeValueCents: number;
   maxTradeValueCents: number | null;
-  maxExpiredTrades30d: number;
   processingFeeCents: number;
   cashPayoutEnabled: boolean;
   cashRatePercent: number;
@@ -840,21 +1137,31 @@ export const TRADE_SETTING_RANGES = {
   creditRatePercent: [1, 100],
   minCardValueCents: [0, 10_000_000],
   conditionPercent: [0, 100],
-  reservationHours: [1, 168],
-  revisionHours: [1, 336],
-  shipBusinessDays: [1, 30],
-  shipGraceHours: [0, 336],
-  transitAlertDays: [1, 90],
+  draftDays: [1, 90],
+  revisionHours: [1, 720],
+  confirmationHours: [1, 336],
+  shipDays: [1, 30],
+  loyaltyTrades: [1, 1000],
+  scanGraceHours: [0, 168],
   paymentDueDays: [1, 60],
+  maxTransitDays: [1, 90],
+  stallAlertDays: [1, 30],
+  reminderHours: [0, 72],
+  disputeWindowDays: [1, 90],
+  depositThresholdCents: [0, 100_000_000],
+  depositBandMaxCents: [1, 100_000_000],
+  depositCents: [50, 100_000],
+  abandonLimit: [1, 20],
+  abandonWindowDays: [30, 3650],
   maxActiveTrades: [1, 20],
   maxWantedLines: [1, 200],
   maxOfferedLines: [1, 500],
   minTradeValueCents: [0, 100_000_000],
   maxTradeValueCents: [1, 100_000_000],
-  maxExpiredTrades30d: [1, 50],
   processingFeeCents: [0, 1_000_000],
   cashRatePercent: [1, 100],
   overstockThreshold: [0, 1000],
+  maxExcludedDates: [0, 200],
 } as const;
 
 // ---------------------------------------------------------------------------

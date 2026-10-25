@@ -10,26 +10,35 @@ import { checkUsAddress, SHIP_TO_COUNTRY } from "../../src/store/lib/usAddress.j
 import {
   CARD_CONDITIONS,
   CUSTOMER_TIMELINE_LABELS,
+  RESERVED_STATUSES,
   TRADE_LIMITS,
   conditionPercent,
   eligibilityFor,
   estimatedUnitCents,
   isConditionCode,
+  isDepositStatus,
   isTradeFinish,
   isTradeStatus,
   type CardConditionCode,
   type ConditionPercents,
   type CustomerTrade,
   type CustomerTradeSummary,
+  type DepositStatus,
   type StaffTrade,
   type StaffTradeOfferCard,
   type StaffTradeSummary,
   type TradeAddress,
+  type TradeConfirmation,
+  type TradeConsentView,
+  type TradeCustomerFault,
+  type TradeDisputeView,
   type TradeEligibility,
+  type TradeExtensionView,
   type TradeFinish,
   type TradeMessage,
   type TradeOfferCard,
   type TradeOfferInput,
+  type TradeReviewFlag,
   type TradeSettings,
   type TradeShipToInput,
   type TradeStatus,
@@ -37,14 +46,28 @@ import {
   type TradeWantedInput,
   type TradeWantedItem,
 } from "../../src/store/lib/tradeCenter.js";
+import { addQualifyingDays, addQualifyingHours } from "../../src/store/lib/tradeDeadlines.js";
+import {
+  depositFor,
+  privilegesFor,
+  readCustomerRecord,
+  type CustomerRecord,
+  type DepositDecision,
+  type DepositOverride,
+  type DepositReason,
+  type DepositSettings,
+  type Privileges,
+  type ReliabilitySettings,
+} from "../../src/store/lib/tradeRules.js";
+import { readScans } from "../../src/store/lib/tradeTracking.js";
 
 // Server side of the Trade Center (api/trade-center.ts for customers,
 // api/admin/trade-center.ts for staff): reading settings, turning database
 // rows into what each side may see, checking what the browser sends, pricing
-// the customer's cards, and turning database errors into answers. Every
-// change itself happens in the trade_* database functions
-// (supabase/migrations/20261025120000_trade_center.sql), each in one
-// transaction under the trade's row lock.
+// the customer's cards, working out deadlines and deposits, and turning
+// database errors into answers. Every change itself happens in the trade_*
+// database functions (supabase/migrations/20261025200000_trade_center.sql),
+// each in one transaction under the trade's row lock.
 
 export type Admin = SupabaseClient<Database>;
 export type TradeRow = Database["public"]["Tables"]["trade_requests"]["Row"];
@@ -53,8 +76,12 @@ export type TradeOfferRow = Database["public"]["Tables"]["trade_offer_cards"]["R
 export type TradeEventRow = Database["public"]["Tables"]["trade_events"]["Row"];
 export type TradeMessageRow = Database["public"]["Tables"]["trade_messages"]["Row"];
 export type TradeSettingsRow = Database["public"]["Tables"]["trade_settings"]["Row"];
+export type TradeDisputeRow = Database["public"]["Tables"]["trade_disputes"]["Row"];
+export type TradeExtensionRow = Database["public"]["Tables"]["trade_extensions"]["Row"];
+export type TradeConsentRow = Database["public"]["Tables"]["trade_consents"]["Row"];
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const DISPUTE_BUCKET = "trade-dispute-files";
 
 /** Trimmed text clipped to maxLength, or null when blank or not a string. */
 export function cleanText(value: unknown, maxLength: number): string | null {
@@ -147,6 +174,32 @@ export function shipToAddress(s: TradeSettingsRow): TradeAddress | null {
   };
 }
 
+export function depositSettingsOf(s: TradeSettingsRow): DepositSettings {
+  return {
+    depositsEnabled: s.deposits_enabled,
+    depositThresholdCents: s.deposit_threshold_cents,
+    depositBand1MaxCents: s.deposit_band1_max_cents,
+    depositBand2MaxCents: s.deposit_band2_max_cents,
+    depositBand3MaxCents: s.deposit_band3_max_cents,
+    depositBand1Cents: s.deposit_band1_cents,
+    depositBand2Cents: s.deposit_band2_cents,
+    depositBand3Cents: s.deposit_band3_cents,
+    depositBand4Cents: s.deposit_band4_cents,
+  };
+}
+
+export function reliabilitySettingsOf(s: TradeSettingsRow): ReliabilitySettings {
+  return {
+    shipDaysNew: s.ship_days_new,
+    shipDaysTier1: s.ship_days_tier1,
+    shipDaysTier2: s.ship_days_tier2,
+    loyaltyTier1Trades: s.loyalty_tier1_trades,
+    loyaltyTier2Trades: s.loyalty_tier2_trades,
+    abandonLimit: s.abandon_limit,
+    abandonPolicy: s.abandon_policy === "block" ? "block" : "deposit",
+  };
+}
+
 /** What the storefront is told: the terms customers trade on (never the address itself). */
 export function termsOf(s: TradeSettingsRow): TradeTerms {
   return {
@@ -156,11 +209,18 @@ export function termsOf(s: TradeSettingsRow): TradeTerms {
     creditRatePercent: s.credit_rate_percent,
     minCardValueCents: s.min_card_value_cents,
     conditionPercents: conditionPercentsOf(s),
-    reservationHours: s.reservation_hours,
+    draftDays: s.draft_days,
     revisionHours: s.revision_hours,
-    shipBusinessDays: s.ship_business_days,
-    shipGraceHours: s.ship_grace_hours,
+    confirmationHours: s.confirmation_hours,
+    shipDaysNew: s.ship_days_new,
+    shipDaysTier1: s.ship_days_tier1,
+    shipDaysTier2: s.ship_days_tier2,
+    loyaltyTier1Trades: s.loyalty_tier1_trades,
+    loyaltyTier2Trades: s.loyalty_tier2_trades,
+    scanGraceHours: s.scan_grace_hours,
+    excludedDates: s.excluded_dates ?? [],
     paymentDueDays: s.payment_due_days,
+    disputeWindowDays: s.dispute_window_days,
     maxActiveTrades: s.max_active_trades,
     maxWantedLines: s.max_wanted_lines,
     maxOfferedLines: s.max_offered_lines,
@@ -175,6 +235,9 @@ export function termsOf(s: TradeSettingsRow): TradeTerms {
     excludedCardNames: s.excluded_card_names ?? [],
     overstockThreshold: s.overstock_threshold,
     hasShipToAddress: hasShipToAddress(s),
+    ...depositSettingsOf(s),
+    depositTerms: s.deposit_terms,
+    depositTermsVersion: s.deposit_terms_version,
   };
 }
 
@@ -187,18 +250,34 @@ export function settingsView(s: TradeSettingsRow): TradeSettings {
     creditRatePercent: s.credit_rate_percent,
     minCardValueCents: s.min_card_value_cents,
     conditionPercents: conditionPercentsOf(s),
-    reservationHours: s.reservation_hours,
+    draftDays: s.draft_days,
     revisionHours: s.revision_hours,
-    shipBusinessDays: s.ship_business_days,
-    shipGraceHours: s.ship_grace_hours,
-    transitAlertDays: s.transit_alert_days,
+    confirmationHours: s.confirmation_hours,
+    shipDaysNew: s.ship_days_new,
+    shipDaysTier1: s.ship_days_tier1,
+    shipDaysTier2: s.ship_days_tier2,
+    loyaltyTier1Trades: s.loyalty_tier1_trades,
+    loyaltyTier2Trades: s.loyalty_tier2_trades,
+    scanGraceHours: s.scan_grace_hours,
+    excludedDates: s.excluded_dates ?? [],
     paymentDueDays: s.payment_due_days,
+    maxTransitDays: s.max_transit_days,
+    stallAlertDays: s.stall_alert_days,
+    confirmReminderHours: s.confirm_reminder_hours,
+    shipReminderHours: s.ship_reminder_hours,
+    disputeWindowDays: s.dispute_window_days,
+    ...depositSettingsOf(s),
+    allowForfeiture: s.allow_forfeiture,
+    depositTerms: s.deposit_terms,
+    depositTermsVersion: s.deposit_terms_version,
+    abandonLimit: s.abandon_limit,
+    abandonWindowDays: s.abandon_window_days,
+    abandonPolicy: s.abandon_policy === "block" ? "block" : "deposit",
     maxActiveTrades: s.max_active_trades,
     maxWantedLines: s.max_wanted_lines,
     maxOfferedLines: s.max_offered_lines,
     minTradeValueCents: s.min_trade_value_cents,
     maxTradeValueCents: s.max_trade_value_cents,
-    maxExpiredTrades30d: s.max_expired_trades_30d,
     processingFeeCents: s.processing_fee_cents,
     cashPayoutEnabled: s.cash_payout_enabled,
     cashRatePercent: s.cash_rate_percent,
@@ -213,6 +292,59 @@ export function settingsView(s: TradeSettingsRow): TradeSettings {
     returnPolicy: s.return_policy,
     updatedAt: s.updated_at ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Deadlines, deposits and reliability (worked out here, stored by the database)
+// ---------------------------------------------------------------------------
+
+/** The confirmation deadline for an approval at `nowMs`: confirmation_hours of qualifying time. */
+export function confirmDeadline(nowMs: number, s: TradeSettingsRow): string {
+  return new Date(addQualifyingHours(nowMs, s.confirmation_hours, s.excluded_dates)).toISOString();
+}
+
+/** The shipping deadline for a reservation at `nowMs`: `shipDays` qualifying days. */
+export function shipDeadline(nowMs: number, shipDays: number, s: TradeSettingsRow): string {
+  return new Date(addQualifyingDays(nowMs, shipDays, s.excluded_dates)).toISOString();
+}
+
+/** A customer's record (trade_customer_stats); an empty one if it can't be read. */
+export async function loadCustomerRecord(admin: Admin, userId: string, s: TradeSettingsRow): Promise<CustomerRecord> {
+  const { data, error } = await admin.rpc("trade_customer_stats", { p_user_id: userId, p_window_days: s.abandon_window_days });
+  if (error) {
+    console.error("[tradeCenter] customer stats failed", userId, error.message);
+    throw new HttpError(500, "We couldn't check this customer's trades. Try again.");
+  }
+  return readCustomerRecord(data);
+}
+
+export interface CustomerStanding {
+  record: CustomerRecord;
+  privileges: Privileges;
+}
+
+export async function customerStanding(admin: Admin, userId: string, s: TradeSettingsRow): Promise<CustomerStanding> {
+  const record = await loadCustomerRecord(admin, userId, s);
+  return { record, privileges: privilegesFor(record, reliabilitySettingsOf(s)) };
+}
+
+/** The deposit a trade needs now, from the settings, its override, and the customer. */
+export function depositDecision(
+  trade: Pick<TradeRow, "wanted_total_cents" | "deposit_override">,
+  standing: CustomerStanding,
+  s: TradeSettingsRow,
+  override?: DepositOverride,
+): DepositDecision {
+  const o = override ?? (trade.deposit_override === "required" || trade.deposit_override === "waived" ? trade.deposit_override : "auto");
+  return depositFor(
+    {
+      wantedCents: trade.wanted_total_cents,
+      override: o,
+      customerRequired: standing.record.depositRequired,
+      reliabilityRequired: standing.privileges.reliabilityDeposit,
+    },
+    depositSettingsOf(s),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -236,9 +368,8 @@ export function tradeDbError(error: { code?: string; message?: string } | null |
     case "GT008":
     case "GT009":
     case "GT011":
-      return new HttpError(409, message);
     case "GT012":
-      return new HttpError(409, "The hold on this trade ran out, so our cards were released. Start a new trade to try again.");
+      return new HttpError(409, message);
     case "GT005":
     case "GT006":
     case "GT010":
@@ -251,6 +382,8 @@ export function tradeDbError(error: { code?: string; message?: string } | null |
     case "23514":
     case "23502":
       return new HttpError(400, "Something on that didn't come through. Check it and try again.");
+    case "23505":
+      return new HttpError(409, "That was already done. Refresh to see the latest.");
     default:
       console.error("[tradeCenter] database error", code, error?.message);
       return new HttpError(500, fallback);
@@ -267,6 +400,7 @@ export interface TradeBundle {
   offers: TradeOfferRow[];
   events: TradeEventRow[];
   messages: TradeMessageRow[];
+  disputes: TradeDisputeRow[];
 }
 
 export async function loadTradeRow(admin: Admin, tradeId: string): Promise<TradeRow | null> {
@@ -278,13 +412,14 @@ export async function loadTradeRow(admin: Admin, tradeId: string): Promise<Trade
 export async function loadTradeBundle(admin: Admin, tradeId: string): Promise<TradeBundle | null> {
   const trade = await loadTradeRow(admin, tradeId);
   if (!trade) return null;
-  const [items, offers, events, messages] = await Promise.all([
+  const [items, offers, events, messages, disputes] = await Promise.all([
     admin.from("trade_request_items").select("*").eq("trade_request_id", tradeId).order("created_at"),
     admin.from("trade_offer_cards").select("*").eq("trade_request_id", tradeId).order("position"),
     admin.from("trade_events").select("*").eq("trade_request_id", tradeId).order("created_at"),
     admin.from("trade_messages").select("*").eq("trade_request_id", tradeId).order("created_at"),
+    admin.from("trade_disputes").select("*").eq("trade_request_id", tradeId).order("created_at"),
   ]);
-  if (items.error || offers.error || events.error || messages.error) {
+  if (items.error || offers.error || events.error || messages.error || disputes.error) {
     throw new HttpError(500, "We couldn't load that trade. Try again.");
   }
   return {
@@ -293,6 +428,7 @@ export async function loadTradeBundle(admin: Admin, tradeId: string): Promise<Tr
     offers: offers.data ?? [],
     events: events.data ?? [],
     messages: messages.data ?? [],
+    disputes: disputes.data ?? [],
   };
 }
 
@@ -303,6 +439,42 @@ export async function loadCustomerBundle(admin: Admin, tradeId: string, userId: 
   return bundle;
 }
 
+/**
+ * How many of each inventory line are free now (on hand, on sale, less every
+ * active hold except this trade's own), for a trade whose cards aren't
+ * reserved yet.
+ */
+export async function loadAvailability(admin: Admin, tradeId: string, inventoryIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = [...new Set(inventoryIds)];
+  if (ids.length === 0) return out;
+  const [inv, holds] = await Promise.all([
+    admin.from("inventory_items").select("id, quantity, status, price_cents, original_price_cents, is_deal").in("id", ids),
+    admin.from("inventory_reservations").select("inventory_item_id, quantity, trade_request_id").in("inventory_item_id", ids).eq("status", "active"),
+  ]);
+  if (inv.error || holds.error) {
+    console.error("[tradeCenter] availability failed", inv.error?.message ?? holds.error?.message);
+    return out;
+  }
+  const held = new Map<string, number>();
+  for (const h of holds.data ?? []) {
+    if (h.trade_request_id === tradeId) continue;
+    held.set(h.inventory_item_id, (held.get(h.inventory_item_id) ?? 0) + h.quantity);
+  }
+  for (const row of inv.data ?? []) {
+    const price = row.is_deal && row.original_price_cents != null ? row.original_price_cents : row.price_cents;
+    const onSale = row.status === "active" && (price ?? 0) > 0;
+    out.set(row.id, onSale ? Math.max(row.quantity - (held.get(row.id) ?? 0), 0) : 0);
+  }
+  return out;
+}
+
+/** Availability for a bundle's lines that are only requested (not held). */
+export async function bundleAvailability(admin: Admin, bundle: TradeBundle): Promise<Map<string, number>> {
+  const requested = bundle.items.filter((i) => i.status === "requested" && i.inventory_item_id).map((i) => i.inventory_item_id as string);
+  return loadAvailability(admin, bundle.trade.id, requested);
+}
+
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
@@ -311,11 +483,41 @@ function statusOf(value: string): TradeStatus {
   return isTradeStatus(value) ? value : "awaiting_trade_list";
 }
 
+function depositStatusOf(value: string): DepositStatus {
+  return isDepositStatus(value) ? value : "not_required";
+}
+
 function conditionOf(value: string | null): CardConditionCode | null {
   return isConditionCode(value) ? value : null;
 }
 
-function wantedView(row: TradeItemRow): TradeWantedItem {
+const DEPOSIT_REASONS: readonly DepositReason[] = ["threshold", "trade", "customer", "reliability"];
+function depositReasonOf(value: string | null): DepositReason | null {
+  return DEPOSIT_REASONS.includes(value as DepositReason) ? (value as DepositReason) : null;
+}
+
+const REVIEW_FLAGS: readonly TradeReviewFlag[] = ["late_acceptance", "early_scan", "tracking_check", "dispute"];
+function reviewFlagOf(value: string | null): TradeReviewFlag | null {
+  return REVIEW_FLAGS.includes(value as TradeReviewFlag) ? (value as TradeReviewFlag) : null;
+}
+
+const FAULTS: readonly TradeCustomerFault[] = ["canceled_while_reserved", "missed_deadline", "late_shipment"];
+function faultOf(value: string | null): TradeCustomerFault | null {
+  return FAULTS.includes(value as TradeCustomerFault) ? (value as TradeCustomerFault) : null;
+}
+
+function acceptanceSourceOf(value: string | null): "carrier" | "staff" | "received" | null {
+  return value === "carrier" || value === "staff" || value === "received" ? value : null;
+}
+
+function returnStatusOf(value: string): "none" | "pending" | "returned" {
+  return value === "pending" || value === "returned" ? value : "none";
+}
+
+const ITEM_STATUSES: readonly TradeWantedItem["status"][] = ["requested", "reserved", "released", "removed", "fulfilled"];
+
+function wantedView(row: TradeItemRow, availability: Map<string, number> | undefined): TradeWantedItem {
+  const status = ITEM_STATUSES.includes(row.status as TradeWantedItem["status"]) ? (row.status as TradeWantedItem["status"]) : "requested";
   return {
     id: row.id,
     inventoryItemId: row.inventory_item_id,
@@ -329,7 +531,11 @@ function wantedView(row: TradeItemRow): TradeWantedItem {
     imageUrl: row.image_url,
     quantity: row.quantity,
     unitPriceCents: row.unit_price_cents,
-    status: row.status === "released" || row.status === "fulfilled" ? row.status : "reserved",
+    status,
+    available:
+      status === "requested" && row.inventory_item_id && availability?.has(row.inventory_item_id)
+        ? (availability.get(row.inventory_item_id) as number)
+        : null,
   };
 }
 
@@ -392,12 +598,54 @@ function shipToOf(t: TradeRow): TradeAddress | null {
   };
 }
 
-/** Where the customer mails their cards: shown once approved, until it arrives. */
-const MAIL_TO_STATUSES: ReadonlySet<TradeStatus> = new Set(["awaiting_shipment", "in_transit"]);
+interface DisputeFile {
+  path: string;
+  name: string;
+  size: number;
+  type: string;
+}
 
-function baseView(t: TradeRow, items: TradeItemRow[], messages: TradeMessageRow[], forStaff: boolean, settings: TradeSettingsRow | null) {
+export function disputeFilesOf(value: Json): DisputeFile[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((f) => {
+    if (!f || typeof f !== "object" || Array.isArray(f)) return [];
+    const o = f as Record<string, unknown>;
+    if (typeof o.path !== "string") return [];
+    return [{
+      path: o.path,
+      name: typeof o.name === "string" ? o.name : "file",
+      size: typeof o.size === "number" ? o.size : 0,
+      type: typeof o.type === "string" ? o.type : "",
+    }];
+  });
+}
+
+function disputeView(row: TradeDisputeRow, urls?: Map<string, string>): TradeDisputeView {
+  return {
+    id: row.id,
+    status: row.status === "accepted" || row.status === "rejected" ? row.status : "open",
+    note: row.note,
+    files: disputeFilesOf(row.files).map((f) => ({ name: f.name, size: f.size, type: f.type, url: urls?.get(f.path) ?? null })),
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+  };
+}
+
+/** Where the customer mails their cards: shown once our cards are reserved, until they've shipped. */
+const MAIL_TO_STATUSES: ReadonlySet<TradeStatus> = new Set(["awaiting_shipment", "tracking_submitted", "in_transit"]);
+
+export interface ViewExtras {
+  availability?: Map<string, number>;
+  /** EasyPost is connected: scans are checked automatically. */
+  autoTracked?: boolean;
+  now?: number;
+}
+
+function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSettingsRow | null, extras: ViewExtras) {
+  const { trade: t, items, messages } = bundle;
   const status = statusOf(t.status);
   const showMailTo = settings !== null && MAIL_TO_STATUSES.has(status);
+  const carrierTracked = (extras.autoTracked ?? false) && t.inbound_carrier !== null && t.inbound_carrier !== "Other";
   return {
     id: t.id,
     tradeNumber: t.trade_number,
@@ -418,20 +666,37 @@ function baseView(t: TradeRow, items: TradeItemRow[], messages: TradeMessageRow[
     excessCents: t.excess_cents,
     excessHandling: t.excess_handling === "cash" ? ("cash" as const) : ("store_credit" as const),
     cashPayoutCents: t.cash_payout_cents,
-    holdExpiresAt: t.hold_expires_at,
+    listDueAt: t.list_due_at,
+    confirmBy: t.confirm_by,
     shipBy: t.ship_by,
+    shipDays: t.ship_days,
     paymentDueAt: t.payment_due_at,
+    confirmedAt: t.confirmed_at,
+    reservedAt: t.reserved_at,
     approvalConditions: t.approval_conditions,
-    inboundCarrier: t.inbound_carrier,
-    inboundTracking: t.inbound_tracking,
+    shipment: {
+      carrier: t.inbound_carrier,
+      tracking: t.inbound_tracking,
+      trackingAddedAt: t.inbound_tracking_added_at,
+      carrierStatus: t.inbound_tracking_status,
+      scans: readScans(t.inbound_tracking_events),
+      checkedAt: t.inbound_tracking_checked_at,
+      acceptedAt: t.inbound_accepted_at,
+      acceptanceSource: acceptanceSourceOf(t.inbound_acceptance_source),
+      shippedOnTime: t.shipped_on_time,
+      deliveredAt: t.inbound_delivered_at,
+      autoTracked: carrierTracked,
+    },
+    returnStatus: returnStatusOf(t.return_status),
     returnCarrier: t.return_carrier,
     returnTracking: t.return_tracking,
+    expiredStage: t.expired_stage,
     orderId: t.order_id,
     creditIssuedCents: t.credit_issued_cents,
     customerNote: t.customer_note,
     closeReason: t.close_reason,
     shipTo: shipToOf(t),
-    wanted: items.map(wantedView),
+    wanted: items.map((row) => wantedView(row, extras.availability)),
     messages: messages.filter((m) => forStaff || m.visible_to_customer).map((m) => messageView(m, forStaff)),
     mailTo: showMailTo && settings ? shipToAddress(settings) : null,
     packingInstructions: showMailTo && settings ? settings.packing_instructions : null,
@@ -465,14 +730,44 @@ function customerOfferView(row: TradeOfferRow, status: string): TradeOfferCard {
   return card;
 }
 
-export function customerTradeView(bundle: TradeBundle, settings: TradeSettingsRow): CustomerTrade {
-  const { trade, items, offers, events, messages } = bundle;
+/** When a customer can send proof of shipping, and until when. */
+export function proofWindow(t: TradeRow, settings: TradeSettingsRow, disputes: TradeDisputeRow[], now: number) {
+  const open = disputes.some((d) => d.status === "open");
+  if (open) return { canSendProof: false, proofDueAt: null as string | null };
+  if (t.status === "awaiting_shipment" || t.status === "tracking_submitted") return { canSendProof: true, proofDueAt: null };
+  if (t.status === "expired" && t.closed_at) {
+    const due = Date.parse(t.closed_at) + settings.dispute_window_days * 86_400_000;
+    return { canSendProof: due > now, proofDueAt: new Date(due).toISOString() };
+  }
+  return { canSendProof: false, proofDueAt: null };
+}
+
+export function customerTradeView(
+  bundle: TradeBundle,
+  settings: TradeSettingsRow,
+  extras: ViewExtras & { confirmation?: TradeConfirmation | null } = {},
+): CustomerTrade {
+  const { trade: t, offers, events, disputes } = bundle;
+  const proof = proofWindow(t, settings, disputes, extras.now ?? Date.now());
   return {
-    ...baseView(trade, items, messages, false, settings),
-    offered: offers.map((row) => customerOfferView(row, trade.status)),
+    ...baseView(bundle, false, settings, extras),
+    deposit: {
+      cents: t.deposit_cents,
+      status: depositStatusOf(t.deposit_status),
+      reason: depositReasonOf(t.deposit_reason),
+      paidCents: t.deposit_paid_cents,
+      paidAt: t.deposit_paid_at,
+      refundRequestedAt: t.deposit_refund_requested_at,
+      refundedAt: t.deposit_refunded_at,
+    },
+    offered: offers.map((row) => customerOfferView(row, t.status)),
     timeline: events
       .filter((e) => CUSTOMER_TIMELINE_LABELS[e.event] !== undefined)
       .map((e) => ({ event: e.event, label: CUSTOMER_TIMELINE_LABELS[e.event], createdAt: e.created_at })),
+    confirmation: extras.confirmation ?? null,
+    disputes: disputes.map((d) => disputeView(d)),
+    canSendProof: proof.canSendProof,
+    proofDueAt: proof.proofDueAt,
   };
 }
 
@@ -490,10 +785,20 @@ function staffOfferView(row: TradeOfferRow): StaffTradeOfferCard {
   };
 }
 
-export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow | null): StaffTrade {
-  const { trade: t, items, offers, events, messages } = bundle;
+export interface StaffExtras extends ViewExtras {
+  standing?: CustomerStanding | null;
+  extensions?: TradeExtensionRow[];
+  consents?: TradeConsentRow[];
+  /** Signed links to proof-of-shipping files, by storage path. */
+  fileUrls?: Map<string, string>;
+}
+
+export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow | null, extras: StaffExtras = {}): StaffTrade {
+  const { trade: t, offers, events, messages, disputes } = bundle;
+  const base = baseView({ ...bundle, messages }, true, settings, extras);
+  const proof = settings ? proofWindow(t, settings, disputes, extras.now ?? Date.now()) : { canSendProof: false, proofDueAt: null };
   return {
-    ...baseView(t, items, messages, true, settings),
+    ...base,
     userId: t.user_id,
     customerName: t.customer_name,
     customerEmail: t.customer_email,
@@ -508,6 +813,68 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
       detail: (e.detail && typeof e.detail === "object" && !Array.isArray(e.detail) ? e.detail : {}) as Record<string, unknown>,
       createdAt: e.created_at,
     })),
+    deposit: {
+      cents: t.deposit_cents,
+      status: depositStatusOf(t.deposit_status),
+      reason: depositReasonOf(t.deposit_reason),
+      paidCents: t.deposit_paid_cents,
+      paidAt: t.deposit_paid_at,
+      refundRequestedAt: t.deposit_refund_requested_at,
+      refundedAt: t.deposit_refunded_at,
+      override: t.deposit_override === "required" || t.deposit_override === "waived" ? t.deposit_override : "auto",
+      paymentIntentId: t.deposit_payment_intent,
+      refundId: t.deposit_refund_id,
+      refundAttempts: t.deposit_refund_attempts,
+      refundFailure: t.deposit_refund_failure,
+      feeCents: t.deposit_fee_cents,
+      decidedAt: t.deposit_decided_at,
+      decidedBy: t.deposit_decided_by,
+      decisionNote: t.deposit_decision_note,
+    },
+    confirmation: null,
+    disputes: disputes.map((d) => ({
+      ...disputeView(d, extras.fileUrls),
+      staffNote: d.staff_note,
+      resolvedBy: d.resolved_by_label,
+    })),
+    canSendProof: proof.canSendProof,
+    proofDueAt: proof.proofDueAt,
+    extensions: (extras.extensions ?? []).map(
+      (e): TradeExtensionView => ({
+        id: e.id,
+        kind: (["list", "confirmation", "shipping", "payment"].includes(e.kind) ? e.kind : "shipping") as TradeExtensionView["kind"],
+        fromDeadline: e.from_deadline,
+        toDeadline: e.to_deadline,
+        hours: e.hours,
+        customerRequested: e.customer_requested,
+        reason: e.reason,
+        createdBy: e.created_by_label,
+        createdAt: e.created_at,
+      }),
+    ),
+    consents: (extras.consents ?? []).map(
+      (c): TradeConsentView => ({
+        termsVersion: c.terms_version,
+        termsText: c.terms_text,
+        depositCents: c.deposit_cents,
+        shipDays: c.ship_days,
+        confirmBy: c.confirm_by,
+        ip: c.ip,
+        userAgent: c.user_agent,
+        createdAt: c.created_at,
+      }),
+    ),
+    reviewFlag: reviewFlagOf(t.review_flag),
+    reviewFlagAt: t.review_flag_at,
+    customerFault: faultOf(t.customer_fault),
+    faultAt: t.fault_at,
+    faultClearedAt: t.fault_cleared_at,
+    faultClearedBy: t.fault_cleared_by,
+    confirmByOriginal: t.confirm_by_original,
+    shipByOriginal: t.ship_by_original,
+    needsStaff: t.needs_staff,
+    customerRecord: extras.standing?.record ?? null,
+    privileges: extras.standing?.privileges ?? null,
     submittedAt: t.submitted_at,
     approvedAt: t.approved_at,
     receivedAt: t.received_at,
@@ -516,7 +883,6 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
     paidAt: t.paid_at,
     completedAt: t.completed_at,
     closedAt: t.closed_at,
-    inboundShippedAt: t.inbound_shipped_at,
     returnedAt: t.returned_at,
     cashPaidAt: t.cash_paid_at,
     paymentReference: t.payment_reference,
@@ -533,9 +899,12 @@ export function customerSummaryView(t: TradeRow, wantedCount: number, offeredCou
     wantedTotalCents: t.wanted_total_cents,
     wantedCount,
     offeredCount,
-    holdExpiresAt: t.hold_expires_at,
+    listDueAt: t.list_due_at,
+    confirmBy: t.confirm_by,
     shipBy: t.ship_by,
     paymentDueAt: t.payment_due_at,
+    depositStatus: depositStatusOf(t.deposit_status),
+    depositCents: t.deposit_cents,
   };
 }
 
@@ -553,13 +922,26 @@ export function staffSummaryView(t: TradeRow): StaffTradeSummary {
     estimatedValueCents: t.estimated_value_cents,
     approvedValueCents: t.approved_value_cents,
     finalValueCents: t.final_value_cents,
-    holdExpiresAt: t.hold_expires_at,
+    listDueAt: t.list_due_at,
+    confirmBy: t.confirm_by,
     shipBy: t.ship_by,
     paymentDueAt: t.payment_due_at,
     inboundCarrier: t.inbound_carrier,
     inboundTracking: t.inbound_tracking,
-    inboundShippedAt: t.inbound_shipped_at,
+    inboundAcceptedAt: t.inbound_accepted_at,
+    depositStatus: depositStatusOf(t.deposit_status),
+    depositCents: t.deposit_cents,
+    depositPaidCents: t.deposit_paid_cents,
+    reviewFlag: reviewFlagOf(t.review_flag),
+    returnStatus: returnStatusOf(t.return_status),
+    customerFault: faultOf(t.customer_fault),
+    needsStaff: t.needs_staff,
   };
+}
+
+/** Our cards are held for this trade. */
+export function isReserved(status: string): boolean {
+  return (RESERVED_STATUSES as readonly string[]).includes(status);
 }
 
 // ---------------------------------------------------------------------------

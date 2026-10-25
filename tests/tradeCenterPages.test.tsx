@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CustomerTrade, CustomerTradeSummary, TradeTerms } from "../src/store/lib/tradeCenter";
-import { TRADE_ID, TRADE_TERMS, customerCard, customerTrade } from "./helpers/tradeFixtures";
+import { TRADE_ID, TRADE_TERMS, confirmation, customerCard, customerSummary, customerTrade, shipment } from "./helpers/tradeFixtures";
 
 // The storefront's Trade Center: the Trade Cards page and its trade cart,
-// "Add to trade" on card pages, a trade's own page at each step, and My
-// Trades. The real API client runs; fetch is the stand-in for
-// /api/trade-center, so these tests see exactly what's sent and with whose
-// session.
+// "Add to trade" on card pages, a trade's own page at each step (building
+// it, confirming with or without the refundable deposit, shipping and
+// tracking, proof of shipping, canceling, the final offer, how it settled,
+// an expired reservation, coming back from a bank check), and My Trades.
+// The real API client runs; fetch is the stand-in for /api/trade-center, so
+// these tests see exactly what's sent and with whose session. Stripe's card
+// form is a stand-in (card details never reach our pages anyway).
 
 const world = vi.hoisted(() => ({
   session: "member-token" as string | null,
@@ -48,6 +52,13 @@ vi.mock("../src/store/lib/AuthContext", () => ({
   useAuth: () => ({ user: world.session ? { id: "ann", email: "ann@example.com" } : null, loading: false, signOut: async () => {} }),
 }));
 vi.mock("../src/store/lib/CartContext", () => ({ useCart: () => ({ addItem: async () => {} }) }));
+vi.mock("../src/store/lib/stripeClient", () => ({ isStripeConfigured: true, getStripePromise: () => null }));
+vi.mock("@stripe/react-stripe-js", () => ({
+  Elements: ({ children }: { children: ReactNode }) => <div data-testid="stripe-elements">{children}</div>,
+  PaymentElement: () => null,
+  useStripe: () => null,
+  useElements: () => null,
+}));
 vi.mock("../src/store/lib/WishlistContext", () => ({
   useWishlist: () => ({ isWishlisted: () => false, pending: new Set<string>(), toggle: async () => {} }),
 }));
@@ -162,11 +173,41 @@ describe("the Trade Cards page (1)", () => {
     const cart = screen.getByRole("heading", { name: "Your trade cart" }).parentElement!;
     expect(cart).toHaveTextContent("The One Ring");
     expect(cart).toHaveTextContent("Our cards: $79.99");
+    // Starting doesn't reserve anything.
+    expect(cart).toHaveTextContent("Starting a trade doesn’t reserve these yet");
 
     await user.click(within(cart).getByRole("button", { name: "Start my trade" }));
     await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-trade"));
     expect(world.posts).toEqual([{ body: { action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }] }, auth: "Bearer member-token" }]);
     expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "null")).toEqual([]);
+  });
+
+  it("explains reservations, the confirmation and shipping windows and the deposit, from the settings", async () => {
+    at("/trade-cards", <TradeCardsPage />);
+    expect(await screen.findByText("Our cards reserved for you once you confirm")).toBeInTheDocument();
+    expect(screen.getByText("Decline the final offer with no penalty")).toBeInTheDocument();
+    // The worked example is a real deadline: 3 qualifying days from Friday 2 PM skips Sunday.
+    expect(screen.getByText(/confirm on a Friday at 2 PM and you'd ship by Tuesday at 2 PM/)).toBeInTheDocument();
+    expect(screen.getByText(/Once we approve it you have 48 hours to confirm \(Sundays don't count\)/)).toBeInTheDocument();
+
+    const deposit = screen.getByRole("heading", { name: "The refundable deposit" }).closest("section")!;
+    expect(deposit).toHaveTextContent("trades with $300.00 or more of our cards need a small deposit to confirm");
+    const rows = within(deposit).getAllByRole("row").slice(1).map((r) => r.textContent);
+    expect(rows).toEqual([
+      "Under $100.00$5.00 only if we ask",
+      "$100.00 to $299.99$10.00 only if we ask",
+      "$300.00 to $599.99$20.00",
+      "$600.00 or more$30.00",
+    ]);
+    expect(deposit).toHaveTextContent("Declining our final offer after your cards arrive, or canceling once the carrier has your package, never costs it.");
+  });
+
+  it("doesn't advertise a deposit while deposits are off", async () => {
+    world.terms = { ...TRADE_TERMS, depositsEnabled: false };
+    at("/trade-cards", <TradeCardsPage />);
+    await screen.findByText("80% of your cards' value as trade credit");
+    expect(screen.queryByRole("heading", { name: "The refundable deposit" })).toBeNull();
+    expect(screen.getByText(/Not right now\. If a trade ever needs one/)).toBeInTheDocument();
   });
 
   it("sends someone who isn't signed in to sign in first, and back", async () => {
@@ -228,10 +269,12 @@ describe("a trade's page", () => {
 
   it("won't send a list with a card we can't take; sends it once that's off, with a note (3)", async () => {
     const user = userEvent.setup();
-    world.trade = customerTrade({ status: "awaiting_trade_list", holdExpiresAt: "2099-01-01T05:59:59Z", estimatedValueCents: 8000, offered: [sheoldred, elves] });
+    world.trade = customerTrade({ status: "awaiting_trade_list", listDueAt: "2099-01-01T05:59:59Z", estimatedValueCents: 8000, offered: [sheoldred, elves] });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     const send = await screen.findByRole("button", { name: "Send for review" });
     expect(send).toBeDisabled();
+    expect(screen.getByText(/Send it for review by/)).toHaveTextContent("or it closes.");
+    expect(screen.getByText(/These stay on sale until you confirm your approved trade, so they aren't reserved yet/)).toBeInTheDocument();
     expect(screen.getByText("Take off the card we can't accept.")).toBeInTheDocument();
     expect(screen.getByText(/Under our \$15\.00 minimum per card/)).toBeInTheDocument();
 
@@ -250,13 +293,167 @@ describe("a trade's page", () => {
     expect(world.posts[1]).toEqual({ body: { action: "submit", tradeId: TRADE_ID, note: "Happy to drop off in person" }, auth: "Bearer member-token" });
   });
 
+  it("won't send a list while one of our cards has fewer copies left than picked", async () => {
+    world.trade = customerTrade({
+      status: "awaiting_trade_list",
+      listDueAt: "2099-01-01T05:59:59Z",
+      offered: [sheoldred],
+      wanted: [customerTrade().wanted[0], { ...customerTrade().wanted[1], quantity: 2, available: 1 }],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    expect(await screen.findByRole("button", { name: "Send for review" })).toBeDisabled();
+    expect(screen.getByText("Only 1 left: lower the quantity")).toBeInTheDocument();
+    expect(screen.getByText("One of our cards has fewer copies left than you picked.")).toBeInTheDocument();
+  });
+
+  it("confirms an approved trade with no deposit once the box is ticked, agreeing to the terms version shown (6)", async () => {
+    const user = userEvent.setup();
+    const approved = { ...sheoldred, reviewStatus: "approved" as const, approvedQuantity: 1, approvedUnitCents: 8000 };
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      approvedValueCents: 8000,
+      confirmBy: "2099-01-03T20:00:00.000Z",
+      approvalConditions: "Sheoldred must be Near Mint.",
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z", shipByIfConfirmedNow: "2099-01-06T20:00:00.000Z" }),
+      offered: [approved],
+    });
+    world.respond = (body) => ({
+      status: 200,
+      json: {
+        ok: true,
+        terms: TRADE_TERMS,
+        trade: body.action === "confirm" ? { ...world.trade, status: "awaiting_shipment", confirmation: null, shipBy: "2099-01-06T20:00:00.000Z" } : world.trade,
+      },
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    expect(panel).toHaveTextContent("Until you do, our cards stay on sale.");
+    expect(panel).toHaveTextContent("Refundable depositNone needed");
+    expect(panel).toHaveTextContent("Total reserved market value$88.99");
+    expect(panel).toHaveTextContent("if you confirm now: 3 days, Sundays don’t count");
+    expect(panel).toHaveTextContent("Approved on this condition: Sheoldred must be Near Mint.");
+    expect(within(panel).getByRole("heading", { name: "What confirming means" })).toBeInTheDocument();
+
+    const go = within(panel).getByRole("button", { name: "Confirm Trade" });
+    expect(go).toBeDisabled();
+    await user.click(within(panel).getByRole("checkbox"));
+    await user.click(go);
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0]).toEqual({ body: { action: "confirm", tradeId: TRADE_ID, acknowledged: true, termsVersion: 1 }, auth: "Bearer member-token" });
+    expect(await screen.findByRole("status")).toHaveTextContent(/Confirmed! Our cards are reserved for you: ship by/);
+    expect(screen.getByRole("heading", { name: "Ship your cards" })).toBeInTheDocument();
+  });
+
+  it("confirms with the refundable deposit: the terms, then the card form for exactly that amount (7)", async () => {
+    const user = userEvent.setup();
+    const approved = { ...sheoldred, reviewStatus: "approved" as const, approvedQuantity: 1, approvedUnitCents: 8000 };
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      wantedTotalCents: 32000,
+      approvedValueCents: 8000,
+      confirmBy: "2099-01-03T20:00:00.000Z",
+      deposit: { cents: 2000, status: "payment_pending", reason: "threshold", paidCents: null, paidAt: null, refundRequestedAt: null, refundedAt: null },
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z", depositCents: 2000, depositReason: "threshold" }),
+      offered: [approved],
+    });
+    world.respond = (body) => ({
+      status: 200,
+      json:
+        body.action === "confirm"
+          ? { ok: true, terms: TRADE_TERMS, trade: { ...world.trade, status: "awaiting_deposit" }, clientSecret: "pi_123_secret_abc", depositCents: 2000 }
+          : { ok: true, terms: TRADE_TERMS, trade: world.trade },
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    expect(within(panel).getByRole("heading", { name: "Refundable Reservation Deposit" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Refundable deposit$20.00");
+    expect(panel).toHaveTextContent("We review every case before keeping a deposit.");
+    expect(panel).toHaveTextContent("Potential cancellation chargeUp to $20.00 (your deposit), only if you cancel after confirming and before shipping");
+    expect(panel).toHaveTextContent("Declining our offer after your cards arrive never costs your deposit.");
+
+    await user.click(within(panel).getByRole("checkbox"));
+    await user.click(within(panel).getByRole("button", { name: "Confirm Trade & Pay Deposit" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "confirm", tradeId: TRADE_ID, acknowledged: true, termsVersion: 1 });
+    // Nothing is reserved yet: the card form for the deposit takes over.
+    expect(await within(panel).findByRole("heading", { name: "Pay your $20.00 deposit" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Pay the $20.00 deposit" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Finish paying your deposit" })).toBeInTheDocument();
+  });
+
+  it("says plainly when a card sold before they confirmed, and hands the trade back", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      approvedValueCents: 8000,
+      confirmBy: "2099-01-03T20:00:00.000Z",
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z" }),
+      offered: [{ ...sheoldred, reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 8000 }],
+    });
+    const notice = "Some of our cards on this trade sold before you confirmed. Nothing was reserved or charged: update your selection and send the trade again.";
+    world.respond = () => ({
+      status: 200,
+      json: {
+        ok: true,
+        terms: TRADE_TERMS,
+        notice,
+        trade: {
+          ...world.trade,
+          status: "revision_requested",
+          confirmation: null,
+          messages: [{ id: "m1", authorType: "system", authorLabel: null, body: "Some of our cards on this trade sold before it was confirmed: The One Ring.", createdAt: "2026-10-25T12:00:00Z", visibleToCustomer: true }],
+        },
+      },
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    await user.click(within(panel).getByRole("checkbox"));
+    await user.click(within(panel).getByRole("button", { name: "Confirm Trade" }));
+    expect(await screen.findByText(notice)).toHaveClass("gg-alert-warn");
+    expect(screen.getByRole("heading", { name: "Some of our cards sold" }).nextElementSibling).toHaveTextContent("The One Ring");
+  });
+
+  it("picks the deposit up again after a bank check, and cleans up the address", async () => {
+    world.trade = customerTrade({
+      status: "awaiting_deposit",
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z", depositCents: 2000 }),
+      deposit: { cents: 2000, status: "payment_pending", reason: "threshold", paidCents: null, paidAt: null, refundRequestedAt: null, refundedAt: null },
+    });
+    world.respond = (body) => ({
+      status: 200,
+      json:
+        body.action === "confirmDeposit"
+          ? {
+              ok: true,
+              terms: TRADE_TERMS,
+              paymentStatus: "succeeded",
+              trade: {
+                ...world.trade,
+                status: "awaiting_shipment",
+                confirmation: null,
+                shipBy: "2099-01-06T20:00:00.000Z",
+                deposit: { ...world.trade.deposit, status: "paid", paidCents: 2000, paidAt: "2026-10-25T12:00:00Z" },
+              },
+            }
+          : { ok: true, terms: TRADE_TERMS, trade: world.trade },
+    });
+    at(`/account/trades/${TRADE_ID}?pay=deposit&payment_intent=pi_123&payment_intent_client_secret=pi_123_secret&redirect_status=succeeded`, <TradeDetail tradeId={TRADE_ID} />);
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "confirmDeposit", tradeId: TRADE_ID, paymentIntentId: "pi_123" });
+    expect(await screen.findByText(/Deposit paid\. Our cards are reserved for you: ship by/)).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).toBe(""));
+    const deposit = screen.getByRole("heading", { name: "Refundable deposit" }).closest("section")!;
+    expect(deposit).toHaveTextContent("$20.00");
+    expect(deposit).toHaveTextContent("Paid (refundable)");
+  });
+
   it("shows where and how to ship once approved, and takes a clean tracking number (5)", async () => {
     const user = userEvent.setup();
     world.trade = customerTrade({
       status: "awaiting_shipment",
       approvedValueCents: 8000,
       shipBy: "2099-01-01T05:59:59Z",
-      holdExpiresAt: "2099-01-02T05:59:59Z",
+      shipDays: 3,
       mailTo: { name: "Geega Games", line1: "100 Test Ave", line2: null, city: "Ballwin", state: "MO", postalCode: "63011" },
       packingInstructions: "Sleeve them.",
       offered: [
@@ -271,14 +468,132 @@ describe("a trade's page", () => {
     // Before mailing, a card we turned down says to leave it out.
     expect(screen.getByText("Not accepted: please leave it out")).toBeInTheDocument();
 
+    expect(screen.getByText(/Ship by/)).toHaveTextContent("3 days, Sundays don't count");
+    expect(screen.getByText(/The carrier has to scan your package by then/)).toBeInTheDocument();
+
     await user.type(screen.getByLabelText("Tracking number"), "12-34");
     await user.click(screen.getByRole("button", { name: "Add tracking number" }));
+    expect(await screen.findByText("That tracking number doesn't look right. Check it and try again.")).toBeInTheDocument();
     expect(world.posts).toEqual([]);
+    // A UPS number with USPS chosen: the page says so (and switches the carrier).
+    await user.clear(screen.getByLabelText("Tracking number"));
+    await user.type(screen.getByLabelText("Tracking number"), "1Z999AA10123456784");
+    await user.click(screen.getByRole("button", { name: "Add tracking number" }));
+    expect(await screen.findByText(/That looks like a UPS tracking number/)).toBeInTheDocument();
+    expect(world.posts).toEqual([]);
+    await user.selectOptions(screen.getByLabelText("Carrier"), "USPS");
     await user.clear(screen.getByLabelText("Tracking number"));
     await user.type(screen.getByLabelText("Tracking number"), "9400 1118 9922 3197 4284 90");
     await user.click(screen.getByRole("button", { name: "Add tracking number" }));
     await waitFor(() => expect(world.posts).toHaveLength(1));
-    expect(world.posts[0].body).toMatchObject({ action: "tracking", tradeId: TRADE_ID, carrier: "USPS" });
+    expect(world.posts[0].body).toEqual({ action: "tracking", tradeId: TRADE_ID, carrier: "USPS", trackingNumber: "9400111899223197428490" });
+  });
+
+  it("waits for the carrier's scan once tracking is in, takes proof of shipping, and won't cancel online", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({
+      status: "tracking_submitted",
+      approvedValueCents: 8000,
+      shipBy: "2099-01-01T05:59:59Z",
+      canSendProof: true,
+      shipment: shipment({ carrier: "USPS", tracking: "9400111899223197428490", trackingAddedAt: "2026-10-25T12:00:00Z", carrierStatus: "pre_transit" }),
+      offered: [{ ...sheoldred, reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 8000 }],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const ship = (await screen.findByRole("heading", { name: "Waiting for the carrier's first scan" })).closest("section")!;
+    expect(within(ship).getByRole("link", { name: "9400111899223197428490" })).toHaveAttribute("href", expect.stringContaining("usps.com"));
+    expect(ship).toHaveTextContent("We check with the carrier regularly.");
+    expect(screen.getByText(/Need to cancel\? Your tracking number is on file/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this trade" })).toBeNull();
+
+    await user.click(within(ship).getByRole("button", { name: "Send proof of shipping" }));
+    await user.type(within(ship).getByLabelText("When and where did you ship it?"), "Post office on Main, Tuesday 10 AM");
+    await user.click(within(ship).getByRole("button", { name: "Send proof of shipping" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "proof", tradeId: TRADE_ID, draftId: expect.stringMatching(/^[0-9a-f-]{36}$/), note: "Post office on Main, Tuesday 10 AM" });
+  });
+
+  it("asks before canceling a reserved trade with a paid deposit, and says what it may cost", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({
+      status: "awaiting_shipment",
+      shipBy: "2099-01-01T05:59:59Z",
+      deposit: { cents: 2000, status: "paid", reason: "threshold", paidCents: 2000, paidAt: "2026-10-25T12:00:00Z", refundRequestedAt: null, refundedAt: null },
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    await user.click(await screen.findByRole("button", { name: "Cancel this trade" }));
+    const form = screen.getByRole("heading", { name: "Cancel this trade?" }).closest("form")!;
+    expect(form).toHaveTextContent("your $20.00 deposit may be kept under the cancellation terms you agreed to; a person reviews every case first");
+    const yes = within(form).getByRole("button", { name: "Yes, cancel my trade" });
+    expect(yes).toBeDisabled();
+    await user.click(within(form).getByRole("checkbox"));
+    await user.click(yes);
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "cancel", tradeId: TRADE_ID, reason: null, acceptDepositReview: true });
+  });
+
+  it("cancels a trade that isn't confirmed yet at no cost, without the deposit warning", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({ status: "pending_review" });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    await user.click(await screen.findByRole("button", { name: "Cancel this trade" }));
+    const form = screen.getByRole("heading", { name: "Cancel this trade?" }).closest("form")!;
+    expect(form).toHaveTextContent("Nothing is reserved or charged yet, so canceling costs nothing.");
+    expect(within(form).queryByRole("checkbox")).toBeNull();
+    await user.click(within(form).getByRole("button", { name: "Yes, cancel my trade" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "cancel", tradeId: TRADE_ID, reason: null, acceptDepositReview: false });
+  });
+
+  it("lets them withdraw with no penalty once the carrier has the package", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({
+      status: "in_transit",
+      shipBy: "2099-01-01T05:59:59Z",
+      shipment: shipment({ carrier: "USPS", tracking: "9400111899223197428490", acceptedAt: "2026-10-25T15:00:00Z", acceptanceSource: "carrier", shippedOnTime: true }),
+      deposit: { cents: 2000, status: "refund_pending", reason: "threshold", paidCents: 2000, paidAt: "2026-10-24T12:00:00Z", refundRequestedAt: "2026-10-25T15:05:00Z", refundedAt: null },
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    expect(await screen.findByRole("heading", { name: "Shipment verified" })).toBeInTheDocument();
+    expect(screen.getByText(/Our cards stay reserved for you while it travels/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Refundable deposit" }).closest("section")).toHaveTextContent("Refund on its way");
+
+    await user.click(screen.getByRole("button", { name: "Cancel and get my cards back" }));
+    const form = screen.getByRole("heading", { name: "Cancel and get your cards back?" }).closest("form")!;
+    expect(form).toHaveTextContent("There's no penalty for canceling once the carrier has your package");
+    await user.click(within(form).getByRole("button", { name: "Cancel and return my cards" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "withdraw", tradeId: TRADE_ID, reason: null });
+  });
+
+  it("explains an expired reservation, the deposit under review, and takes proof of shipping until the window closes", async () => {
+    world.trade = customerTrade({
+      status: "expired",
+      expiredStage: "shipping",
+      shipBy: "2026-10-22T19:00:00.000Z",
+      canSendProof: true,
+      proofDueAt: "2099-01-05T19:00:00.000Z",
+      closeReason: "No tracking number by the shipping deadline.",
+      deposit: { cents: 2000, status: "forfeiture_review", reason: "threshold", paidCents: 2000, paidAt: "2026-10-19T12:00:00Z", refundRequestedAt: null, refundedAt: null },
+      wanted: customerTrade().wanted.map((w) => ({ ...w, status: "released" as const })),
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const closed = (await screen.findByRole("heading", { name: "Your reservation expired" })).closest("div")!;
+    expect(closed).toHaveTextContent("No tracking number was added by the shipping deadline");
+    expect(within(closed).getByRole("button", { name: "Send proof of shipping" })).toBeInTheDocument();
+    expect(closed).toHaveTextContent("(by");
+    const deposit = screen.getByRole("heading", { name: "Refundable deposit" }).closest("section")!;
+    expect(deposit).toHaveTextContent("Under review");
+    expect(deposit).toHaveTextContent("A person reviews every case under the terms you agreed to before any deposit is kept.");
+    expect(screen.getAllByText("Released back to the shop")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Start a new trade" })).toHaveAttribute("href", "/trade-cards");
+  });
+
+  it("says a trade that wasn't confirmed in time closed with nothing reserved or charged", async () => {
+    world.trade = customerTrade({ status: "offer_expired", expiredStage: "confirmation" });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const closed = (await screen.findByRole("heading", { name: "This trade closed" })).closest("div")!;
+    expect(closed).toHaveTextContent("This trade wasn't confirmed in time, so it closed. Nothing was reserved or charged for it.");
   });
 
   it("accepts the final offer to a saved address, or declines it (8, 14)", async () => {
@@ -292,10 +607,17 @@ describe("a trade's page", () => {
       offered: [{ ...sheoldred, reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 8000, inspected: true, receivedQuantity: 1, verifiedCondition: "LP", finalQuantity: 1, finalUnitCents: 7200, inspectionNote: "Whitening on the back" }],
     });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    const final = (await screen.findByRole("heading", { name: "Your final offer" })).closest("section")!;
+    const final = (await screen.findByRole("heading", { name: "Your revised offer" })).closest("section")!;
     expect(final).toHaveTextContent("1 × $80.00");
     expect(final).toHaveTextContent("1 × $72.00");
+    // Before and after, the difference, and why.
+    expect(final).toHaveTextContent("Estimated before you shipped$80.00");
+    expect(final).toHaveTextContent("Final value after inspection$72.00");
+    expect(final).toHaveTextContent("Difference−$8.00");
+    expect(final).toHaveTextContent("Trade credit$57.60was $64.00");
+    expect(final).toHaveTextContent("Condition: Lightly Played (listed as Near Mint)");
     expect(final).toHaveTextContent("Whitening on the back");
+    expect(final).toHaveTextContent("You’re free to decline with no penalty");
 
     await user.click(within(final).getByRole("button", { name: "Accept the offer" }));
     await user.click(await within(final).findByRole("button", { name: "Accept and finish my trade" }));
@@ -305,8 +627,9 @@ describe("a trade's page", () => {
 
     world.posts = [];
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    const again = (await screen.findByRole("heading", { name: "Your final offer" })).closest("section")!;
+    const again = (await screen.findByRole("heading", { name: "Your revised offer" })).closest("section")!;
     await user.click(within(again).getByRole("button", { name: "Decline and get my cards back" }));
+    expect(again).toHaveTextContent("There’s no penalty for declining, and it never affects your deposit.");
     const confirm = within(again).getAllByRole("button").find((b) => /decline/i.test(b.textContent ?? "") && b.getAttribute("type") === "submit")!;
     await user.click(confirm);
     await waitFor(() => expect(world.posts).toHaveLength(1));
@@ -354,15 +677,39 @@ describe("a trade's page", () => {
 describe("My Trades", () => {
   it("lists the customer's trades, open ones first, each linking to its page", async () => {
     world.trades = [
-      { id: "t-old", tradeNumber: 990, status: "completed", createdAt: "2026-09-01T12:00:00Z", updatedAt: "2026-09-10T12:00:00Z", wantedTotalCents: 4000, wantedCount: 2, offeredCount: 3, holdExpiresAt: null, shipBy: null, paymentDueAt: null },
-      { id: "t-new", tradeNumber: 1001, status: "awaiting_shipment", createdAt: "2026-10-20T12:00:00Z", updatedAt: "2026-10-24T12:00:00Z", wantedTotalCents: 8899, wantedCount: 3, offeredCount: 1, holdExpiresAt: null, shipBy: "2099-01-01T05:59:59Z", paymentDueAt: null },
+      customerSummary({ id: "t-old", tradeNumber: 990, status: "completed", createdAt: "2026-09-01T12:00:00Z", wantedTotalCents: 4000, wantedCount: 2, offeredCount: 3 }),
+      customerSummary({
+        id: "t-conf",
+        tradeNumber: 1000,
+        status: "awaiting_confirmation",
+        confirmBy: "2099-01-03T20:00:00.000Z",
+        offeredCount: 1,
+        depositStatus: "payment_pending",
+        depositCents: 1000,
+      }),
+      customerSummary({
+        id: "t-new",
+        tradeNumber: 1001,
+        status: "awaiting_shipment",
+        createdAt: "2026-10-20T12:00:00Z",
+        offeredCount: 1,
+        shipBy: "2099-01-01T05:59:59Z",
+        depositStatus: "paid",
+        depositCents: 2000,
+      }),
     ];
     at("/account/trades", <MyTrades />);
     const links = await screen.findAllByRole("link", { name: /TR-/ });
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/account/trades/t-new", "/account/trades/t-old"]);
-    expect(links[0]).toHaveTextContent("Approved: ship your cards");
-    expect(links[0]).toHaveTextContent("3 of our cards ($88.99) · 1 of yours");
-    expect(links[1]).toHaveTextContent("Complete");
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/account/trades/t-conf", "/account/trades/t-new", "/account/trades/t-old"]);
+    expect(links[0]).toHaveTextContent("Awaiting your confirmation");
+    expect(links[0]).toHaveTextContent("Confirm by");
+    // Said before they confirm, not sprung on them.
+    expect(links[0]).toHaveTextContent("Refundable deposit of $10.00 when you confirm");
+    expect(links[1]).toHaveTextContent("Reserved: awaiting shipment");
+    expect(links[1]).toHaveTextContent("Ship your cards by");
+    expect(links[1]).toHaveTextContent("Deposit $20.00: paid (refundable)");
+    expect(links[1]).toHaveTextContent("3 of our cards ($88.99) · 1 of yours");
+    expect(links[2]).toHaveTextContent("Trade completed");
   });
 
   it("invites a first trade when there are none", async () => {

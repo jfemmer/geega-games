@@ -5,17 +5,20 @@ import { UsStateSelect } from "../UsStateSelect";
 import {
   CONDITION_NAMES,
   TRADE_LIMITS,
+  offerChanges,
   printingLabel,
+  tradeComparison,
   type CustomerTrade,
   type TradeShipToInput,
 } from "../../lib/tradeCenter";
 
-// The final offer, after inspection: card by card what was approved and what
-// we're taking now, with the reason for any change; then the customer's
-// answer. Accepting asks where to ship our cards (a saved address or a new
-// one); asking for an adjustment is a message to staff; declining shows the
-// return policy first. Nothing is final until they accept, and there's no
-// deadline to answer.
+// The final offer, after inspection: what we estimated before they shipped
+// and what we're offering now, card by card with the reason for every
+// change, and what that does to the money; then the customer's answer.
+// Accepting asks where to ship our cards (a saved address or a new one);
+// asking for an adjustment is a message to staff; declining shows the
+// return policy first and never costs the deposit. Nothing is final until
+// they accept, and there's no deadline to answer.
 
 interface SavedAddress {
   id: string;
@@ -47,11 +50,71 @@ export function TradeFinalOffer({
   const [mode, setMode] = useState<Mode>(null);
   const cards = trade.offered.filter((c) => c.reviewStatus === "approved" || c.inspected);
   const cash = trade.excessHandling === "cash" && trade.cashPayoutCents ? trade.cashPayoutCents : null;
+  const changes = offerChanges(trade.offered);
+  const changeById = new Map(changes.map((c) => [c.cardId, c]));
+  const approvedValue = trade.approvedValueCents ?? 0;
+  const finalValue = trade.finalValueCents ?? 0;
+  const diff = finalValue - approvedValue;
+  const before = tradeComparison({
+    wantedCents: trade.wantedTotalCents,
+    offeredValueCents: approvedValue,
+    ratePercent: trade.creditRatePercent,
+    feeCents: trade.processingFeeCents,
+    shippingCents: trade.shippingCents ?? undefined,
+  });
+  const after = tradeComparison({
+    wantedCents: trade.wantedTotalCents,
+    offeredValueCents: finalValue,
+    ratePercent: trade.creditRatePercent,
+    feeCents: trade.processingFeeCents,
+    shippingCents: trade.shippingCents ?? undefined,
+  });
+  const bottom = (c: typeof before) => (c.remainingCents > 0 ? `${formatCents(c.remainingCents)} to pay` : `${formatCents(c.excessCents)} credit left over`);
+  // Still held (normally it's refunded once the carrier accepts the package):
+  // declining refunds it too.
+  const depositBack = trade.deposit.status === "paid" || trade.deposit.status === "forfeiture_review";
 
   return (
     <section className="gg-tc-panel" aria-labelledby="gg-tc-final-title">
-      <h2 id="gg-tc-final-title">Your final offer</h2>
-      <p>We inspected your cards. Here&rsquo;s what we&rsquo;re taking and what each is worth.</p>
+      <h2 id="gg-tc-final-title">{changes.length > 0 ? "Your revised offer" : "Your final offer"}</h2>
+      <p>
+        {changes.length > 0
+          ? "We inspected your cards and a few things changed from what we approved before you shipped. Each change and its reason is below."
+          : "We inspected your cards and everything matched what we approved."}
+      </p>
+      <dl className="gg-tc-compare">
+        <div>
+          <dt>Estimated before you shipped</dt>
+          <dd>{formatCents(approvedValue)}</dd>
+        </div>
+        <div>
+          <dt>Final value after inspection</dt>
+          <dd>{formatCents(finalValue)}</dd>
+        </div>
+        {diff !== 0 && (
+          <div className={diff < 0 ? "gg-tc-compare__down" : "gg-tc-compare__up"}>
+            <dt>Difference</dt>
+            <dd>
+              {diff < 0 ? "−" : "+"}
+              {formatCents(Math.abs(diff))}
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>Trade credit</dt>
+          <dd>
+            {formatCents(trade.finalCreditCents ?? after.creditCents)}
+            {diff !== 0 && <span className="gg-tc-facts__sub">was {formatCents(before.creditCents)}</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>{after.remainingCents > 0 ? "You'd pay by card" : "Credit left over"}</dt>
+          <dd>
+            {formatCents(after.remainingCents > 0 ? after.remainingCents : after.excessCents)}
+            {diff !== 0 && <span className="gg-tc-facts__sub">before: {bottom(before)}</span>}
+          </dd>
+        </div>
+      </dl>
       <div className="gg-tc-table-wrap">
         <table className="gg-tc-table">
           <thead>
@@ -59,22 +122,27 @@ export function TradeFinalOffer({
               <th scope="col">Card</th>
               <th scope="col">Approved</th>
               <th scope="col">Final</th>
+              <th scope="col">Change</th>
             </tr>
           </thead>
           <tbody>
             {cards.map((c) => {
               const finalQty = c.inspected ? (c.finalQuantity ?? 0) : 0;
-              const changed =
-                finalQty !== (c.approvedQuantity ?? 0) || (finalQty > 0 && c.finalUnitCents !== c.approvedUnitCents);
+              const change = changeById.get(c.id);
               return (
-                <tr key={c.id} className={changed ? "gg-tc-table__changed" : undefined}>
+                <tr key={c.id} className={change ? "gg-tc-table__changed" : undefined}>
                   <td>
                     <span className="gg-tc-line__name">{c.cardName}</span>
                     <span className="gg-tc-line__meta">
                       {printingLabel(c)} · {CONDITION_NAMES[c.verifiedCondition ?? c.reportedCondition]}
                     </span>
-                    {c.inspectionNote && <span className="gg-tc-review__note">{c.inspectionNote}</span>}
-                    {c.flags.length > 0 && <span className="gg-tc-flag gg-tc-flag--bad">{c.flags.join(", ")}</span>}
+                    {change && change.reasons.length > 0 && (
+                      <ul className="gg-tc-reasons">
+                        {change.reasons.map((r) => (
+                          <li key={r}>{r}</li>
+                        ))}
+                      </ul>
+                    )}
                   </td>
                   <td>
                     {c.approvedQuantity ?? 0} × {formatCents(c.approvedUnitCents ?? 0)}
@@ -82,12 +150,21 @@ export function TradeFinalOffer({
                   <td>
                     <strong>{finalQty > 0 ? `${finalQty} × ${formatCents(c.finalUnitCents ?? 0)}` : "Not taken"}</strong>
                   </td>
+                  <td>
+                    {change && change.differenceCents !== 0
+                      ? `${change.differenceCents < 0 ? "−" : "+"}${formatCents(Math.abs(change.differenceCents))}`
+                      : "None"}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      <p className="gg-tc-nopenalty">
+        You&rsquo;re free to decline with no penalty, whatever the reason: we&rsquo;ll mail your cards back
+        {depositBack ? ", and your deposit is refunded in full either way" : ""}.
+      </p>
       {cash !== null && (
         <p className="gg-tc-note">
           Instead of store credit for what&rsquo;s left over after your order, we&rsquo;ll pay you <strong>{formatCents(cash)}</strong> in
@@ -285,6 +362,7 @@ function DeclineForm({
       }}
     >
       <h3>Decline the offer?</h3>
+      <p>There&rsquo;s no penalty for declining, and it never affects your deposit.</p>
       <p>{returnPolicy}</p>
       <label className="gg-field">
         <span>Anything you&rsquo;d like us to know (optional)</span>

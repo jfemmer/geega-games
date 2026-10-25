@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import crypto from "node:crypto";
 import type { Json } from "../src/types/database.js";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "./_lib/http.js";
 import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
@@ -10,10 +11,22 @@ import {
   afterFinalized,
   recordTradeCardPayment,
   stopOpenPayment,
-  stripeConfigured,
 } from "./_lib/tradePayments.js";
 import {
+  DEPOSIT_KIND,
+  depositIntentFor,
+  processDepositRefund,
+  recordDepositPayment,
+  retireDepositIntent,
+  stripeConfigured,
+} from "./_lib/tradeDeposits.js";
+import { autoTracking, checkTradeTracking, followUpScan, trackingConnected } from "./_lib/tradeTracking.js";
+import {
+  DISPUTE_BUCKET,
+  UUID_RE,
+  bundleAvailability,
   cleanText,
+  customerStanding,
   customerSummaryView,
   customerTradeView,
   loadCustomerBundle,
@@ -25,6 +38,7 @@ import {
   readWantedInputs,
   requireCustomer,
   savedShipTo,
+  shipDeadline,
   termsOf,
   tradeDbError,
   type Admin,
@@ -33,19 +47,21 @@ import {
   type TradeOfferRow,
   type TradeSettingsRow,
 } from "./_lib/tradeCenter.js";
-import { notifyTradeStaff, sendTradeCustomerEmail } from "./_lib/tradeCenterEmails.js";
+import { notifyTradeStaff, sendTradeCustomerEmail, type ShortLine } from "./_lib/tradeCenterEmails.js";
 import {
   CUSTOMER_CANCELABLE_STATUSES,
   CUSTOMER_EDITABLE_STATUSES,
+  CUSTOMER_WITHDRAW_STATUSES,
+  DISPUTE_FILE_TYPES,
   TRADE_LIMITS,
-  cleanTrackingNumber,
   isConditionCode,
-  isTradeCarrier,
   isTradeFinish,
   tradeLabel,
+  type TradeConfirmation,
   type TradeOfferInput,
   type TradeStatus,
 } from "../src/store/lib/tradeCenter.js";
+import { checkTrackingNumber } from "../src/store/lib/tradeTracking.js";
 
 // /api/trade-center: the storefront's Trade Cards page and My Trades.
 //
@@ -53,27 +69,33 @@ import {
 //   GET ?view=mine           → { terms, trades }          the signed-in customer's trades
 //   GET ?id=<trade id>       → { terms, trade }           one of their trades
 //   POST { action, … }       → { trade, … }               signed in:
-//     start          { items: [{ inventoryItemId, quantity }] }   hold our cards and open a trade
+//     start          { items: [{ inventoryItemId, quantity }] }   open a trade (nothing is reserved)
 //     setWanted      { tradeId, items }                          change which of our cards
 //     saveOffer      { tradeId, cards: [...] }                   save their cards (priced here)
-//     submit         { tradeId, note? }                          send the list for review
-//     cancel         { tradeId, reason? }                        before anything is mailed to us
-//     tracking       { tradeId, carrier, trackingNumber }        they mailed their cards
+//     submit         { tradeId, note? }                          send it for review
+//     confirm        { tradeId, acknowledged, termsVersion }     confirm an approved trade
+//                    → { trade, clientSecret?, depositCents? }   (with a deposit: pay it to reserve)
+//     confirmDeposit { tradeId, paymentIntentId }                record the deposit once Stripe says it went through
+//     tracking       { tradeId, carrier, trackingNumber }        their package (counts once the carrier scans it)
+//     proofUploads   { tradeId, draftId, files: [...] }          → { uploads }: signed links to upload proof of shipping
+//     proof          { tradeId, draftId, note }                  send proof of shipping (the reservation waits for staff)
+//     askForTime     { tradeId, note }                           ask staff for more time
+//     cancel         { tradeId, reason?, acceptDepositReview? }  before shipping
+//     withdraw       { tradeId, reason? }                        after shipping: no penalty, cards come back
 //     accept         { tradeId, address | addressId }            accept the final offer
 //     adjust         { tradeId, message }                        ask for a change to the final offer
-//     decline        { tradeId, reason? }                        decline it: their cards come back
+//     decline        { tradeId, reason? }                        decline it: no penalty, cards come back
 //     pay            { tradeId }                                 → { clientSecret, amountDueCents }
 //     confirmPayment { tradeId, paymentIntentId }                record it once Stripe says it went through
 //     message        { tradeId, body }
 //
 // Trust: who the customer is comes from their verified session, never the
 // body, and a trade that isn't theirs looks the same as one that doesn't
-// exist. Prices never come from the browser: our cards are priced from
-// inventory when they're held, their cards from Scryfall here (the browser
-// sends only which printing, finish, condition and how many), and every
-// total is worked out by the database (trade_* functions, one transaction
-// each, under the trade's row lock). The amount charged by card is the
-// trade's amount due, read fresh.
+// exist. Prices, deposits and deadlines never come from the browser: our
+// cards are priced from inventory, their cards from Scryfall here, the
+// deposit is the one stored on the trade, every deadline is worked out here
+// in qualifying time, and every change and total is the database's
+// (trade_* functions, one transaction each, under the trade's row lock).
 
 const MAX_BODY_BYTES = 64 * 1024;
 const RATE_LIMIT_PER_WINDOW = 90;
@@ -106,10 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return sendJson(res, 200, { ok: true, terms });
       }
       const customer = await requireCustomer(req, admin);
-      if (id) {
-        const bundle = await loadCustomerBundle(admin, readTradeId(id), customer.userId);
-        return sendJson(res, 200, { ok: true, terms, trade: customerTradeView(bundle, settings) });
-      }
+      if (id) return await sendFresh(res, admin, settings, readTradeId(id), customer.userId);
       return sendJson(res, 200, { ok: true, terms, trades: await listTrades(admin, customer.userId) });
     }
 
@@ -179,33 +198,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const fresh = await loadCustomerBundle(admin, tradeId, customer.userId);
         await sendTradeCustomerEmail(fresh, settings, { kind: "submitted" });
         await notifyTradeStaff(fresh, settings, { kind: status === "revision_requested" ? "resubmitted" : "submitted" });
-        return sendJson(res, 200, { ok: true, terms: termsOf(settings), trade: customerTradeView(fresh, settings) });
+        break;
       }
 
-      case "cancel": {
+      case "confirm":
+        return await confirm(req, res, admin, customer, settings, bundle, body);
+
+      case "confirmDeposit": {
+        if (!stripeConfigured()) throw new HttpError(503, "Paying online isn't available right now.");
+        const intentId = readIntentId(body.paymentIntentId);
+        const intent = await getStripe().paymentIntents.retrieve(intentId);
+        if (intent.metadata?.trade_request_id !== tradeId || intent.metadata?.kind !== DEPOSIT_KIND) {
+          throw new HttpError(400, "That payment isn't this trade's deposit.");
+        }
+        if (intent.status === "succeeded") {
+          const result = await recordDepositPayment(intent);
+          if (!result.ok) {
+            throw new HttpError(
+              500,
+              "Your deposit went through, but we couldn't reserve your cards yet. There's no need to pay again: we'll confirm by email.",
+            );
+          }
+        }
+        return await sendFresh(res, admin, settings, tradeId, customer.userId, { paymentStatus: intent.status });
+      }
+
+      case "tracking":
+        await addTracking(admin, customer, settings, bundle, body);
+        break;
+
+      case "proofUploads":
+        return sendJson(res, 200, { ok: true, uploads: await proofUploads(admin, bundle, body) });
+
+      case "proof": {
+        await sendProof(admin, customer, settings, bundle, body);
+        break;
+      }
+
+      case "askForTime": {
+        if (!["awaiting_confirmation", "awaiting_deposit", "awaiting_shipment", "tracking_submitted"].includes(status)) {
+          throw new HttpError(409, "There's no deadline on this trade to ask about.");
+        }
+        const note = cleanText(body.note, 1000);
+        if (!note) throw new HttpError(400, "Tell us how much more time you need, and why.");
+        await checkMessageLimit(admin, tradeId);
+        const text = `I'd like more time ${status === "awaiting_confirmation" || status === "awaiting_deposit" ? "to confirm" : "to ship"}: ${note}`;
+        const messageId = await addMessage(admin, tradeId, customer, text);
+        await logEvent(admin, tradeId, customer, "extension_requested", status, { message_id: messageId, note });
+        await notifyTradeStaff(bundle, settings, { kind: "message", messageId, body: text });
+        break;
+      }
+
+      case "cancel":
+        await cancel(admin, customer, settings, bundle, body);
+        break;
+
+      case "withdraw": {
+        if (!CUSTOMER_WITHDRAW_STATUSES.includes(status)) {
+          throw new HttpError(409, "This trade can't be canceled that way now.");
+        }
         const reason = cleanText(body.reason, 2000);
         const { data, error } = await admin.rpc("trade_close", {
           p_trade_id: tradeId,
-          p_status: "canceled",
-          p_from_statuses: [...CUSTOMER_CANCELABLE_STATUSES],
+          p_status: "canceled_after_shipment",
+          p_from_statuses: [...CUSTOMER_WITHDRAW_STATUSES],
           p_reason: reason,
+          p_fault: null,
           p_actor_type: "customer",
           p_actor_id: customer.userId,
           p_actor_label: customer.email,
         });
         if (error) throw tradeDbError(error, "We couldn't cancel the trade. Try again.");
-        if (data !== true) {
-          throw new HttpError(409, "This trade can't be canceled now: your cards are already on their way. Contact us if you need help.");
-        }
+        if (!Array.isArray(data) || !data[0]?.closed) throw new HttpError(409, "This trade changed. Refresh and try again.");
         const fresh = await loadCustomerBundle(admin, tradeId, customer.userId);
-        await sendTradeCustomerEmail(fresh, settings, { kind: "canceled" });
-        if (status !== "awaiting_trade_list") await notifyTradeStaff(fresh, settings, { kind: "canceled", reason });
-        return sendJson(res, 200, { ok: true, terms: termsOf(settings), trade: customerTradeView(fresh, settings) });
+        await sendTradeCustomerEmail(fresh, settings, { kind: "withdrawn" });
+        await notifyTradeStaff(fresh, settings, { kind: "withdrawn", reason });
+        await processDepositRefund(admin, tradeId, { notifyStarted: false });
+        break;
       }
-
-      case "tracking":
-        await addTracking(admin, customer, settings, bundle, body);
-        return await sendFresh(res, admin, settings, tradeId, customer.userId);
 
       case "accept":
         return await accept(res, admin, customer, settings, bundle, body);
@@ -218,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const messageId = await addMessage(admin, tradeId, customer, message);
         await logEvent(admin, tradeId, customer, "adjustment_requested", status, { message_id: messageId });
         await notifyTradeStaff(bundle, settings, { kind: "adjustment", message });
-        return await sendFresh(res, admin, settings, tradeId, customer.userId);
+        break;
       }
 
       case "decline": {
@@ -229,19 +299,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const reason = cleanText(body.reason, 2000);
         const { data, error } = await admin.rpc("trade_close", {
           p_trade_id: tradeId,
-          p_status: "return_pending",
+          p_status: "declined_after_inspection",
           p_from_statuses: ["awaiting_final_approval", "awaiting_payment"],
           p_reason: reason,
+          p_fault: null,
           p_actor_type: "customer",
           p_actor_id: customer.userId,
           p_actor_label: customer.email,
         });
         if (error) throw tradeDbError(error, "We couldn't record your answer. Try again.");
-        if (data !== true) throw new HttpError(409, "This offer can't be declined now.");
+        if (!Array.isArray(data) || !data[0]?.closed) throw new HttpError(409, "This offer can't be declined now.");
         const fresh = await loadCustomerBundle(admin, tradeId, customer.userId);
-        await sendTradeCustomerEmail(fresh, settings, { kind: "return_pending", reason: null });
+        await sendTradeCustomerEmail(fresh, settings, { kind: "declined" });
         await notifyTradeStaff(fresh, settings, { kind: "declined", reason });
-        return sendJson(res, 200, { ok: true, terms: termsOf(settings), trade: customerTradeView(fresh, settings) });
+        // Usually refunded when the shipment was verified; if not, now.
+        await processDepositRefund(admin, tradeId, { notifyStarted: false });
+        break;
       }
 
       case "pay": {
@@ -256,11 +329,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case "confirmPayment": {
         if (!stripeConfigured()) throw new HttpError(503, "Paying online isn't available right now.");
-        const intentId =
-          typeof body.paymentIntentId === "string" && /^pi_[A-Za-z0-9]{1,250}$/.test(body.paymentIntentId) ? body.paymentIntentId : null;
-        if (!intentId) throw new HttpError(400, "Which payment are you confirming?");
+        const intentId = readIntentId(body.paymentIntentId);
         const intent = await getStripe().paymentIntents.retrieve(intentId);
-        if (intent.metadata?.trade_request_id !== tradeId) throw new HttpError(400, "That payment isn't for this trade.");
+        if (intent.metadata?.trade_request_id !== tradeId || intent.metadata?.kind === DEPOSIT_KIND) {
+          throw new HttpError(400, "That payment isn't for this trade.");
+        }
         if (intent.status === "succeeded") {
           const result = await recordTradeCardPayment(intent);
           if (!result.ok) {
@@ -279,7 +352,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await checkMessageLimit(admin, tradeId);
         const messageId = await addMessage(admin, tradeId, customer, text);
         await notifyTradeStaff(bundle, settings, { kind: "message", messageId, body: text });
-        return await sendFresh(res, admin, settings, tradeId, customer.userId);
+        break;
       }
 
       default:
@@ -295,6 +368,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+function readIntentId(raw: unknown): string {
+  const id = typeof raw === "string" && /^pi_[A-Za-z0-9_]{1,250}$/.test(raw) ? raw : null;
+  if (!id) throw new HttpError(400, "Which payment are you confirming?");
+  return id;
+}
+
+/** What the confirmation page shows: this customer's shipping window and the deposit, worked out here. */
+async function confirmationFor(admin: Admin, bundle: TradeBundle, settings: TradeSettingsRow, now: number): Promise<TradeConfirmation | null> {
+  const t = bundle.trade;
+  if ((t.status !== "awaiting_confirmation" && t.status !== "awaiting_deposit") || !t.confirm_by) return null;
+  const standing = await customerStanding(admin, t.user_id, settings);
+  const shipDays = standing.privileges.shipDays;
+  return {
+    confirmBy: t.confirm_by,
+    depositCents: t.deposit_cents,
+    depositReason: (t.deposit_reason as TradeConfirmation["depositReason"]) ?? null,
+    termsText: settings.deposit_terms,
+    termsVersion: settings.deposit_terms_version,
+    shipDays,
+    shipByIfConfirmedNow: shipDeadline(now, shipDays, settings),
+    canPayOnline: stripeConfigured(),
+  };
+}
+
 async function sendFresh(
   res: VercelResponse,
   admin: Admin,
@@ -303,8 +400,14 @@ async function sendFresh(
   userId: string,
   extra: Record<string, unknown> = {},
 ) {
+  const now = Date.now();
   const bundle = await loadCustomerBundle(admin, tradeId, userId);
-  return sendJson(res, 200, { ok: true, terms: termsOf(settings), trade: customerTradeView(bundle, settings), ...extra });
+  const [availability, confirmation] = await Promise.all([
+    bundleAvailability(admin, bundle),
+    confirmationFor(admin, bundle, settings, now),
+  ]);
+  const trade = customerTradeView(bundle, settings, { availability, confirmation, autoTracked: trackingConnected(), now });
+  return sendJson(res, 200, { ok: true, terms: termsOf(settings), trade, ...extra });
 }
 
 async function listTrades(admin: Admin, userId: string) {
@@ -325,14 +428,14 @@ async function listTrades(admin: Admin, userId: string) {
   if (items.error || offers.error) throw new HttpError(500, "We couldn't load your trades. Try again.");
   const wanted = new Map<string, number>();
   for (const i of items.data ?? []) {
-    if (i.status !== "released") wanted.set(i.trade_request_id, (wanted.get(i.trade_request_id) ?? 0) + i.quantity);
+    if (i.status !== "removed") wanted.set(i.trade_request_id, (wanted.get(i.trade_request_id) ?? 0) + i.quantity);
   }
   const offered = new Map<string, number>();
   for (const o of offers.data ?? []) offered.set(o.trade_request_id, (offered.get(o.trade_request_id) ?? 0) + o.quantity);
   return trades.map((t) => customerSummaryView(t, wanted.get(t.id) ?? 0, offered.get(t.id) ?? 0));
 }
 
-/** Holds the cards and opens the trade. A double tap gets the trade the first tap made. */
+/** Opens the trade (nothing reserved). A double tap gets the trade the first tap made. */
 async function start(admin: Admin, customer: TradeCustomer, settings: TradeSettingsRow, body: Record<string, unknown>): Promise<string> {
   const items = readWantedInputs(body.items, settings.max_wanted_lines);
   if (items.length === 0) throw new HttpError(400, "Add the cards you want first.");
@@ -353,7 +456,7 @@ async function start(admin: Admin, customer: TradeCustomer, settings: TradeSetti
       .from("trade_request_items")
       .select("inventory_item_id, quantity")
       .eq("trade_request_id", r.id)
-      .eq("status", "reserved");
+      .eq("status", "requested");
     const theirs = (lines ?? [])
       .map((l) => `${l.inventory_item_id}:${l.quantity}`)
       .sort()
@@ -371,6 +474,104 @@ async function start(admin: Admin, customer: TradeCustomer, settings: TradeSetti
   return data;
 }
 
+/**
+ * Confirming an approved trade. The customer must tick the box agreeing to
+ * the terms shown (the version is checked, so nobody agrees to text they
+ * didn't see), and must be within the confirmation deadline. With no
+ * deposit their cards are reserved now. With one, a PaymentIntent for
+ * exactly the trade's deposit is returned for Stripe's card form; nothing
+ * is reserved until it succeeds (confirmDeposit, or the webhook).
+ */
+async function confirm(
+  req: VercelRequest,
+  res: VercelResponse,
+  admin: Admin,
+  customer: TradeCustomer,
+  settings: TradeSettingsRow,
+  bundle: TradeBundle,
+  body: Record<string, unknown>,
+) {
+  const t = bundle.trade;
+  const now = Date.now();
+  if (t.status !== "awaiting_confirmation" && t.status !== "awaiting_deposit") {
+    throw new HttpError(409, "This trade isn't waiting for your confirmation.");
+  }
+  if (!t.confirm_by || now > Date.parse(t.confirm_by)) {
+    throw new HttpError(409, "The time to confirm this trade ran out. Start a new trade, or message us if you need help.");
+  }
+  if (body.acknowledged !== true) {
+    throw new HttpError(400, "Tick the box to agree to the deposit and cancellation terms.");
+  }
+  if (body.termsVersion !== settings.deposit_terms_version) {
+    throw new HttpError(409, "Our deposit terms were just updated. Review them and confirm again.");
+  }
+  const standing = await customerStanding(admin, t.user_id, settings);
+  const shipDays = standing.privileges.shipDays;
+  const consent = {
+    p_trade_id: t.id,
+    p_user_id: customer.userId,
+    p_terms_version: settings.deposit_terms_version,
+    p_terms_text: settings.deposit_terms,
+    p_ship_days: shipDays,
+    p_ship_by: shipDeadline(now, shipDays, settings),
+    p_ip: getClientIp(req).slice(0, 100),
+    p_user_agent: String(req.headers["user-agent"] ?? "").slice(0, 400) || null,
+  };
+
+  if (t.deposit_cents > 0) {
+    if (!stripeConfigured()) {
+      throw new HttpError(503, "Paying the deposit online isn't available right now. Message us and we'll help you confirm.");
+    }
+    const intent = await depositIntentFor(t);
+    if (intent.state === "succeeded") {
+      // Already paid (another tab): record it.
+      await recordDepositPayment(intent.intent);
+      return await sendFresh(res, admin, settings, t.id, customer.userId);
+    }
+    const { data, error } = await admin.rpc("trade_confirm", { ...consent, p_payment_intent: intent.intentId });
+    if (error) {
+      if (intent.created) await getStripe().paymentIntents.cancel(intent.intentId).catch(() => undefined);
+      throw tradeDbError(error, "We couldn't confirm your trade. Try again.");
+    }
+    const row = Array.isArray(data) ? data[0] : null;
+    if (row?.result === "unavailable") {
+      await getStripe().paymentIntents.cancel(intent.intentId).catch(() => undefined);
+      return await afterUnavailable(res, admin, settings, t.id, customer.userId, row.short_lines);
+    }
+    return await sendFresh(res, admin, settings, t.id, customer.userId, {
+      clientSecret: intent.clientSecret,
+      depositCents: t.deposit_cents,
+    });
+  }
+
+  const { data, error } = await admin.rpc("trade_confirm", { ...consent, p_payment_intent: null });
+  if (error) throw tradeDbError(error, "We couldn't confirm your trade. Try again.");
+  const row = Array.isArray(data) ? data[0] : null;
+  if (row?.result === "unavailable") return await afterUnavailable(res, admin, settings, t.id, customer.userId, row.short_lines);
+  const fresh = await loadCustomerBundle(admin, t.id, customer.userId);
+  await sendTradeCustomerEmail(fresh, settings, { kind: "reserved" });
+  await notifyTradeStaff(fresh, settings, { kind: "reserved" });
+  return await sendFresh(res, admin, settings, t.id, customer.userId);
+}
+
+/** One of our cards sold before they confirmed: the trade went back to them. */
+async function afterUnavailable(
+  res: VercelResponse,
+  admin: Admin,
+  settings: TradeSettingsRow,
+  tradeId: string,
+  userId: string,
+  shortLines: unknown,
+) {
+  const short = (Array.isArray(shortLines) ? shortLines : []) as ShortLine[];
+  const fresh = await loadCustomerBundle(admin, tradeId, userId);
+  await sendTradeCustomerEmail(fresh, settings, { kind: "cards_unavailable", short, refund: false });
+  await notifyTradeStaff(fresh, settings, { kind: "cards_unavailable" });
+  return await sendFresh(res, admin, settings, tradeId, userId, {
+    notice: "Some of our cards on this trade sold before you confirmed. Nothing was reserved or charged: update your selection and send the trade again.",
+  });
+}
+
 async function addTracking(
   admin: Admin,
   customer: TradeCustomer,
@@ -379,36 +580,170 @@ async function addTracking(
   body: Record<string, unknown>,
 ): Promise<void> {
   const t = bundle.trade;
-  if (t.status !== "awaiting_shipment" && t.status !== "in_transit") {
-    throw new HttpError(409, "Add a tracking number once your trade is approved and before it arrives.");
+  if (t.status !== "awaiting_shipment" && t.status !== "tracking_submitted") {
+    throw new HttpError(409, "Add a tracking number once our cards are reserved for you, before the carrier scans your package.");
   }
-  if (t.status === "awaiting_shipment" && t.hold_expires_at && Date.parse(t.hold_expires_at) < Date.now()) {
-    throw new HttpError(409, "The shipping deadline for this trade has passed. Contact us if your cards are already in the mail.");
-  }
-  if (!isTradeCarrier(body.carrier)) throw new HttpError(400, "Choose the carrier.");
-  const tracking = cleanTrackingNumber(typeof body.trackingNumber === "string" ? body.trackingNumber : "");
-  if (!tracking) throw new HttpError(400, "That tracking number doesn't look right. Check it and try again.");
-  if (t.status === "in_transit" && t.inbound_tracking === tracking && t.inbound_carrier === body.carrier) return;
-
-  const { data, error } = await admin
-    .from("trade_requests")
-    .update({
-      inbound_carrier: body.carrier,
-      inbound_tracking: tracking,
-      inbound_shipped_at: t.inbound_shipped_at ?? new Date().toISOString(),
-      status: "in_transit",
-      hold_expires_at: null,
-    })
-    .eq("id", t.id)
-    .eq("user_id", customer.userId)
-    .in("status", ["awaiting_shipment", "in_transit"])
-    .select("id");
-  if (error) throw new HttpError(500, "We couldn't save the tracking number. Try again.");
-  if (!data || data.length === 0) throw new HttpError(409, "This trade changed. Refresh the page and try again.");
-  await logEvent(admin, t.id, customer, "tracking_added", t.status, { carrier: body.carrier, tracking }, "in_transit");
+  const check = checkTrackingNumber(
+    typeof body.carrier === "string" ? body.carrier : "",
+    typeof body.trackingNumber === "string" ? body.trackingNumber : "",
+  );
+  if (!check.ok) throw new HttpError(400, check.message);
+  const { data, error } = await admin.rpc("trade_record_tracking", {
+    p_trade_id: t.id,
+    p_carrier: check.carrier,
+    p_tracking: check.tracking,
+    p_actor_type: "customer",
+    p_actor_id: customer.userId,
+    p_actor_label: customer.email,
+  });
+  if (error) throw tradeDbError(error, "We couldn't save the tracking number. Try again.");
+  if (data === "unchanged") return;
   const fresh = await loadCustomerBundle(admin, t.id, customer.userId);
   await sendTradeCustomerEmail(fresh, settings, { kind: "tracking_added" });
   await notifyTradeStaff(fresh, settings, { kind: "tracking" });
+  // The carrier may already have scanned it: check now rather than waiting for the worker.
+  if (autoTracking(check.carrier)) {
+    const outcome = await checkTradeTracking(admin, fresh.trade);
+    await followUpScan(admin, settings, t.id, outcome);
+  }
+}
+
+const PROOF_STATUSES: ReadonlySet<string> = new Set(["awaiting_shipment", "tracking_submitted", "expired"]);
+
+function proofPrefix(tradeId: string, draftId: string): string {
+  return `${tradeId}/${draftId}`;
+}
+
+/** Signed links to upload proof of shipping straight to private storage (no bytes pass through here). */
+async function proofUploads(admin: Admin, bundle: TradeBundle, body: Record<string, unknown>) {
+  const t = bundle.trade;
+  if (!PROOF_STATUSES.has(t.status)) throw new HttpError(409, "Proof of shipping can't be sent for this trade now.");
+  const draftId = typeof body.draftId === "string" && UUID_RE.test(body.draftId) ? body.draftId.toLowerCase() : null;
+  if (!draftId) throw new HttpError(400, "Your upload didn't start. Try again.");
+  const files = Array.isArray(body.files) ? body.files : [];
+  if (files.length === 0) throw new HttpError(400, "Choose a file first.");
+  const { data: existing, error: listErr } = await admin.storage.from(DISPUTE_BUCKET).list(proofPrefix(t.id, draftId), { limit: 20 });
+  if (listErr) throw new HttpError(500, "We couldn't start your upload. Try again.");
+  if ((existing ?? []).filter((f) => f.id).length + files.length > TRADE_LIMITS.maxDisputeFiles) {
+    throw new HttpError(400, `Attach up to ${TRADE_LIMITS.maxDisputeFiles} files.`);
+  }
+  return Promise.all(
+    files.map(async (raw) => {
+      const f = (raw ?? {}) as Record<string, unknown>;
+      const name = typeof f.fileName === "string" ? f.fileName.slice(0, 200) : "";
+      const type = typeof f.mimeType === "string" ? f.mimeType : "";
+      const size = typeof f.sizeBytes === "number" && Number.isFinite(f.sizeBytes) ? f.sizeBytes : 0;
+      if (!name) throw new HttpError(400, "One of the files has no name.");
+      if (!(DISPUTE_FILE_TYPES as readonly string[]).includes(type)) {
+        throw new HttpError(400, `${name}: send a photo (JPEG, PNG, WebP, HEIC) or a PDF.`);
+      }
+      if (size <= 0 || size > TRADE_LIMITS.maxDisputeFileBytes) throw new HttpError(400, `${name}: files can be up to 10 MB.`);
+      const safe = name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
+      const path = `${proofPrefix(t.id, draftId)}/${crypto.randomUUID()}-${safe}`;
+      const { data, error } = await admin.storage.from(DISPUTE_BUCKET).createSignedUploadUrl(path);
+      if (error || !data) throw new HttpError(500, "We couldn't start your upload. Try again.");
+      return { fileName: name, path: data.path, token: data.token, signedUrl: data.signedUrl };
+    }),
+  );
+}
+
+/** Proof of shipping: their note, and the files that actually landed in storage for this upload. */
+async function sendProof(
+  admin: Admin,
+  customer: TradeCustomer,
+  settings: TradeSettingsRow,
+  bundle: TradeBundle,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const t = bundle.trade;
+  const note = cleanText(body.note, 4000);
+  if (!note) throw new HttpError(400, "Tell us when and where you shipped your cards.");
+  const draftId = typeof body.draftId === "string" && UUID_RE.test(body.draftId) ? body.draftId.toLowerCase() : null;
+  let files: { path: string; name: string; size: number; type: string }[] = [];
+  if (draftId) {
+    const prefix = proofPrefix(t.id, draftId);
+    const { data, error } = await admin.storage.from(DISPUTE_BUCKET).list(prefix, { limit: 20 });
+    if (error) throw new HttpError(500, "We couldn't check your files. Try again.");
+    files = (data ?? [])
+      .filter((f) => f.id && f.name)
+      .slice(0, TRADE_LIMITS.maxDisputeFiles)
+      .map((f) => {
+        const meta = (f.metadata ?? {}) as { size?: number; mimetype?: string };
+        return {
+          path: `${prefix}/${f.name}`,
+          name: f.name.replace(/^[0-9a-f-]{36}-/, ""),
+          size: typeof meta.size === "number" ? meta.size : 0,
+          type: typeof meta.mimetype === "string" ? meta.mimetype : "",
+        };
+      });
+  }
+  const { error } = await admin.rpc("trade_open_dispute", {
+    p_trade_id: t.id,
+    p_user_id: customer.userId,
+    p_note: note,
+    p_files: files as unknown as Json,
+  });
+  if (error) throw tradeDbError(error, "We couldn't send your proof of shipping. Try again.");
+  const fresh = await loadCustomerBundle(admin, t.id, customer.userId);
+  await sendTradeCustomerEmail(fresh, settings, { kind: "dispute_received" });
+  await notifyTradeStaff(fresh, settings, { kind: "dispute" });
+}
+
+/**
+ * Canceling before anything was shipped. Before the cards are reserved it
+ * costs nothing. Once reserved, a paid deposit goes to staff review under
+ * the cancellation terms (never kept automatically), so the customer must
+ * say they understand first.
+ */
+async function cancel(
+  admin: Admin,
+  customer: TradeCustomer,
+  settings: TradeSettingsRow,
+  bundle: TradeBundle,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const t = bundle.trade;
+  const status = t.status as TradeStatus;
+  if (!CUSTOMER_CANCELABLE_STATUSES.includes(status)) {
+    throw new HttpError(
+      409,
+      status === "tracking_submitted"
+        ? "Your tracking number is on file, so your cards may already be on their way. Message us and we'll sort it out."
+        : "This trade can't be canceled now.",
+    );
+  }
+  if (status === "awaiting_deposit") {
+    const paid = await retireDepositIntent(t);
+    if (paid) {
+      await recordDepositPayment(paid);
+      throw new HttpError(409, "Your deposit just went through, so your cards are reserved. Refresh to see your trade.");
+    }
+  }
+  const reserved = status === "awaiting_shipment";
+  if (reserved && t.deposit_status === "paid" && body.acceptDepositReview !== true) {
+    throw new HttpError(400, "Canceling now may cost your deposit under the cancellation terms. Confirm that you understand to cancel.");
+  }
+  const reason = cleanText(body.reason, 2000);
+  const { data, error } = await admin.rpc("trade_close", {
+    p_trade_id: t.id,
+    p_status: "canceled",
+    p_from_statuses: [...CUSTOMER_CANCELABLE_STATUSES],
+    p_reason: reason,
+    p_fault: reserved ? "canceled_while_reserved" : null,
+    p_actor_type: "customer",
+    p_actor_id: customer.userId,
+    p_actor_label: customer.email,
+  });
+  if (error) throw tradeDbError(error, "We couldn't cancel the trade. Try again.");
+  if (!Array.isArray(data) || !data[0]?.closed) {
+    throw new HttpError(409, "This trade changed and can't be canceled now. Refresh to see it.");
+  }
+  const fresh = await loadCustomerBundle(admin, t.id, customer.userId);
+  await sendTradeCustomerEmail(fresh, settings, { kind: "canceled" });
+  if (status !== "awaiting_trade_list") await notifyTradeStaff(fresh, settings, { kind: "canceled", reason });
+  if (data[0].deposit_after === "forfeiture_review") {
+    await notifyTradeStaff(fresh, settings, { kind: "forfeiture_review", why: "canceled" });
+  }
 }
 
 async function accept(
@@ -444,12 +779,7 @@ async function accept(
     await sendTradeCustomerEmail(fresh, settings, { kind: "awaiting_payment" });
     await notifyTradeStaff(fresh, settings, { kind: "accepted" });
   }
-  return sendJson(res, 200, {
-    ok: true,
-    terms: termsOf(settings),
-    trade: customerTradeView(fresh, settings),
-    amountDueCents: result?.due_cents ?? 0,
-  });
+  return await sendFresh(res, admin, settings, t.id, customer.userId, { amountDueCents: result?.due_cents ?? 0 });
 }
 
 /**

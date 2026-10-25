@@ -3,6 +3,7 @@ import { Link } from "../../lib/router";
 import { formatCents } from "../../lib/money";
 import { loadMyTrades } from "../../lib/tradeCenterApi";
 import {
+  DEPOSIT_STATUS_LABELS,
   TRADE_CENTER_PATH,
   TRADE_STATUS_LABELS,
   formatDeadline,
@@ -13,16 +14,41 @@ import {
 } from "../../lib/tradeCenter";
 
 // Account → Trades: the customer's trades, open ones first, each with where
-// it stands and the deadline that matters right now.
+// it stands, the deadline that matters right now, and the deposit when
+// there is one.
 
 function deadline(t: CustomerTradeSummary): string | null {
-  if ((t.status === "awaiting_trade_list" || t.status === "revision_requested") && t.holdExpiresAt) {
-    return `Send your list by ${formatDeadline(t.holdExpiresAt)}`;
+  switch (t.status) {
+    case "awaiting_trade_list":
+      return t.listDueAt ? `Send it for review by ${formatDeadline(t.listDueAt)}` : null;
+    case "revision_requested":
+      return t.listDueAt ? `Send your changes by ${formatDeadline(t.listDueAt)}` : null;
+    case "awaiting_confirmation":
+      return t.confirmBy ? `Confirm by ${formatDeadline(t.confirmBy)}` : null;
+    case "awaiting_deposit":
+      return t.confirmBy ? `Pay the deposit by ${formatDeadline(t.confirmBy)}` : null;
+    case "awaiting_shipment":
+      return t.shipBy ? `Ship your cards by ${formatDeadline(t.shipBy)}` : null;
+    case "tracking_submitted":
+      return "Waiting for the carrier's first scan";
+    case "awaiting_final_approval":
+      return "Your final offer is waiting for you";
+    case "awaiting_payment":
+      return t.paymentDueAt ? `Payment due ${formatDeadline(t.paymentDueAt)}` : null;
+    default:
+      return null;
   }
-  if (t.status === "awaiting_shipment" && t.shipBy) return `Mail your cards by ${formatDeadline(t.shipBy)}`;
-  if (t.status === "awaiting_payment" && t.paymentDueAt) return `Payment due ${formatDeadline(t.paymentDueAt)}`;
-  if (t.status === "awaiting_final_approval") return "Your final offer is waiting for you";
-  return null;
+}
+
+/** The deposit, when it's worth a mention in the list. */
+function depositNote(t: CustomerTradeSummary): string | null {
+  if (t.depositStatus === "not_required" || t.depositStatus === "canceled") return null;
+  if (t.depositStatus === "payment_pending") {
+    // Not asked for yet: said up front so confirming holds no surprise.
+    if (t.status === "awaiting_confirmation") return `Refundable deposit of ${formatCents(t.depositCents)} when you confirm`;
+    if (t.status !== "awaiting_deposit") return null;
+  }
+  return `Deposit ${formatCents(t.depositCents)}: ${DEPOSIT_STATUS_LABELS[t.depositStatus].toLowerCase()}`;
 }
 
 export default function MyTrades() {
@@ -67,6 +93,7 @@ export default function MyTrades() {
     <div className="gg-tc-mytrades">
       {sorted.map((t) => {
         const due = deadline(t);
+        const deposit = depositNote(t);
         return (
           <Link key={t.id} to={myTradePath(t.id)} className="gg-orderrow gg-tc-tradeRow">
             <span className="gg-tc-tradeRow__main">
@@ -76,6 +103,7 @@ export default function MyTrades() {
                 {t.wantedCount} of our card{t.wantedCount === 1 ? "" : "s"} ({formatCents(t.wantedTotalCents)}) · {t.offeredCount} of yours
               </span>
               {due && <span className="gg-tc-tradeRow__due">{due}</span>}
+              {deposit && <span className="gg-card-meta">{deposit}</span>}
             </span>
             <span className={`gg-tc-status gg-tc-status--${isOpenTrade(t.status) ? "open" : "closed"}`}>{TRADE_STATUS_LABELS[t.status]}</span>
           </Link>

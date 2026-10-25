@@ -8,12 +8,12 @@ import { ErrorState, Spinner } from "../../components/ui/States";
 import { useToast } from "../../hooks/useToast";
 import { formatCents, formatDateTime } from "../../utils/format";
 import { tradeCenterRepository, type TradeDetailResult } from "../../repositories/tradeCenter.supabase";
-import { carrierLabel, trackingUrlFor } from "../../../store/lib/tracking";
 import { useNow } from "../../../store/lib/useNow";
 import {
+  CLOSED_TRADE_STATUSES,
   CONDITION_NAMES,
   FINISH_NAMES,
-  PRE_SHIPMENT_STATUSES,
+  STAFF_CANCELABLE_STATUSES,
   STAFF_REJECTABLE_STATUSES,
   STAFF_WANTED_STATUSES,
   TRADE_STATUS_ADMIN_LABELS,
@@ -25,39 +25,69 @@ import {
   type TradeSettings,
   type TradeStatus,
 } from "../../../store/lib/tradeCenter";
-import { TRADE_STATUS_TONE, customerEmailNote } from "./tradeLabels";
-import { pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
+import { LOYALTY_TIER_LABELS, onTimePercent } from "../../../store/lib/tradeRules";
+import { CUSTOMER_FAULT_LABELS, REVIEW_FLAG_LABELS, TRADE_STATUS_TONE, customerEmailNote } from "./tradeLabels";
+import { extendedDeadline, pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
 import { CardThumb, OfferCardHead } from "./TradeCardBits";
 import { TradeReviewPanel } from "./TradeReviewPanel";
 import { TradeInspectionPanel } from "./TradeInspectionPanel";
-import { TradeWrapUpPanel } from "./TradeWrapUpPanel";
+import { MailBack, TradeWrapUpPanel } from "./TradeWrapUpPanel";
+import { TradeDepositPanel, TradeDisputesPanel } from "./TradeDepositPanel";
+import { TradeExpiredPanel, TradeShipmentPanel } from "./TradeShipmentPanel";
 import { TradeHistory, TradeMessagesPanel } from "./TradeConversation";
 import type { TradePanelProps } from "./types";
 
 // One online trade, everything staff do with it, changing with where it
-// stands: the customer and deadlines, what it adds up to, the step that's
-// waiting (review, receiving, inspection and the final offer, payment,
-// wrapping up), our cards on it, messages, history, and rejecting it.
+// stands: the customer and their record, what's flagged and the deadline
+// (and more time), what it adds up to, the deposit and proof of shipping,
+// the step that's waiting (review, confirmation, the shipment, inspection
+// and the final offer, payment, wrapping up, or an expired reservation), our
+// cards on it, messages, history, and rejecting or canceling it.
 
 /** What staff do next, by status. */
 const STAFF_NEXT: Record<TradeStatus, string> = {
-  awaiting_trade_list: "The customer is still adding their cards. Nothing to do yet.",
+  awaiting_trade_list: "The customer is still building their trade. Nothing is reserved.",
   pending_review: "Review each card below, then approve the trade, ask for changes, or reject it.",
-  revision_requested: "Waiting for the customer to change their list.",
-  awaiting_shipment: "Approved. Waiting for the customer to mail their cards and add tracking.",
-  in_transit: "On its way to you. Mark it received when it arrives.",
+  revision_requested: "Waiting for the customer to change their trade. Nothing is reserved.",
+  awaiting_confirmation: "Approved. Waiting for the customer to confirm (and pay any deposit). Nothing is reserved yet.",
+  awaiting_deposit: "The customer confirmed and is paying the deposit. Our cards are reserved the moment it goes through.",
+  awaiting_shipment: "Our cards are reserved. Waiting for the customer to ship and add tracking.",
+  tracking_submitted: "Tracking added. Waiting for the carrier's first scan.",
+  in_transit: "Shipped in time and on its way. Mark it received when it arrives.",
   received: "The package is here. Inspect the cards below.",
   under_inspection: "Finish inspecting, then send the final offer.",
   awaiting_final_approval: "Final offer sent. Waiting for the customer to accept it, ask for an adjustment, or decline.",
   awaiting_payment: "Accepted. Waiting for the customer to pay the difference by card.",
   approved_for_fulfillment: "Finished. Pack and ship their order, and add the cards you took to inventory.",
   completed: "Complete: their order shipped.",
-  rejected: "Closed. Our cards were released.",
-  canceled: "Canceled. Our cards were released.",
-  expired: "Expired. Our cards were released.",
-  return_pending: "Mail their cards back, then mark them returned.",
-  returned: "Closed. Their cards were mailed back.",
+  rejected: "Rejected before it was confirmed. Nothing was reserved.",
+  offer_expired: "Closed: not sent or confirmed in time. Nothing was reserved.",
+  canceled: "Canceled by the customer. Our cards were released.",
+  expired: "The reservation expired and our cards were released.",
+  canceled_after_shipment: "The customer canceled after shipping, with no penalty.",
+  declined_after_inspection: "The customer declined the final offer, with no penalty.",
+  canceled_by_store: "You canceled this trade. Any deposit is refunded in full.",
 };
+
+/** The deadline that's running, by status, and the kind of extension that moves it. */
+function runningDeadline(trade: StaffTrade): { label: string; at: string | null; original: string | null; kind: "list" | "confirmation" | "shipping" | "payment" } | null {
+  switch (trade.status) {
+    case "awaiting_trade_list":
+      return { label: "Draft due", at: trade.listDueAt, original: null, kind: "list" };
+    case "revision_requested":
+      return { label: "Changes due", at: trade.listDueAt, original: null, kind: "list" };
+    case "awaiting_confirmation":
+    case "awaiting_deposit":
+      return { label: "Confirm by", at: trade.confirmBy, original: trade.confirmByOriginal, kind: "confirmation" };
+    case "awaiting_shipment":
+    case "tracking_submitted":
+      return { label: "Ship by", at: trade.shipBy, original: trade.shipByOriginal, kind: "shipping" };
+    case "awaiting_payment":
+      return { label: "Payment due", at: trade.paymentDueAt, original: null, kind: "payment" };
+    default:
+      return null;
+  }
+}
 
 const EXTEND_OPTIONS = [
   { hours: 24, label: "1 day" },
@@ -172,38 +202,45 @@ function OpenTradeDrawer({ tradeId, onClose, onChanged, onOpenOrder }: DrawerPro
 }
 
 function TradeBody(props: TradePanelProps & { onOpenOrder: (orderId: string) => void }) {
-  const { trade, settings, busy, run, onOpenOrder } = props;
+  const { trade, busy, run, onOpenOrder } = props;
   const status = trade.status;
+  const finished = status === "approved_for_fulfillment" || status === "completed";
   const showReview = status === "pending_review";
   const showInspection = status === "received" || status === "under_inspection";
-  const showWrapUp = status === "approved_for_fulfillment" || status === "completed" || status === "return_pending" || status === "returned";
 
   return (
     <div className="gg-trd">
       <CustomerSection trade={trade} />
       <StandingSection {...props} />
       <MoneySection trade={trade} />
+      <TradeDepositPanel {...props} />
+      <TradeDisputesPanel {...props} />
 
       {showReview && <TradeReviewPanel {...props} />}
+      {(status === "awaiting_confirmation" || status === "awaiting_deposit") && <ConfirmationPanel {...props} />}
+      {(status === "awaiting_shipment" || status === "tracking_submitted" || status === "in_transit") && <TradeShipmentPanel {...props} />}
       {showInspection && <TradeInspectionPanel {...props} />}
-      {(status === "awaiting_shipment" || status === "in_transit") && <ReceivePanel {...props} />}
       {status === "awaiting_final_approval" && <FinalOfferSentPanel {...props} />}
       {status === "awaiting_payment" && <PaymentPanel {...props} />}
-      {showWrapUp && <TradeWrapUpPanel {...props} onOpenOrder={onOpenOrder} />}
+      {finished && <TradeWrapUpPanel {...props} onOpenOrder={onOpenOrder} />}
+      {status === "expired" && <TradeExpiredPanel {...props} />}
+      {!finished && CLOSED_TRADE_STATUSES.has(status) && <MailBack trade={trade} busy={busy} run={run} />}
 
       {!showReview && !showInspection && <TheirCards trade={trade} />}
       <OurCards trade={trade} busy={busy} run={run} />
       <TradeMessagesPanel trade={trade} busy={busy} run={run} />
       <TradeHistory trade={trade} />
-      {STAFF_REJECTABLE_STATUSES.includes(status) && status !== "pending_review" && (
-        <RejectSection trade={trade} settings={settings} busy={busy} run={run} owner={props.owner} />
-      )}
+      {STAFF_REJECTABLE_STATUSES.includes(status) && status !== "pending_review" && <RejectSection {...props} />}
+      {STAFF_CANCELABLE_STATUSES.includes(status) && <CancelByStoreSection {...props} />}
     </div>
   );
 }
 
 function CustomerSection({ trade }: { trade: StaffTrade }) {
   const subject = encodeURIComponent(`Your Geega Games trade ${tradeLabel(trade.tradeNumber)}`);
+  const r = trade.customerRecord;
+  const p = trade.privileges;
+  const onTime = r ? onTimePercent(r) : null;
   return (
     <section className="gg-trd__section">
       <h3>Customer</h3>
@@ -220,33 +257,61 @@ function CustomerSection({ trade }: { trade: StaffTrade }) {
       <p className="gg-card-meta">
         Started {formatDateTime(trade.createdAt)}
         {trade.submittedAt ? ` · sent for review ${formatDateTime(trade.submittedAt)}` : ""}
+        {trade.confirmedAt ? ` · confirmed ${formatDateTime(trade.confirmedAt)}` : ""}
       </p>
+      {r && p && (
+        <div className="gg-trd-record">
+          <p>
+            <strong>{LOYALTY_TIER_LABELS[p.tier]}</strong>
+            <span className="gg-card-meta">
+              {" "}
+              · {r.completedTrades} completed trade{r.completedTrades === 1 ? "" : "s"}
+              {onTime !== null ? ` · ${onTime}% shipped on time` : ""}
+              {` · ${p.shipDays} days to ship`}
+            </span>
+          </p>
+          {(r.recentFaults > 0 || r.abandonedReservations > 0 || r.missedDeadlines > 0) && (
+            <p className="gg-card-meta">
+              {r.abandonedReservations} canceled after confirming · {r.missedDeadlines} missed deadline{r.missedDeadlines === 1 ? "" : "s"} ·{" "}
+              {r.recentFaults} counting now
+            </p>
+          )}
+          <div className="gg-trd-badges">
+            {r.depositRequired && <Badge tone="gold">Deposit on every trade (set by you)</Badge>}
+            {p.reliabilityDeposit && <Badge tone="gold">Over the abandonment limit: deposit required</Badge>}
+            {p.blocked && <Badge tone="danger">No new trades</Badge>}
+          </div>
+          {r.flagNote && <p className="gg-card-meta">Note: {r.flagNote}</p>}
+        </div>
+      )}
       {trade.customerNote && <p className="gg-trd-card__quote">Their note: &ldquo;{trade.customerNote}&rdquo;</p>}
     </section>
   );
 }
 
-/** Where it stands: what staff do next, the deadline (and more time), tracking, conditions, why it closed. */
-function StandingSection({ trade, busy, run }: TradePanelProps) {
-  const [hours, setHours] = useState(48);
+/** Where it stands: what staff do next, anything flagged, the running deadline (and more time), conditions, why it closed. */
+function StandingSection({ trade, owner, busy, run, settings }: TradePanelProps) {
   const status = trade.status;
-  const deadline =
-    status === "awaiting_trade_list" || status === "revision_requested"
-      ? { label: status === "revision_requested" ? "Changes due" : "List due", at: trade.holdExpiresAt }
-      : status === "awaiting_shipment"
-        ? { label: "Ship by", at: trade.shipBy }
-        : status === "awaiting_payment"
-          ? { label: "Payment due", at: trade.paymentDueAt }
-          : null;
-  const trackingUrl = trackingUrlFor(trade.inboundCarrier, trade.inboundTracking);
+  const deadline = runningDeadline(trade);
   const now = useNow();
+  const needsYou = trade.needsStaff;
 
   return (
     <section className="gg-trd__section gg-trd-standing">
       <p className="gg-trd-standing__next">
-        <Icon name={status === "pending_review" || status === "received" || status === "under_inspection" || status === "return_pending" ? "alert" : "info"} size={16} />
+        <Icon name={needsYou ? "alert" : "info"} size={16} />
         {STAFF_NEXT[status]}
       </p>
+      {trade.reviewFlag && (
+        <div className="gg-inline-note gg-inline-note--warning" role="status">
+          <Icon name="warning" size={18} />
+          <div>
+            <strong>{REVIEW_FLAG_LABELS[trade.reviewFlag]}.</strong>
+            {trade.reviewFlagAt ? <span className="gg-card-meta"> Since {formatDateTime(trade.reviewFlagAt)}.</span> : null} It won&rsquo;t
+            expire or be refunded on its own while this is open.
+          </div>
+        </div>
+      )}
       {deadline?.at && (
         <div className="gg-trd-deadline">
           <span>
@@ -255,50 +320,50 @@ function StandingSection({ trade, busy, run }: TradePanelProps) {
               ({Date.parse(deadline.at) > now ? `${timeLeft(Date.parse(deadline.at), now)} left` : "past due"})
             </span>
           </span>
-          {status === "awaiting_shipment" && trade.holdExpiresAt && (
-            <span className="gg-card-meta">Our cards are held until {formatDeadline(trade.holdExpiresAt)}.</span>
+          {deadline.original && deadline.original !== deadline.at && (
+            <span className="gg-card-meta">Originally {formatDeadline(deadline.original)}.</span>
           )}
-          <span className="gg-trd-extend">
-            <label className="gg-visually-hidden" htmlFor={`gg-trd-extend-${trade.id}`}>
-              Extend by
-            </label>
-            <select
-              id={`gg-trd-extend-${trade.id}`}
-              className="gg-input"
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
-            >
-              {EXTEND_OPTIONS.map((o) => (
-                <option key={o.hours} value={o.hours}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="clock"
-              loading={busy === "extend"}
-              disabled={busy !== null}
-              onClick={() => void run("extend", () => tradeCenterRepository.extend(trade.id, hours), "Deadline extended.")}
-            >
-              Give more time
-            </Button>
-          </span>
+          <ExtendDeadline trade={trade} settings={settings} kind={deadline.kind} at={deadline.at} busy={busy} run={run} />
         </div>
       )}
-      {trade.inboundTracking && (
-        <p>
-          <strong>Their package:</strong> {carrierLabel(trade.inboundCarrier)}{" "}
-          {trackingUrl ? (
-            <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
-              {trade.inboundTracking}
-            </a>
-          ) : (
-            trade.inboundTracking
+      {trade.extensions.length > 0 && (
+        <details className="gg-trd-extensions">
+          <summary>More time given ({trade.extensions.length})</summary>
+          <ul className="gg-trd-plain">
+            {trade.extensions.map((e) => (
+              <li key={e.id}>
+                {formatDateTime(e.createdAt)}: {e.kind} deadline to {formatDeadline(e.toDeadline)}
+                {e.customerRequested ? " (customer asked)" : ""}
+                {e.reason ? ` · ${e.reason}` : ""}
+                {e.createdBy ? <span className="gg-card-meta"> · {e.createdBy}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {trade.customerFault && (
+        <div className="gg-trd-fault">
+          <span>
+            <strong>Counts against the customer:</strong> {CUSTOMER_FAULT_LABELS[trade.customerFault]}
+            {trade.faultAt ? <span className="gg-card-meta"> ({formatDateTime(trade.faultAt)})</span> : null}
+          </span>
+          {owner && (
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={busy === "clearFault"}
+              disabled={busy !== null}
+              onClick={() => void run("clearFault", () => tradeCenterRepository.clearFault(trade.id), "It no longer counts against them.")}
+            >
+              Don&rsquo;t count it
+            </Button>
           )}
-          {trade.inboundShippedAt ? <span className="gg-card-meta"> · added {formatDateTime(trade.inboundShippedAt)}</span> : null}
-          {trade.receivedAt ? <span className="gg-card-meta"> · received {formatDateTime(trade.receivedAt)}</span> : null}
+        </div>
+      )}
+      {!trade.customerFault && trade.faultClearedAt && (
+        <p className="gg-card-meta">
+          A fault on this trade was cleared {formatDateTime(trade.faultClearedAt)}
+          {trade.faultClearedBy ? ` by ${trade.faultClearedBy}` : ""}.
         </p>
       )}
       {trade.approvalConditions && (
@@ -306,10 +371,147 @@ function StandingSection({ trade, busy, run }: TradePanelProps) {
           <strong>Approval conditions:</strong> {trade.approvalConditions}
         </p>
       )}
-      {trade.closeReason && (status === "rejected" || status === "canceled" || status === "expired") && (
+      {trade.closeReason && CLOSED_TRADE_STATUSES.has(status) && (
         <p>
           <strong>Reason:</strong> {trade.closeReason}
         </p>
+      )}
+    </section>
+  );
+}
+
+/** More time on the running deadline (confirmation and shipping count qualifying hours). */
+function ExtendDeadline({
+  trade,
+  settings,
+  kind,
+  at,
+  busy,
+  run,
+}: {
+  trade: StaffTrade;
+  settings: TradeSettings;
+  kind: "list" | "confirmation" | "shipping" | "payment";
+  at: string;
+  busy: string | null;
+  run: TradePanelProps["run"];
+}) {
+  const [open, setOpen] = useState(false);
+  const [hours, setHours] = useState(48);
+  const [asked, setAsked] = useState(false);
+  const [reason, setReason] = useState("");
+  const next = extendedDeadline(kind, at, hours, settings);
+
+  if (!open) {
+    return (
+      <span className="gg-trd-extend">
+        <Button size="sm" variant="secondary" icon="clock" disabled={busy !== null} onClick={() => setOpen(true)}>
+          Give more time…
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <div className="gg-trd-form gg-trd-extendform">
+      <div className="gg-form-grid">
+        <label className="gg-trd-field">
+          <span>Extend by</span>
+          <select className="gg-input" value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+            {EXTEND_OPTIONS.map((o) => (
+              <option key={o.hours} value={o.hours}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextField label="Reason (optional, staff only)" maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </div>
+      <label className="gg-check-inline">
+        <input type="checkbox" checked={asked} onChange={(e) => setAsked(e.target.checked)} />
+        The customer asked for it
+      </label>
+      <p className="gg-card-meta">
+        New deadline: {formatDeadline(new Date(next).toISOString())}
+        {kind === "confirmation" || kind === "shipping" ? " (Sundays don't count)" : ""}. The customer is emailed.
+      </p>
+      <div className="gg-drawer-actions__buttons">
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy !== null}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          loading={busy === "extend"}
+          disabled={busy !== null}
+          onClick={async () => {
+            const ok = await run(
+              "extend",
+              () => tradeCenterRepository.extend(trade.id, { kind, hours, customerRequested: asked, reason: reason.trim() }),
+              "Deadline extended.",
+            );
+            if (ok) setOpen(false);
+          }}
+        >
+          Extend
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Approved, waiting for the customer to confirm (and pay any deposit): what they see, and sending it back. */
+function ConfirmationPanel({ trade, busy, run }: TradePanelProps) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const short = trade.wanted.filter((w) => w.status === "requested" && w.available !== null && w.available < w.quantity);
+  return (
+    <section className="gg-trd__section gg-trd-step" aria-labelledby="gg-trd-confirm-title">
+      <h3 id="gg-trd-confirm-title">Waiting for the customer to confirm</h3>
+      <p className="gg-card-meta">
+        Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see the cards, both deadlines and the deposit terms, tick
+        the box and confirm{trade.deposit.cents > 0 ? `, paying the ${formatCents(trade.deposit.cents)} deposit` : ""}. Our cards stay on
+        sale until then.
+      </p>
+      {short.length > 0 && (
+        <p className="gg-trd-blocker" role="note">
+          <Icon name="warning" size={16} /> Sold since approval: {short.map((w) => `${w.cardName} (${w.available} of ${w.quantity} left)`).join(", ")}.
+          The trade goes back to the customer to pick again (within a few minutes, or when they try to confirm).
+        </p>
+      )}
+      {open ? (
+        <div className="gg-trd-form">
+          <TextArea
+            label="What should they change?"
+            rows={3}
+            maxLength={4000}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            hint="Takes the approval back: the trade returns to the customer to change and send again. Emailed to them."
+          />
+          <div className="gg-drawer-actions__buttons">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy !== null}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              loading={busy === "revise"}
+              disabled={busy !== null || !message.trim()}
+              onClick={async () => {
+                const ok = await run("revise", () => tradeCenterRepository.requestRevision(trade.id, message.trim()), "Sent back with your message.");
+                if (ok) setOpen(false);
+              }}
+            >
+              Send it back
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="gg-drawer-actions__buttons">
+          <Button size="sm" variant="secondary" icon="edit" onClick={() => setOpen(true)} disabled={busy !== null}>
+            Ask for changes instead…
+          </Button>
+        </div>
       )}
     </section>
   );
@@ -354,28 +556,6 @@ function MoneySection({ trade }: { trade: StaffTrade }) {
           <dd>{formatCents(m.dueCents > 0 ? m.dueCents : m.cashCents > 0 ? m.cashCents : m.excessCents)}</dd>
         </div>
       </dl>
-    </section>
-  );
-}
-
-function ReceivePanel({ trade, busy, run }: TradePanelProps) {
-  return (
-    <section className="gg-trd__section gg-trd-step">
-      <h3>When their package arrives</h3>
-      <p className="gg-card-meta">
-        Marking it received emails the customer, stops the ship-by deadline and opens the inspection.
-      </p>
-      <div className="gg-drawer-actions__buttons">
-        <Button
-          variant="primary"
-          icon="package"
-          loading={busy === "received"}
-          disabled={busy !== null}
-          onClick={() => void run("received", () => tradeCenterRepository.markReceived(trade.id), "Marked received.")}
-        >
-          Mark the package received
-        </Button>
-      </div>
     </section>
   );
 }
@@ -523,33 +703,34 @@ function CardOutcome({ card }: { card: StaffTradeOfferCard }) {
 /** Our cards on the trade; staff can take one off or lower how many until the final offer. */
 function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" | "run">) {
   const editable = STAFF_WANTED_STATUSES.includes(trade.status);
-  const held = trade.wanted.filter((w) => w.status !== "released");
-  const released = trade.wanted.filter((w) => w.status === "released");
+  const onTrade = trade.wanted.filter((w) => w.status === "requested" || w.status === "reserved" || w.status === "fulfilled");
+  const offTrade = trade.wanted.filter((w) => w.status === "released" || w.status === "removed");
   const [confirming, setConfirming] = useState<string | null>(null);
 
   async function save(lineId: string, quantity: number) {
-    const items = held
+    const items = onTrade
       .filter((w) => w.inventoryItemId)
       .map((w) => ({ inventoryItemId: w.inventoryItemId as string, quantity: w.id === lineId ? quantity : w.quantity }))
       .filter((i) => i.quantity > 0);
     const ok = await run(
       `wanted:${lineId}`,
       () => tradeCenterRepository.setWanted(trade.id, items),
-      quantity === 0 ? "Taken off the trade and released." : "Updated.",
+      quantity === 0 ? "Taken off the trade." : "Updated.",
     );
     if (ok) setConfirming(null);
   }
 
   return (
     <section className="gg-trd__section">
-      <h3>Our cards ({held.reduce((n, w) => n + w.quantity, 0)})</h3>
-      {held.length === 0 ? (
+      <h3>Our cards ({onTrade.reduce((n, w) => n + w.quantity, 0)})</h3>
+      {onTrade.length === 0 ? (
         <p className="gg-card-meta">None of our cards are on this trade any more.</p>
       ) : (
         <ul className="gg-trd-cards">
-          {held.map((w) => {
+          {onTrade.map((w) => {
             const line = [w.setCode?.toUpperCase(), w.collectorNumber ? `#${w.collectorNumber}` : null].filter(Boolean).join(" ");
-            const canEdit = editable && w.status === "reserved" && Boolean(w.inventoryItemId);
+            const canEdit = editable && (w.status === "reserved" || w.status === "requested") && Boolean(w.inventoryItemId);
+            const short = w.status === "requested" && w.available !== null && w.available < w.quantity;
             return (
               <li key={w.id} className="gg-trd-card">
                 <div className="gg-trd-card__head">
@@ -562,8 +743,14 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
                         .join(" · ")}
                     </p>
                     <p className="gg-trd-card__meta">
-                      {formatCents(w.unitPriceCents)} each · {w.status === "fulfilled" ? "on their order" : "held for this trade"}
+                      {formatCents(w.unitPriceCents)} each ·{" "}
+                      {w.status === "fulfilled" ? "on their order" : w.status === "reserved" ? "reserved for this trade" : "not reserved yet (still on sale)"}
                     </p>
+                    {short && (
+                      <p className="gg-trd-card__flag">
+                        {w.available === 0 ? "Sold out since it was added" : `Only ${w.available} available now`}
+                      </p>
+                    )}
                   </div>
                   <div className="gg-trd-card__aside">
                     {canEdit ? (
@@ -586,11 +773,13 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
                     <strong>{formatCents(w.unitPriceCents * w.quantity)}</strong>
                   </div>
                 </div>
-                {canEdit && held.length > 1 && (
+                {canEdit && onTrade.length > 1 && (
                   <div className="gg-trd-card__controls">
                     {confirming === w.id ? (
                       <>
-                        <span className="gg-card-meta">Take {w.cardName} off this trade? It goes back on sale.</span>
+                        <span className="gg-card-meta">
+                          Take {w.cardName} off this trade?{w.status === "reserved" ? " It goes back on sale." : ""}
+                        </span>
                         <Button size="sm" variant="danger" loading={busy === `wanted:${w.id}`} disabled={busy !== null} onClick={() => void save(w.id, 0)}>
                           Take it off
                         </Button>
@@ -610,34 +799,30 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
           })}
         </ul>
       )}
-      {released.length > 0 && (
+      {offTrade.length > 0 && (
         <p className="gg-card-meta">
-          Released from this trade: {released.map((w) => `${w.cardName} × ${w.quantity}`).join(", ")}.
+          No longer on this trade: {offTrade.map((w) => `${w.cardName} × ${w.quantity} (${w.status === "removed" ? "taken off" : "released"})`).join(", ")}.
         </p>
       )}
       {editable && (
         <p className="gg-card-meta">
-          Lower a quantity or take a card off if it sold or isn&rsquo;t in the condition listed. The customer sees the change on
-          their trade page.
+          Lower a quantity or take a card off if it sold or isn&rsquo;t in the condition listed. The customer sees the change on their trade
+          page.
         </p>
       )}
     </section>
   );
 }
 
+/** Before the trade is confirmed: nothing is held and nothing paid (an unpaid deposit payment is canceled). */
 function RejectSection({ trade, busy, run }: TradePanelProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const beforeShipping = PRE_SHIPMENT_STATUSES.includes(trade.status);
 
   return (
     <section className="gg-trd__section gg-leaddetail__danger">
       <h3>Reject this trade</h3>
-      <p className="gg-card-meta">
-        {beforeShipping
-          ? "The trade closes, our cards are released, and the customer is emailed your reason."
-          : "Our cards are released and their cards go back to them (you mark them returned once mailed). The customer is emailed your reason."}
-      </p>
+      <p className="gg-card-meta">The trade closes and the customer is emailed your reason. Nothing was reserved or charged.</p>
       {open ? (
         <div className="gg-trd-form">
           <TextArea label="Reason for the customer" rows={2} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -650,13 +835,7 @@ function RejectSection({ trade, busy, run }: TradePanelProps) {
               size="sm"
               loading={busy === "reject"}
               disabled={busy !== null || !reason.trim()}
-              onClick={() =>
-                void run(
-                  "reject",
-                  () => tradeCenterRepository.reject(trade.id, reason.trim()),
-                  beforeShipping ? "Trade rejected." : "Trade rejected. Mail their cards back, then mark them returned.",
-                )
-              }
+              onClick={() => void run("reject", () => tradeCenterRepository.reject(trade.id, reason.trim()), "Trade rejected.")}
             >
               Reject the trade
             </Button>
@@ -665,6 +844,54 @@ function RejectSection({ trade, busy, run }: TradePanelProps) {
       ) : (
         <Button variant="danger" size="sm" onClick={() => setOpen(true)} disabled={busy !== null}>
           Reject the trade…
+        </Button>
+      )}
+    </section>
+  );
+}
+
+/** A confirmed trade: our cards are released, any deposit is refunded in full, and cards that reached us go back. */
+function CancelByStoreSection({ trade, busy, run }: TradePanelProps) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const shipped = trade.shipment.acceptedAt !== null || trade.receivedAt !== null;
+  const paid = trade.deposit.status === "paid" || trade.deposit.status === "forfeiture_review";
+
+  return (
+    <section className="gg-trd__section gg-leaddetail__danger">
+      <h3>Cancel this trade</h3>
+      <p className="gg-card-meta">
+        For when you can&rsquo;t go ahead (a card is damaged in stock, a pricing error). Our cards are released
+        {paid ? ", the deposit is refunded in full" : ""}
+        {shipped ? ", and their cards come back to them (mark them returned once mailed)" : ""}. It never counts against the customer.
+      </p>
+      {open ? (
+        <div className="gg-trd-form">
+          <TextArea label="Reason for the customer" rows={2} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <div className="gg-drawer-actions__buttons">
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={busy !== null}>
+              Keep the trade
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={busy === "cancel"}
+              disabled={busy !== null || !reason.trim()}
+              onClick={() =>
+                void run(
+                  "cancel",
+                  () => tradeCenterRepository.cancelByStore(trade.id, reason.trim()),
+                  shipped ? "Trade canceled. Mail their cards back, then mark them returned." : "Trade canceled.",
+                )
+              }
+            >
+              Cancel the trade
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="danger" size="sm" onClick={() => setOpen(true)} disabled={busy !== null}>
+          Cancel the trade…
         </Button>
       )}
     </section>

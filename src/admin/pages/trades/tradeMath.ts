@@ -2,7 +2,6 @@ import { parsePriceCents } from "../../utils/tradeEvaluator";
 import type { InspectCardInput, ReviewCardInput, TradeAuthenticity, TradeCardFlag } from "../../repositories/tradeCenter.supabase";
 import {
   TRADE_LIMITS,
-  addBusinessDays,
   cashForExcessCents,
   conditionPercent,
   tradeCreditCents,
@@ -13,14 +12,14 @@ import {
   type StaffTradeOfferCard,
   type TradeSettings,
 } from "../../../store/lib/tradeCenter";
+import { STORE_TIME_ZONE, addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
+import { depositFor, type DepositDecision, type DepositOverride } from "../../../store/lib/tradeRules";
 
 // The arithmetic behind admin Trades: what a trade adds up to at each stage,
-// the review and inspection forms' starting values and what they send, and
-// the final offer preview. The server works every total out again (in the
-// database); this mirrors it so staff see the same numbers before they act.
-
-const STORE_TIME_ZONE = "America/Chicago";
-const DAY_MS = 24 * 60 * 60 * 1000;
+// the deadlines and deposit an action would set, the review and inspection
+// forms' starting values and what they send, and the final offer preview.
+// The server works every total, deadline and deposit out again; this
+// mirrors it so staff see the same numbers before they act.
 
 /** YYYY-MM-DD of the day `ms` falls on in St. Louis (for a date input). */
 export function storeDateInput(ms: number): string {
@@ -41,14 +40,39 @@ export function formatDateInput(value: string): string {
   return new Date(noon).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 }
 
-/** The ship-by date the server uses when staff don't pick one. */
-export function defaultShipByInput(settings: Pick<TradeSettings, "shipBusinessDays">, now = Date.now()): string {
-  return storeDateInput(addBusinessDays(now, settings.shipBusinessDays));
+/** When an approval made now has to be confirmed by (qualifying hours: Sundays and excluded days don't count). */
+export function confirmByPreview(settings: Pick<TradeSettings, "confirmationHours" | "excludedDates">, now = Date.now()): number {
+  return addQualifyingHours(now, settings.confirmationHours, settings.excludedDates);
 }
 
-/** Dates the server accepts for a ship-by date: today through the next 59 days. */
-export function shipByBounds(now = Date.now()): { min: string; max: string } {
-  return { min: storeDateInput(now), max: storeDateInput(now + 59 * DAY_MS) };
+/** The shipping deadline `days` qualifying days from now (reinstating a reservation). */
+export function shipByPreview(days: number, settings: Pick<TradeSettings, "excludedDates">, now = Date.now()): number {
+  return addQualifyingDays(now, days, settings.excludedDates);
+}
+
+/** The deadline after giving `hours` more: confirmation and shipping count qualifying hours, the others plain hours. */
+export function extendedDeadline(
+  kind: "list" | "confirmation" | "shipping" | "payment",
+  currentIso: string | null,
+  hours: number,
+  settings: Pick<TradeSettings, "excludedDates">,
+  now = Date.now(),
+): number {
+  const from = Math.max(now, currentIso ? Date.parse(currentIso) : 0);
+  return kind === "confirmation" || kind === "shipping" ? addQualifyingHours(from, hours, settings.excludedDates) : from + hours * 3_600_000;
+}
+
+/** The deposit approving now would set, as the server works it out (the customer's record and the override). */
+export function depositPreview(trade: StaffTrade, settings: TradeSettings, override: DepositOverride): DepositDecision {
+  return depositFor(
+    {
+      wantedCents: trade.wantedTotalCents,
+      override,
+      customerRequired: trade.customerRecord?.depositRequired ?? false,
+      reliabilityRequired: trade.privileges?.reliabilityDeposit ?? false,
+    },
+    settings,
+  );
 }
 
 /** min…max, for a quantity select. */
@@ -298,6 +322,14 @@ export function inspectInput(card: StaffTradeOfferCard, draft: InspectDraft): In
   }
   const unit = parseUnitCents(draft.unit);
   if (draft.accept > 0 && unit === null) return { problem: `${card.cardName}: enter a value for each copy you're accepting.` };
+  // The final offer explains every change from the approval (the database refuses one that doesn't).
+  const approvedQty = card.approvedQuantity ?? 0;
+  const changedFromApproval = draft.accept !== approvedQty || (draft.accept > 0 && unit !== card.approvedUnitCents);
+  const explained =
+    draft.note.trim() !== "" || draft.flags.length > 0 || draft.condition !== card.reportedCondition || draft.authenticity === "counterfeit";
+  if (card.reviewStatus === "approved" && changedFromApproval && !explained) {
+    return { problem: `${card.cardName}: say why it changed from the approval (a note for the customer, a flag or the condition).` };
+  }
   return {
     id: card.id,
     receivedQuantity: draft.received,

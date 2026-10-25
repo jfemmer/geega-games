@@ -8,8 +8,9 @@ import { formatDateTime } from "../../utils/format";
 import { tradeCenterRepository, type TradeSettingsResult } from "../../repositories/tradeCenter.supabase";
 import { SHIP_FROM } from "../../../store/lib/shipFrom";
 import { US_REGIONS } from "../../../store/lib/usAddress";
-import { CARD_CONDITIONS, CONDITION_NAMES, type TradeSettings } from "../../../store/lib/tradeCenter";
-import { NUMBER_LABELS, formOf, settingsInputOf, type MoneyKey, type NumberKey, type SettingsForm } from "./tradeSettingsForm";
+import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, type TradeSettings } from "../../../store/lib/tradeCenter";
+import { addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
+import { NUMBER_LABELS, formOf, readExcludedDates, settingsInputOf, type MoneyKey, type NumberKey, type SettingsForm } from "./tradeSettingsForm";
 
 // Admin → Trades → Settings: every trade term in one form (the store owner
 // saves; other staff can look). The rate and minimum are what the Trade
@@ -17,7 +18,8 @@ import { NUMBER_LABELS, formOf, settingsInputOf, type MoneyKey, type NumberKey, 
 // mail their cards to; nothing fills it in by itself ("Use the store's
 // return address" copies the label return address into the form, to check
 // and save). Pausing stops new trades only: trades already started carry on
-// and their held cards stay held.
+// and their reserved cards stay reserved. Keeping deposits stays off until
+// the owner turns it on, after checking the rules that apply.
 
 export function TradeSettingsPanel({ onSaved }: { onSaved: (settings: TradeSettings) => void }) {
   const [loaded, setLoaded] = useState<TradeSettingsResult | null>(null);
@@ -60,6 +62,19 @@ export function TradeSettingsPanel({ onSaved }: { onSaved: (settings: TradeSetti
   return <SettingsEditor initial={loaded.settings} owner={loaded.owner} onSaved={onSaved} />;
 }
 
+/** "Approved now: confirm by …; confirmed now: ship by …", from the form as typed (null while a value is invalid). */
+function deadlinePreview(form: SettingsForm): string | null {
+  const hours = Number(form.numbers.confirmationHours);
+  const days = Number(form.numbers.shipDaysNew);
+  const excluded = readExcludedDates(form.excludedDates);
+  if (!Number.isInteger(hours) || hours < 1 || !Number.isInteger(days) || days < 1 || "bad" in excluded) return null;
+  const now = Date.now();
+  const confirmBy = addQualifyingHours(now, hours, excluded.dates);
+  const shipBy = addQualifyingDays(now, days, excluded.dates);
+  const at = (ms: number) => formatDeadline(new Date(ms).toISOString());
+  return `Approved right now, a trade must be confirmed by ${at(confirmBy)}. Confirmed right now, a new customer ships by ${at(shipBy)}.`;
+}
+
 function SettingsEditor({
   initial,
   owner,
@@ -80,6 +95,8 @@ function SettingsEditor({
   const setMoney = (key: MoneyKey, value: string) => setForm((f) => ({ ...f, money: { ...f.money, [key]: value } }));
   const setAddress = (patch: Partial<SettingsForm["shipTo"]>) => setForm((f) => ({ ...f, shipTo: { ...f.shipTo, ...patch } }));
   const dirty = JSON.stringify(form) !== JSON.stringify(formOf(saved));
+  const termsChanged = form.depositTerms.replace(/\r\n/g, "\n").trim() !== saved.depositTerms;
+  const preview = deadlinePreview(form);
 
   async function save(next: SettingsForm, kind: "save" | "pause" | "resume", done: string) {
     const input = settingsInputOf(next);
@@ -121,6 +138,17 @@ function SettingsEditor({
       hint={hint}
     />
   );
+  const moneyField = (key: MoneyKey, label: string, hint?: string) => (
+    <TextField
+      key={key}
+      label={`${label} ($)`}
+      inputMode="decimal"
+      value={form.money[key]}
+      disabled={disabled}
+      onChange={(e) => setMoney(key, e.target.value)}
+      hint={hint}
+    />
+  );
 
   return (
     <form
@@ -150,7 +178,7 @@ function SettingsEditor({
             <p>
               <strong>{saved.paused ? "New trades are paused." : "Emergency pause"}</strong>{" "}
               <span className="gg-card-meta">
-                Stops new trades right away. Trades already started carry on, and their held cards stay held.
+                Stops new trades right away. Trades already started carry on, and their reserved cards stay reserved.
               </span>
             </p>
             <TextArea
@@ -177,14 +205,7 @@ function SettingsEditor({
       <Group title="Credit and card values" intro="What the Trade Cards page advertises, and how each card is valued.">
         <div className="gg-form-grid">
           {numberField("creditRatePercent", "%", "Store credit per $1 of card value. Advertised on the Trade Cards page.")}
-          <TextField
-            label="Minimum card value ($)"
-            inputMode="decimal"
-            value={form.money.minCardValueCents}
-            disabled={disabled}
-            onChange={(e) => setMoney("minCardValueCents", e.target.value)}
-            hint="Per card, at its market price in the customer's condition. Cards under it can't be added."
-          />
+          {moneyField("minCardValueCents", "Minimum card value", "Per card, at its market price in the customer's condition. Cards under it can't be added.")}
         </div>
         <p className="gg-trset__label">Condition percentages (of the market price)</p>
         <div className="gg-trset__conditions">
@@ -195,28 +216,16 @@ function SettingsEditor({
               inputMode="numeric"
               value={form.conditions[code]}
               disabled={disabled}
-              onChange={(e) => setForm((f) => (f ? { ...f, conditions: { ...f.conditions, [code]: e.target.value } } : f))}
+              onChange={(e) => setForm((f) => ({ ...f, conditions: { ...f.conditions, [code]: e.target.value } }))}
             />
           ))}
         </div>
         <div className="gg-form-grid">
-          <TextField
-            label="Processing fee per trade ($)"
-            inputMode="decimal"
-            value={form.money.processingFeeCents}
-            disabled={disabled}
-            onChange={(e) => setMoney("processingFeeCents", e.target.value)}
-            hint="Taken off the trade credit. 0 for none."
-          />
+          {moneyField("processingFeeCents", "Processing fee per trade", "Taken off the trade credit. 0 for none.")}
           {numberField("overstockThreshold", "copies", "Stop taking a printing once you stock this many. 0 for no limit.")}
         </div>
         <label className="gg-check-inline">
-          <input
-            type="checkbox"
-            checked={form.cashPayoutEnabled}
-            disabled={disabled}
-            onChange={(e) => set({ cashPayoutEnabled: e.target.checked })}
-          />
+          <input type="checkbox" checked={form.cashPayoutEnabled} disabled={disabled} onChange={(e) => set({ cashPayoutEnabled: e.target.checked })} />
           Let staff offer cash for credit left over (at the cash rate, paid by hand)
         </label>
         {form.cashPayoutEnabled && (
@@ -226,23 +235,9 @@ function SettingsEditor({
 
       <Group title="Limits" intro="Keeps trades a size you can handle.">
         <div className="gg-form-grid">
-          <TextField
-            label="Smallest trade, our cards ($)"
-            inputMode="decimal"
-            value={form.money.minTradeValueCents}
-            disabled={disabled}
-            onChange={(e) => setMoney("minTradeValueCents", e.target.value)}
-          />
-          <TextField
-            label="Largest trade, our cards ($)"
-            inputMode="decimal"
-            value={form.money.maxTradeValueCents}
-            disabled={disabled}
-            onChange={(e) => setMoney("maxTradeValueCents", e.target.value)}
-            hint="Blank for no limit."
-          />
+          {moneyField("minTradeValueCents", "Smallest trade, our cards")}
+          {moneyField("maxTradeValueCents", "Largest trade, our cards", "Blank for no limit.")}
           {numberField("maxActiveTrades", "trades")}
-          {numberField("maxExpiredTrades30d", "in 30 days", "Customers who let this many trades expire can't start new ones for a while.")}
           {numberField("maxWantedLines", "different cards")}
           {numberField("maxOfferedLines", "different cards")}
         </div>
@@ -266,18 +261,114 @@ function SettingsEditor({
         </div>
       </Group>
 
-      <Group title="Deadlines" intro="Our cards are held for the customer while they work; holds that run out release the cards automatically.">
+      <Group
+        title="Deadlines"
+        intro="Nothing is reserved while customers build their trade or while you review it. Confirming reserves our cards. Confirmation and shipping deadlines skip Sundays (Saturdays count) and any days listed below, in St. Louis time."
+      >
         <div className="gg-form-grid">
-          {numberField("reservationHours", "hours")}
-          {numberField("revisionHours", "hours")}
-          {numberField("shipBusinessDays", "days", "After approval. Weekends don't count.")}
-          {numberField("shipGraceHours", "hours", "Extra time to add tracking before the trade expires.")}
-          {numberField("transitAlertDays", "days", "Staff are alerted about a package that's taking too long.")}
+          {numberField("draftDays", "days", "A draft that isn't sent by then closes.")}
+          {numberField("revisionHours", "hours", "After you ask for changes.")}
+          {numberField("confirmationHours", "hours", "After you approve. 48 means Saturday 2 PM → Tuesday 2 PM.")}
+          {numberField("shipDaysNew", "days", "After confirming. 3 means Friday 2 PM → Tuesday 2 PM.")}
+          {numberField("scanGraceHours", "hours", "After the shipping deadline, before a trade with tracking but no scan expires. A late scan always goes to you.")}
           {numberField("paymentDueDays", "days")}
+          {numberField("disputeWindowDays", "days", "Customers can send proof of shipping this long after a reservation expires.")}
+        </div>
+        <TextArea
+          label="Days that don't count (besides Sundays)"
+          rows={3}
+          value={form.excludedDates}
+          disabled={disabled}
+          onChange={(e) => set({ excludedDates: e.target.value })}
+          hint="Holidays or closures, as YYYY-MM-DD, one per line. Deadlines already set don't move."
+        />
+        {preview && <p className="gg-card-meta">{preview}</p>}
+      </Group>
+
+      <Group
+        title="Refundable deposits"
+        intro="A deposit is paid by card when the customer confirms, and is refunded in full (you absorb Stripe's fee) as soon as the carrier accepts their package in time. Declining the final offer never costs it."
+      >
+        <label className="gg-check-inline gg-trset__switch">
+          <input type="checkbox" checked={form.depositsEnabled} disabled={disabled} onChange={(e) => set({ depositsEnabled: e.target.checked })} />
+          <span>
+            <strong>Ask for deposits</strong>
+            <span className="gg-card-meta"> Off: no trade needs one, whatever its size or the customer&rsquo;s record.</span>
+          </span>
+        </label>
+        <div className="gg-form-grid">
+          {moneyField("depositThresholdCents", "Required from, our cards", "Smaller trades need one only when you ask, or after repeated abandoned reservations.")}
+        </div>
+        <p className="gg-trset__label">Deposit by the value of our cards on the trade</p>
+        <div className="gg-trset__bands">
+          {moneyField("depositBand1MaxCents", "Under")}
+          {moneyField("depositBand1Cents", "Deposit")}
+          {moneyField("depositBand2MaxCents", "Then under")}
+          {moneyField("depositBand2Cents", "Deposit")}
+          {moneyField("depositBand3MaxCents", "Then under")}
+          {moneyField("depositBand3Cents", "Deposit")}
+          <p className="gg-card-meta gg-trset__bandtop">And above</p>
+          {moneyField("depositBand4Cents", "Deposit")}
+        </div>
+        <TextArea
+          label="Deposit and cancellation terms"
+          rows={8}
+          maxLength={6000}
+          value={form.depositTerms}
+          disabled={disabled}
+          onChange={(e) => set({ depositTerms: e.target.value })}
+          hint={
+            termsChanged
+              ? `Saving makes this version ${saved.depositTermsVersion + 1}. Customers confirming from then on agree to the new text; trades already confirmed keep the version they agreed to.`
+              : `Shown on the confirmation page; customers tick a box agreeing to it. Version ${saved.depositTermsVersion}.`
+          }
+        />
+        <div className={form.allowForfeiture ? "gg-inline-note gg-inline-note--warning" : "gg-inline-note gg-inline-note--info"}>
+          <Icon name={form.allowForfeiture ? "alert" : "info"} size={18} />
+          <div>
+            <label className="gg-check-inline gg-trset__switch">
+              <input type="checkbox" checked={form.allowForfeiture} disabled={disabled} onChange={(e) => set({ allowForfeiture: e.target.checked })} />
+              <span>
+                <strong>Allow keeping a deposit</strong>
+                <span className="gg-card-meta">
+                  {" "}
+                  Off: every deposit is refunded, even when a customer cancels or misses the deadline. On: the store owner can keep one after
+                  reviewing the case; it&rsquo;s never kept automatically.
+                </span>
+              </span>
+            </label>
+            <p className="gg-card-meta gg-trset__forfeit">
+              Before turning this on, check the consumer-protection rules that apply to you and Stripe&rsquo;s rules on keeping customer
+              payments, and make sure the terms above say exactly when a deposit can be kept.
+            </p>
+          </div>
         </div>
       </Group>
 
-      <Group title="Shipping" intro="Where customers mail their cards. Shown only to customers whose trade you've approved.">
+      <Group
+        title="Reliability"
+        intro="Customers who complete trades get more time to ship. Customers who keep confirming and then not shipping lose that, and need a deposit on every trade or can't start one. Declining an offer, carrier delays after a timely scan and your cancellations never count."
+      >
+        <div className="gg-form-grid">
+          {numberField("loyaltyTier1Trades", "trades")}
+          {numberField("shipDaysTier1", "days")}
+          {numberField("loyaltyTier2Trades", "trades")}
+          {numberField("shipDaysTier2", "days")}
+          {numberField("abandonLimit", "reservations", "Canceling after confirming, or not shipping in time. You can clear one on the trade.")}
+          {numberField("abandonWindowDays", "days")}
+        </div>
+        <SelectField
+          label="Over the limit"
+          value={form.abandonPolicy}
+          disabled={disabled}
+          onChange={(e) => set({ abandonPolicy: e.target.value === "block" ? "block" : "deposit" })}
+        >
+          <option value="deposit">Require a deposit on every trade</option>
+          <option value="block">No new trades</option>
+        </SelectField>
+      </Group>
+
+      <Group title="Shipping" intro="Where customers mail their cards. Shown only once a customer's trade is confirmed and our cards are reserved.">
         <div className="gg-trset__addresshead">
           <p className="gg-trset__label">Address customers mail their cards to</p>
           <Button
@@ -343,7 +434,7 @@ function SettingsEditor({
           value={form.packingInstructions}
           disabled={disabled}
           onChange={(e) => set({ packingInstructions: e.target.value })}
-          hint="In the approval email and on the customer's trade page."
+          hint="In the reservation email and on the customer's trade page."
         />
         <TextArea
           label="Return policy"
@@ -352,14 +443,20 @@ function SettingsEditor({
           value={form.returnPolicy}
           disabled={disabled}
           onChange={(e) => set({ returnPolicy: e.target.value })}
-          hint="What happens to their cards if a trade is declined or rejected after they ship."
+          hint="What happens to their cards if a trade is declined or canceled after they ship."
         />
       </Group>
 
-      <Group title="Emails">
+      <Group title="Reminders and alerts">
+        <div className="gg-form-grid">
+          {numberField("confirmReminderHours", "hours", "0 for no reminder.")}
+          {numberField("shipReminderHours", "hours", "0 for no reminder.")}
+          {numberField("maxTransitDays", "days")}
+          {numberField("stallAlertDays", "days")}
+        </div>
         <label className="gg-check-inline">
           <input type="checkbox" checked={form.notifyCustomer} disabled={disabled} onChange={(e) => set({ notifyCustomer: e.target.checked })} />
-          Email customers at each step (approval, final offer, reminders)
+          Email customers at each step (approval, reservation, deposit refunds, final offer, reminders)
         </label>
         <label className="gg-check-inline">
           <input type="checkbox" checked={form.notifyStaff} disabled={disabled} onChange={(e) => set({ notifyStaff: e.target.checked })} />

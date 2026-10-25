@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { getStripePromise, isStripeConfigured } from "../../lib/stripeClient";
+import { useState } from "react";
+import { isStripeConfigured } from "../../lib/stripeClient";
 import { formatCents } from "../../lib/money";
 import { formatDeadline, type CustomerTrade } from "../../lib/tradeCenter";
+import { TradeCardPayment } from "./TradeCardForm";
+import { payLabelFor, returnUrlFor } from "./tradePayment";
 
 // The rest of a trade, paid by card, once the customer has accepted the
 // final offer and their credit doesn't cover everything. The amount comes
@@ -45,12 +46,13 @@ export function TradePaymentPanel({
       {!isStripeConfigured ? (
         <p className="gg-alert gg-alert-warn">Paying online isn&rsquo;t available right now. Reply to your trade email and we&rsquo;ll sort it out.</p>
       ) : payment ? (
-        <Elements
-          stripe={getStripePromise()}
-          options={{ mode: "payment", amount: payment.amountDueCents, currency: "usd", paymentMethodTypes: ["card"] }}
-        >
-          <TradeCardForm clientSecret={payment.clientSecret} amountCents={payment.amountDueCents} onPaid={onPaid} />
-        </Elements>
+        <TradeCardPayment
+          clientSecret={payment.clientSecret}
+          amountCents={payment.amountDueCents}
+          payLabel={payLabelFor(payment.amountDueCents)}
+          returnUrl={returnUrlFor("balance")}
+          onPaid={onPaid}
+        />
       ) : (
         <button type="button" className="gg-btn" disabled={starting} onClick={() => void start()}>
           {starting ? "Starting…" : `Pay ${formatCents(due)} by card`}
@@ -59,71 +61,9 @@ export function TradePaymentPanel({
       <p className="gg-tc-line__meta">
         Changed your mind?{" "}
         <button type="button" className="gg-linkbtn" onClick={onDecline}>
-          Decline instead and get your cards back
+          Decline instead and get your cards back (no penalty)
         </button>
       </p>
     </section>
-  );
-}
-
-function TradeCardForm({
-  clientSecret,
-  amountCents,
-  onPaid,
-}: {
-  clientSecret: string;
-  amountCents: number;
-  onPaid: (paymentIntentId: string) => Promise<void>;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [submitting, setSubmitting] = useState(false);
-  const [cardError, setCardError] = useState<string | null>(null);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setSubmitting(true);
-    setCardError(null);
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setCardError(submitError.message ?? "Please check your card details.");
-      setSubmitting(false);
-      return;
-    }
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      clientSecret,
-      redirect: "if_required",
-      // Only if a bank check has to leave the page; the trade page picks the
-      // payment up again from ?payment_intent= when it's back.
-      confirmParams: { return_url: window.location.href },
-    });
-    if (error) {
-      setCardError(error.message ?? "The payment didn't go through. Check your card details and try again.");
-      setSubmitting(false);
-      return;
-    }
-    if (paymentIntent && (paymentIntent.status === "succeeded" || paymentIntent.status === "processing")) {
-      await onPaid(paymentIntent.id);
-      setSubmitting(false);
-      return;
-    }
-    setCardError("The payment couldn't be completed. Try a different card.");
-    setSubmitting(false);
-  }
-
-  return (
-    <form onSubmit={(e) => void submit(e)} className="gg-form gg-pay-card">
-      <PaymentElement />
-      {cardError && (
-        <div className="gg-alert gg-alert-error" role="alert">
-          {cardError}
-        </div>
-      )}
-      <button className="gg-btn" disabled={!stripe || !elements || submitting} type="submit">
-        {submitting ? "Processing…" : `Pay ${formatCents(amountCents)}`}
-      </button>
-    </form>
   );
 }

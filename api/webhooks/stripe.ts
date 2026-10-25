@@ -7,6 +7,13 @@ import { readRawBody } from "../_lib/http.js";
 import { sendOrderConfirmation, sendOrderAdminNotification } from "../_lib/orderConfirmation.js";
 import { isSortingPaymentIntent, recordSortingCardPayment } from "../_lib/sortingPayments.js";
 import { isTradePaymentIntent, recordTradeCardPayment } from "../_lib/tradePayments.js";
+import {
+  isTradeDepositIntent,
+  recordChargeRefunded,
+  recordDepositFailure,
+  recordDepositPayment,
+  recordRefundEvent,
+} from "../_lib/tradeDeposits.js";
 
 // POST /api/webhooks/stripe
 //
@@ -18,9 +25,15 @@ import { isTradePaymentIntent, recordTradeCardPayment } from "../_lib/tradePayme
 //   3. On payment_intent.succeeded: mark_order_paid(order_id), then the
 //      confirmation + staff emails. All of these are idempotent. A
 //      collection sorting payment (metadata.sorting_request_id) is recorded
-//      against its approved quote instead (api/_lib/sortingPayments.ts), and
-//      a trade's payment (metadata.trade_request_id) finishes that trade
-//      (api/_lib/tradePayments.ts).
+//      against its approved quote instead (api/_lib/sortingPayments.ts), a
+//      trade's refundable deposit (metadata.kind trade_deposit) reserves that
+//      trade's cards or is refunded (api/_lib/tradeDeposits.ts), and a
+//      trade's payment for the rest (metadata.trade_request_id) finishes
+//      that trade (api/_lib/tradePayments.ts).
+//      Trade deposits also listen to payment_intent.payment_failed (noted on
+//      the trade) and to refund events (refund.created, refund.updated,
+//      refund.failed, charge.refund.updated, charge.refunded), which record
+//      whether a deposit refund went through.
 //   4. Only AFTER that succeeds, record the event in payment_events.
 //
 // Recording last matters: if marking the order paid fails we return 500 and
@@ -118,6 +131,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // with the event kept in payment_events below.
           if (result.retryable) return res.status(500).json({ ok: false });
         }
+      } else if (isTradeDepositIntent(pi)) {
+        // A trade's refundable deposit: reserves the trade's cards, or is
+        // refunded when it can't (once, whichever of the trade page, this
+        // webhook and the worker gets there first).
+        const result = await recordDepositPayment(pi);
+        if (!result.ok) {
+          console.error("[stripe] trade deposit not recorded", pi.id, result.code, result.message);
+          if (result.retryable) return res.status(500).json({ ok: false });
+        }
       } else if (isTradePaymentIntent(pi)) {
         // The rest of a trade, paid by card: finishes the trade (its paid
         // order, the credit issued and spent) once, whether the trade page
@@ -128,6 +150,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (result.retryable) return res.status(500).json({ ok: false });
         }
       }
+    }
+    if (event.type === "payment_intent.payment_failed") {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      if (isTradeDepositIntent(pi)) await recordDepositFailure(pi);
+    }
+    if (
+      event.type === "refund.created" ||
+      event.type === "refund.updated" ||
+      event.type === "refund.failed" ||
+      event.type === "charge.refund.updated"
+    ) {
+      await recordRefundEvent(event.data.object as Stripe.Refund);
+    }
+    if (event.type === "charge.refunded") {
+      await recordChargeRefunded(event.data.object as Stripe.Charge);
     }
     // Other event types are recorded (for audit) and acked without action.
   } catch (err) {

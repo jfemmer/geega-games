@@ -6,24 +6,53 @@ import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
 import { NAV_ITEMS, SECTION_TITLES } from "../src/admin/components/layout/nav";
 import { NAV_BADGES } from "../src/admin/utils/navBadges";
 import type { StaffTrade, TradeSettings } from "../src/store/lib/tradeCenter";
-import { TRADE_ID, TRADE_SETTINGS, staffCard, staffTrade, tradeSummary, wantedItem } from "./helpers/tradeFixtures";
+import {
+  TRADE_ID,
+  TRADE_SETTINGS,
+  privileges,
+  record,
+  shipment,
+  staffCard,
+  staffDeposit,
+  staffTrade,
+  tradeSummary,
+  wantedItem,
+} from "./helpers/tradeFixtures";
 
 // Admin → Trades: the list of online trades, each trade's drawer at every
-// step (review, receiving, inspection and the final offer, payment, wrapping
-// up), and the trade settings. The repository is a stand-in: these tests are
-// about what staff see and exactly what each button sends.
+// step (review and approval with the deposit, waiting for confirmation, the
+// shipment and its scans, proof of shipping, the deposit, inspection and the
+// final offer, payment, wrapping up, an expired reservation), the Deposits,
+// Reserved and Customers tabs, and the trade settings. The repository is a
+// stand-in: these tests are about what staff see and exactly what each
+// button sends.
 
 const repo = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   settings: vi.fn(),
   saveSettings: vi.fn(),
+  reserved: vi.fn(),
+  customers: vi.fn(),
+  deposits: vi.fn(),
+  setCustomerFlags: vi.fn(),
   review: vi.fn(),
   requestRevision: vi.fn(),
   approve: vi.fn(),
   reject: vi.fn(),
+  setDeposit: vi.fn(),
   extend: vi.fn(),
+  verifyShipment: vi.fn(),
   markReceived: vi.fn(),
+  cardsArrived: vi.fn(),
+  reinstate: vi.fn(),
+  expireNow: vi.fn(),
+  cancelByStore: vi.fn(),
+  refundDeposit: vi.fn(),
+  forfeitDeposit: vi.fn(),
+  retryRefund: vi.fn(),
+  resolveDispute: vi.fn(),
+  clearFault: vi.fn(),
   inspect: vi.fn(),
   confirmAsDescribed: vi.fn(),
   sendFinalOffer: vi.fn(),
@@ -77,7 +106,22 @@ beforeEach(() => {
   for (const fn of Object.values(repo)) fn.mockReset();
   navigate.mockReset();
   repo.list.mockResolvedValue({
-    trades: [tradeSummary(), tradeSummary({ id: "t-2", tradeNumber: 998, status: "in_transit", customerName: "Bo Diaz", approvedValueCents: 21500, inboundShippedAt: "2026-10-23T12:00:00Z" })],
+    trades: [
+      tradeSummary(),
+      tradeSummary({
+        id: "t-2",
+        tradeNumber: 998,
+        status: "in_transit",
+        customerName: "Bo Diaz",
+        approvedValueCents: 21500,
+        inboundAcceptedAt: "2026-10-23T12:00:00Z",
+        depositStatus: "refund_pending",
+        depositCents: 2000,
+        depositPaidCents: 2000,
+        needsStaff: false,
+      }),
+      tradeSummary({ id: "t-3", tradeNumber: 997, status: "tracking_submitted", customerName: "Cy Ho", reviewFlag: "late_acceptance", depositStatus: "paid", depositCents: 2000, depositPaidCents: 2000 }),
+    ],
     counts: { waiting: 1, open: 2, all: 9, pending_review: 1, in_transit: 1 },
     settings: TRADE_SETTINGS,
     owner: true,
@@ -94,19 +138,29 @@ describe("the list", () => {
     const user = userEvent.setup();
     renderPage();
     expect(await screen.findByText("TR-1001")).toBeInTheDocument();
-    expect(repo.list).toHaveBeenLastCalledWith("waiting", "");
+    expect(repo.list).toHaveBeenLastCalledWith("waiting", "", null);
     expect(screen.getByRole("status", { name: "" })).toHaveTextContent("Trading is open: 80% store credit on cards worth $15.00 or more.");
     const row = screen.getByText("TR-1001").closest("tr")!;
     expect(row).toHaveTextContent("Ann Lee");
     expect(row).toHaveTextContent("$160.00estimate");
     expect(within(row).getAllByText("To review").length).toBeGreaterThan(0);
+    // The deposit, and why a trade is waiting on staff besides its status.
+    const bo = screen.getByText("TR-998").closest("tr")!;
+    expect(bo).toHaveTextContent("Refund pending$20.00");
+    expect(bo).toHaveTextContent("Shipped");
+    const cy = screen.getByText("TR-997").closest("tr")!;
+    expect(cy).toHaveTextContent("Late first scan: decide");
 
     await user.click(screen.getByRole("tab", { name: /^Open/ }));
-    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("open", ""));
+    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("open", "", null));
     await user.type(screen.getByLabelText("Search trades"), "ann");
-    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("open", "ann"));
+    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("open", "ann", null));
     await user.selectOptions(screen.getByLabelText("Status"), "in_transit");
-    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("in_transit", "ann"));
+    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("in_transit", "ann", null));
+    await user.selectOptions(screen.getByLabelText("Deposit"), "forfeiture_review");
+    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("in_transit", "ann", "forfeiture_review"));
+    await user.click(screen.getByRole("tab", { name: /^Abandoned/ }));
+    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("abandoned", "ann", "forfeiture_review"));
   });
 
   it("says when trading is paused or off, and when it isn't set up at all", async () => {
@@ -149,8 +203,15 @@ describe("review", () => {
     expect(within(preview).getByText("Approved value").nextElementSibling).toHaveTextContent("$506.80");
     expect(within(preview).getByText("Store credit left over").nextElementSibling).toHaveTextContent("$316.45");
 
+    // The customer gets the confirmation window (Sundays don't count); nothing is reserved yet; no deposit on $88.99.
+    expect(within(dialog).getByText(/to confirm \(48 hours; Sundays don’t count\)\. Nothing is reserved until they confirm\./)).toBeInTheDocument();
+    expect(within(dialog).getByText("No deposit on this trade.")).toBeInTheDocument();
+
     repo.review.mockResolvedValue(answer(REVIEW));
-    repo.approve.mockResolvedValue({ ...answer(staffTrade({ status: "awaiting_shipment", offered: APPROVED })), customerEmail: { status: "sent" } });
+    repo.approve.mockResolvedValue({
+      ...answer(staffTrade({ status: "awaiting_confirmation", offered: APPROVED, approvedAt: "2026-10-25T12:00:00Z", confirmBy: "2099-10-27T19:00:00Z", needsStaff: false })),
+      customerEmail: { status: "sent" },
+    });
     await user.type(within(dialog).getByLabelText("Conditions (optional)"), "Mox must be the Stronghold printing");
     await user.click(within(dialog).getByRole("button", { name: "Save the review and approve" }));
     await waitFor(() => expect(repo.approve).toHaveBeenCalled());
@@ -159,10 +220,33 @@ describe("review", () => {
       { id: "o2", reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 4680, reviewNote: null, internalNote: null },
       { id: "o4", reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 38000, reviewNote: null, internalNote: null },
     ]);
-    // The usual ship-by date is the server's: none is sent unless staff pick one.
+    // The deadline and the deposit are the server's: only a changed deposit setting is sent.
     expect(repo.approve).toHaveBeenCalledWith(TRADE_ID, { conditions: "Mox must be the Stronghold printing" });
-    expect(await screen.findByText("Approved: they can ship their cards now. The customer was emailed.")).toBeInTheDocument();
-    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Mark the package received" })).toBeInTheDocument();
+    expect(await screen.findByText("Approved: waiting for the customer to confirm. The customer was emailed.")).toBeInTheDocument();
+    const after = screen.getByRole("dialog");
+    expect(within(after).getByRole("heading", { name: "Waiting for the customer to confirm" })).toBeInTheDocument();
+    expect(within(after).getByText(/Confirm by:/).parentElement).toHaveTextContent("left");
+  });
+
+  it("previews and overrides the deposit when approving", async () => {
+    const user = userEvent.setup();
+    const big = staffTrade({ wantedTotalCents: 32000, offered: APPROVED });
+    const dialog = await openTrade(big);
+    expect(within(dialog).getByText(/\$20\.00: our cards are worth more than the deposit threshold/)).toBeInTheDocument();
+    await user.selectOptions(within(dialog).getByLabelText("Deposit"), "waived");
+    expect(within(dialog).getByText("No deposit on this trade.")).toBeInTheDocument();
+    await user.selectOptions(within(dialog).getByLabelText("Deposit"), "required");
+    repo.approve.mockResolvedValue(answer(staffTrade({ status: "awaiting_confirmation", offered: APPROVED })));
+    await user.click(within(dialog).getByRole("button", { name: "Approve and email the customer" }));
+    await waitFor(() => expect(repo.approve).toHaveBeenCalledWith(TRADE_ID, { conditions: "", depositOverride: "required" }));
+  });
+
+  it("won't approve while one of our cards has sold short", async () => {
+    const short = staffTrade({ offered: APPROVED, wanted: [wantedItem({ status: "requested", available: 0 })] });
+    const dialog = await openTrade(short);
+    expect(within(dialog).getByText(/Some of our cards sold since the customer picked them \(The One Ring\)/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Approve and email the customer" })).toBeDisabled();
+    expect(within(dialog).getByText("Sold out since it was added")).toBeInTheDocument();
   });
 
   it("won't approve before the mailing address is set", async () => {
@@ -198,8 +282,15 @@ describe("receiving, inspection and the final offer", () => {
 
   it("marks the package received", async () => {
     const user = userEvent.setup();
-    const dialog = await openTrade(staffTrade({ status: "in_transit", offered: APPROVED, inboundCarrier: "USPS", inboundTracking: "9400111899223197428490" }));
+    const dialog = await openTrade(
+      staffTrade({
+        status: "in_transit",
+        offered: APPROVED,
+        shipment: shipment({ carrier: "USPS", tracking: "9400111899223197428490", acceptedAt: "2026-10-24T15:00:00Z", acceptanceSource: "carrier", shippedOnTime: true }),
+      }),
+    );
     expect(within(dialog).getByRole("link", { name: "9400111899223197428490" })).toHaveAttribute("href", expect.stringContaining("usps.com"));
+    expect(within(dialog).getByText(/Carrier accepted it/).parentElement).toHaveTextContent("carrier scan · on time");
     repo.markReceived.mockResolvedValue({ ...answer(INSPECTING), customerEmail: { status: "failed" } });
     await user.click(within(dialog).getByRole("button", { name: "Mark the package received" }));
     await waitFor(() => expect(repo.markReceived).toHaveBeenCalledWith(TRADE_ID));
@@ -311,6 +402,7 @@ describe("payment and wrapping up", () => {
       excessHandling: "cash",
       cashPayoutCents: 934,
       creditIssuedCents: 8899,
+      returnStatus: "pending",
       wanted: [wantedItem({ status: "fulfilled" }), wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Arcane Signet", quantity: 2, unitPriceCents: 450, status: "fulfilled" })],
       offered: [
         { ...APPROVED[0], inspected: true, receivedQuantity: 1, finalQuantity: 1, finalUnitCents: 8000, disposition: "accepted" },
@@ -340,7 +432,7 @@ describe("payment and wrapping up", () => {
     const mailBack = within(dialog).getByText("Mail their cards back").closest("section")!;
     expect(mailBack).toHaveTextContent("1 × Ragavan, Nimble Pilferer");
     expect(mailBack).not.toHaveTextContent("Mox Diamond");
-    repo.markReturned.mockResolvedValue(answer({ ...trade, returnedAt: "2026-10-25T16:00:00Z" }));
+    repo.markReturned.mockResolvedValue(answer({ ...trade, returnStatus: "returned", returnedAt: "2026-10-25T16:00:00Z" }));
     await user.type(within(mailBack).getByLabelText("Tracking number (optional)"), "9400 1118 9922 3197 4284 90");
     await user.click(within(mailBack).getByRole("button", { name: "Mark returned and email the customer" }));
     await waitFor(() => expect(repo.markReturned).toHaveBeenCalledWith(TRADE_ID, { carrier: "USPS", trackingNumber: "9400 1118 9922 3197 4284 90" }));
@@ -373,14 +465,20 @@ describe("everything else on a trade", () => {
     await waitFor(() => expect(repo.setWanted).toHaveBeenLastCalledWith(TRADE_ID, [{ inventoryItemId: "i2", quantity: 2 }]));
   });
 
-  it("gives more time on the current deadline", async () => {
+  it("gives more time on the running deadline, noting when the customer asked", async () => {
     const user = userEvent.setup();
-    const trade = staffTrade({ status: "awaiting_shipment", offered: APPROVED, shipBy: "2099-10-30T04:59:59Z", holdExpiresAt: "2099-10-31T04:59:59Z" });
+    const trade = staffTrade({ status: "awaiting_shipment", offered: APPROVED, shipBy: "2099-10-30T19:00:00Z", shipByOriginal: "2099-10-29T19:00:00Z" });
     const dialog = await openTrade(trade);
+    expect(within(dialog).getByText(/Ship by:/).parentElement).toHaveTextContent("left");
+    expect(within(dialog).getByText(/Originally/)).toBeInTheDocument();
     repo.extend.mockResolvedValue(answer(trade));
+    await user.click(within(dialog).getByRole("button", { name: "Give more time…" }));
     await user.selectOptions(within(dialog).getByLabelText("Extend by"), "72");
-    await user.click(within(dialog).getByRole("button", { name: "Give more time" }));
-    await waitFor(() => expect(repo.extend).toHaveBeenCalledWith(TRADE_ID, 72));
+    expect(within(dialog).getByText(/New deadline:/)).toHaveTextContent("(Sundays don't count)");
+    await user.click(within(dialog).getByLabelText("The customer asked for it"));
+    await user.type(within(dialog).getByLabelText("Reason (optional, staff only)"), "Waiting on a box");
+    await user.click(within(dialog).getByRole("button", { name: "Extend" }));
+    await waitFor(() => expect(repo.extend).toHaveBeenCalledWith(TRADE_ID, { kind: "shipping", hours: 72, customerRequested: true, reason: "Waiting on a box" }));
   });
 
   it("sends a message to the customer, or keeps a note for staff", async () => {
@@ -397,16 +495,45 @@ describe("everything else on a trade", () => {
     await waitFor(() => expect(repo.message).toHaveBeenLastCalledWith(TRADE_ID, "We'll have an answer tomorrow.", true));
   });
 
-  it("rejects a trade whose cards are on their way: they go back", async () => {
+  it("cancels a confirmed trade whose cards are on their way: the deposit is refunded and they go back", async () => {
     const user = userEvent.setup();
-    const trade = staffTrade({ status: "in_transit", offered: APPROVED });
+    const trade = staffTrade({
+      status: "in_transit",
+      offered: APPROVED,
+      shipment: shipment({ carrier: "USPS", tracking: "9400111899223197428490", acceptedAt: "2026-10-24T15:00:00Z" }),
+      deposit: staffDeposit({ cents: 2000, status: "paid", paidCents: 2000 }),
+    });
     const dialog = await openTrade(trade);
-    expect(within(dialog).getByText(/their cards go back to them/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "Reject the trade…" }));
-    repo.reject.mockResolvedValue(answer({ ...trade, status: "return_pending", closeReason: "Changed our mind" }));
-    await user.type(within(dialog).getByLabelText("Reason for the customer"), "Changed our mind");
-    await user.click(within(dialog).getByRole("button", { name: "Reject the trade" }));
-    await waitFor(() => expect(repo.reject).toHaveBeenCalledWith(TRADE_ID, "Changed our mind"));
+    // Confirmed trades are canceled, not rejected.
+    expect(within(dialog).queryByRole("button", { name: "Reject the trade…" })).toBeNull();
+    const cancel = within(dialog).getByRole("heading", { name: "Cancel this trade" }).closest("section")!;
+    expect(cancel).toHaveTextContent("the deposit is refunded in full, and their cards come back to them");
+    expect(cancel).toHaveTextContent("It never counts against the customer.");
+    await user.click(within(cancel).getByRole("button", { name: "Cancel the trade…" }));
+    repo.cancelByStore.mockResolvedValue(answer({ ...trade, status: "canceled_by_store", returnStatus: "pending", closeReason: "Pricing error" }));
+    await user.type(within(cancel).getByLabelText("Reason for the customer"), "Pricing error");
+    await user.click(within(cancel).getByRole("button", { name: "Cancel the trade" }));
+    await waitFor(() => expect(repo.cancelByStore).toHaveBeenCalledWith(TRADE_ID, "Pricing error"));
+    expect(await screen.findByText("Trade canceled. Mail their cards back, then mark them returned.")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("heading", { name: "Mail their cards back" })).toBeInTheDocument();
+  });
+
+  it("shows the customer's record, and lets the owner stop a fault counting", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "canceled",
+      customerFault: "canceled_while_reserved",
+      faultAt: "2026-10-25T12:00:00Z",
+      customerRecord: record({ completedTrades: 4, onTimeShipments: 4, abandonedReservations: 1, recentFaults: 1 }),
+      privileges: privileges({ tier: "tier1", shipDays: 4 }),
+    });
+    const dialog = await openTrade(trade);
+    expect(within(dialog).getByText("Returning customer").parentElement).toHaveTextContent("4 completed trades · 100% shipped on time · 4 days to ship");
+    expect(within(dialog).getByText(/Counts against the customer:/).parentElement).toHaveTextContent("Canceled after confirming, before shipping");
+    repo.clearFault.mockResolvedValue(answer({ ...trade, customerFault: null, faultClearedAt: "2026-10-25T13:00:00Z", faultClearedBy: "pat@example.com" }));
+    await user.click(within(dialog).getByRole("button", { name: "Don’t count it" }));
+    await waitFor(() => expect(repo.clearFault).toHaveBeenCalledWith(TRADE_ID));
+    expect(await within(screen.getByRole("dialog")).findByText(/A fault on this trade was cleared/)).toHaveTextContent("by pat@example.com");
   });
 
   it("shows a problem in words and the trade as it now stands", async () => {
@@ -417,6 +544,276 @@ describe("everything else on a trade", () => {
     await user.click(within(dialog).getByRole("button", { name: "Mark the package received" }));
     expect(await screen.findByText("Only a trade waiting for its package can be marked received.")).toBeInTheDocument();
     expect(await within(screen.getByRole("dialog")).findByText("Inspect their cards")).toBeInTheDocument();
+  });
+});
+
+describe("the shipment, proof of shipping and the deposit", () => {
+  const LATE = staffTrade({
+    status: "tracking_submitted",
+    offered: APPROVED,
+    shipBy: "2026-10-27T19:00:00.000Z",
+    reviewFlag: "late_acceptance",
+    reviewFlagAt: "2026-10-27T21:05:00Z",
+    shipment: shipment({ carrier: "USPS", tracking: "9400111899223197428490", acceptedAt: "2026-10-27T21:00:00.000Z", acceptanceSource: "carrier" }),
+    deposit: staffDeposit({ cents: 2000, status: "paid", reason: "threshold", paidCents: 2000, paymentIntentId: "pi_123" }),
+  });
+
+  it("puts a late first scan in front of staff, and verifies it as late (deposit to review) before receiving", async () => {
+    const user = userEvent.setup();
+    const dialog = await openTrade(LATE);
+    expect(within(dialog).getByText(/The carrier's first scan came after the shipping deadline\./)).toBeInTheDocument();
+    // Arriving doesn't settle a late scan.
+    expect(within(dialog).getByRole("button", { name: "Mark the package received" })).toBeDisabled();
+    expect(within(dialog).getByText(/verify the shipment \(on time or late\) first, then mark it received/)).toBeInTheDocument();
+    // Open already, from the scan; it's after the deadline, so not counted on time.
+    expect(within(dialog).getByLabelText(/Count it as shipped on time/)).not.toBeChecked();
+    expect(within(dialog).getByText(/Late: it counts against the customer and the \$20\.00 deposit goes to review/)).toBeInTheDocument();
+    repo.verifyShipment.mockResolvedValue(answer({ ...LATE, status: "in_transit", reviewFlag: null, deposit: { ...LATE.deposit, status: "forfeiture_review" } }));
+    await user.click(within(dialog).getByRole("button", { name: "Verify the shipment" }));
+    await waitFor(() =>
+      expect(repo.verifyShipment).toHaveBeenCalledWith(TRADE_ID, { acceptedAt: "2026-10-27T21:00:00.000Z", onTime: false, refund: false, note: "" }),
+    );
+  });
+
+  it("can excuse a late scan: on time refunds the deposit", async () => {
+    const user = userEvent.setup();
+    const dialog = await openTrade(LATE);
+    await user.click(within(dialog).getByLabelText(/Count it as shipped on time/));
+    expect(within(dialog).getByText(/The \$20\.00 deposit is refunded now\./)).toBeInTheDocument();
+    repo.verifyShipment.mockResolvedValue(answer({ ...LATE, status: "in_transit", reviewFlag: null }));
+    await user.click(within(dialog).getByRole("button", { name: "Verify the shipment" }));
+    await waitFor(() => expect(repo.verifyShipment).toHaveBeenCalledWith(TRADE_ID, expect.objectContaining({ onTime: true, refund: true })));
+  });
+
+  it("releases an unshipped reservation early, counted against the customer unless unticked", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({ status: "awaiting_shipment", offered: APPROVED, shipBy: "2099-10-30T19:00:00Z" });
+    const dialog = await openTrade(trade);
+    await user.click(within(dialog).getByRole("button", { name: "Release the reservation…" }));
+    await user.type(within(dialog).getByLabelText("Why (the customer is emailed this)"), "Customer said they won't ship");
+    repo.expireNow.mockResolvedValue(answer({ ...trade, status: "expired" }));
+    await user.click(within(dialog).getByRole("button", { name: "Release our cards" }));
+    await waitFor(() => expect(repo.expireNow).toHaveBeenCalledWith(TRADE_ID, { reason: "Customer said they won't ship", countAgainst: true }));
+  });
+
+  it("decides on proof of shipping, with links to the files", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "tracking_submitted",
+      offered: APPROVED,
+      reviewFlag: "dispute",
+      disputes: [
+        {
+          id: "d1",
+          status: "open",
+          note: "Dropped it at the post office Tuesday",
+          files: [{ name: "receipt.jpg", size: 204800, type: "image/jpeg", url: "https://files.example/receipt.jpg?sig=1" }],
+          createdAt: "2026-10-26T12:00:00Z",
+          resolvedAt: null,
+          staffNote: null,
+          resolvedBy: null,
+        },
+      ],
+    });
+    const dialog = await openTrade(trade);
+    const proof = within(dialog).getByRole("heading", { name: "Proof of shipping (1)" }).closest("section")!;
+    expect(proof).toHaveTextContent("Dropped it at the post office Tuesday");
+    expect(within(proof).getByRole("link", { name: "receipt.jpg" })).toHaveAttribute("href", "https://files.example/receipt.jpg?sig=1");
+    expect(proof).toHaveTextContent("200 KB");
+    await user.type(within(proof).getByLabelText("Note (staff only)"), "Receipt checks out");
+    repo.resolveDispute.mockResolvedValue(answer({ ...trade, reviewFlag: null }));
+    await user.click(within(proof).getByRole("button", { name: "Accept the proof" }));
+    await waitFor(() => expect(repo.resolveDispute).toHaveBeenCalledWith(TRADE_ID, "d1", "accepted", "Receipt checks out"));
+  });
+
+  it("refunds a deposit under review, and only lets the owner keep one when keeping deposits is on", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "expired",
+      expiredStage: "shipping",
+      closedAt: "2026-10-28T19:00:00Z",
+      customerFault: "missed_deadline",
+      deposit: staffDeposit({ cents: 2000, status: "forfeiture_review", reason: "threshold", paidCents: 2000, paymentIntentId: "pi_9", feeCents: 88 }),
+      consents: [{ termsVersion: 1, termsText: "Refunded in full once the carrier accepts it.", depositCents: 2000, shipDays: 3, confirmBy: null, ip: "203.0.113.9", userAgent: "Safari", createdAt: "2026-10-24T12:00:00Z" }],
+    });
+    // Keeping deposits is off (the default): refund only.
+    let dialog = await openTrade(trade);
+    const deposit = () => within(screen.getByRole("dialog")).getByRole("heading", { name: "Deposit" }).closest("section")!;
+    expect(deposit()).toHaveTextContent("Under review");
+    expect(deposit()).toHaveTextContent("Stripe’s fee (yours to absorb; refunds are always in full)$0.88");
+    expect(within(deposit()).getByRole("button", { name: "Keep the deposit…" })).toBeDisabled();
+    expect(deposit()).toHaveTextContent("Keeping deposits is turned off in Settings, so this one can only be refunded.");
+    expect(within(deposit()).getByText(/What the customer agreed to/)).toBeInTheDocument();
+    expect(deposit()).toHaveTextContent("IP 203.0.113.9 · Safari");
+    await user.click(within(deposit()).getByRole("button", { name: "Refund $20.00 in full…" }));
+    repo.refundDeposit.mockResolvedValue({ ...answer({ ...trade, deposit: { ...trade.deposit, status: "refund_pending" } }), customerEmail: { status: "sent" } });
+    await user.click(within(deposit()).getByRole("button", { name: "Refund $20.00" }));
+    await waitFor(() => expect(repo.refundDeposit).toHaveBeenCalledWith(TRADE_ID, ""));
+    expect(await screen.findByText("Refunding $20.00. The customer was emailed.")).toBeInTheDocument();
+    cleanup();
+
+    // On, but not the owner.
+    dialog = await openTrade(trade, { owner: false, settings: { ...TRADE_SETTINGS, allowForfeiture: true } });
+    expect(within(dialog).getByRole("button", { name: "Keep the deposit…" })).toBeDisabled();
+    expect(within(dialog).getByText("Only the store owner can keep a deposit.")).toBeInTheDocument();
+    cleanup();
+
+    // On, and the owner: a reason the customer sees is required.
+    dialog = await openTrade(trade, { settings: { ...TRADE_SETTINGS, allowForfeiture: true } });
+    await user.click(within(dialog).getByRole("button", { name: "Keep the deposit…" }));
+    const keep = within(dialog).getByRole("button", { name: "Keep the $20.00 deposit" });
+    expect(keep).toBeDisabled();
+    await user.type(within(dialog).getByLabelText("Why you're keeping it (the customer is emailed this)"), "Never shipped");
+    repo.forfeitDeposit.mockResolvedValue(answer({ ...trade, deposit: { ...trade.deposit, status: "forfeited" } }));
+    await user.click(keep);
+    await waitFor(() => expect(repo.forfeitDeposit).toHaveBeenCalledWith(TRADE_ID, "Never shipped"));
+  });
+
+  it("retries a refund the bank refused", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "completed",
+      offered: APPROVED,
+      deposit: staffDeposit({ cents: 2000, status: "refund_failed", paidCents: 2000, refundFailure: "expired_or_canceled_card", refundAttempts: 1 }),
+    });
+    const dialog = await openTrade(trade);
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("The refund didn’t go through: expired_or_canceled_card.");
+    repo.retryRefund.mockResolvedValue(answer(trade));
+    await user.click(within(dialog).getByRole("button", { name: "Try the refund again" }));
+    await waitFor(() => expect(repo.retryRefund).toHaveBeenCalledWith(TRADE_ID));
+  });
+
+  it("changes the deposit while the customer hasn't paid it yet", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "awaiting_confirmation",
+      wantedTotalCents: 32000,
+      offered: APPROVED,
+      confirmBy: "2099-10-27T19:00:00Z",
+      deposit: staffDeposit({ cents: 2000, status: "payment_pending", reason: "threshold" }),
+    });
+    const dialog = await openTrade(trade);
+    await user.selectOptions(within(dialog).getByLabelText("Change the deposit"), "waived");
+    expect(within(dialog).getByText(/Would be none\./)).toBeInTheDocument();
+    repo.setDeposit.mockResolvedValue(answer({ ...trade, deposit: staffDeposit({ override: "waived" }) }));
+    await user.click(within(dialog).getByRole("button", { name: "Save the deposit" }));
+    await waitFor(() => expect(repo.setDeposit).toHaveBeenCalledWith(TRADE_ID, "waived"));
+  });
+
+  it("takes an approval back while it waits for the customer's confirmation", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({ status: "awaiting_confirmation", offered: APPROVED, confirmBy: "2099-10-27T19:00:00Z" });
+    const dialog = await openTrade(trade);
+    await user.click(within(dialog).getByRole("button", { name: "Ask for changes instead…" }));
+    await user.type(within(dialog).getByLabelText("What should they change?"), "Swap the Ring for the foil");
+    repo.requestRevision.mockResolvedValue(answer({ ...trade, status: "revision_requested" }));
+    await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+    await waitFor(() => expect(repo.requestRevision).toHaveBeenCalledWith(TRADE_ID, "Swap the Ring for the foil"));
+  });
+});
+
+describe("an expired reservation", () => {
+  const EXPIRED = staffTrade({
+    status: "expired",
+    expiredStage: "scan",
+    closedAt: "2026-10-28T19:00:00Z",
+    closeReason: "The carrier never scanned the package.",
+    customerFault: "missed_deadline",
+    offered: APPROVED,
+    canSendProof: true,
+    proofDueAt: "2099-11-11T19:00:00Z",
+    privileges: privileges({ shipDays: 4, tier: "tier1" }),
+    wanted: [wantedItem({ status: "released" })],
+  });
+
+  it("reinstates it with a fresh deadline, not counting the expiry", async () => {
+    const user = userEvent.setup();
+    const dialog = await openTrade(EXPIRED);
+    expect(within(dialog).getByText(/Tracking was added but the carrier never scanned it in time\./)).toBeInTheDocument();
+    expect(within(dialog).getByText(/The customer can send proof of shipping until/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Days to ship from now")).toHaveValue("4");
+    expect(within(dialog).getByText(/New deadline:/)).toBeInTheDocument();
+    repo.reinstate.mockResolvedValue(answer({ ...EXPIRED, status: "awaiting_shipment" }));
+    await user.click(within(dialog).getByRole("button", { name: "Reinstate" }));
+    await waitFor(() => expect(repo.reinstate).toHaveBeenCalledWith(TRADE_ID, { mode: "awaiting_shipment", shipDays: 4, clearFault: true }));
+  });
+
+  it("records a package that turned up anyway", async () => {
+    const user = userEvent.setup();
+    const dialog = await openTrade(EXPIRED);
+    repo.cardsArrived.mockResolvedValue(answer({ ...EXPIRED, returnStatus: "pending", receivedAt: "2026-10-29T12:00:00Z" }));
+    await user.click(within(dialog).getByRole("button", { name: "Their package arrived anyway" }));
+    await waitFor(() => expect(repo.cardsArrived).toHaveBeenCalledWith(TRADE_ID));
+    expect(await within(screen.getByRole("dialog")).findByRole("heading", { name: "Mail their cards back" })).toBeInTheDocument();
+  });
+});
+
+describe("the Deposits, Reserved and Customers tabs", () => {
+  it("adds up deposits by where the money is, and opens a trade from the list", async () => {
+    const user = userEvent.setup();
+    repo.deposits.mockResolvedValue({
+      totals: { heldCents: 4000, refundPendingCents: 2000, refundedCents: 10000, reviewCents: 2000, forfeitedCents: 0, failedCents: 0, feesCents: 412, awaitingPaymentCents: 0 },
+      trades: [
+        tradeSummary({ id: "t-r", tradeNumber: 1002, status: "expired", depositStatus: "forfeiture_review", depositCents: 2000, depositPaidCents: 2000 }),
+        tradeSummary({ id: "t-h", tradeNumber: 1003, status: "awaiting_shipment", depositStatus: "paid", depositCents: 2000, depositPaidCents: 2000 }),
+      ],
+      settings: TRADE_SETTINGS,
+      owner: true,
+    });
+    repo.get.mockResolvedValue({ trade: staffTrade({ id: "t-r", tradeNumber: 1001 }), settings: TRADE_SETTINGS, owner: true });
+    renderPage("tab=deposits");
+    expect(await screen.findByText("Waiting for your decision")).toBeInTheDocument();
+    expect(screen.getByText("Stripe fees on deposits").parentElement?.parentElement).toHaveTextContent("$4.12");
+    // Needs you first: only the one under review.
+    expect(screen.getByText("TR-1002")).toBeInTheDocument();
+    expect(screen.queryByText("TR-1003")).toBeNull();
+    await user.click(screen.getByRole("tab", { name: /^Held/ }));
+    expect(screen.getByText("TR-1003")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: /^Needs you/ }));
+    await user.click(screen.getByText("TR-1002"));
+    await waitFor(() => expect(repo.get).toHaveBeenCalledWith("t-r"));
+  });
+
+  it("lists our cards reserved for trades with each trade's deadline", async () => {
+    repo.reserved.mockResolvedValue({
+      lines: [
+        { itemId: "l1", tradeId: "t1", tradeNumber: 1001, status: "awaiting_shipment", customerName: "Ann Lee", customerEmail: "ann@example.com", shipBy: "2099-10-30T19:00:00Z", shippedAt: null, depositStatus: "paid", inventoryItemId: "i1", cardName: "The One Ring", setCode: "ltr", collectorNumber: "246", condition: "NM", finish: "nonfoil", quantity: 1, unitPriceCents: 7999, imageUrl: null },
+        { itemId: "l2", tradeId: "t2", tradeNumber: 1002, status: "in_transit", customerName: "Bo Diaz", customerEmail: null, shipBy: "2099-10-20T19:00:00Z", shippedAt: "2099-10-19T15:00:00Z", depositStatus: "refund_pending", inventoryItemId: "i2", cardName: "Arcane Signet", setCode: "cmr", collectorNumber: "297", condition: "LP", finish: "foil", quantity: 2, unitPriceCents: 450, imageUrl: null },
+      ],
+      settings: TRADE_SETTINGS,
+      owner: true,
+    });
+    renderPage("tab=reserved");
+    expect(await screen.findByText("The One Ring")).toBeInTheDocument();
+    expect(screen.getByText("3 copies · $88.99 · 2 trades")).toBeInTheDocument();
+    expect(screen.getByText("The One Ring").closest("tr")).toHaveTextContent("Ship by");
+    expect(screen.getByText("Arcane Signet").closest("tr")).toHaveTextContent("Shipped: reserved until settled");
+  });
+
+  it("shows each customer's record and lets the owner require a deposit or pause their trades", async () => {
+    const user = userEvent.setup();
+    const cy = {
+      userId: "u-cy",
+      name: "Cy Ho",
+      email: "cy@example.com",
+      lastTradeAt: "2026-10-20T12:00:00Z",
+      record: record({ completedTrades: 1, onTimeShipments: 1, missedDeadlines: 2, recentFaults: 2 }),
+      privileges: privileges({ reliabilityDeposit: true, overAbandonLimit: true }),
+    };
+    repo.customers.mockResolvedValue({ customers: [cy], settings: TRADE_SETTINGS, owner: true });
+    renderPage("tab=customers");
+    const row = (await screen.findByText("Cy Ho")).closest("tr")!;
+    expect(row).toHaveTextContent("New customer");
+    expect(row).toHaveTextContent("Deposit required");
+    expect(row).toHaveTextContent("33%");
+    await user.click(row);
+    const dialog = await screen.findByRole("dialog", { name: "Cy Ho" });
+    expect(dialog).toHaveTextContent("Over the abandonment limit: a deposit on every trade");
+    await user.click(within(dialog).getByLabelText("No new trades for now (trades already started carry on)"));
+    await user.type(within(dialog).getByLabelText("Note (staff only)"), "Two no-shows");
+    repo.setCustomerFlags.mockResolvedValue({ customers: [{ ...cy, record: { ...cy.record, blocked: true } }], userId: "u-cy", settings: TRADE_SETTINGS, owner: true });
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(repo.setCustomerFlags).toHaveBeenCalledWith("u-cy", { depositRequired: false, blocked: true, note: "Two no-shows" }));
   });
 });
 
@@ -476,6 +873,41 @@ describe("settings", () => {
     await user.click(screen.getByLabelText(/Take online trades/));
     await user.click(screen.getByRole("button", { name: "Save settings" }));
     expect(await screen.findByText("Add the address customers mail their cards to before turning trading on.")).toBeInTheDocument();
+    expect(repo.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("sets deposits, keeping them, the terms (a new version when the text changes) and days that don't count", async () => {
+    const user = userEvent.setup();
+    await openSettings();
+    expect(screen.getByText(/check the consumer-protection rules that apply to you and Stripe’s rules/)).toBeInTheDocument();
+    expect(screen.getByText(/Approved right now, a trade must be confirmed by/)).toBeInTheDocument();
+    const terms = screen.getByLabelText("Deposit and cancellation terms");
+    await user.type(terms, " Questions? Ask us.");
+    expect(screen.getByText(/Saving makes this version 2\./)).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/Allow keeping a deposit/));
+    await user.type(screen.getByLabelText("Days that don't count (besides Sundays)"), "2026-12-25{enter}2026-11-26");
+    const threshold = screen.getByLabelText("Required from, our cards ($)");
+    await user.clear(threshold);
+    await user.type(threshold, "250");
+    repo.saveSettings.mockResolvedValue({ settings: { ...TRADE_SETTINGS, depositTermsVersion: 2 }, owner: true });
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(repo.saveSettings).toHaveBeenCalled());
+    expect(repo.saveSettings.mock.calls[0][0]).toMatchObject({
+      allowForfeiture: true,
+      depositThresholdCents: 25000,
+      excludedDates: ["2026-11-26", "2026-12-25"],
+      depositTerms: `${TRADE_SETTINGS.depositTerms} Questions? Ask us.`,
+    });
+  });
+
+  it("refuses deposit bands that don't go up", async () => {
+    const user = userEvent.setup();
+    await openSettings();
+    const second = screen.getAllByLabelText("Then under ($)")[0];
+    await user.clear(second);
+    await user.type(second, "50");
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("Deposit bands have to go up: each one starts where the last ends.")).toBeInTheDocument();
     expect(repo.saveSettings).not.toHaveBeenCalled();
   });
 

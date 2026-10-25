@@ -18,17 +18,20 @@ import {
   formatDeadline,
   formatUsd,
   myTradePath,
+  offerChanges,
   tradeComparison,
   tradeCreditCents,
   tradeLabel,
   tradeShippingCents,
+  type TradeOfferCard,
 } from "../../src/store/lib/tradeCenter.js";
+import { trackingUrlFor } from "../../src/store/lib/tracking.js";
 
 // Trade Center emails and staff alerts. Like the other *Emails modules every
-// email has an idempotency key, so a retried request, or the Stripe webhook
-// arriving after the trade page already recorded a payment, never sends the
-// same email twice. All of it is best-effort for the caller: the change is
-// already saved when these run, and they never throw.
+// email has an idempotency key, so a retried request, a repeated webhook or
+// a worker run that overlaps another never sends the same email twice. All
+// of it is best-effort for the caller: the change is already saved when
+// these run, and they never throw.
 
 type Result = SendEmailResult | { status: "skipped"; reason: string };
 type Data = Omit<NoticeEmailData, "siteUrl" | "logoUrl" | "supportEmail" | "reasonLine">;
@@ -63,6 +66,14 @@ function clipRows<T>(rows: T[], more: (n: number) => T): T[] {
   return rows.length > MAX_EMAIL_CARDS ? [...rows.slice(0, MAX_EMAIL_CARDS), more(rows.length - MAX_EMAIL_CARDS)] : rows;
 }
 
+/** "48 hours" or "3 days", in qualifying time. */
+function hoursPhrase(hours: number): string {
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+function daysPhrase(days: number): string {
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
 /** Our cards, their cards and the bottom line, as the itemized box. */
 function comparisonBlock(
   b: TradeBundle,
@@ -89,6 +100,22 @@ function comparisonBlock(
   return c.remainingCents > 0
     ? { lines, totalLabel: "You'd pay by card", total: money(c.remainingCents), footnote }
     : { lines, totalLabel: "Trade credit left over", total: money(c.excessCents), footnote };
+}
+
+function mailToBlock(settings: TradeSettingsRow): NoticeEmailData["address"] | null {
+  const address = shipToAddress(settings);
+  if (!address) return null;
+  return {
+    title: "Mail your cards to",
+    lines: [address.name, address.line1, address.line2, `${address.city}, ${address.state} ${address.postalCode}`].filter(
+      (line): line is string => Boolean(line),
+    ),
+  };
+}
+
+/** The deposit in a sentence, as of now. */
+function paidDeposit(b: TradeBundle): number {
+  return b.trade.deposit_paid_cents ?? b.trade.deposit_cents;
 }
 
 async function sendCustomer(
@@ -126,22 +153,45 @@ async function sendCustomer(
   }
 }
 
+export interface ShortLine {
+  card_name: string;
+  wanted: number;
+  available: number;
+}
+
+export type DepositRefundReason = "store_canceled" | "declined" | "withdrawn" | "staff" | "conflict" | "unusable" | "dispute";
+
 export type TradeCustomerEmail =
   | { kind: "submitted" }
   | { kind: "revision_requested"; message: string }
+  | { kind: "cards_unavailable"; short: ShortLine[]; refund: boolean }
   | { kind: "approved" }
-  | { kind: "rejected"; reason: string | null }
-  | { kind: "canceled" }
-  | { kind: "expired"; fromStatus: string }
+  | { kind: "reserved" }
   | { kind: "tracking_added" }
+  | { kind: "no_scan_yet" }
+  | { kind: "shipment_verified" }
+  | { kind: "deposit_refund_started"; why: DepositRefundReason }
+  | { kind: "deposit_refunded" }
+  | { kind: "deposit_kept" }
+  | { kind: "delivered" }
   | { kind: "received" }
   | { kind: "final_offer" }
   | { kind: "awaiting_payment" }
   | { kind: "finalized" }
-  | { kind: "return_pending"; reason: string | null }
+  | { kind: "completed" }
+  | { kind: "offer_expired"; stage: string | null }
+  | { kind: "expired" }
+  | { kind: "canceled" }
+  | { kind: "withdrawn" }
+  | { kind: "declined" }
+  | { kind: "canceled_by_store"; reason: string | null }
+  | { kind: "rejected"; reason: string | null }
   | { kind: "returned" }
+  | { kind: "extended"; deadline: "list" | "confirmation" | "shipping" | "payment" }
+  | { kind: "reinstated" }
+  | { kind: "dispute_received" }
   | { kind: "message"; messageId: string; body: string }
-  | { kind: "reminder"; reminder: "list_due" | "revision_due" | "ship_by" | "payment_due" };
+  | { kind: "reminder"; reminder: "list_due" | "revision_due" | "confirm_by" | "ship_by" | "payment_due" };
 
 /** Emails the customer about their trade. Never throws. */
 export async function sendTradeCustomerEmail(
@@ -157,70 +207,130 @@ export async function sendTradeCustomerEmail(
   }
 }
 
+const NO_PENALTY =
+  "You'll never lose your deposit for declining an offer after your cards arrive, whatever the reason.";
+
+function offerCardsOf(b: TradeBundle): TradeOfferCard[] {
+  return b.offers.map((c) => ({
+    id: c.id,
+    scryfallId: c.scryfall_id,
+    cardName: c.card_name,
+    setCode: c.set_code,
+    setName: c.set_name,
+    collectorNumber: c.collector_number,
+    finish: c.finish,
+    imageUrl: c.image_url,
+    quantity: c.quantity,
+    reportedCondition: (c.reported_condition ?? "NM") as TradeOfferCard["reportedCondition"],
+    customerEstimateCents: c.customer_estimate_cents,
+    customerNote: c.customer_note,
+    referencePriceCents: c.reference_price_cents,
+    referenceCheckedAt: c.reference_checked_at,
+    conditionPercent: c.condition_percent,
+    estimatedUnitCents: c.estimated_unit_cents,
+    eligibility: c.eligibility as TradeOfferCard["eligibility"],
+    reviewStatus: c.review_status === "approved" || c.review_status === "rejected" ? c.review_status : "pending",
+    approvedQuantity: c.approved_quantity,
+    approvedUnitCents: c.approved_unit_cents,
+    reviewNote: c.review_note,
+    receivedQuantity: c.received_quantity,
+    verifiedCondition: (c.verified_condition ?? null) as TradeOfferCard["verifiedCondition"],
+    finalQuantity: c.final_quantity,
+    finalUnitCents: c.final_unit_cents,
+    flags: c.flags ?? [],
+    inspectionNote: c.inspection_note,
+    inspected: c.inspected_at !== null,
+    disposition: "pending",
+  }));
+}
+
 async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: TradeCustomerEmail): Promise<Result> {
   const t = b.trade;
   const label = tradeLabel(t.trade_number);
   const url = tradeUrl(t.id);
   const greet = hi(t.customer_name);
   const view = { href: url, label: "View your trade" };
+  const deposit = paidDeposit(b);
 
   switch (email.kind) {
     case "submitted": {
       const blocked = b.offers.filter((c) => c.eligibility === "needs_review").length;
-      return sendCustomer(b, settings, "trade_submitted", `trade-submitted-${t.id}-${t.submitted_at}`, `Trade ${label}: we got your list`, {
-        previewText: "We're reviewing your cards. Our cards stay on hold for you meanwhile.",
-        heading: "We got your trade list",
+      return sendCustomer(b, settings, "trade_submitted", `trade-submitted-${t.id}-${t.submitted_at}`, `Trade ${label}: we got your trade`, {
+        previewText: "We're reviewing your trade and will email you when we've decided.",
+        heading: "We got your trade",
         paragraphs: [
-          `${greet} thanks! We're reviewing the cards you listed for trade ${label}. Our cards stay on hold for you while we do.`,
-          "We'll email you when we've decided. Please don't mail anything yet: if your trade is approved, we'll send the address to ship to and how to pack your cards.",
+          `${greet} thanks! We're reviewing trade ${label} and will email you as soon as we've decided.`,
+          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, you'll confirm your trade to reserve them.",
+          "Please don't mail anything yet: we'll send the address and packing instructions once your cards are reserved.",
         ],
         quote: comparisonBlock(
           b,
           t.estimated_value_cents,
           "Your cards (estimated)",
-          `Estimates use each card's market reference price for its condition.${blocked > 0 ? ` ${blocked} card${blocked === 1 ? " has" : "s have"} no current price and will be valued by hand.` : ""} We confirm values when we review your list, and again when your cards arrive.`,
+          `Estimates use each card's market reference price for its condition.${blocked > 0 ? ` ${blocked} card${blocked === 1 ? " has" : "s have"} no current price and will be valued by hand.` : ""} We confirm values when we review your trade, and again when your cards arrive.`,
         ),
         button: view,
       });
     }
 
     case "revision_requested":
+      return sendCustomer(b, settings, "trade_revision_requested", `trade-revision-${t.id}-${t.list_due_at}`, `Trade ${label}: a change is needed`, {
+        previewText: "We need a change before we can approve your trade.",
+        heading: "We need a change to your trade",
+        paragraphs: [`${greet} we looked over trade ${label} and need a change before we can approve it:`],
+        note: email.message,
+        closing: [
+          t.list_due_at
+            ? `Update your trade and send it again by ${formatDeadline(t.list_due_at)}.`
+            : "Update your trade and send it again.",
+        ],
+        button: { href: url, label: "Update your trade" },
+      });
+
+    case "cards_unavailable": {
+      const lines = email.short.map((s) =>
+        s.available > 0 ? `${s.card_name}: ${s.available} left of the ${s.wanted} you picked` : `${s.card_name}: sold`,
+      );
       return sendCustomer(
         b,
         settings,
-        "trade_revision_requested",
-        `trade-revision-${t.id}-${t.hold_expires_at}`,
-        `Trade ${label}: a change is needed`,
+        "trade_cards_unavailable",
+        `trade-unavailable-${t.id}-${t.list_due_at ?? t.updated_at}`,
+        `Trade ${label}: some of our cards sold`,
         {
-          previewText: "We need a change before we can approve your trade.",
-          heading: "We need a change to your trade",
-          paragraphs: [`${greet} we looked over your list for trade ${label} and need a change before we can approve it:`],
-          note: email.message,
-          closing: [
-            t.hold_expires_at
-              ? `Update your list and send it again by ${formatDeadline(t.hold_expires_at)}. Our cards stay on hold until then.`
-              : "Update your list and send it again. Our cards stay on hold until then.",
+          previewText: "Update your selection and send the trade again.",
+          heading: "Some of our cards sold before your trade was confirmed",
+          paragraphs: [
+            `${greet} our cards stay on sale until a trade is confirmed, and some on trade ${label} sold in the meantime, so we can't reserve your trade as it was approved.`,
+            email.refund
+              ? `Nothing was reserved, and your ${money(deposit)} deposit is being refunded in full.`
+              : "Nothing was reserved or charged.",
+            "Update which of our cards you'd like and send the trade again. We'll review it right away.",
           ],
+          lists: [{ title: "No longer available", items: lines.slice(0, MAX_EMAIL_CARDS) }],
           button: { href: url, label: "Update your trade" },
         },
       );
+    }
 
     case "approved": {
       const approved = b.offers.filter((c) => c.review_status === "approved" && (c.approved_quantity ?? 0) > 0);
+      const rejected = b.offers.filter((c) => c.review_status === "rejected");
       const value = t.approved_value_cents ?? 0;
       const credit = tradeCreditCents(value, t.credit_rate_percent, t.processing_fee_cents);
-      const address = shipToAddress(settings);
-      if (!address) return { status: "skipped", reason: "no-ship-to-address" };
-      const rejected = b.offers.filter((c) => c.review_status === "rejected");
-      return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: ship your cards`, {
-        previewText: t.ship_by ? `Please mail your cards by ${formatDeadline(t.ship_by)}.` : "Here's where to mail your cards.",
-        heading: "Your trade is preliminarily approved",
+      const confirmBy = t.confirm_by ? formatDeadline(t.confirm_by) : null;
+      return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: confirm by ${confirmBy ?? "soon"}`, {
+        previewText: confirmBy ? `Confirm your trade by ${confirmBy} to reserve our cards.` : "Confirm your trade to reserve our cards.",
+        heading: "Your trade is approved",
         paragraphs: [
-          `${greet} good news: we've approved the cards below for trade ${label}, valued at ${money(value)} (${money(credit)} in trade credit).`,
-          t.ship_by
-            ? `Please mail them by ${formatDeadline(t.ship_by)}, then add the tracking number on your trade page. Our cards stay on hold for you until then.`
-            : "Please mail them soon, then add the tracking number on your trade page.",
-          "Final values are confirmed when your cards arrive and we inspect them.",
+          `${greet} good news: we've approved trade ${label}, with your cards valued at ${money(value)} (${money(credit)} in trade credit).`,
+          confirmBy
+            ? `You have until ${confirmBy} to confirm it: ${hoursPhrase(settings.confirmation_hours)}, not counting Sundays. If it isn't confirmed by then, the approval expires.`
+            : "Confirm it on your trade page to reserve our cards.",
+          t.deposit_cents > 0
+            ? `Confirming takes a refundable ${money(t.deposit_cents)} deposit. It's refunded in full once the carrier accepts your package by your shipping deadline, and you never lose it for declining an offer after your cards arrive.`
+            : "No deposit is needed for this trade.",
+          "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
         ],
         note: t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null,
         rows: clipRows(
@@ -230,12 +340,32 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           })),
           (n) => ({ label: `And ${n} more on your trade page`, value: "" }),
         ),
-        address: {
-          title: "Mail your cards to",
-          lines: [address.name, address.line1, address.line2, `${address.city}, ${address.state} ${address.postalCode}`].filter(
-            (line): line is string => Boolean(line),
-          ),
-        },
+        lists:
+          rejected.length > 0
+            ? [{ title: "Not part of this trade", items: rejected.slice(0, MAX_EMAIL_CARDS).map((c) => `${offerName(c)}${c.review_note ? `: ${c.review_note}` : ""}`) }]
+            : [],
+        button: { href: url, label: t.deposit_cents > 0 ? "Confirm and pay the deposit" : "Confirm your trade" },
+      });
+    }
+
+    case "reserved": {
+      const shipBy = t.ship_by ? formatDeadline(t.ship_by) : null;
+      const address = mailToBlock(settings);
+      const rejected = b.offers.filter((c) => c.review_status === "rejected");
+      return sendCustomer(b, settings, "trade_reserved", `trade-reserved-${t.id}-${t.reserved_at}`, `Trade ${label}: our cards are reserved. Ship by ${shipBy ?? "your deadline"}`, {
+        previewText: shipBy ? `Ship your cards by ${shipBy}. Here's where and how.` : "Here's where and how to ship your cards.",
+        heading: "Our cards are reserved for you",
+        paragraphs: [
+          `${greet} trade ${label} is confirmed${t.deposit_status === "paid" ? ` and your ${money(deposit)} deposit is paid` : ""}. Our cards are reserved for you and off the shelf.`,
+          shipBy
+            ? `Ship your cards by ${shipBy}: ${daysPhrase(t.ship_days ?? settings.ship_days_new)}, not counting Sundays. Your shipment counts once the carrier scans your package, so drop it off with time to spare; a label on its own doesn't count.`
+            : "Ship your cards soon. Your shipment counts once the carrier scans your package.",
+          "Then add the tracking number on your trade page.",
+          ...(t.deposit_status === "paid"
+            ? [`Your deposit is refunded in full as soon as the carrier accepts your package in time. ${NO_PENALTY}`]
+            : []),
+        ],
+        address,
         lists: [
           {
             title: "Packing your cards",
@@ -253,95 +383,141 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       });
     }
 
-    case "rejected":
-      return sendCustomer(b, settings, "trade_rejected", `trade-rejected-${t.id}-${t.closed_at ?? t.updated_at}`, `Trade ${label} wasn't accepted`, {
-        previewText: "We couldn't accept this trade. Our cards were released.",
-        heading: "We couldn't accept this trade",
-        paragraphs: [`${greet} we're sorry, but we can't accept trade ${label}.`],
-        note: email.reason,
-        closing: ["We've released the hold on our cards. You're welcome to start a new trade anytime."],
-        button: view,
-      });
-
-    case "canceled":
-      return sendCustomer(b, settings, "trade_canceled", `trade-canceled-${t.id}`, `Trade ${label} is canceled`, {
-        previewText: "Your trade is canceled and our cards were released.",
-        heading: "Your trade is canceled",
-        paragraphs: [`${greet} as you asked, we've canceled trade ${label} and released the hold on our cards.`],
-        button: view,
-      });
-
-    case "expired": {
-      const why =
-        email.fromStatus === "awaiting_shipment"
-          ? "we didn't get a tracking number by the shipping deadline"
-          : email.fromStatus === "revision_requested"
-            ? "the changes weren't sent in time"
-            : "your card list wasn't sent in time";
-      return sendCustomer(b, settings, "trade_expired", `trade-expired-${t.id}`, `Trade ${label} expired`, {
-        previewText: "The hold on our cards was released.",
-        heading: "Your trade expired",
+    case "tracking_added":
+      return sendCustomer(b, settings, "trade_tracking_added", `trade-tracking-${t.id}-${t.inbound_tracking}`, `Trade ${label}: tracking number received`, {
+        previewText: "Your shipment counts once the carrier scans your package.",
+        heading: "Thanks, we'll watch for your package",
         paragraphs: [
-          `${greet} trade ${label} expired because ${why}, so we've released the hold on our cards.`,
-          "If you'd still like to trade, start a new one: our cards may still be available.",
+          `${greet} we've got the tracking number for trade ${label}.`,
+          t.ship_by
+            ? `Your shipment counts once the carrier scans the package, which has to happen by ${formatDeadline(t.ship_by)}. We'll email you when it does.`
+            : "Your shipment counts once the carrier scans the package. We'll email you when it does.",
+        ],
+        rows: [
+          ...(t.inbound_carrier ? [{ label: "Carrier", value: t.inbound_carrier }] : []),
+          { label: "Tracking number", value: t.inbound_tracking ?? "" },
         ],
         button: view,
       });
+
+    case "no_scan_yet":
+      return sendCustomer(b, settings, "trade_no_scan_yet", `trade-no-scan-${t.id}-${t.ship_by}`, `Trade ${label}: no carrier scan yet`, {
+        previewText: "If you shipped in time, send us your receipt.",
+        heading: "We haven't seen a carrier scan yet",
+        paragraphs: [
+          `${greet} your shipping deadline for trade ${label} was ${t.ship_by ? formatDeadline(t.ship_by) : "today"}, and the carrier hasn't scanned your package yet.`,
+          "Carriers sometimes scan a package late. If you dropped it off in time, send us your receipt or a photo of the drop-off on your trade page and we'll look at it before anything happens to your reservation or deposit.",
+        ],
+        button: { href: url, label: "Send proof of shipping" },
+      });
+
+    case "shipment_verified": {
+      const refunding = t.deposit_status === "refund_pending" || t.deposit_status === "refunded";
+      return sendCustomer(b, settings, "trade_shipment_verified", `trade-verified-${t.id}-${t.inbound_accepted_at}`, `Trade ${label}: your package is on its way`, {
+        previewText: refunding ? `Shipment verified. Your ${money(deposit)} deposit refund has started.` : "Shipment verified. We'll email you when it arrives.",
+        heading: "Shipment verified",
+        paragraphs: [
+          `${greet} the carrier accepted your package for trade ${label}${t.inbound_accepted_at ? ` on ${formatDeadline(t.inbound_accepted_at)}` : ""}, in time. Our cards stay reserved for you while it travels, however long the carrier takes.`,
+          ...(refunding
+            ? [`We've started refunding your ${money(deposit)} deposit in full. We'll email you again once the card network confirms it; your bank may take 5 to 10 business days to show it.`]
+            : []),
+          "We'll email you when your cards arrive and again once we've inspected them.",
+        ],
+        rows: t.inbound_tracking
+          ? [
+              ...(t.inbound_carrier ? [{ label: "Carrier", value: t.inbound_carrier }] : []),
+              { label: "Tracking number", value: t.inbound_tracking },
+            ]
+          : [],
+        button: trackingUrlFor(t.inbound_carrier, t.inbound_tracking)
+          ? { href: trackingUrlFor(t.inbound_carrier, t.inbound_tracking) as string, label: "Track your package" }
+          : view,
+      });
     }
 
-    case "tracking_added":
+    case "deposit_refund_started": {
+      const why: Record<DepositRefundReason, string> = {
+        store_canceled: "we canceled the trade",
+        declined: "you declined the final offer",
+        withdrawn: "you canceled after shipping",
+        staff: "we reviewed it",
+        conflict: "some of our cards sold before your deposit went through",
+        unusable: "the trade could no longer use it",
+        dispute: "we accepted your proof of shipping",
+      };
       return sendCustomer(
         b,
         settings,
-        "trade_tracking_added",
-        `trade-tracking-${t.id}-${t.inbound_tracking}`,
-        `Trade ${label}: tracking number received`,
+        "trade_deposit_refund_started",
+        `trade-dep-refund-start-${t.id}-${t.deposit_refund_attempts}-${t.deposit_payment_intent ?? ""}`,
+        `Trade ${label}: your ${money(deposit)} deposit is being refunded`,
         {
-          previewText: "We'll email you when your package arrives.",
-          heading: "Thanks, we'll watch for your package",
-          paragraphs: [`${greet} we've got the tracking number for trade ${label}. We'll email you when your package arrives.`],
-          rows: [
-            ...(t.inbound_carrier ? [{ label: "Carrier", value: t.inbound_carrier }] : []),
-            { label: "Tracking number", value: t.inbound_tracking ?? "" },
+          previewText: "We've started a full refund of your deposit.",
+          heading: "Your deposit refund has started",
+          paragraphs: [
+            `${greet} we've started a full refund of your ${money(deposit)} deposit for trade ${label}, because ${why[email.why]}.`,
+            "We'll email you again once the card network confirms it. Your bank may take 5 to 10 business days to show it.",
           ],
           button: view,
         },
       );
+    }
+
+    case "deposit_refunded":
+      return sendCustomer(b, settings, "trade_deposit_refunded", `trade-dep-refunded-${t.id}-${t.deposit_refund_id ?? t.deposit_refunded_at}`, `Trade ${label}: deposit refunded`, {
+        previewText: `Your ${money(deposit)} deposit was refunded in full.`,
+        heading: "Your deposit was refunded",
+        paragraphs: [
+          `${greet} the refund of your ${money(deposit)} deposit for trade ${label} has gone through, in full, to the card you paid with.`,
+          "Depending on your bank it can take 5 to 10 business days to show on your statement.",
+        ],
+        button: view,
+      });
+
+    case "deposit_kept":
+      return sendCustomer(b, settings, "trade_deposit_kept", `trade-dep-kept-${t.id}`, `Trade ${label}: about your deposit`, {
+        previewText: "We reviewed your deposit under the cancellation terms.",
+        heading: "About your deposit",
+        paragraphs: [
+          `${greet} we reviewed trade ${label}. Because ${t.customer_fault === "canceled_while_reserved" ? "it was canceled after our cards were reserved and before your cards shipped" : "your cards weren't shipped by the deadline"}, we've kept your ${money(deposit)} deposit under the cancellation terms you agreed to when you confirmed the trade.`,
+          "If you think we got this wrong, reply to this email and we'll take another look.",
+        ],
+        note: t.deposit_decision_note,
+        button: view,
+      });
+
+    case "delivered":
+      return sendCustomer(b, settings, "trade_delivered", `trade-delivered-${t.id}`, `Trade ${label}: your cards arrived`, {
+        previewText: "We'll inspect your cards next.",
+        heading: "Your cards arrived",
+        paragraphs: [`${greet} the carrier delivered your package for trade ${label}. We'll inspect your cards next and email you our final offer.`],
+        button: view,
+      });
 
     case "received":
       return sendCustomer(b, settings, "trade_received", `trade-received-${t.id}`, `Trade ${label}: your cards arrived`, {
         previewText: "We'll inspect your cards next.",
         heading: "Your cards arrived",
-        paragraphs: [`${greet} your package for trade ${label} arrived. We'll inspect your cards next and email you our final offer.`],
+        paragraphs: [
+          `${greet} your package for trade ${label} arrived. We'll inspect your cards next and email you our final offer.`,
+          ...(t.deposit_status === "refund_pending" ? [`Your ${money(deposit)} deposit is being refunded in full.`] : []),
+        ],
         button: view,
       });
 
     case "final_offer": {
       const value = t.final_value_cents ?? 0;
-      const changes = b.offers.flatMap((c) => {
-        const approvedQty = c.review_status === "approved" ? (c.approved_quantity ?? 0) : 0;
-        const finalQty = c.inspected_at ? (c.final_quantity ?? 0) : 0;
-        const sameQty = finalQty === approvedQty;
-        const sameUnit = finalQty === 0 || c.final_unit_cents === c.approved_unit_cents;
-        if (approvedQty === 0 && finalQty === 0) return [];
-        if (sameQty && sameUnit) return [];
-        const what =
-          finalQty === 0
-            ? "not accepted"
-            : !sameQty
-              ? `${finalQty} of ${approvedQty} accepted`
-              : `now ${money(c.final_unit_cents ?? 0)} each (was ${money(c.approved_unit_cents ?? 0)})`;
-        return [`${offerName(c)}: ${what}.${c.inspection_note ? ` ${c.inspection_note}` : ""}`];
-      });
+      const approved = t.approved_value_cents ?? 0;
+      const changes = offerChanges(offerCardsOf(b));
       const cash = t.excess_handling === "cash" && t.cash_payout_cents ? t.cash_payout_cents : null;
-      return sendCustomer(b, settings, "trade_final_offer", `trade-final-offer-${t.id}-${t.final_offer_at}`, `Trade ${label}: your final offer is ready`, {
-        previewText: "Review it, then accept, ask for an adjustment, or decline.",
-        heading: "Your final offer is ready",
+      return sendCustomer(b, settings, "trade_final_offer", `trade-final-offer-${t.id}-${t.final_offer_at}`, `Trade ${label}: inspection done, your final offer is ready`, {
+        previewText: changes.length > 0 ? "A few things changed. Review your final offer." : "Everything matched. Review your final offer.",
+        heading: changes.length > 0 ? "Your revised offer is ready" : "Your final offer is ready",
         paragraphs: [
-          `${greet} we've inspected your cards for trade ${label}. Here's our final offer.`,
+          `${greet} we've finished inspecting your cards for trade ${label}.`,
           changes.length > 0
-            ? "A few things changed from what we approved. They're listed below with the reason."
-            : "Everything matched what we approved.",
+            ? `A few things changed from the ${money(approved)} we approved before you shipped; each change and its reason is listed below. Your cards are now valued at ${money(value)}.`
+            : `Everything matched what we approved: your cards are valued at ${money(value)}.`,
         ],
         quote: comparisonBlock(
           b,
@@ -350,10 +526,22 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           cash ? `Instead of store credit for what's left over, we'll pay you ${money(cash)} in cash.` : null,
           tradeShippingCents(t.wanted_total_cents),
         ),
-        lists: changes.length > 0 ? [{ title: "What changed", items: changes.slice(0, MAX_EMAIL_CARDS) }] : [],
+        lists:
+          changes.length > 0
+            ? [
+                {
+                  title: "What changed",
+                  items: changes.slice(0, MAX_EMAIL_CARDS).map((c) => {
+                    const diff = c.differenceCents === 0 ? "" : ` (${c.differenceCents > 0 ? "+" : "−"}${money(Math.abs(c.differenceCents))})`;
+                    const what = c.finalQuantity === 0 ? "not accepted" : c.finalQuantity !== c.approvedQuantity ? `${c.finalQuantity} of ${c.approvedQuantity} accepted, ${money(c.finalUnitCents)} each` : `${money(c.finalUnitCents)} each (was ${money(c.approvedUnitCents)})`;
+                    return `${c.cardName}: ${what}${diff}.${c.reasons.length ? ` ${c.reasons.join(". ")}.` : ""}`;
+                  }),
+                },
+              ]
+            : [],
         button: { href: url, label: "Review your final offer" },
         closing: [
-          "Accept it, ask for an adjustment, or decline it on your trade page. Nothing is final until you accept, and there's no deadline to answer.",
+          `Accept it, ask for an adjustment, or decline it on your trade page. Nothing is final until you accept. ${NO_PENALTY}`,
           settings.return_policy,
         ],
       });
@@ -377,9 +565,9 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       const cash = t.excess_handling === "cash" ? (t.cash_payout_cents ?? 0) : 0;
       const orderNumber = t.order_id ? `GG-${t.order_id.slice(0, 8).toUpperCase()}` : null;
       const spent = (t.wanted_total_cents + (t.shipping_cents ?? 0)) - due;
-      return sendCustomer(b, settings, "trade_finalized", `trade-finalized-${t.id}`, `Trade ${label} is complete`, {
+      return sendCustomer(b, settings, "trade_finalized", `trade-finalized-${t.id}`, `Trade ${label}: final trade approved`, {
         previewText: "Your new cards are being packed.",
-        heading: "Your trade is complete",
+        heading: "Your trade is final",
         paragraphs: [`${greet} thanks for trading with us! Here's how trade ${label} settled.`],
         rows: [
           { label: "Trade credit issued", value: money(issued) },
@@ -401,13 +589,114 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       });
     }
 
-    case "return_pending":
-      return sendCustomer(b, settings, "trade_return_pending", `trade-return-pending-${t.id}`, `Trade ${label}: we're returning your cards`, {
-        previewText: "We'll email the tracking number when they're on the way.",
-        heading: "We're returning your cards",
-        paragraphs: [`${greet} we'll mail your cards from trade ${label} back to you. We've released the hold on our cards.`],
+    case "completed":
+      return sendCustomer(b, settings, "trade_completed", `trade-completed-${t.id}`, `Trade ${label} is complete`, {
+        previewText: "Your new cards are on their way.",
+        heading: "Trade complete",
+        paragraphs: [
+          `${greet} your new cards from trade ${label} have shipped, so the trade is complete. Thanks for trading with Geega Games!`,
+          "Your order's tracking number is in your account. We'd love to trade with you again.",
+        ],
+        button: t.order_id ? { href: `${siteUrl()}/account/orders/${t.order_id}`, label: "Track your order" } : view,
+      });
+
+    case "offer_expired": {
+      const why =
+        email.stage === "confirmation" || email.stage === "deposit"
+          ? "the approved trade wasn't confirmed in time"
+          : email.stage === "revision"
+            ? "the changes weren't sent in time"
+            : "the trade wasn't sent in time";
+      return sendCustomer(b, settings, "trade_offer_expired", `trade-offer-expired-${t.id}`, `Trade ${label} has closed`, {
+        previewText: "Nothing was reserved or charged.",
+        heading: "Your trade has closed",
+        paragraphs: [
+          `${greet} trade ${label} closed because ${why}. Nothing was reserved or charged.`,
+          "If you'd still like to trade, start a new one: our cards may still be available.",
+        ],
+        button: view,
+      });
+    }
+
+    case "expired": {
+      const due = Date.parse(t.closed_at ?? new Date().toISOString()) + settings.dispute_window_days * 86_400_000;
+      return sendCustomer(b, settings, "trade_reservation_expired", `trade-expired-${t.id}-${t.closed_at}`, `Trade ${label}: your reservation expired`, {
+        previewText: "If you shipped in time, send us proof.",
+        heading: "Your reservation expired",
+        paragraphs: [
+          t.expired_stage === "scan"
+            ? `${greet} the carrier never scanned a package for trade ${label}, so your reservation expired at the end of the grace period after your shipping deadline${t.ship_by ? ` (${formatDeadline(t.ship_by)})` : ""}, and our cards are back on sale.`
+            : `${greet} we didn't get a shipment for trade ${label} by your shipping deadline${t.ship_by ? `, ${formatDeadline(t.ship_by)}` : ""}, so your reservation expired and our cards are back on sale.`,
+          t.deposit_status === "forfeiture_review"
+            ? `Your ${money(deposit)} deposit hasn't been kept: a person reviews every case first, under the terms you agreed to.`
+            : "No deposit was involved.",
+          `Did you ship in time? Send your receipt or proof of drop-off on your trade page by ${formatDeadline(new Date(due).toISOString())}, or reply to this email. If your package is on its way, we'll either reinstate the trade or mail your cards back.`,
+        ],
+        button: { href: url, label: "Send proof of shipping" },
+      });
+    }
+
+    case "canceled":
+      return sendCustomer(b, settings, "trade_canceled", `trade-canceled-${t.id}`, `Trade ${label} is canceled`, {
+        previewText: "Your trade is canceled.",
+        heading: "Your trade is canceled",
+        paragraphs: [
+          `${greet} as you asked, we've canceled trade ${label}.`,
+          t.reserved_at ? "We've released the reservation on our cards." : "Nothing of ours was reserved.",
+          ...(t.deposit_status === "forfeiture_review"
+            ? [`Because the trade was canceled after our cards were reserved, your ${money(deposit)} deposit may be kept under the cancellation terms. A person reviews it first, and we'll email you either way.`]
+            : []),
+        ],
+        button: view,
+      });
+
+    case "withdrawn":
+      return sendCustomer(b, settings, "trade_withdrawn", `trade-withdrawn-${t.id}`, `Trade ${label} is canceled: no penalty`, {
+        previewText: "We'll mail your cards back.",
+        heading: "Your trade is canceled, with no penalty",
+        paragraphs: [
+          `${greet} as you asked, we've canceled trade ${label}. You shipped in time, so there's no penalty.`,
+          ...(t.deposit_cents > 0 || (t.deposit_paid_cents ?? 0) > 0 ? [`Your ${money(deposit)} deposit is refunded in full.`] : []),
+          "We'll mail your cards back and email you the tracking number.",
+        ],
+        closing: [settings.return_policy],
+        button: view,
+      });
+
+    case "declined":
+      return sendCustomer(b, settings, "trade_declined", `trade-declined-${t.id}`, `Trade ${label}: declined, no penalty`, {
+        previewText: "We'll mail your cards back.",
+        heading: "Declined after inspection: no penalty",
+        paragraphs: [
+          `${greet} we've recorded that you declined the final offer for trade ${label}. That's completely fine, and there's no penalty.`,
+          ...((t.deposit_paid_cents ?? 0) > 0 ? [`Your ${money(deposit)} deposit is refunded in full.`] : []),
+          "We'll mail your cards back and email you the tracking number.",
+        ],
+        closing: [settings.return_policy],
+        button: view,
+      });
+
+    case "canceled_by_store":
+      return sendCustomer(b, settings, "trade_canceled_by_store", `trade-store-canceled-${t.id}`, `Trade ${label} was canceled by Geega Games`, {
+        previewText: "Any deposit is refunded in full.",
+        heading: "We canceled your trade",
+        paragraphs: [`${greet} we're sorry, but we had to cancel trade ${label}.`],
         note: email.reason,
-        closing: [settings.return_policy, "We'll email the tracking number when they're on the way."],
+        closing: [
+          ...((t.deposit_paid_cents ?? 0) > 0 ? [`Your ${money(deposit)} deposit is refunded in full.`] : []),
+          ...(t.return_status === "pending" ? ["We'll mail your cards back and email you the tracking number."] : []),
+          "This doesn't count against you in any way.",
+        ],
+        button: view,
+      });
+
+    case "rejected":
+      return sendCustomer(b, settings, "trade_rejected", `trade-rejected-${t.id}-${t.closed_at ?? t.updated_at}`, `Trade ${label} wasn't accepted`, {
+        previewText: "We couldn't accept this trade.",
+        heading: "We couldn't accept this trade",
+        paragraphs: [`${greet} we're sorry, but we can't accept trade ${label}.`],
+        note: email.reason,
+        closing: ["Nothing was reserved or charged. You're welcome to start a new trade anytime."],
         button: view,
       });
 
@@ -429,6 +718,43 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         button: view,
       });
 
+    case "extended": {
+      const at =
+        email.deadline === "confirmation" ? t.confirm_by : email.deadline === "shipping" ? t.ship_by : email.deadline === "payment" ? t.payment_due_at : t.list_due_at;
+      const what =
+        email.deadline === "confirmation" ? "confirm your trade" : email.deadline === "shipping" ? "ship your cards" : email.deadline === "payment" ? "pay" : "send your trade";
+      return sendCustomer(b, settings, "trade_extended", `trade-extended-${t.id}-${email.deadline}-${at}`, `Trade ${label}: more time`, {
+        previewText: at ? `You now have until ${formatDeadline(at)}.` : "We gave you more time.",
+        heading: "We gave you more time",
+        paragraphs: [`${greet} you now have until ${at ? formatDeadline(at) : "later"} to ${what} for trade ${label}.`],
+        button: view,
+      });
+    }
+
+    case "reinstated":
+      return sendCustomer(b, settings, "trade_reinstated", `trade-reinstated-${t.id}-${t.updated_at}`, `Trade ${label} is back on`, {
+        previewText: "We reinstated your reservation.",
+        heading: "Your reservation is reinstated",
+        paragraphs: [
+          `${greet} we've reinstated trade ${label}: our cards are reserved for you again.`,
+          t.status === "awaiting_shipment" && t.ship_by
+            ? `Your new shipping deadline is ${formatDeadline(t.ship_by)}.`
+            : "Your shipment is verified, so you're all set; we'll email you when your cards arrive.",
+          ...(t.deposit_status === "refund_pending" ? [`Your ${money(deposit)} deposit is being refunded in full.`] : []),
+        ],
+        button: view,
+      });
+
+    case "dispute_received":
+      return sendCustomer(b, settings, "trade_dispute_received", `trade-dispute-${t.id}-${b.disputes.at(-1)?.id ?? ""}`, `Trade ${label}: we got your proof of shipping`, {
+        previewText: "A person will look at it.",
+        heading: "We got your proof of shipping",
+        paragraphs: [
+          `${greet} thanks. A person will look at it shortly. While we do, your reservation won't expire and your deposit won't be touched.`,
+        ],
+        button: view,
+      });
+
     case "message":
       return sendCustomer(b, settings, "trade_message", `trade-message-${email.messageId}`, `Trade ${label}: a message from Geega Games`, {
         previewText: email.body.slice(0, 120),
@@ -441,27 +767,38 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
     case "reminder": {
       const r = email.reminder;
       if (r === "list_due" || r === "revision_due") {
-        if (!t.hold_expires_at) return { status: "skipped", reason: "no-deadline" };
-        return sendCustomer(b, settings, `trade_reminder_${r}`, `trade-reminder-${r}-${t.id}-${t.hold_expires_at}`, `Trade ${label}: the hold on our cards ends soon`, {
-          previewText: `Send your ${r === "list_due" ? "list" : "changes"} by ${formatDeadline(t.hold_expires_at)}.`,
-          heading: "The hold on our cards ends soon",
+        if (!t.list_due_at) return { status: "skipped", reason: "no-deadline" };
+        return sendCustomer(b, settings, `trade_reminder_${r}`, `trade-reminder-${r}-${t.id}-${t.list_due_at}`, `Trade ${label}: send it by ${formatDeadline(t.list_due_at)}`, {
+          previewText: `Send your ${r === "list_due" ? "trade" : "changes"} by ${formatDeadline(t.list_due_at)}.`,
+          heading: r === "list_due" ? "Your trade isn't sent yet" : "Your changes are due soon",
           paragraphs: [
-            `${greet} the hold on our cards for trade ${label} ends ${formatDeadline(t.hold_expires_at)}.`,
             r === "list_due"
-              ? "Add the cards you're trading in and send your list before then, or the hold is released."
-              : "Make the change we asked for and send your list again before then, or the hold is released.",
+              ? `${greet} trade ${label} is still a draft. Send it for review by ${formatDeadline(t.list_due_at)} or it closes.`
+              : `${greet} make the change we asked for on trade ${label} and send it again by ${formatDeadline(t.list_due_at)}, or it closes.`,
           ],
           button: { href: url, label: "Finish your trade" },
         });
       }
+      if (r === "confirm_by") {
+        if (!t.confirm_by) return { status: "skipped", reason: "no-deadline" };
+        return sendCustomer(b, settings, "trade_reminder_confirm_by", `trade-reminder-confirm-${t.id}-${t.confirm_by}`, `Trade ${label}: confirm by ${formatDeadline(t.confirm_by)}`, {
+          previewText: "Your approval expires if it isn't confirmed.",
+          heading: "Confirm your trade soon",
+          paragraphs: [
+            `${greet} trade ${label} is approved and waiting for you. Confirm it by ${formatDeadline(t.confirm_by)} to reserve our cards, or the approval expires.`,
+            t.deposit_cents > 0 ? `Confirming takes a refundable ${money(t.deposit_cents)} deposit.` : "No deposit is needed.",
+          ],
+          button: { href: url, label: "Confirm your trade" },
+        });
+      }
       if (r === "ship_by") {
         if (!t.ship_by) return { status: "skipped", reason: "no-deadline" };
-        return sendCustomer(b, settings, "trade_reminder_ship_by", `trade-reminder-ship-${t.id}-${t.ship_by}`, `Trade ${label}: please ship by ${formatDeadline(t.ship_by)}`, {
-          previewText: "Add your tracking number once your cards are in the mail.",
-          heading: "Time to mail your cards",
+        return sendCustomer(b, settings, "trade_reminder_ship_by", `trade-reminder-ship-${t.id}-${t.ship_by}`, `Trade ${label}: ship by ${formatDeadline(t.ship_by)}`, {
+          previewText: "The carrier has to scan your package by then.",
+          heading: "Time to ship your cards",
           paragraphs: [
-            `${greet} please mail your cards for trade ${label} by ${formatDeadline(t.ship_by)}.`,
-            "Already sent them? Add the tracking number on your trade page so we know they're coming.",
+            `${greet} please ship your cards for trade ${label} so the carrier scans the package by ${formatDeadline(t.ship_by)}. A label on its own doesn't count.`,
+            "Already shipped? Add the tracking number on your trade page.",
           ],
           button: { href: url, label: "Add your tracking number" },
         });
@@ -472,7 +809,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         heading: "Your payment is due soon",
         paragraphs: [
           `${greet} the remaining ${money(t.amount_due_cents)} for trade ${label} is due ${formatDeadline(t.payment_due_at)}.`,
-          "Pay by card on your trade page. Changed your mind? You can decline there instead and we'll return your cards.",
+          "Pay by card on your trade page. Changed your mind? You can decline there instead, with no penalty, and we'll return your cards.",
         ],
         button: { href: url, label: `Pay ${money(t.amount_due_cents)}` },
       });
@@ -487,15 +824,28 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
 export type TradeStaffEvent =
   | { kind: "submitted" }
   | { kind: "resubmitted" }
+  | { kind: "reserved" }
   | { kind: "tracking" }
+  | { kind: "late_scan" }
+  | { kind: "early_scan" }
+  | { kind: "tracking_check" }
+  | { kind: "dispute" }
+  | { kind: "delivered" }
   | { kind: "adjustment"; message: string }
   | { kind: "accepted" }
   | { kind: "finalized" }
   | { kind: "declined"; reason: string | null }
+  | { kind: "withdrawn"; reason: string | null }
   | { kind: "canceled"; reason: string | null }
   | { kind: "message"; messageId: string; body: string }
   | { kind: "transit_overdue" }
-  | { kind: "payment_overdue" };
+  | { kind: "stalled" }
+  | { kind: "payment_overdue" }
+  | { kind: "refund_failed" }
+  | { kind: "payment_refunded"; why: string; paymentIntentId: string }
+  | { kind: "forfeiture_review"; why: "canceled" | "expired" | "late" }
+  | { kind: "cards_unavailable" }
+  | { kind: "arrived_after_expiry" };
 
 /** Push and email staff about something on a trade. Never throws. */
 export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRow, event: TradeStaffEvent): Promise<void> {
@@ -506,6 +856,7 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
     const who = t.customer_name || t.customer_email || "A customer";
     const url = `${siteUrl()}${adminTradePath(t.id)}`;
     const cards = b.offers.reduce((n, c) => n + c.quantity, 0);
+    const deposit = paidDeposit(b);
     let key: string;
     let title: string;
     let body: string;
@@ -515,6 +866,7 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
       { label: "Customer", value: `${who}${t.customer_email ? ` <${t.customer_email}>` : ""}` },
       { label: "Our cards", value: money(t.wanted_total_cents) },
     ];
+    const tracking = () => rows.push({ label: "Tracking", value: `${t.inbound_carrier ?? ""} ${t.inbound_tracking ?? ""}`.trim() || "None" });
     let note: string | null = null;
     switch (event.kind) {
       case "submitted":
@@ -528,12 +880,59 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
           ...(t.customer_note ? [{ label: "Their note", value: t.customer_note }] : []),
         );
         break;
+      case "reserved":
+        key = `trade:reserved:${t.id}:${t.reserved_at}`;
+        title = `Trade confirmed · ${label}`;
+        body = `${who} · cards reserved${t.deposit_status === "paid" ? ` · ${money(deposit)} deposit paid` : ""} · ship by ${t.ship_by ? formatDeadline(t.ship_by) : "?"}`;
+        heading = "A customer confirmed their trade: our cards are reserved";
+        rows.push(
+          { label: "Deposit", value: t.deposit_status === "paid" ? `${money(deposit)} paid` : "None" },
+          { label: "Ship by", value: t.ship_by ? formatDeadline(t.ship_by) : "" },
+        );
+        break;
       case "tracking":
         key = `trade:tracking:${t.id}:${t.inbound_tracking}`;
-        title = `Trade shipped · ${label}`;
+        title = `Tracking added · ${label}`;
         body = `${who} · ${t.inbound_carrier ?? "Carrier"} ${t.inbound_tracking ?? ""}`;
-        heading = "A customer mailed their trade cards";
-        rows.push({ label: "Tracking", value: `${t.inbound_carrier ?? ""} ${t.inbound_tracking ?? ""}`.trim() });
+        heading = "A customer added a tracking number (not verified until the carrier scans it)";
+        tracking();
+        break;
+      case "late_scan":
+        key = `trade:late-scan:${t.id}:${t.inbound_accepted_at}`;
+        title = `Late carrier scan · ${label}`;
+        body = `${who} · first scan ${t.inbound_accepted_at ? formatDeadline(t.inbound_accepted_at) : ""} · deadline ${t.ship_by ? formatDeadline(t.ship_by) : ""}`;
+        heading = "The first carrier scan came after the shipping deadline: decide whether it counts";
+        tracking();
+        rows.push({ label: "Deadline", value: t.ship_by ? formatDeadline(t.ship_by) : "" }, { label: "First scan", value: t.inbound_accepted_at ? formatDeadline(t.inbound_accepted_at) : "" });
+        break;
+      case "early_scan":
+        key = `trade:early-scan:${t.id}:${t.inbound_tracking}`;
+        title = `Check this tracking number · ${label}`;
+        body = `${who} · its first scan is from before the trade was approved`;
+        heading = "A tracking number's first scan is older than the trade: check it's the right package";
+        tracking();
+        break;
+      case "tracking_check":
+        key = `trade:tracking-check:${t.id}:${t.ship_by}`;
+        title = `Verify a shipment by hand · ${label}`;
+        body = `${who} · ${t.inbound_carrier ?? ""} ${t.inbound_tracking ?? ""} · deadline passed`;
+        heading = "This tracking number can't be checked automatically: verify the carrier's acceptance by hand";
+        tracking();
+        break;
+      case "dispute":
+        key = `trade:dispute:${t.id}:${b.disputes.at(-1)?.id ?? ""}`;
+        title = `Proof of shipping · ${label}`;
+        body = `${who} says they shipped in time`;
+        heading = "A customer sent proof of shipping: review it";
+        note = b.disputes.at(-1)?.note ?? null;
+        tracking();
+        break;
+      case "delivered":
+        key = `trade:delivered:${t.id}`;
+        title = `Trade package delivered · ${label}`;
+        body = `${who} · ready to inspect`;
+        heading = "A trade package was delivered: inspect it";
+        tracking();
         break;
       case "adjustment":
         key = `trade:adjustment:${t.id}:${crypto.createHash("sha256").update(event.message).digest("hex").slice(0, 12)}`;
@@ -551,15 +950,13 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
         break;
       case "finalized":
         key = `trade:finalized:${t.id}`;
-        title = `Trade complete · ${label}`;
+        title = `Trade final · ${label}`;
         body = `${who} · order ready to pack`;
-        heading = "A trade is complete: its order is ready to pack";
+        heading = "A trade is final: its order is ready to pack";
         rows.push(
           { label: "Credit issued", value: money(t.credit_issued_cents ?? 0) },
           { label: "Paid by card", value: money(t.amount_due_cents ?? 0) },
-          ...(t.excess_handling === "cash" && t.cash_payout_cents
-            ? [{ label: "Cash owed to them", value: money(t.cash_payout_cents) }]
-            : []),
+          ...(t.excess_handling === "cash" && t.cash_payout_cents ? [{ label: "Cash owed to them", value: money(t.cash_payout_cents) }] : []),
           ...(t.order_id ? [{ label: "Order", value: `GG-${t.order_id.slice(0, 8).toUpperCase()}` }] : []),
         );
         break;
@@ -567,14 +964,22 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
         key = `trade:declined:${t.id}`;
         title = `Final offer declined · ${label}`;
         body = event.reason ? `${who}: "${event.reason.slice(0, 120)}"` : who;
-        heading = "A customer declined their final offer: mail their cards back";
+        heading = "A customer declined their final offer (no penalty): mail their cards back";
         note = event.reason;
+        break;
+      case "withdrawn":
+        key = `trade:withdrawn:${t.id}`;
+        title = `Canceled after shipping · ${label}`;
+        body = event.reason ? `${who}: "${event.reason.slice(0, 120)}"` : who;
+        heading = "A customer canceled after shipping (no penalty): mail their cards back when they arrive";
+        note = event.reason;
+        tracking();
         break;
       case "canceled":
         key = `trade:canceled:${t.id}`;
         title = `Trade canceled · ${label}`;
         body = event.reason ? `${who}: "${event.reason.slice(0, 120)}"` : who;
-        heading = "A customer canceled their trade";
+        heading = t.deposit_status === "forfeiture_review" ? "A customer canceled a reserved trade: review the deposit" : "A customer canceled their trade";
         note = event.reason;
         break;
       case "message":
@@ -587,9 +992,16 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
       case "transit_overdue":
         key = `trade:transit-overdue:${t.id}:${t.inbound_tracking}`;
         title = `Trade package overdue · ${label}`;
-        body = `${who} · shipped ${t.inbound_shipped_at ? new Date(t.inbound_shipped_at).toLocaleDateString("en-US", { timeZone: "America/Chicago" }) : ""}`;
-        heading = "A trade package hasn't arrived: check the tracking";
-        rows.push({ label: "Tracking", value: `${t.inbound_carrier ?? ""} ${t.inbound_tracking ?? ""}`.trim() });
+        body = `${who} · accepted ${t.inbound_accepted_at ? formatDeadline(t.inbound_accepted_at) : ""}`;
+        heading = "A trade package has been in transit longer than expected: check the tracking (the reservation stays)";
+        tracking();
+        break;
+      case "stalled":
+        key = `trade:stalled:${t.id}:${t.inbound_last_event_at}`;
+        title = `Trade package stalled · ${label}`;
+        body = `${who} · no carrier update since ${t.inbound_last_event_at ? formatDeadline(t.inbound_last_event_at) : "?"}`;
+        heading = "A trade package hasn't had a carrier update in a while: check on it (the reservation stays)";
+        tracking();
         break;
       case "payment_overdue":
         key = `trade:payment-overdue:${t.id}:${t.payment_due_at}`;
@@ -597,6 +1009,40 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
         body = `${who} · ${money(t.amount_due_cents ?? 0)} due`;
         heading = "A trade's payment is overdue: follow up with the customer";
         rows.push({ label: "Due", value: money(t.amount_due_cents ?? 0) });
+        break;
+      case "refund_failed":
+        key = `trade:refund-failed:${t.id}:${t.deposit_refund_attempts}`;
+        title = `Deposit refund failed · ${label}`;
+        body = `${who} · ${money(deposit)} · ${t.deposit_refund_failure ?? "no reason given"}`;
+        heading = "A deposit refund failed: retry it or refund the customer another way";
+        rows.push({ label: "Deposit", value: money(deposit) }, { label: "Why", value: t.deposit_refund_failure ?? "Unknown" });
+        break;
+      case "payment_refunded":
+        key = `trade:payment-refunded:${event.paymentIntentId}`;
+        title = `Deposit refunded automatically · ${label}`;
+        body = `${who} · ${event.why}`;
+        heading = "A deposit payment couldn't be used, so it's being refunded automatically";
+        rows.push({ label: "Payment", value: event.paymentIntentId }, { label: "Why", value: event.why });
+        break;
+      case "forfeiture_review":
+        key = `trade:forfeiture-review:${t.id}:${t.closed_at ?? t.updated_at}`;
+        title = `Deposit to review · ${label}`;
+        body = `${who} · ${money(deposit)} · ${event.why === "canceled" ? "canceled while reserved" : event.why === "late" ? "shipped late" : "reservation expired"}`;
+        heading = "A deposit is waiting for your decision: refund it, or keep it under the terms";
+        rows.push({ label: "Deposit", value: money(deposit) });
+        break;
+      case "cards_unavailable":
+        key = `trade:unavailable:${t.id}:${t.list_due_at ?? t.updated_at}`;
+        title = `Cards sold before confirmation · ${label}`;
+        body = `${who} · sent back to update their selection`;
+        heading = "Some of our cards on an approved trade sold before it was confirmed; it went back to the customer";
+        break;
+      case "arrived_after_expiry":
+        key = `trade:arrived-after-expiry:${t.id}`;
+        title = `Package after expiry · ${label}`;
+        body = `${who} · reinstate the trade or mail the cards back`;
+        heading = "Cards arrived for a reservation that had expired: reinstate it or mail them back";
+        tracking();
         break;
     }
 

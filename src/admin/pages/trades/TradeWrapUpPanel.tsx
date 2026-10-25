@@ -22,8 +22,10 @@ import type { TradePanelProps } from "./types";
 // After the customer accepted (and paid): how it settled, their order, the
 // cash for leftover credit when the final offer included it (owner marks it
 // paid), the cards we took going into inventory, and mailing back what we
-// didn't take. Also the return itself when a trade was rejected or declined
-// after their cards were sent (return_pending → returned).
+// didn't take. Also the return itself when a trade closed after their cards
+// were sent (declined, canceled after shipping, canceled by us, or a package
+// that arrived after its reservation expired): return_status pending →
+// returned.
 
 export function TradeWrapUpPanel({ trade, owner, busy, run, onOpenOrder }: TradePanelProps & { onOpenOrder: (orderId: string) => void }) {
   const finished = trade.status === "approved_for_fulfillment" || trade.status === "completed";
@@ -227,25 +229,22 @@ function ImportRow({ card, busy, run }: { card: StaffTradeOfferCard } & Pick<Tra
 }
 
 /** What goes back to the customer, and marking it mailed. */
-function MailBack({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" | "run">) {
+export function MailBack({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" | "run">) {
   const toast = useToast();
   const [carrier, setCarrier] = useState<TradeCarrier>("USPS");
   const [tracking, setTracking] = useState("");
   const finished = trade.status === "approved_for_fulfillment" || trade.status === "completed";
+  if (trade.returnStatus === "none") return null;
 
-  // A rejected or declined trade: everything they sent. A finished one: what we didn't take.
-  const lines =
-    trade.status === "return_pending" || trade.status === "returned"
-      ? trade.offered
-          .filter((c) => c.reviewStatus === "approved")
-          .map((c) => ({ card: c, copies: c.inspected ? (c.receivedQuantity ?? 0) : (c.approvedQuantity ?? 0) }))
-          .filter((l) => l.copies > 0)
-      : finished
-        ? trade.offered.map((c) => ({ card: c, copies: copiesToReturn(c) })).filter((l) => l.copies > 0)
-        : [];
-  if (lines.length === 0 && trade.status !== "return_pending") return null;
+  // A trade that closed after they shipped: everything they sent. A finished one: what we didn't take.
+  const lines = finished
+    ? trade.offered.map((c) => ({ card: c, copies: copiesToReturn(c) })).filter((l) => l.copies > 0)
+    : trade.offered
+        .filter((c) => c.reviewStatus === "approved")
+        .map((c) => ({ card: c, copies: c.inspected ? (c.receivedQuantity ?? 0) : (c.approvedQuantity ?? 0) }))
+        .filter((l) => l.copies > 0);
 
-  const done = trade.status === "returned" || (finished && trade.returnedAt !== null);
+  const done = trade.returnStatus === "returned";
   const url = trackingUrlFor(trade.returnCarrier, trade.returnTracking);
 
   async function markReturned() {
@@ -264,9 +263,7 @@ function MailBack({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
   return (
     <section className="gg-trd__section" aria-labelledby="gg-trd-return-title">
       <h3 id="gg-trd-return-title">{done ? "Mailed back" : "Mail their cards back"}</h3>
-      {trade.status === "return_pending" && trade.closeReason && (
-        <p className="gg-card-meta">Why: {trade.closeReason}</p>
-      )}
+      {!finished && trade.closeReason && <p className="gg-card-meta">Why: {trade.closeReason}</p>}
       {lines.length > 0 ? (
         <ul className="gg-trd-plain">
           {lines.map(({ card, copies }) => (
@@ -278,8 +275,8 @@ function MailBack({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
       ) : (
         <p className="gg-card-meta">Send back whatever arrived from this customer.</p>
       )}
-      {trade.status === "return_pending" && !trade.receivedAt && (
-        <p className="gg-card-meta">Their package hadn&rsquo;t been marked received. Send it back once it arrives.</p>
+      {!done && !finished && !trade.receivedAt && (
+        <p className="gg-card-meta">Their package hasn&rsquo;t been marked received yet. Send it back once it arrives.</p>
       )}
 
       {done ? (

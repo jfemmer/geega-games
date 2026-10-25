@@ -3,7 +3,6 @@ import { carrierLabel, trackingUrlFor } from "../../lib/tracking";
 import { useNow } from "../../lib/useNow";
 import {
   TRADE_CARRIERS,
-  cleanTrackingNumber,
   formatDeadline,
   printingLabel,
   timeLeft,
@@ -11,55 +10,93 @@ import {
   type CustomerTrade,
   type TradeTerms,
 } from "../../lib/tradeCenter";
+import { checkTrackingNumber, detectCarrier, scanStatusLabel } from "../../lib/tradeTracking";
+import { TradeProofForm } from "./TradeProofForm";
+import { TradeAskForTime } from "./TradeAskForTime";
 
-// After preliminary approval: where to mail the cards, how to pack them, the
-// ship-by date and the trade ID, which cards to send (and which to leave
-// out), and the tracking number. Once it's in, the package is on its way and
-// nothing about the trade expires.
+// Once our cards are reserved: the shipping deadline, where to mail the
+// cards and how to pack them, which cards to send (and which to leave out),
+// and the tracking number. A tracking number alone doesn't count as
+// shipped: the carrier's first scan does, and the page says which it's
+// waiting for. Once the carrier has the package in time, our cards stay
+// reserved however long it takes to arrive.
 
 export function TradeShippingPanel({
   trade,
   terms,
   busy,
   onTracking,
+  onProof,
+  onAskForTime,
 }: {
   trade: CustomerTrade;
   terms: TradeTerms | null;
-  busy: boolean;
+  busy: string | null;
   onTracking: (carrier: string, trackingNumber: string) => Promise<boolean>;
+  onProof: (note: string, files: File[]) => Promise<boolean>;
+  onAskForTime: (note: string) => Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState(trade.status === "awaiting_shipment");
-  const [carrier, setCarrier] = useState<string>(trade.inboundCarrier ?? "USPS");
-  const [number, setNumber] = useState(trade.inboundTracking ?? "");
+  const status = trade.status;
+  const s = trade.shipment;
+  const [editing, setEditing] = useState(status === "awaiting_shipment");
+  const [carrier, setCarrier] = useState<string>(s.carrier ?? "USPS");
+  const [number, setNumber] = useState(s.tracking ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const label = tradeLabel(trade.tradeNumber);
   const approved = trade.offered.filter((c) => c.reviewStatus === "approved" && (c.approvedQuantity ?? 0) > 0);
   const leaveOut = trade.offered.filter((c) => c.reviewStatus === "rejected");
-  const trackingUrl = trackingUrlFor(trade.inboundCarrier, trade.inboundTracking);
+  const trackingUrl = trackingUrlFor(s.carrier, s.tracking);
   const now = useNow();
+  const shipBy = trade.shipBy ? Date.parse(trade.shipBy) : null;
+  const pastDeadline = shipBy !== null && now > shipBy;
+  const guess = number.trim() ? detectCarrier(number) : null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!cleanTrackingNumber(number)) {
-      setProblem("That tracking number doesn't look right. Check it and try again.");
+    const check = checkTrackingNumber(carrier, number);
+    if (!check.ok) {
+      setProblem(check.message);
+      if (check.suggestion) setCarrier(check.suggestion);
       return;
     }
     setProblem(null);
-    if (await onTracking(carrier, number)) setEditing(false);
+    if (await onTracking(check.carrier, check.tracking)) setEditing(false);
   }
+
+  const heading =
+    status === "in_transit" ? "Shipment verified" : status === "tracking_submitted" ? "Waiting for the carrier's first scan" : "Ship your cards";
 
   return (
     <section className="gg-tc-panel" aria-labelledby="gg-tc-ship-title">
-      <h2 id="gg-tc-ship-title">{trade.status === "in_transit" ? "Your package is on its way" : "Mail your cards"}</h2>
+      <h2 id="gg-tc-ship-title">{heading}</h2>
 
-      {trade.status === "awaiting_shipment" && trade.shipBy && (
-        <p className="gg-tc-deadline">
-          Mail them by <strong>{formatDeadline(trade.shipBy)}</strong> ({timeLeft(Date.parse(trade.shipBy), now)} left), then add the
-          tracking number below.
+      {status !== "in_transit" && trade.shipBy && (
+        <p className={pastDeadline ? "gg-tc-deadline gg-tc-deadline--past" : "gg-tc-deadline"}>
+          {pastDeadline ? (
+            <>
+              Your shipping deadline was <strong>{formatDeadline(trade.shipBy)}</strong>.{" "}
+              {status === "tracking_submitted"
+                ? "We're still checking for the carrier's scan. If you shipped in time, send us proof below."
+                : "If you've already shipped, add the tracking number now."}
+            </>
+          ) : (
+            <>
+              Ship by <strong>{formatDeadline(trade.shipBy)}</strong> ({timeLeft(shipBy as number, now)} left
+              {trade.shipDays ? `; ${trade.shipDays} days, Sundays don't count` : ""}). The carrier has to scan your package by then: a label
+              on its own doesn&rsquo;t count.
+            </>
+          )}
         </p>
       )}
 
-      {trade.status === "awaiting_shipment" && (
+      {status === "in_transit" && (
+        <p className="gg-tc-verified">
+          The carrier accepted your package{s.acceptedAt ? ` on ${formatDeadline(s.acceptedAt)}` : ""}, in time. Our cards stay reserved for
+          you while it travels, however long the carrier takes.
+        </p>
+      )}
+
+      {status === "awaiting_shipment" && (
         <div className="gg-tc-ship">
           {trade.mailTo ? (
             <div className="gg-tc-address">
@@ -92,20 +129,20 @@ export function TradeShippingPanel({
             {trade.packingInstructions && <p>{trade.packingInstructions}</p>}
             <p>
               {terms?.shippingPaidBy === "store"
-                ? "We cover shipping your cards to us. Reply to your approval email before you ship and we'll arrange it."
+                ? "We cover shipping your cards to us. Message us before you ship and we'll arrange it."
                 : "You pay to ship your cards to us. Please use a tracked service."}
             </p>
           </div>
         </div>
       )}
 
-      {trade.approvalConditions && (
+      {trade.approvalConditions && status === "awaiting_shipment" && (
         <p className="gg-tc-note">
           <strong>Approved on this condition:</strong> {trade.approvalConditions}
         </p>
       )}
 
-      {trade.status === "awaiting_shipment" && (
+      {status === "awaiting_shipment" && (
         <div className="gg-tc-sendlist">
           <h3>What to send</h3>
           <ul>
@@ -130,24 +167,53 @@ export function TradeShippingPanel({
         </div>
       )}
 
-      {trade.status === "in_transit" && !editing && (
-        <p className="gg-tc-tracking">
-          {carrierLabel(trade.inboundCarrier)} tracking{" "}
-          {trackingUrl ? (
-            <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
-              {trade.inboundTracking}
-            </a>
-          ) : (
-            <strong>{trade.inboundTracking}</strong>
+      {s.tracking && !editing && (
+        <div className="gg-tc-tracking">
+          <p>
+            {carrierLabel(s.carrier)} tracking{" "}
+            {trackingUrl ? (
+              <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
+                {s.tracking}
+              </a>
+            ) : (
+              <strong>{s.tracking}</strong>
+            )}
+            {status === "tracking_submitted" && (
+              <>
+                {" "}
+                <button type="button" className="gg-linkbtn" onClick={() => setEditing(true)}>
+                  Fix the tracking number
+                </button>
+              </>
+            )}
+          </p>
+          {status === "tracking_submitted" && (
+            <p className="gg-tc-line__meta">
+              {s.autoTracked
+                ? `We check with the carrier regularly. Carrier status: ${scanStatusLabel(s.carrierStatus)}.`
+                : "We'll confirm the carrier's acceptance scan ourselves and email you."}
+            </p>
           )}
-          .{" "}
-          <button type="button" className="gg-linkbtn" onClick={() => setEditing(true)}>
-            Fix the tracking number
-          </button>
-        </p>
+          {s.scans.length > 0 && (
+            <details className="gg-tc-scans">
+              <summary>Carrier history ({s.scans.length})</summary>
+              <ol>
+                {[...s.scans].reverse().map((scan, i) => (
+                  <li key={`${scan.at}-${i}`}>
+                    <span className="gg-tc-scans__when">{scan.at ? formatDeadline(scan.at) : ""}</span>
+                    <span>
+                      {scan.message ?? scanStatusLabel(scan.status)}
+                      {scan.location ? <span className="gg-tc-line__meta"> · {scan.location}</span> : null}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </div>
       )}
 
-      {editing && (
+      {editing && (status === "awaiting_shipment" || status === "tracking_submitted") && (
         <form className="gg-tc-trackform" onSubmit={(e) => void submit(e)}>
           <label className="gg-field">
             <span>Carrier</span>
@@ -163,13 +229,16 @@ export function TradeShippingPanel({
             <span>Tracking number</span>
             <input value={number} onChange={(e) => setNumber(e.target.value)} autoComplete="off" inputMode="text" spellCheck={false} />
           </label>
-          <button type="submit" className="gg-btn" disabled={busy || !number.trim()}>
-            {busy ? "Saving…" : trade.status === "in_transit" ? "Update tracking" : "Add tracking number"}
+          <button type="submit" className="gg-btn" disabled={busy === "tracking" || !number.trim()}>
+            {busy === "tracking" ? "Saving…" : s.tracking ? "Update tracking" : "Add tracking number"}
           </button>
-          {trade.status === "in_transit" && (
+          {s.tracking && (
             <button type="button" className="gg-linkbtn" onClick={() => setEditing(false)}>
               Cancel
             </button>
+          )}
+          {guess && guess !== carrier && carrier !== "Other" && !problem && (
+            <p className="gg-tc-line__meta gg-tc-trackform__hint">That looks like a {guess} number.</p>
           )}
           {problem && (
             <p className="gg-alert gg-alert-error" role="alert">
@@ -177,6 +246,13 @@ export function TradeShippingPanel({
             </p>
           )}
         </form>
+      )}
+
+      {(status === "awaiting_shipment" || status === "tracking_submitted") && (
+        <>
+          <TradeProofForm trade={trade} busy={busy === "proof"} onSend={onProof} />
+          {!pastDeadline && <TradeAskForTime what="ship" busy={busy === "ask"} onAsk={onAskForTime} />}
+        </>
       )}
     </section>
   );

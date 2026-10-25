@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import {
   ToastContext,
@@ -22,6 +22,16 @@ const TONE_ICON: Record<ToastTone, IconName> = {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
+  // Auto-dismiss timers still pending, cleared if the provider goes away first.
+  const timers = useRef(new Set<number>());
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending) window.clearTimeout(timer);
+      pending.clear();
+    };
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setItems((prev) => prev.filter((t) => t.id !== id));
@@ -34,7 +44,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const duration = options?.duration ?? 4000;
       setItems((prev) => [...prev, { id, message, tone }]);
       if (duration > 0) {
-        window.setTimeout(() => dismiss(id), duration);
+        const timer = window.setTimeout(() => {
+          timers.current.delete(timer);
+          dismiss(id);
+        }, duration);
+        timers.current.add(timer);
       }
     },
     [dismiss],

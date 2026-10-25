@@ -1,19 +1,27 @@
 import type {
   CustomerTrade,
+  CustomerTradeSummary,
   StaffTrade,
+  StaffTradeDeposit,
   StaffTradeOfferCard,
   StaffTradeSummary,
+  TradeConfirmation,
   TradeOfferCard,
   TradeSettings,
+  TradeShipment,
   TradeTerms,
   TradeWantedItem,
 } from "../../src/store/lib/tradeCenter";
+import { EMPTY_RECORD, type CustomerRecord, type Privileges } from "../../src/store/lib/tradeRules";
 
-// Online trades as staff see them (admin Trades), for the admin page and
-// arithmetic tests.
+// Online trades as staff and customers see them (admin Trades, My Trades,
+// the trade page), for the page and arithmetic tests.
 
 export const PERCENTS = { NM: 100, LP: 90, MP: 75, HP: 60, DMG: 40 };
 export const TRADE_ID = "99999999-9999-4999-8999-999999999999";
+
+export const DEPOSIT_TERMS =
+  "To reserve your selected cards, a refundable deposit may be required.\n\nYour deposit will be refunded in full once your trade-in shipment has been verified as accepted by the shipping carrier within your shipping deadline.\n\nIf you cancel your trade before shipping or fail to ship within the deadline, your deposit may be forfeited under our cancellation policy. We review every case before keeping a deposit.";
 
 export function staffCard(over: Partial<StaffTradeOfferCard> = {}): StaffTradeOfferCard {
   return {
@@ -71,8 +79,56 @@ export function wantedItem(over: Partial<TradeWantedItem> = {}): TradeWantedItem
     quantity: 1,
     unitPriceCents: 7999,
     status: "reserved",
+    available: null,
     ...over,
   };
+}
+
+export function staffDeposit(over: Partial<StaffTradeDeposit> = {}): StaffTradeDeposit {
+  return {
+    cents: 0,
+    status: "not_required",
+    reason: null,
+    paidCents: null,
+    paidAt: null,
+    refundRequestedAt: null,
+    refundedAt: null,
+    override: "auto",
+    paymentIntentId: null,
+    refundId: null,
+    refundAttempts: 0,
+    refundFailure: null,
+    feeCents: null,
+    decidedAt: null,
+    decidedBy: null,
+    decisionNote: null,
+    ...over,
+  };
+}
+
+export function shipment(over: Partial<TradeShipment> = {}): TradeShipment {
+  return {
+    carrier: null,
+    tracking: null,
+    trackingAddedAt: null,
+    carrierStatus: null,
+    scans: [],
+    checkedAt: null,
+    acceptedAt: null,
+    acceptanceSource: null,
+    shippedOnTime: null,
+    deliveredAt: null,
+    autoTracked: true,
+    ...over,
+  };
+}
+
+export function record(over: Partial<CustomerRecord> = {}): CustomerRecord {
+  return { ...EMPTY_RECORD, ...over };
+}
+
+export function privileges(over: Partial<Privileges> = {}): Privileges {
+  return { shipDays: 3, tier: "new", reliabilityDeposit: false, blocked: false, overAbandonLimit: false, ...over };
 }
 
 export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
@@ -96,29 +152,55 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     excessCents: null,
     excessHandling: "store_credit",
     cashPayoutCents: null,
-    holdExpiresAt: null,
+    listDueAt: null,
+    confirmBy: null,
     shipBy: null,
+    shipDays: null,
     paymentDueAt: null,
+    confirmedAt: null,
+    reservedAt: null,
     approvalConditions: null,
-    inboundCarrier: null,
-    inboundTracking: null,
+    deposit: staffDeposit(),
+    shipment: shipment(),
+    returnStatus: "none",
     returnCarrier: null,
     returnTracking: null,
+    expiredStage: null,
     orderId: null,
     creditIssuedCents: null,
     customerNote: null,
     closeReason: null,
     shipTo: null,
-    wanted: [wantedItem(), wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Arcane Signet", setCode: "CMR", collectorNumber: "297", finish: "foil", quantity: 2, unitPriceCents: 450 })],
+    wanted: [
+      wantedItem({ status: "requested" }),
+      wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Arcane Signet", setCode: "CMR", collectorNumber: "297", finish: "foil", quantity: 2, unitPriceCents: 450, status: "requested" }),
+    ],
     offered: [],
     messages: [],
     mailTo: null,
     packingInstructions: null,
     returnPolicy: "We mail them back.",
+    confirmation: null,
+    canSendProof: false,
+    proofDueAt: null,
     userId: "u1",
     customerName: "Ann Lee",
     customerEmail: "ann@example.com",
     events: [],
+    disputes: [],
+    extensions: [],
+    consents: [],
+    reviewFlag: null,
+    reviewFlagAt: null,
+    customerFault: null,
+    faultAt: null,
+    faultClearedAt: null,
+    faultClearedBy: null,
+    confirmByOriginal: null,
+    shipByOriginal: null,
+    needsStaff: true,
+    customerRecord: record(),
+    privileges: privileges(),
     submittedAt: "2026-10-21T12:00:00Z",
     approvedAt: null,
     receivedAt: null,
@@ -127,7 +209,6 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     paidAt: null,
     completedAt: null,
     closedAt: null,
-    inboundShippedAt: null,
     returnedAt: null,
     cashPaidAt: null,
     paymentReference: null,
@@ -149,12 +230,20 @@ export function tradeSummary(over: Partial<StaffTradeSummary> = {}): StaffTradeS
     estimatedValueCents: 16000,
     approvedValueCents: null,
     finalValueCents: null,
-    holdExpiresAt: null,
+    listDueAt: null,
+    confirmBy: null,
     shipBy: null,
     paymentDueAt: null,
     inboundCarrier: null,
     inboundTracking: null,
-    inboundShippedAt: null,
+    inboundAcceptedAt: null,
+    depositStatus: "not_required",
+    depositCents: 0,
+    depositPaidCents: null,
+    reviewFlag: null,
+    returnStatus: "none",
+    customerFault: null,
+    needsStaff: true,
     ...over,
   };
 }
@@ -166,18 +255,42 @@ export const TRADE_SETTINGS: TradeSettings = {
   creditRatePercent: 80,
   minCardValueCents: 1500,
   conditionPercents: PERCENTS,
-  reservationHours: 24,
-  revisionHours: 48,
-  shipBusinessDays: 5,
-  shipGraceHours: 24,
-  transitAlertDays: 10,
+  draftDays: 14,
+  revisionHours: 168,
+  confirmationHours: 48,
+  shipDaysNew: 3,
+  shipDaysTier1: 4,
+  shipDaysTier2: 5,
+  loyaltyTier1Trades: 3,
+  loyaltyTier2Trades: 10,
+  scanGraceHours: 24,
+  excludedDates: [],
   paymentDueDays: 7,
+  maxTransitDays: 10,
+  stallAlertDays: 4,
+  confirmReminderHours: 12,
+  shipReminderHours: 24,
+  disputeWindowDays: 14,
+  depositsEnabled: true,
+  depositThresholdCents: 30000,
+  depositBand1MaxCents: 10000,
+  depositBand2MaxCents: 30000,
+  depositBand3MaxCents: 60000,
+  depositBand1Cents: 500,
+  depositBand2Cents: 1000,
+  depositBand3Cents: 2000,
+  depositBand4Cents: 3000,
+  allowForfeiture: false,
+  depositTerms: DEPOSIT_TERMS,
+  depositTermsVersion: 1,
+  abandonLimit: 2,
+  abandonWindowDays: 365,
+  abandonPolicy: "deposit",
   maxActiveTrades: 2,
   maxWantedLines: 40,
   maxOfferedLines: 100,
   minTradeValueCents: 0,
   maxTradeValueCents: null,
-  maxExpiredTrades30d: 3,
   processingFeeCents: 0,
   cashPayoutEnabled: true,
   cashRatePercent: 60,
@@ -200,6 +313,21 @@ export function customerTrade(over: Partial<CustomerTrade> = {}): CustomerTrade 
     customerName: _customerName,
     customerEmail: _customerEmail,
     events: _events,
+    deposit: staffDep,
+    disputes: _disputes,
+    extensions: _extensions,
+    consents: _consents,
+    reviewFlag: _reviewFlag,
+    reviewFlagAt: _reviewFlagAt,
+    customerFault: _customerFault,
+    faultAt: _faultAt,
+    faultClearedAt: _faultClearedAt,
+    faultClearedBy: _faultClearedBy,
+    confirmByOriginal: _confirmByOriginal,
+    shipByOriginal: _shipByOriginal,
+    needsStaff: _needsStaff,
+    customerRecord: _customerRecord,
+    privileges: _privileges,
     submittedAt: _submittedAt,
     approvedAt: _approvedAt,
     receivedAt: _receivedAt,
@@ -208,13 +336,57 @@ export function customerTrade(over: Partial<CustomerTrade> = {}): CustomerTrade 
     paidAt: _paidAt,
     completedAt: _completedAt,
     closedAt: _closedAt,
-    inboundShippedAt: _inboundShippedAt,
     returnedAt: _returnedAt,
     cashPaidAt: _cashPaidAt,
     paymentReference: _paymentReference,
     ...base
   } = staffTrade();
-  return { ...base, offered: [], timeline: [], ...over };
+  const deposit = {
+    cents: staffDep.cents,
+    status: staffDep.status,
+    reason: staffDep.reason,
+    paidCents: staffDep.paidCents,
+    paidAt: staffDep.paidAt,
+    refundRequestedAt: staffDep.refundRequestedAt,
+    refundedAt: staffDep.refundedAt,
+  };
+  return { ...base, deposit, offered: [], timeline: [], disputes: [], ...over };
+}
+
+/** A row in My Trades. */
+export function customerSummary(over: Partial<CustomerTradeSummary> = {}): CustomerTradeSummary {
+  return {
+    id: TRADE_ID,
+    tradeNumber: 1001,
+    status: "awaiting_trade_list",
+    createdAt: "2026-10-20T12:00:00Z",
+    updatedAt: "2026-10-20T12:00:00Z",
+    wantedTotalCents: 8899,
+    wantedCount: 3,
+    offeredCount: 2,
+    listDueAt: null,
+    confirmBy: null,
+    shipBy: null,
+    paymentDueAt: null,
+    depositStatus: "not_required",
+    depositCents: 0,
+    ...over,
+  };
+}
+
+/** What the confirmation page gets for an approved trade. */
+export function confirmation(over: Partial<TradeConfirmation> = {}): TradeConfirmation {
+  return {
+    confirmBy: "2026-10-27T19:00:00.000Z",
+    depositCents: 0,
+    depositReason: null,
+    termsText: DEPOSIT_TERMS,
+    termsVersion: 1,
+    shipDays: 3,
+    shipByIfConfirmedNow: "2026-10-29T19:00:00.000Z",
+    canPayOnline: true,
+    ...over,
+  };
 }
 
 /** One of the customer's cards as they see it. */
@@ -238,11 +410,18 @@ export const TRADE_TERMS: TradeTerms = {
   creditRatePercent: 80,
   minCardValueCents: 1500,
   conditionPercents: PERCENTS,
-  reservationHours: 24,
-  revisionHours: 48,
-  shipBusinessDays: 5,
-  shipGraceHours: 24,
+  draftDays: 14,
+  revisionHours: 168,
+  confirmationHours: 48,
+  shipDaysNew: 3,
+  shipDaysTier1: 4,
+  shipDaysTier2: 5,
+  loyaltyTier1Trades: 3,
+  loyaltyTier2Trades: 10,
+  scanGraceHours: 24,
+  excludedDates: [],
   paymentDueDays: 7,
+  disputeWindowDays: 14,
   maxActiveTrades: 2,
   maxWantedLines: 40,
   maxOfferedLines: 100,
@@ -257,4 +436,15 @@ export const TRADE_TERMS: TradeTerms = {
   excludedCardNames: [],
   overstockThreshold: 0,
   hasShipToAddress: true,
+  depositsEnabled: true,
+  depositThresholdCents: 30000,
+  depositBand1MaxCents: 10000,
+  depositBand2MaxCents: 30000,
+  depositBand3MaxCents: 60000,
+  depositBand1Cents: 500,
+  depositBand2Cents: 1000,
+  depositBand3Cents: 2000,
+  depositBand4Cents: 3000,
+  depositTerms: DEPOSIT_TERMS,
+  depositTermsVersion: 1,
 };

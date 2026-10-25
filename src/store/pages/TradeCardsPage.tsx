@@ -20,21 +20,42 @@ import {
   tradingOpen,
   type TradeTerms,
 } from "../lib/tradeCenter";
+import { depositBands } from "../lib/tradeRules";
+import { addQualifyingDays, storeDateKey, storeInstant, weekdayOfKey } from "../lib/tradeDeadlines";
 import { breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 
 // Trade Cards (/trade-cards): what trading with us is, how cards are valued,
-// the customer's trade cart (our cards they picked with "Add to trade"), and
-// starting a trade. Every number on this page comes from the Trade Center
-// settings staff control (the rate, the minimum, condition values, hold
-// times), so the page can't promise anything the trade itself won't do.
+// the deposit, the customer's trade cart (our cards they picked with "Add to
+// trade"), and starting a trade. Every number on this page comes from the
+// Trade Center settings staff control (the rate, the minimum, condition
+// values, deadlines, deposits), so the page can't promise anything the trade
+// itself won't do.
 
 const EXAMPLE_MARKET_CENTS = 4000;
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** "Tuesday": the day a shipping window that opens Friday at 2 PM closes, worked out like a real deadline. */
+function shipExampleDay(days: number): string {
+  const friday = storeInstant(2026, 10, 30, 14); // Friday, October 30, 2026, 2:00 PM in St. Louis
+  return WEEKDAYS[weekdayOfKey(storeDateKey(addQualifyingDays(friday, days)))];
+}
+
+function confirmWindow(t: TradeTerms | null): string {
+  if (!t) return "a set time";
+  return t.confirmationHours % 24 === 0 ? plural(t.confirmationHours / 24, "day") : plural(t.confirmationHours, "hour");
+}
 
 function faqItems(t: TradeTerms | null): { question: string; answer: string }[] {
   const rate = t ? `${t.creditRatePercent}%` : "a set share";
   const min = t ? formatCents(t.minCardValueCents) : "a set amount";
-  const hold = t ? `${t.reservationHours} hours` : "a set time";
-  const ship = t ? `${t.shipBusinessDays} business days` : "a few business days";
+  const confirmHours = t ? plural(t.confirmationHours, "hour") : "a set time";
+  const shipDays = t ? plural(t.shipDaysNew, "day") : "a few days";
+  const deposits = t?.depositsEnabled ?? false;
+  const threshold = t ? formatCents(t.depositThresholdCents) : "";
   return [
     {
       question: "What cards can I trade in?",
@@ -55,8 +76,20 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
         : "Credit left over stays in your account as store credit for your next order. It isn't paid out in cash.",
     },
     {
-      question: "How long do you hold the cards I picked?",
-      answer: `${hold} while you list your cards, and while we review your list. Once we approve it, you have ${ship} to mail your cards. Once you've added a tracking number, they stay held until your package arrives.`,
+      question: "When are the cards I picked reserved for me?",
+      answer: `When you confirm your approved trade. While you build your trade and while we review it, our cards stay on sale. Once we approve it you have ${confirmHours} to confirm (Sundays don't count). If a card sells before you confirm, we'll tell you and you can pick another.`,
+    },
+    {
+      question: "How long do I have to ship my cards?",
+      answer: t
+        ? `${shipDays} from confirming, and Sundays don't count: confirm on a Friday at 2 PM and you'd ship by ${shipExampleDay(t.shipDaysNew)} at 2 PM. It counts as shipped when the carrier scans your package; a label on its own doesn't. After ${plural(t.loyaltyTier1Trades, "completed trade")} you get ${plural(t.shipDaysTier1, "day")}, and after ${t.loyaltyTier2Trades}, ${plural(t.shipDaysTier2, "day")}.`
+        : `${shipDays} from confirming, and Sundays don't count. It counts as shipped when the carrier scans your package; a label on its own doesn't.`,
+    },
+    {
+      question: "Is there a deposit?",
+      answer: deposits
+        ? `Trades with ${threshold} or more of our cards need a small refundable deposit to confirm. It's refunded in full, to your card, as soon as the carrier accepts your package by your shipping deadline, and declining our final offer never costs it. If you cancel after confirming and before shipping, or don't ship in time, it may be kept under our cancellation policy; a person reviews every case first. Smaller trades may need one too after earlier trades were canceled or not shipped.`
+        : "Not right now. If a trade ever needs one, you'll see it, and its terms, before you confirm.",
     },
     {
       question: "Who pays for shipping?",
@@ -76,7 +109,8 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
     },
     {
       question: "Can I cancel a trade?",
-      answer: "Yes, any time before you mail your cards. We release the cards we were holding for you.",
+      answer:
+        "Yes. Before you confirm, it costs nothing. After you confirm, our cards are reserved for you, so canceling before you ship counts against future trades, and a deposit on the trade may be kept under our cancellation policy (we review every case). Once the carrier has your package you can still cancel with no penalty, and we'll mail your cards back.",
     },
     {
       question: "Do I need an account?",
@@ -97,7 +131,7 @@ export default function TradeCardsPage() {
   useSEO({
     title: "Trade Your Magic Cards for Cards You Want | Geega Games",
     description:
-      "Trade your Magic: The Gathering cards for singles from Geega Games. Pick our cards, list yours, and get trade credit toward them. We hold your cards while you trade.",
+      "Trade your Magic: The Gathering cards for singles from Geega Games. Pick our cards, list yours, and get trade credit toward them. Once your trade is approved and confirmed, we reserve our cards for you.",
     path: TRADE_CENTER_PATH,
     jsonLd: [breadcrumbJsonLd([{ name: "Trade cards", path: TRADE_CENTER_PATH }]), faqJsonLd(faq)],
   });
@@ -129,10 +163,10 @@ export default function TradeCardsPage() {
     ? [
         `${terms.creditRatePercent}% of your cards' value as trade credit`,
         `Cards worth ${formatCents(terms.minCardValueCents)} or more each`,
-        "Our cards held for you while you trade",
-        "Nothing's final until you accept",
+        "Our cards reserved for you once you confirm",
+        "Decline the final offer with no penalty",
       ]
-    : ["Trade credit toward our singles", "Our cards held for you while you trade", "Nothing's final until you accept"];
+    : ["Trade credit toward our singles", "Our cards reserved for you once you confirm", "Decline the final offer with no penalty"];
 
   return (
     <div className="gg-page gg-tc-page">
@@ -140,7 +174,8 @@ export default function TradeCardsPage() {
         <h1>Trade Your Magic Cards for Cards You Actually Want</h1>
         <p className="gg-collect-hero-sub">
           Pick cards from our shop, list the cards you&rsquo;re done with, and put their value toward yours
-          {rate !== null ? `: ${rate}% of it as trade credit` : ""}. We hold the cards you picked while you trade.
+          {rate !== null ? `: ${rate}% of it as trade credit` : ""}. Once we approve your trade and you confirm it, the cards you picked
+          are reserved for you while yours are in the mail.
         </p>
         <HeroPoints points={points} />
         {terms && !terms.enabled && (
@@ -209,12 +244,10 @@ export default function TradeCardsPage() {
                   <button type="button" className="gg-btn" disabled={starting} onClick={() => void start()}>
                     {starting ? "Starting…" : user ? "Start my trade" : "Sign in to start my trade"}
                   </button>
-                  {terms && (
-                    <p className="gg-tc-line__meta">
-                      Starting holds these cards for you for {terms.reservationHours} hours while you list the cards you&rsquo;re
-                      trading in.
-                    </p>
-                  )}
+                  <p className="gg-tc-line__meta">
+                    Starting a trade doesn&rsquo;t reserve these yet: they stay on sale until we&rsquo;ve approved your trade and you
+                    confirm it.
+                  </p>
                 </>
               ) : (
                 <p className="gg-tc-line__meta">{terms?.paused ? terms.pauseMessage : "You can start a trade once trading opens."}</p>
@@ -231,24 +264,25 @@ export default function TradeCardsPage() {
             <strong>Pick our cards.</strong> Add the cards you want from our shop to your trade cart.
           </li>
           <li>
-            <strong>Start your trade.</strong> We hold your picks{terms ? ` for ${terms.reservationHours} hours` : ""} while you
-            list the cards you&rsquo;re trading in.
+            <strong>List your cards.</strong> Start your trade, then search for each card, paste a list or upload a CSV.
+            You&rsquo;ll see an estimate as you go. Nothing is reserved yet.
           </li>
           <li>
-            <strong>List your cards.</strong> Search for each card, or paste a list or upload a CSV. You&rsquo;ll see an estimate as
-            you go.
-          </li>
-          <li>
-            <strong>We review your list.</strong> We approve the cards we can take, or ask you for a change, and email you either
+            <strong>We review your trade.</strong> We approve the cards we can take, or ask you for a change, and email you either
             way.
           </li>
           <li>
-            <strong>Mail your cards.</strong> Ship them with tracking{terms ? ` within ${terms.shipBusinessDays} business days` : ""}.
-            We inspect every card when it arrives.
+            <strong>Confirm it{terms ? ` within ${confirmWindow(terms)}` : ""}.</strong> Sundays don&rsquo;t count. Confirming
+            reserves our cards for you
+            {terms?.depositsEnabled ? `, with a refundable deposit on trades of ${formatCents(terms.depositThresholdCents)} or more` : ""}.
           </li>
           <li>
-            <strong>Accept your final offer.</strong> Pay any difference by card, or keep extra credit for next time. We ship your
-            new cards.
+            <strong>Ship your cards{terms ? ` within ${plural(terms.shipDaysNew, "day")}` : ""}.</strong> Sundays don&rsquo;t count,
+            and it counts once the carrier scans your package. We inspect every card when it arrives.
+          </li>
+          <li>
+            <strong>Accept your final offer.</strong> Pay any difference by card, or keep extra credit for next time, and we ship your
+            new cards. Or decline with no penalty and we mail yours back.
           </li>
         </ol>
       </section>
@@ -281,6 +315,8 @@ export default function TradeCardsPage() {
           <li>Estimates are a starting point: we confirm values at review, and again when your cards arrive.</li>
         </ul>
       </section>
+
+      {terms?.depositsEnabled && <DepositSection terms={terms} />}
 
       <FaqSection items={faq} />
       <p className="gg-collect-contact">
@@ -323,5 +359,64 @@ function ValueTable({ terms }: { terms: TradeTerms }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** The refundable deposit: when it's needed, how much, and exactly when it comes back. */
+function DepositSection({ terms }: { terms: TradeTerms }) {
+  const threshold = terms.depositThresholdCents;
+  const bands = depositBands(terms);
+  return (
+    <section className="gg-collect-section" id="deposit">
+      <h2>The refundable deposit</h2>
+      <p className="gg-collect-lead">
+        Confirming a trade takes our cards off sale for you, so trades with {formatCents(threshold)} or more of our cards need a small
+        deposit to confirm. It comes back in full as soon as the carrier accepts your package by your shipping deadline.
+      </p>
+      <div className="gg-tc-table-wrap">
+        <table className="gg-tc-table gg-tc-valuetable">
+          <caption>The deposit, by the value of our cards on your trade</caption>
+          <thead>
+            <tr>
+              <th scope="col">Our cards</th>
+              <th scope="col">Deposit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bands.map((b) => {
+              const onlyIfAsked = b.toCents !== null && b.toCents <= threshold;
+              return (
+                <tr key={b.fromCents}>
+                  <th scope="row">
+                    {b.toCents === null
+                      ? `${formatCents(b.fromCents)} or more`
+                      : b.fromCents === 0
+                        ? `Under ${formatCents(b.toCents)}`
+                        : `${formatCents(b.fromCents)} to ${formatCents(b.toCents - 1)}`}
+                  </th>
+                  <td>
+                    {formatCents(b.depositCents)}
+                    {onlyIfAsked && <span className="gg-tc-valuetable__note"> only if we ask</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <ul className="gg-tc-rules">
+        <li>Refunded in full, to the card you paid with. The card processing fee is on us.</li>
+        <li>Declining our final offer after your cards arrive, or canceling once the carrier has your package, never costs it.</li>
+        <li>
+          If you cancel after confirming and before shipping, or don&rsquo;t ship by your deadline, it may be kept under our cancellation
+          policy. A person reviews every case first.
+        </li>
+        <li>
+          We may ask for a deposit on a smaller trade, for example after earlier trades were canceled after confirming or not shipped in
+          time. You&rsquo;ll always see it before you confirm.
+        </li>
+        <li>If a card sells while your deposit is going through, nothing is reserved and the deposit is refunded in full.</li>
+      </ul>
+    </section>
   );
 }

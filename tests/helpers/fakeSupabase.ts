@@ -148,7 +148,11 @@ class Query implements PromiseLike<Result> {
     this.filters.push((row) => (row[column] ?? null) !== value);
     return this;
   }
-  /** PostgREST's or=(…) with eq and ilike conditions, e.g. "name.ilike.%sam%,email.ilike.%sam%". */
+  /**
+   * PostgREST's or=(…) with eq, ilike, is (null, true, false) and lt/lte/gt/gte
+   * conditions, e.g. "name.ilike.%sam%,email.ilike.%sam%" or
+   * "checked_at.is.null,checked_at.lt.2026-10-25T20:00:00.000Z".
+   */
   or(conditions: string) {
     const parts = conditions.split(",").map((part) => {
       const [column, op, ...rest] = part.split(".");
@@ -156,11 +160,17 @@ class Query implements PromiseLike<Result> {
     });
     const like = (pattern: string) =>
       new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, "i");
+    const literal = (value: string) => (value === "null" ? null : value === "true" ? true : value === "false" ? false : value);
     this.filters.push((row) =>
       parts.some(({ column, op, value }) => {
         const cell = row[column];
         if (op === "eq") return String(cell) === value;
         if (op === "ilike") return cell != null && like(value).test(String(cell));
+        if (op === "is") return (cell ?? null) === literal(value);
+        if (op === "lt") return cell != null && compare(cell, value) < 0;
+        if (op === "lte") return cell != null && compare(cell, value) <= 0;
+        if (op === "gt") return cell != null && compare(cell, value) > 0;
+        if (op === "gte") return cell != null && compare(cell, value) >= 0;
         throw new Error(`fakeSupabase: or(${op}) isn't supported`);
       }),
     );
@@ -373,7 +383,13 @@ export function createFakeSupabase(state: FakeState) {
           data: paths.map((path) => ({ path, signedUrl: `https://signed.example/${path}` })),
           error: null,
         }),
-        list: async () => ({ data: [], error: null }),
+        // The objects directly under a folder (state.files), as storage lists them.
+        list: async (prefix = "") => ({
+          data: Object.entries(state.files)
+            .filter(([path]) => prefix !== "" && path.startsWith(`${prefix}/`) && !path.slice(prefix.length + 1).includes("/"))
+            .map(([path, f]) => ({ id: path, name: path.slice(prefix.length + 1), metadata: { size: f.data.length, mimetype: f.contentType ?? "" } })),
+          error: null,
+        }),
         createSignedUploadUrl: async (path: string) => ({
           data: { path, token: `token-${path}`, signedUrl: `https://upload.example/${path}` },
           error: null,

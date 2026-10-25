@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   centsInput,
-  defaultShipByInput,
+  confirmByPreview,
+  depositPreview,
+  extendedDeadline,
   finalOfferPreview,
   formatDateInput,
   inspectChanged,
@@ -14,16 +16,16 @@ import {
   reviewDraftOf,
   reviewInput,
   reviewTally,
-  shipByBounds,
+  shipByPreview,
   storeDateInput,
   tradeMoney,
   unitForCondition,
   updateInspectDraft,
 } from "../src/admin/pages/trades/tradeMath";
-import { formOf, settingsInputOf } from "../src/admin/pages/trades/tradeSettingsForm";
-import { customerEmailNote, eventDetail, eventLabel, waitingOnStaff } from "../src/admin/pages/trades/tradeLabels";
+import { formOf, readExcludedDates, settingsInputOf } from "../src/admin/pages/trades/tradeSettingsForm";
+import { actorLabel, customerEmailNote, eventDetail, eventLabel, waitingOnStaff } from "../src/admin/pages/trades/tradeLabels";
 import { copiesToReturn } from "../src/store/lib/tradeCenter";
-import { PERCENTS, TRADE_SETTINGS, staffCard, staffTrade } from "./helpers/tradeFixtures";
+import { PERCENTS, TRADE_SETTINGS, privileges, record, staffCard, staffTrade } from "./helpers/tradeFixtures";
 
 // The arithmetic and forms behind admin Trades: what staff see before they
 // act has to match what the database will work out.
@@ -32,14 +34,37 @@ const card = staffCard;
 const trade = (over: Parameters<typeof staffTrade>[0] = {}) => staffTrade({ wanted: [], ...over });
 const SETTINGS = TRADE_SETTINGS;
 
+const iso = (ms: number) => new Date(ms).toISOString();
+// 2:00 PM in St. Louis (CDT, UTC-5) on these October 2026 days.
+const SAT_2PM = Date.parse("2026-10-24T19:00:00Z");
+const FRI_2PM = Date.parse("2026-10-23T19:00:00Z");
+const THU_2PM = Date.parse("2026-10-22T19:00:00Z");
+
 describe("dates and money inputs", () => {
-  it("gives St. Louis dates for date inputs, and the server's default ship-by date", () => {
+  it("gives St. Louis dates for date inputs", () => {
     // 11:30 pm in St. Louis on Thursday Oct 22 is already Friday in UTC.
     expect(storeDateInput(Date.parse("2026-10-23T04:30:00Z"))).toBe("2026-10-22");
-    // From a Friday, five business days is the next Friday.
-    expect(defaultShipByInput({ shipBusinessDays: 5 }, Date.parse("2026-10-23T15:00:00Z"))).toBe("2026-10-30");
-    expect(shipByBounds(Date.parse("2026-10-23T15:00:00Z"))).toEqual({ min: "2026-10-23", max: "2026-12-21" });
     expect(formatDateInput("2026-10-30")).toBe("Fri, Oct 30");
+  });
+
+  it("previews the deadlines the server will set, in qualifying time (Sundays and excluded days don't count)", () => {
+    // 48 hours to confirm: Saturday 2 PM → Tuesday 2 PM; Friday 2 PM → Monday 2 PM.
+    expect(iso(confirmByPreview(SETTINGS, SAT_2PM))).toBe("2026-10-27T19:00:00.000Z");
+    expect(iso(confirmByPreview(SETTINGS, FRI_2PM))).toBe("2026-10-26T19:00:00.000Z");
+    // Across the end of daylight saving (Sunday, November 1): still 2 PM in St. Louis, now UTC-6.
+    expect(iso(confirmByPreview(SETTINGS, Date.parse("2026-10-31T19:00:00Z")))).toBe("2026-11-03T20:00:00.000Z");
+    // 3 days to ship: Thursday 2 PM → Monday 2 PM; with that Monday excluded, Tuesday.
+    expect(iso(shipByPreview(3, SETTINGS, THU_2PM))).toBe("2026-10-26T19:00:00.000Z");
+    expect(iso(shipByPreview(3, { excludedDates: ["2026-10-26"] }, THU_2PM))).toBe("2026-10-27T19:00:00.000Z");
+  });
+
+  it("extends confirmation and shipping deadlines in qualifying hours, the others in plain hours, never from the past", () => {
+    const now = Date.parse("2026-10-24T12:00:00Z");
+    expect(iso(extendedDeadline("shipping", iso(SAT_2PM), 24, SETTINGS, now))).toBe("2026-10-26T19:00:00.000Z");
+    expect(iso(extendedDeadline("payment", iso(SAT_2PM), 24, SETTINGS, now))).toBe("2026-10-25T19:00:00.000Z");
+    // Already past: a day from now (Monday 9 AM CDT → Tuesday 9 AM).
+    const monday = Date.parse("2026-10-26T14:00:00Z");
+    expect(iso(extendedDeadline("confirmation", iso(SAT_2PM), 24, SETTINGS, monday))).toBe("2026-10-27T14:00:00.000Z");
   });
 
   it("reads typed dollars within what a trade allows", () => {
@@ -66,6 +91,22 @@ describe("what a trade adds up to", () => {
 
   it("takes the processing fee off the credit", () => {
     expect(tradeMoney(trade({ processingFeeCents: 300 })).creditCents).toBe(12500);
+  });
+});
+
+describe("the deposit an approval would set", () => {
+  it("follows the bands from the threshold up, the override, and the customer's record", () => {
+    expect(depositPreview(trade({ wantedTotalCents: 32000 }), SETTINGS, "auto")).toEqual({ cents: 2000, reason: "threshold" });
+    expect(depositPreview(trade({ wantedTotalCents: 60000 }), SETTINGS, "auto")).toEqual({ cents: 3000, reason: "threshold" });
+    expect(depositPreview(trade({ wantedTotalCents: 29999 }), SETTINGS, "auto")).toEqual({ cents: 0, reason: null });
+    // Staff can require one on a small trade (its band), or waive one.
+    expect(depositPreview(trade({ wantedTotalCents: 8899 }), SETTINGS, "required")).toEqual({ cents: 500, reason: "trade" });
+    expect(depositPreview(trade({ wantedTotalCents: 32000 }), SETTINGS, "waived")).toEqual({ cents: 0, reason: null });
+    // Per customer, and after repeated abandoned reservations.
+    expect(depositPreview(trade({ wantedTotalCents: 15000, customerRecord: record({ depositRequired: true }) }), SETTINGS, "auto")).toEqual({ cents: 1000, reason: "customer" });
+    expect(depositPreview(trade({ wantedTotalCents: 15000, privileges: privileges({ reliabilityDeposit: true }) }), SETTINGS, "auto")).toEqual({ cents: 1000, reason: "reliability" });
+    // Switched off: none, whatever else.
+    expect(depositPreview(trade({ wantedTotalCents: 90000 }), { ...SETTINGS, depositsEnabled: false }, "required")).toEqual({ cents: 0, reason: null });
   });
 });
 
@@ -135,7 +176,19 @@ describe("inspection", () => {
   it("asks for a value for copies being taken", () => {
     const d = { ...inspectDraftOf(approved), unit: "" };
     expect(inspectInput(approved, d)).toEqual({ problem: "Sheoldred, the Apocalypse: enter a value for each copy you're accepting." });
-    expect(inspectInput(approved, { ...d, accept: 0 })).toMatchObject({ finalQuantity: 0, finalUnitCents: 0 });
+    expect(inspectInput(approved, { ...d, accept: 0, note: "Only one arrived, and it's a proxy" })).toMatchObject({ finalQuantity: 0, finalUnitCents: 0 });
+  });
+
+  it("won't take a change from the approval without a reason the customer can see", () => {
+    const lower = { ...inspectDraftOf(approved), unit: "70.00" };
+    expect(inspectInput(approved, lower)).toEqual({
+      problem: "Sheoldred, the Apocalypse: say why it changed from the approval (a note for the customer, a flag or the condition).",
+    });
+    expect(inspectInput(approved, { ...lower, flags: ["damaged"] })).toMatchObject({ finalUnitCents: 7000, flags: ["damaged"] });
+    expect(inspectInput(approved, { ...lower, note: "Edge wear" })).toMatchObject({ finalUnitCents: 7000, inspectionNote: "Edge wear" });
+    expect(inspectInput(approved, { ...lower, condition: "LP" })).toMatchObject({ verifiedCondition: "LP" });
+    // As approved: nothing to explain.
+    expect(inspectInput(approved, inspectDraftOf(approved))).toMatchObject({ finalQuantity: 2, finalUnitCents: 7600 });
   });
 
   it("previews the final offer from what's saved, with the cash option at the cash rate", () => {
@@ -191,15 +244,31 @@ describe("history and badges", () => {
     expect(eventLabel("something_new")).toBe("something new");
     const base = { id: "e", actorType: "staff" as const, actorLabel: "pat", fromStatus: null, toStatus: null, createdAt: "" };
     expect(eventDetail({ ...base, event: "approved", detail: { approved_value_cents: 12345, conditions: "NM only" } })).toBe("Approved value $123.45 · Conditions: NM only");
-    expect(eventDetail({ ...base, event: "hold_extended", detail: { hours: 48 } })).toBe("48 more hours");
+    expect(
+      eventDetail({ ...base, event: "approved", detail: { approved_value_cents: 12345, confirm_by: "2026-10-27T19:00:00Z", deposit_cents: 2000 } }),
+    ).toBe("Approved value $123.45 · confirm by Tue, Oct 27, 2:00 PM CT · deposit $20.00");
+    expect(
+      eventDetail({ ...base, event: "deadline_extended", detail: { kind: "shipping", to: "2026-10-27T19:00:00Z", hours: 24, customer_requested: true } }),
+    ).toBe("For shipping · now Tue, Oct 27, 2:00 PM CT · 24 more hours · customer asked");
     expect(eventDetail({ ...base, event: "reminder_sent", detail: { kind: "ship_by" } })).toBe("ship their cards");
+    expect(eventDetail({ ...base, event: "reminder_sent", detail: { kind: "confirm_by" } })).toBe("confirm their trade");
     expect(eventDetail({ ...base, event: "rejected", detail: { reason: "Mostly bulk" } })).toBe("Mostly bulk");
+    expect(eventDetail({ ...base, event: "expired", detail: { reason: "No tracking number by the shipping deadline.", fault: "missed_deadline" } })).toBe(
+      "No tracking number by the shipping deadline. · Didn't ship by the deadline",
+    );
+    expect(eventDetail({ ...base, event: "deposit_forfeited", detail: { amount_cents: 2000, note: "Never shipped" } })).toBe("$20.00 · Never shipped");
+    expect(eventDetail({ ...base, event: "late_acceptance", detail: { accepted_at: "2026-10-27T21:00:00Z", ship_by: "2026-10-27T19:00:00Z" } })).toBe(
+      "scanned Tue, Oct 27, 4:00 PM CT · deadline Tue, Oct 27, 2:00 PM CT",
+    );
+    expect(eventLabel("reservation_conflict")).toBe("A card sold while the deposit went through: nothing reserved, deposit refunded");
+    expect(actorLabel({ actorType: "system", actorLabel: "stripe" })).toBe("Stripe");
+    expect(actorLabel({ actorType: "system", actorLabel: "expiry" })).toBe("Automatic");
     expect(customerEmailNote({ status: "sent" })).toBe(" The customer was emailed.");
     expect(customerEmailNote({ status: "failed" })).toBe(" The email to the customer didn't go out: let them know another way.");
     expect(customerEmailNote({ status: "skipped", reason: "customer-emails-off" })).toBe(" Customer emails are off (Settings), so no email went out.");
     expect(customerEmailNote(null)).toBe("");
-    expect(waitingOnStaff("received")).toBe(true);
-    expect(waitingOnStaff("in_transit")).toBe(false);
+    expect(waitingOnStaff({ needsStaff: true })).toBe(true);
+    expect(waitingOnStaff({ needsStaff: false })).toBe(false);
   });
 });
 
@@ -215,7 +284,28 @@ describe("the settings form", () => {
       excludedSetCodes: ["30A"],
       excludedCardNames: ["Black Lotus"],
       shipTo: { name: "Geega Games", line1: "100 Test Ave", line2: null, city: "Ballwin", state: "MO", postalCode: "63011" },
+      confirmationHours: 48,
+      shipDaysNew: 3,
+      excludedDates: [],
+      depositsEnabled: true,
+      depositThresholdCents: 30000,
+      depositBand1MaxCents: 10000,
+      depositBand2MaxCents: 30000,
+      depositBand3MaxCents: 60000,
+      depositBand1Cents: 500,
+      depositBand4Cents: 3000,
+      allowForfeiture: false,
+      abandonPolicy: "deposit",
+      depositTerms: SETTINGS.depositTerms,
     });
+    // The terms version is the server's to set.
+    expect(input).not.toHaveProperty("depositTermsVersion");
+  });
+
+  it("reads the days that don't count: real dates only, sorted, without repeats", () => {
+    expect(readExcludedDates("2026-12-25\n2026-11-26, 2026-12-25")).toEqual({ dates: ["2026-11-26", "2026-12-25"] });
+    expect(readExcludedDates("2026-02-30")).toEqual({ bad: "2026-02-30" });
+    expect(readExcludedDates("  ")).toEqual({ dates: [] });
   });
 
   it("normalizes lists and refuses what the server would", () => {
@@ -232,5 +322,19 @@ describe("the settings form", () => {
     expect(settingsInputOf(noAddress)).toEqual({ problem: "Add the address customers mail their cards to before turning trading on." });
     expect(settingsInputOf({ ...noAddress, enabled: false })).toMatchObject({ enabled: false, shipTo: null });
     expect(settingsInputOf({ ...form, shipTo: { ...form.shipTo, postalCode: "6301" } })).toEqual({ problem: "Mailing address: enter a 5-digit ZIP code." });
+    expect(settingsInputOf({ ...form, money: { ...form.money, depositBand2MaxCents: "50" } })).toEqual({
+      problem: "Deposit bands have to go up: each one starts where the last ends.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, depositBand1Cents: "0.25" } })).toEqual({
+      problem: "Deposit, first band: enter an amount from $0.50 to $1,000.00.",
+    });
+    expect(settingsInputOf({ ...form, numbers: { ...form.numbers, loyaltyTier2Trades: "3" } })).toEqual({
+      problem: "Trusted customers need more completed trades than returning ones.",
+    });
+    expect(settingsInputOf({ ...form, numbers: { ...form.numbers, confirmationHours: "0" } })).toEqual({
+      problem: "Hours to confirm an approved trade: enter a whole number from 1 to 336.",
+    });
+    expect(settingsInputOf({ ...form, excludedDates: "2026-13-01" })).toEqual({ problem: "Days that don't count: 2026-13-01 isn't a date (use YYYY-MM-DD)." });
+    expect(settingsInputOf({ ...form, depositTerms: "  " })).toEqual({ problem: "Add the deposit and cancellation terms customers agree to." });
   });
 });

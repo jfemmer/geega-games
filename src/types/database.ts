@@ -3480,6 +3480,120 @@ export type Database = {
         }
         Relationships: []
       }
+      trade_consents: {
+        Row: {
+          confirm_by: string | null
+          created_at: string
+          deposit_cents: number
+          id: string
+          ip: string | null
+          ship_days: number | null
+          terms_text: string
+          terms_version: number
+          trade_request_id: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          confirm_by?: string | null
+          created_at?: string
+          deposit_cents: number
+          id?: string
+          ip?: string | null
+          ship_days?: number | null
+          terms_text: string
+          terms_version: number
+          trade_request_id: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          confirm_by?: string | null
+          created_at?: string
+          deposit_cents?: number
+          id?: string
+          ip?: string | null
+          ship_days?: number | null
+          terms_text?: string
+          terms_version?: number
+          trade_request_id?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trade_customer_flags: {
+        Row: {
+          blocked: boolean
+          deposit_required: boolean
+          note: string | null
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          blocked?: boolean
+          deposit_required?: boolean
+          note?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          blocked?: boolean
+          deposit_required?: boolean
+          note?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trade_disputes: {
+        Row: {
+          created_at: string
+          files: Json
+          id: string
+          note: string
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_by_label: string | null
+          staff_note: string | null
+          status: string
+          trade_request_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          files?: Json
+          id?: string
+          note: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_by_label?: string | null
+          staff_note?: string | null
+          status?: string
+          trade_request_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          files?: Json
+          id?: string
+          note?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_by_label?: string | null
+          staff_note?: string | null
+          status?: string
+          trade_request_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trade_events: {
         Row: {
           actor_id: string | null
@@ -3515,6 +3629,48 @@ export type Database = {
           from_status?: string | null
           id?: string
           to_status?: string | null
+          trade_request_id?: string
+        }
+        Relationships: []
+      }
+      trade_extensions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          created_by_label: string | null
+          customer_requested: boolean
+          from_deadline: string | null
+          hours: number | null
+          id: string
+          kind: string
+          reason: string | null
+          to_deadline: string
+          trade_request_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          created_by_label?: string | null
+          customer_requested?: boolean
+          from_deadline?: string | null
+          hours?: number | null
+          id?: string
+          kind: string
+          reason?: string | null
+          to_deadline: string
+          trade_request_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          created_by_label?: string | null
+          customer_requested?: boolean
+          from_deadline?: string | null
+          hours?: number | null
+          id?: string
+          kind?: string
+          reason?: string | null
+          to_deadline?: string
           trade_request_id?: string
         }
         Relationships: []
@@ -3748,40 +3904,80 @@ export type Database = {
           closed_at: string | null
           completed_at: string | null
           condition_percents: Json
+          confirm_by: string | null
+          confirm_by_original: string | null
+          confirmed_at: string | null
           created_at: string
           credit_issued_cents: number | null
           credit_rate_percent: number
           customer_email: string | null
+          customer_fault: string | null
           customer_name: string | null
           customer_note: string | null
+          deposit_cents: number
+          deposit_decided_at: string | null
+          deposit_decided_by: string | null
+          deposit_decision_note: string | null
+          deposit_fee_cents: number | null
+          deposit_override: string
+          deposit_paid_at: string | null
+          deposit_paid_cents: number | null
+          deposit_payment_intent: string | null
+          deposit_reason: string | null
+          deposit_refund_attempts: number
+          deposit_refund_failure: string | null
+          deposit_refund_id: string | null
+          deposit_refund_requested_at: string | null
+          deposit_refunded_at: string | null
+          deposit_status: string
           estimated_value_cents: number
           excess_cents: number | null
           excess_handling: string
+          expired_stage: string | null
+          fault_at: string | null
+          fault_cleared_at: string | null
+          fault_cleared_by: string | null
           final_credit_cents: number | null
           final_offer_at: string | null
           final_value_cents: number | null
-          hold_expires_at: string | null
           id: string
+          inbound_acceptance_source: string | null
+          inbound_accepted_at: string | null
           inbound_carrier: string | null
-          inbound_shipped_at: string | null
+          inbound_delivered_at: string | null
+          inbound_last_event_at: string | null
+          inbound_tracker_id: string | null
           inbound_tracking: string | null
+          inbound_tracking_added_at: string | null
+          inbound_tracking_checked_at: string | null
+          inbound_tracking_events: Json
+          inbound_tracking_status: string | null
+          list_due_at: string | null
           min_card_value_cents: number
+          needs_staff: boolean
           order_id: string | null
           paid_at: string | null
           payment_due_at: string | null
           payment_reference: string | null
           processing_fee_cents: number
           received_at: string | null
+          reserved_at: string | null
           return_carrier: string | null
+          return_status: string
           return_tracking: string | null
           returned_at: string | null
+          review_flag: string | null
+          review_flag_at: string | null
           ship_by: string | null
+          ship_by_original: string | null
           ship_city: string | null
+          ship_days: number | null
           ship_line1: string | null
           ship_line2: string | null
           ship_name: string | null
           ship_postal_code: string | null
           ship_state: string | null
+          shipped_on_time: boolean | null
           shipping_cents: number | null
           status: string
           submitted_at: string | null
@@ -3802,40 +3998,80 @@ export type Database = {
           closed_at?: string | null
           completed_at?: string | null
           condition_percents: Json
+          confirm_by?: string | null
+          confirm_by_original?: string | null
+          confirmed_at?: string | null
           created_at?: string
           credit_issued_cents?: number | null
           credit_rate_percent: number
           customer_email?: string | null
+          customer_fault?: string | null
           customer_name?: string | null
           customer_note?: string | null
+          deposit_cents?: number
+          deposit_decided_at?: string | null
+          deposit_decided_by?: string | null
+          deposit_decision_note?: string | null
+          deposit_fee_cents?: number | null
+          deposit_override?: string
+          deposit_paid_at?: string | null
+          deposit_paid_cents?: number | null
+          deposit_payment_intent?: string | null
+          deposit_reason?: string | null
+          deposit_refund_attempts?: number
+          deposit_refund_failure?: string | null
+          deposit_refund_id?: string | null
+          deposit_refund_requested_at?: string | null
+          deposit_refunded_at?: string | null
+          deposit_status?: string
           estimated_value_cents?: number
           excess_cents?: number | null
           excess_handling?: string
+          expired_stage?: string | null
+          fault_at?: string | null
+          fault_cleared_at?: string | null
+          fault_cleared_by?: string | null
           final_credit_cents?: number | null
           final_offer_at?: string | null
           final_value_cents?: number | null
-          hold_expires_at?: string | null
           id?: string
+          inbound_acceptance_source?: string | null
+          inbound_accepted_at?: string | null
           inbound_carrier?: string | null
-          inbound_shipped_at?: string | null
+          inbound_delivered_at?: string | null
+          inbound_last_event_at?: string | null
+          inbound_tracker_id?: string | null
           inbound_tracking?: string | null
+          inbound_tracking_added_at?: string | null
+          inbound_tracking_checked_at?: string | null
+          inbound_tracking_events?: Json
+          inbound_tracking_status?: string | null
+          list_due_at?: string | null
           min_card_value_cents: number
+          needs_staff?: never
           order_id?: string | null
           paid_at?: string | null
           payment_due_at?: string | null
           payment_reference?: string | null
           processing_fee_cents?: number
           received_at?: string | null
+          reserved_at?: string | null
           return_carrier?: string | null
+          return_status?: string
           return_tracking?: string | null
           returned_at?: string | null
+          review_flag?: string | null
+          review_flag_at?: string | null
           ship_by?: string | null
+          ship_by_original?: string | null
           ship_city?: string | null
+          ship_days?: number | null
           ship_line1?: string | null
           ship_line2?: string | null
           ship_name?: string | null
           ship_postal_code?: string | null
           ship_state?: string | null
+          shipped_on_time?: boolean | null
           shipping_cents?: number | null
           status?: string
           submitted_at?: string | null
@@ -3856,40 +4092,80 @@ export type Database = {
           closed_at?: string | null
           completed_at?: string | null
           condition_percents?: Json
+          confirm_by?: string | null
+          confirm_by_original?: string | null
+          confirmed_at?: string | null
           created_at?: string
           credit_issued_cents?: number | null
           credit_rate_percent?: number
           customer_email?: string | null
+          customer_fault?: string | null
           customer_name?: string | null
           customer_note?: string | null
+          deposit_cents?: number
+          deposit_decided_at?: string | null
+          deposit_decided_by?: string | null
+          deposit_decision_note?: string | null
+          deposit_fee_cents?: number | null
+          deposit_override?: string
+          deposit_paid_at?: string | null
+          deposit_paid_cents?: number | null
+          deposit_payment_intent?: string | null
+          deposit_reason?: string | null
+          deposit_refund_attempts?: number
+          deposit_refund_failure?: string | null
+          deposit_refund_id?: string | null
+          deposit_refund_requested_at?: string | null
+          deposit_refunded_at?: string | null
+          deposit_status?: string
           estimated_value_cents?: number
           excess_cents?: number | null
           excess_handling?: string
+          expired_stage?: string | null
+          fault_at?: string | null
+          fault_cleared_at?: string | null
+          fault_cleared_by?: string | null
           final_credit_cents?: number | null
           final_offer_at?: string | null
           final_value_cents?: number | null
-          hold_expires_at?: string | null
           id?: string
+          inbound_acceptance_source?: string | null
+          inbound_accepted_at?: string | null
           inbound_carrier?: string | null
-          inbound_shipped_at?: string | null
+          inbound_delivered_at?: string | null
+          inbound_last_event_at?: string | null
+          inbound_tracker_id?: string | null
           inbound_tracking?: string | null
+          inbound_tracking_added_at?: string | null
+          inbound_tracking_checked_at?: string | null
+          inbound_tracking_events?: Json
+          inbound_tracking_status?: string | null
+          list_due_at?: string | null
           min_card_value_cents?: number
+          needs_staff?: never
           order_id?: string | null
           paid_at?: string | null
           payment_due_at?: string | null
           payment_reference?: string | null
           processing_fee_cents?: number
           received_at?: string | null
+          reserved_at?: string | null
           return_carrier?: string | null
+          return_status?: string
           return_tracking?: string | null
           returned_at?: string | null
+          review_flag?: string | null
+          review_flag_at?: string | null
           ship_by?: string | null
+          ship_by_original?: string | null
           ship_city?: string | null
+          ship_days?: number | null
           ship_line1?: string | null
           ship_line2?: string | null
           ship_name?: string | null
           ship_postal_code?: string | null
           ship_state?: string | null
+          shipped_on_time?: boolean | null
           shipping_cents?: number | null
           status?: string
           submitted_at?: string | null
@@ -3902,6 +4178,10 @@ export type Database = {
       }
       trade_settings: {
         Row: {
+          abandon_limit: number
+          abandon_policy: string
+          abandon_window_days: number
+          allow_forfeiture: boolean
           cash_payout_enabled: boolean
           cash_rate_percent: number
           condition_dmg_percent: number
@@ -3909,15 +4189,33 @@ export type Database = {
           condition_lp_percent: number
           condition_mp_percent: number
           condition_nm_percent: number
+          confirm_reminder_hours: number
+          confirmation_hours: number
           credit_rate_percent: number
+          deposit_band1_cents: number
+          deposit_band1_max_cents: number
+          deposit_band2_cents: number
+          deposit_band2_max_cents: number
+          deposit_band3_cents: number
+          deposit_band3_max_cents: number
+          deposit_band4_cents: number
+          deposit_terms: string
+          deposit_terms_version: number
+          deposit_threshold_cents: number
+          deposits_enabled: boolean
+          dispute_window_days: number
+          draft_days: number
           enabled: boolean
           excluded_card_names: string[]
+          excluded_dates: string[]
           excluded_set_codes: string[]
           id: boolean
+          loyalty_tier1_trades: number
+          loyalty_tier2_trades: number
           max_active_trades: number
-          max_expired_trades_30d: number
           max_offered_lines: number
           max_trade_value_cents: number | null
+          max_transit_days: number
           max_wanted_lines: number
           min_card_value_cents: number
           min_trade_value_cents: number
@@ -3929,11 +4227,13 @@ export type Database = {
           paused: boolean
           payment_due_days: number
           processing_fee_cents: number
-          reservation_hours: number
           return_policy: string
           revision_hours: number
-          ship_business_days: number
-          ship_grace_hours: number
+          scan_grace_hours: number
+          ship_days_new: number
+          ship_days_tier1: number
+          ship_days_tier2: number
+          ship_reminder_hours: number
           ship_to_city: string | null
           ship_to_line1: string | null
           ship_to_line2: string | null
@@ -3941,11 +4241,15 @@ export type Database = {
           ship_to_postal_code: string | null
           ship_to_state: string | null
           shipping_paid_by: string
-          transit_alert_days: number
+          stall_alert_days: number
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          abandon_limit?: number
+          abandon_policy?: string
+          abandon_window_days?: number
+          allow_forfeiture?: boolean
           cash_payout_enabled?: boolean
           cash_rate_percent?: number
           condition_dmg_percent?: number
@@ -3953,15 +4257,33 @@ export type Database = {
           condition_lp_percent?: number
           condition_mp_percent?: number
           condition_nm_percent?: number
+          confirm_reminder_hours?: number
+          confirmation_hours?: number
           credit_rate_percent?: number
+          deposit_band1_cents?: number
+          deposit_band1_max_cents?: number
+          deposit_band2_cents?: number
+          deposit_band2_max_cents?: number
+          deposit_band3_cents?: number
+          deposit_band3_max_cents?: number
+          deposit_band4_cents?: number
+          deposit_terms?: string
+          deposit_terms_version?: number
+          deposit_threshold_cents?: number
+          deposits_enabled?: boolean
+          dispute_window_days?: number
+          draft_days?: number
           enabled?: boolean
           excluded_card_names?: string[]
+          excluded_dates?: string[]
           excluded_set_codes?: string[]
           id?: boolean
+          loyalty_tier1_trades?: number
+          loyalty_tier2_trades?: number
           max_active_trades?: number
-          max_expired_trades_30d?: number
           max_offered_lines?: number
           max_trade_value_cents?: number | null
+          max_transit_days?: number
           max_wanted_lines?: number
           min_card_value_cents?: number
           min_trade_value_cents?: number
@@ -3973,11 +4295,13 @@ export type Database = {
           paused?: boolean
           payment_due_days?: number
           processing_fee_cents?: number
-          reservation_hours?: number
           return_policy?: string
           revision_hours?: number
-          ship_business_days?: number
-          ship_grace_hours?: number
+          scan_grace_hours?: number
+          ship_days_new?: number
+          ship_days_tier1?: number
+          ship_days_tier2?: number
+          ship_reminder_hours?: number
           ship_to_city?: string | null
           ship_to_line1?: string | null
           ship_to_line2?: string | null
@@ -3985,11 +4309,15 @@ export type Database = {
           ship_to_postal_code?: string | null
           ship_to_state?: string | null
           shipping_paid_by?: string
-          transit_alert_days?: number
+          stall_alert_days?: number
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          abandon_limit?: number
+          abandon_policy?: string
+          abandon_window_days?: number
+          allow_forfeiture?: boolean
           cash_payout_enabled?: boolean
           cash_rate_percent?: number
           condition_dmg_percent?: number
@@ -3997,15 +4325,33 @@ export type Database = {
           condition_lp_percent?: number
           condition_mp_percent?: number
           condition_nm_percent?: number
+          confirm_reminder_hours?: number
+          confirmation_hours?: number
           credit_rate_percent?: number
+          deposit_band1_cents?: number
+          deposit_band1_max_cents?: number
+          deposit_band2_cents?: number
+          deposit_band2_max_cents?: number
+          deposit_band3_cents?: number
+          deposit_band3_max_cents?: number
+          deposit_band4_cents?: number
+          deposit_terms?: string
+          deposit_terms_version?: number
+          deposit_threshold_cents?: number
+          deposits_enabled?: boolean
+          dispute_window_days?: number
+          draft_days?: number
           enabled?: boolean
           excluded_card_names?: string[]
+          excluded_dates?: string[]
           excluded_set_codes?: string[]
           id?: boolean
+          loyalty_tier1_trades?: number
+          loyalty_tier2_trades?: number
           max_active_trades?: number
-          max_expired_trades_30d?: number
           max_offered_lines?: number
           max_trade_value_cents?: number | null
+          max_transit_days?: number
           max_wanted_lines?: number
           min_card_value_cents?: number
           min_trade_value_cents?: number
@@ -4017,11 +4363,13 @@ export type Database = {
           paused?: boolean
           payment_due_days?: number
           processing_fee_cents?: number
-          reservation_hours?: number
           return_policy?: string
           revision_hours?: number
-          ship_business_days?: number
-          ship_grace_hours?: number
+          scan_grace_hours?: number
+          ship_days_new?: number
+          ship_days_tier1?: number
+          ship_days_tier2?: number
+          ship_reminder_hours?: number
           ship_to_city?: string | null
           ship_to_line1?: string | null
           ship_to_line2?: string | null
@@ -4029,7 +4377,7 @@ export type Database = {
           ship_to_postal_code?: string | null
           ship_to_state?: string | null
           shipping_paid_by?: string
-          transit_alert_days?: number
+          stall_alert_days?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -5157,30 +5505,120 @@ export type Database = {
           p_actor_id: string | null
           p_actor_label: string | null
           p_conditions: string | null
-          p_ship_by: string
+          p_confirm_by: string
+          p_deposit_cents: number
+          p_deposit_reason: string | null
           p_trade_id: string
         }
         Returns: number
+      }
+      trade_available: {
+        Args: {
+          p_inventory_item_id: string
+          p_trade_id: string | null
+        }
+        Returns: number
+      }
+      trade_clear_fault: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_trade_id: string
+        }
+        Returns: undefined
       }
       trade_close: {
         Args: {
           p_actor_id: string | null
           p_actor_label: string | null
           p_actor_type: string
+          p_fault: string | null
           p_from_statuses: string[]
           p_reason: string | null
+          p_stage?: string | null
           p_status: string
+          p_trade_id: string
+        }
+        Returns: {
+          closed: boolean
+          deposit_after: string
+        }[]
+      }
+      trade_confirm: {
+        Args: {
+          p_ip: string | null
+          p_payment_intent: string | null
+          p_ship_by: string | null
+          p_ship_days: number
+          p_terms_text: string
+          p_terms_version: number
+          p_trade_id: string
+          p_user_agent: string | null
+          p_user_id: string
+        }
+        Returns: {
+          result: string
+          short_lines: Json | null
+        }[]
+      }
+      trade_customer_list: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: {
+          customer_email: string | null
+          customer_name: string | null
+          customer_user_id: string
+          last_trade_at: string
+          stats: Json
+        }[]
+      }
+      trade_customer_stats: {
+        Args: {
+          p_user_id: string
+          p_window_days?: number
+        }
+        Returns: Json
+      }
+      trade_deposit_update: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_actor_type: string
+          p_failure: string | null
+          p_note: string | null
+          p_refund_id: string | null
+          p_to: string
           p_trade_id: string
         }
         Returns: boolean
       }
       trade_expire_due: {
-        Args: { p_limit?: number }
+        Args: {
+          p_auto_tracking?: boolean
+          p_limit?: number
+          p_scan_grace_hours?: number
+        }
         Returns: {
+          expired_deposit_status: string
           expired_from_status: string
+          expired_stage: string
           expired_trade_id: string
           expired_trade_number: number
         }[]
+      }
+      trade_extend: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_customer_requested: boolean
+          p_hours: number | null
+          p_kind: string
+          p_new_deadline: string
+          p_reason: string | null
+          p_trade_id: string
+        }
+        Returns: string
       }
       trade_import_card: {
         Args: {
@@ -5200,6 +5638,29 @@ export type Database = {
         }
         Returns: undefined
       }
+      trade_mark_received: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_trade_id: string
+        }
+        Returns: string
+      }
+      trade_mark_unavailable: {
+        Args: {
+          p_trade_id: string
+        }
+        Returns: Json | null
+      }
+      trade_open_dispute: {
+        Args: {
+          p_files: Json
+          p_note: string
+          p_trade_id: string
+          p_user_id: string
+        }
+        Returns: string
+      }
       trade_record_payment: {
         Args: {
           p_paid_cents: number
@@ -5208,12 +5669,74 @@ export type Database = {
         }
         Returns: string
       }
+      trade_record_scan: {
+        Args: {
+          p_accepted_at: string | null
+          p_delivered_at: string | null
+          p_events: Json
+          p_last_event_at: string | null
+          p_status: string | null
+          p_tracker_id: string | null
+          p_tracking: string
+          p_trade_id: string
+        }
+        Returns: string
+      }
+      trade_record_tracking: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_actor_type: string
+          p_carrier: string
+          p_tracking: string
+          p_trade_id: string
+        }
+        Returns: string
+      }
+      trade_reinstate: {
+        Args: {
+          p_accepted_at: string | null
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_clear_fault: boolean
+          p_mode: string
+          p_ship_by: string | null
+          p_trade_id: string
+        }
+        Returns: {
+          result: string
+          short_lines: Json | null
+        }[]
+      }
       trade_request_revision: {
         Args: {
           p_actor_id: string | null
           p_actor_label: string | null
           p_message: string
           p_trade_id: string
+        }
+        Returns: string
+      }
+      trade_reserve: {
+        Args: {
+          p_paid_cents: number
+          p_payment_intent: string
+          p_ship_by: string
+          p_ship_days: number
+          p_trade_id: string
+        }
+        Returns: {
+          result: string
+          short_lines: Json | null
+        }[]
+      }
+      trade_resolve_dispute: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_dispute_id: string
+          p_note: string | null
+          p_outcome: string
         }
         Returns: string
       }
@@ -5227,7 +5750,11 @@ export type Database = {
         Returns: undefined
       }
       trade_save_offer: {
-        Args: { p_cards: Json; p_trade_id: string; p_user_id: string }
+        Args: {
+          p_cards: Json
+          p_trade_id: string
+          p_user_id: string
+        }
         Returns: number
       }
       trade_send_final_offer: {
@@ -5238,6 +5765,17 @@ export type Database = {
           p_trade_id: string
         }
         Returns: number
+      }
+      trade_set_deposit: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_deposit_cents: number
+          p_override: string
+          p_reason: string | null
+          p_trade_id: string
+        }
+        Returns: undefined
       }
       trade_set_wanted: {
         Args: {
@@ -5250,6 +5788,12 @@ export type Database = {
         }
         Returns: number
       }
+      trade_short_lines: {
+        Args: {
+          p_trade_id: string
+        }
+        Returns: Json
+      }
       trade_start: {
         Args: {
           p_customer_email: string | null
@@ -5260,8 +5804,24 @@ export type Database = {
         Returns: string
       }
       trade_submit: {
-        Args: { p_note: string | null; p_trade_id: string; p_user_id: string }
+        Args: {
+          p_note: string | null
+          p_trade_id: string
+          p_user_id: string
+        }
         Returns: undefined
+      }
+      trade_verify_shipment: {
+        Args: {
+          p_accepted_at: string
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_note: string | null
+          p_on_time: boolean
+          p_refund: boolean
+          p_trade_id: string
+        }
+        Returns: string
       }
       yard_sale_add_to_list: {
         Args: { p_items: Json; p_request_id: string }

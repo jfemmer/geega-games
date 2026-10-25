@@ -18,9 +18,13 @@ export type TradeCardPaymentResult =
   | { ok: true; orderId: string }
   | { ok: false; retryable: boolean; code: string | null; message: string };
 
-/** Is this PaymentIntent for a trade (vs. a store order or a sorting quote)? */
+/**
+ * Is this PaymentIntent the rest of a trade (vs. a store order, a sorting
+ * quote, or a trade's refundable deposit, which api/_lib/tradeDeposits.ts
+ * handles)?
+ */
 export function isTradePaymentIntent(intent: Pick<Stripe.PaymentIntent, "metadata">): boolean {
-  return Boolean(intent.metadata?.trade_request_id);
+  return Boolean(intent.metadata?.trade_request_id) && intent.metadata?.kind !== "trade_deposit";
 }
 
 export async function recordTradeCardPayment(intent: Stripe.PaymentIntent): Promise<TradeCardPaymentResult> {

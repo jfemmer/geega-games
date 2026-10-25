@@ -138,13 +138,71 @@ async function act<T extends { terms: TradeTerms } = TradeResponse>(action: stri
   return withTerms(await request<T>({ method: "POST", body: { action, ...payload } }));
 }
 
+export type ConfirmResponse = TradeResponse & {
+  /** With a deposit: the card payment to finish (Stripe's client secret). */
+  clientSecret?: string;
+  depositCents?: number;
+  /** Something changed while confirming (a card sold): what to tell the customer. */
+  notice?: string;
+};
+
+interface SignedUpload {
+  fileName: string;
+  path: string;
+  token: string;
+  signedUrl: string;
+}
+
 export const tradeActions = {
   start: (items: TradeWantedInput[]) => act("start", { items }),
   setWanted: (tradeId: string, items: TradeWantedInput[]) => act("setWanted", { tradeId, items }),
   saveOffer: (tradeId: string, cards: TradeOfferInput[]) => act("saveOffer", { tradeId, cards }),
   submit: (tradeId: string, note: string | null) => act("submit", { tradeId, note }),
-  cancel: (tradeId: string, reason: string | null) => act("cancel", { tradeId, reason }),
+  /** Confirm an approved trade, agreeing to the terms (version) shown. */
+  confirm: (tradeId: string, termsVersion: number) => act<ConfirmResponse>("confirm", { tradeId, acknowledged: true, termsVersion }),
+  confirmDeposit: (tradeId: string, paymentIntentId: string) =>
+    act<TradeResponse & { paymentStatus?: string }>("confirmDeposit", { tradeId, paymentIntentId }),
+  cancel: (tradeId: string, reason: string | null, acceptDepositReview = false) =>
+    act("cancel", { tradeId, reason, acceptDepositReview }),
+  withdraw: (tradeId: string, reason: string | null) => act("withdraw", { tradeId, reason }),
+  askForTime: (tradeId: string, note: string) => act("askForTime", { tradeId, note }),
   tracking: (tradeId: string, carrier: string, trackingNumber: string) => act("tracking", { tradeId, carrier, trackingNumber }),
+  /**
+   * Proof of shipping: the files go straight to private storage through
+   * signed links (nothing passes through our server), then the note is sent
+   * with them.
+   */
+  async proof(tradeId: string, note: string, files: File[]): Promise<TradeResponse> {
+    const draftId = crypto.randomUUID();
+    if (files.length > 0) {
+      const { uploads } = await request<{ uploads: SignedUpload[] }>({
+        method: "POST",
+        body: {
+          action: "proofUploads",
+          tradeId,
+          draftId,
+          files: files.map((f) => ({ fileName: f.name, mimeType: f.type || "application/octet-stream", sizeBytes: f.size })),
+        },
+      });
+      for (let i = 0; i < files.length; i += 1) {
+        const target = uploads[i];
+        if (!target?.signedUrl) throw new TradeApiError("A file didn't upload. Try again.", 0);
+        let ok = false;
+        try {
+          const res = await fetch(target.signedUrl, {
+            method: "PUT",
+            headers: { "Content-Type": files[i].type || "application/octet-stream" },
+            body: files[i],
+          });
+          ok = res.ok;
+        } catch {
+          ok = false;
+        }
+        if (!ok) throw new TradeApiError(`${files[i].name} didn't upload. Check your connection and try again.`, 0);
+      }
+    }
+    return act("proof", { tradeId, draftId, note });
+  },
   accept: (tradeId: string, shipTo: { addressId: string } | { address: TradeShipToInput }) =>
     act<TradeResponse & { amountDueCents: number }>("accept", { tradeId, ...shipTo }),
   adjust: (tradeId: string, message: string) => act("adjust", { tradeId, message }),

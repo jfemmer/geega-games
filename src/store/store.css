@@ -6825,10 +6825,10 @@
 .gg-tc-deadline { margin: 0.5rem 0 0; color: #4b1a78; }
 .gg-tc-steps {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
   align-self: flex-end;
-  width: min(500px, 100%);
+  width: min(560px, 100%);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -7038,3 +7038,91 @@
 .gg-tc-settled__back { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
 .gg-tc-settled__back h3 { margin: 0 0 .4rem; font-size: 1rem; }
 .gg-tc-settled__back ul { margin: 0 0 .4rem; padding-left: 1.1rem; }
+
+/* Deadlines, the deposit, confirming, scans, the final offer, closed trades */
+.gg-tc-deadline--past { color: var(--gg-danger); }
+
+.gg-tc-confirm { border-color: rgba(102, 51, 153, 0.35); }
+.gg-tc-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.6rem;
+  margin: 0.9rem 0;
+}
+.gg-tc-facts div { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.75rem; border-radius: 10px; background: #faf6ff; }
+.gg-tc-facts dt { font-size: 0.8rem; color: #6d6575; }
+.gg-tc-facts dd { margin: 0; font-weight: 700; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
+.gg-tc-facts__sub { display: block; font-size: 0.78rem; font-weight: 400; color: #5b5362; }
+.gg-tc-confirm__cards { list-style: none; margin: 0 0 0.75rem; padding: 0; }
+.gg-tc-confirm__card { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.25rem; border-bottom: 1px solid #efe8f7; }
+.gg-tc-confirm__card:last-child { border-bottom: none; }
+.gg-tc-confirm__card--short { background: linear-gradient(90deg, rgba(185, 28, 28, 0.06), transparent 70%); }
+.gg-tc-confirm__warn { display: block; font-size: 0.8rem; font-weight: 600; color: var(--gg-danger); }
+.gg-tc-confirm__price { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.gg-tc-terms { margin: 1rem 0; padding: 1rem; border: 1px solid #e6def0; border-radius: 10px; background: #fff; }
+.gg-tc-terms h3 { margin: 0 0 0.5rem; }
+.gg-tc-terms p { margin: 0 0 0.6rem; font-size: 0.92rem; line-height: 1.55; }
+.gg-tc-terms__list { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.75rem 0 0; padding-top: 0.75rem; border-top: 1px solid #efe8f7; }
+.gg-tc-terms__list dt { font-size: 0.88rem; font-weight: 700; color: #3a1260; }
+.gg-tc-terms__list dd { margin: 0.1rem 0 0; font-size: 0.9rem; line-height: 1.5; color: #3b3346; }
+.gg-tc-confirm__go { display: flex; flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+.gg-tc-ack {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #ddd5e4;
+  border-radius: 10px;
+  background: #fcfaff;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.gg-tc-ack input { flex: none; width: 1.1rem; height: 1.1rem; margin-top: 0.2rem; accent-color: #663399; }
+.gg-tc-confirm__btn { min-width: 260px; }
+.gg-tc-confirm__pay { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ece4f5; }
+.gg-tc-confirm__pay h3 { margin-top: 0; }
+@media (max-width: 560px) {
+  .gg-tc-confirm__btn { width: 100%; min-width: 0; }
+}
+
+.gg-tc-deposit { padding: 0.9rem 1.1rem; border: 1px solid rgba(102, 51, 153, 0.22); border-radius: 12px; background: #fbf8ff; }
+.gg-tc-deposit--ok { border-color: rgba(15, 81, 50, 0.3); background: #f2fbf6; }
+.gg-tc-deposit--warn { border-color: #fecaca; background: #fffafa; }
+.gg-tc-deposit__head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.gg-tc-deposit__head h2 { margin: 0; font-size: 1rem; color: #3a1260; }
+.gg-tc-deposit__amount { font-size: 1.25rem; font-weight: 800; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
+.gg-tc-deposit__status { margin: 0.2rem 0 0.35rem; font-weight: 700; color: #4b1a78; }
+.gg-tc-deposit--ok .gg-tc-deposit__status { color: var(--gg-ok); }
+.gg-tc-deposit--warn .gg-tc-deposit__status { color: var(--gg-danger); }
+.gg-tc-deposit__body { margin: 0; font-size: 0.9rem; line-height: 1.5; color: #3b3346; }
+
+.gg-tc-verified { padding: 0.6rem 0.8rem; border-radius: 8px; background: #f2fbf6; color: #0f5132; line-height: 1.5; }
+.gg-tc-scans { margin-top: 0.5rem; font-size: 0.88rem; }
+.gg-tc-scans summary { cursor: pointer; color: var(--gg-purple); font-weight: 600; }
+.gg-tc-scans ol { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.gg-tc-scans li { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: 0.75rem; padding: 0.35rem 0; border-bottom: 1px solid #f1ebf7; }
+.gg-tc-scans__when { color: #6d6575; font-variant-numeric: tabular-nums; }
+.gg-tc-trackform__hint { flex-basis: 100%; margin: 0; }
+.gg-tc-files { margin: 0.5rem 0; padding-left: 1.1rem; font-size: 0.88rem; }
+.gg-tc-files li { overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .gg-tc-scans li { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
+}
+
+.gg-tc-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; margin: 0.75rem 0 1rem; }
+.gg-tc-compare div { padding: 0.6rem 0.75rem; border-radius: 10px; background: #faf6ff; }
+.gg-tc-compare dt { font-size: 0.8rem; color: #6d6575; }
+.gg-tc-compare dd { margin: 0.15rem 0 0; font-size: 1.05rem; font-weight: 700; color: var(--gg-ink); font-variant-numeric: tabular-nums; }
+.gg-tc-compare div.gg-tc-compare__down { background: #fff4f4; }
+.gg-tc-compare div.gg-tc-compare__down dd { color: var(--gg-danger); }
+.gg-tc-compare div.gg-tc-compare__up { background: #f2fbf6; }
+.gg-tc-compare div.gg-tc-compare__up dd { color: var(--gg-ok); }
+.gg-tc-reasons { margin: 0.25rem 0 0; padding-left: 1rem; font-size: 0.82rem; line-height: 1.45; color: #8a2a2a; }
+.gg-tc-nopenalty { margin: 0.75rem 0 0; padding: 0.6rem 0.8rem; border-radius: 8px; background: #f2fbf6; color: #0f5132; line-height: 1.5; }
+
+.gg-tc-line__note--warn { color: var(--gg-danger); font-weight: 600; }
+.gg-tc-closed > p { margin: 0 0 0.75rem; line-height: 1.55; }
+.gg-tc-return { margin: 1rem 0; padding: 0.85rem 1rem; border-radius: 10px; background: #faf6ff; }
+.gg-tc-return h3 { margin: 0 0 0.35rem; }
+.gg-tc-return p { margin: 0 0 0.4rem; line-height: 1.5; }
+.gg-tc-valuetable__note { font-size: 0.78rem; font-weight: 400; color: #6d6575; }

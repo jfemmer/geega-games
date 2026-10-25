@@ -4,8 +4,9 @@ import { CONDITION_LABELS } from "../../lib/conditionLabels";
 import { FINISH_NAMES, TRADE_LIMITS } from "../../lib/tradeCenter";
 
 // Our cards on a trade (or in the trade cart): each line with its trade
-// price, and, while the customer can still change them, a quantity and a
-// way to take it off.
+// price, a note when it matters (only 1 left, sold, no longer on the trade),
+// and, while the customer can still change them, a quantity and a way to
+// take it off.
 
 export interface TradeWantedRow {
   key: string;
@@ -20,8 +21,11 @@ export interface TradeWantedRow {
   unitPriceCents: number;
   /** For the quantity picker. */
   maxQuantity?: number;
-  /** No longer held for this trade. */
+  /** No longer on this trade (released or taken off): shown faded. */
   released?: boolean;
+  /** A word about this line: "Only 1 left", "Sold since you added it". */
+  note?: string | null;
+  noteTone?: "warn" | "muted";
   cardPath?: string | null;
 }
 
@@ -63,7 +67,11 @@ export function TradeWantedList({
                 {CONDITION_LABELS[row.condition] ?? row.condition}
                 {row.finish !== "nonfoil" ? ` · ${FINISH_NAMES[row.finish] ?? row.finish}` : ""}
               </span>
-              {row.released && <span className="gg-tc-line__note">No longer on this trade</span>}
+              {(row.note || row.released) && (
+                <span className={row.noteTone === "warn" ? "gg-tc-line__note gg-tc-line__note--warn" : "gg-tc-line__note"}>
+                  {row.note ?? "No longer on this trade"}
+                </span>
+              )}
             </span>
             <span className="gg-tc-line__qty">
               {onQuantity && !row.released ? (

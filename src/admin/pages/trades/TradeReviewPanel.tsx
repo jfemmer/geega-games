@@ -1,31 +1,34 @@
 import { useState } from "react";
 import { Button } from "../../components/ui/Button";
-import { TextArea, TextField } from "../../components/ui/Field";
+import { SelectField, TextArea, TextField } from "../../components/ui/Field";
 import { Icon } from "../../components/ui/Icon";
 import { useToast } from "../../hooks/useToast";
+import { useNow } from "../../../store/lib/useNow";
 import { formatCents } from "../../utils/format";
 import { tradeCenterRepository, type ReviewCardInput } from "../../repositories/tradeCenter.supabase";
-import { tradeComparison, type StaffTradeOfferCard } from "../../../store/lib/tradeCenter";
+import { formatDeadline, tradeComparison, type StaffTradeOfferCard } from "../../../store/lib/tradeCenter";
+import { DEPOSIT_REASON_LABELS, type DepositOverride } from "../../../store/lib/tradeRules";
 import {
   centsInput,
-  defaultShipByInput,
-  formatDateInput,
+  confirmByPreview,
+  depositPreview,
   parseUnitCents,
   quantityOptions,
   reviewChanged,
   reviewDraftOf,
   reviewInput,
   reviewTally,
-  shipByBounds,
   type ReviewDraft,
 } from "./tradeMath";
 import { OfferCardHead } from "./TradeCardBits";
 import type { TradePanelProps } from "./types";
 
 // Pending review: staff approve (how many, and the value each) or reject
-// each of the customer's cards, then approve the trade (with a ship-by date
-// and any conditions), ask the customer for changes, or reject it. Card
-// decisions are saved with whichever of those staff pick, or on their own.
+// each of the customer's cards, then approve the trade (the customer then
+// has the confirmation window to confirm, with the deposit shown here), ask
+// the customer for changes, or reject it. Nothing is reserved until the
+// customer confirms. Card decisions are saved with whichever of those staff
+// pick, or on their own.
 
 type Outcome = "approve" | "revise" | "reject";
 
@@ -34,12 +37,15 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
   // Only the cards staff have touched; everything else shows what's saved.
   const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
   const [outcome, setOutcome] = useState<Outcome>("approve");
-  const [defaultShipBy] = useState(() => defaultShipByInput(settings));
-  const [shipBy, setShipBy] = useState(defaultShipBy);
+  const [override, setOverride] = useState<DepositOverride>(trade.deposit.override);
   const [conditions, setConditions] = useState("");
   const [revision, setRevision] = useState("");
   const [reason, setReason] = useState("");
-  const bounds = shipByBounds();
+  const now = useNow();
+  const confirmBy = confirmByPreview(settings, now);
+  const deposit = depositPreview(trade, settings, override);
+  const shipDays = trade.privileges?.shipDays ?? settings.shipDaysNew;
+  const shortLines = trade.wanted.filter((w) => w.status === "requested" && w.available !== null && w.available < w.quantity);
 
   const cards = trade.offered;
   const draftOf = (c: StaffTradeOfferCard) => drafts[c.id] ?? reviewDraftOf(c);
@@ -90,10 +96,10 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
           await saveFirst();
           return tradeCenterRepository.approve(trade.id, {
             conditions: conditions.trim(),
-            ...(shipBy !== defaultShipBy ? { shipBy } : {}),
+            ...(override !== trade.deposit.override ? { depositOverride: override } : {}),
           });
         },
-        "Approved: they can ship their cards now.",
+        "Approved: waiting for the customer to confirm.",
       );
     } else if (outcome === "revise") {
       if (!revision.trim()) {
@@ -135,7 +141,9 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
         ? `Approve or reject every card first (${tally.pending} left).`
         : tally.approved === 0
           ? "Approve at least one card, or reject the trade."
-          : null;
+          : shortLines.length > 0
+            ? `Some of our cards sold since the customer picked them (${shortLines.map((w) => w.cardName).join(", ")}). Lower or take them off under Our cards, or ask the customer to pick again.`
+            : null;
 
   return (
     <section className="gg-trd__section" aria-labelledby="gg-trd-review-title">
@@ -293,19 +301,27 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
         {outcome === "approve" && (
           <div className="gg-trd-decide__body">
             <p className="gg-card-meta">
-              The customer is emailed your mailing address and packing instructions, which cards to send and which to leave out.
-              Our cards stay held until the ship-by date plus {settings.shipGraceHours} hours.
+              The customer is emailed the approval and has until <strong>{formatDeadline(new Date(confirmBy).toISOString())}</strong> to
+              confirm ({settings.confirmationHours} hours; Sundays don&rsquo;t count). Nothing is reserved until they confirm. Once they do,
+              they get your mailing address and {shipDays} day{shipDays === 1 ? "" : "s"} to ship.
             </p>
             <div className="gg-form-grid">
-              <TextField
-                label="Ship by"
-                type="date"
-                value={shipBy}
-                min={bounds.min}
-                max={bounds.max}
-                onChange={(e) => setShipBy(e.target.value || defaultShipBy)}
-                hint={`${settings.shipBusinessDays} business days from today is ${formatDateInput(defaultShipBy)}. Due by 11:59 PM CT that day.`}
-              />
+              <SelectField
+                label="Deposit"
+                value={override}
+                onChange={(e) => setOverride(e.target.value === "required" ? "required" : e.target.value === "waived" ? "waived" : "auto")}
+                hint={
+                  !settings.depositsEnabled
+                    ? "Deposits are off in Settings, so none is asked for."
+                    : deposit.cents > 0
+                      ? `${formatCents(deposit.cents)}: ${deposit.reason ? DEPOSIT_REASON_LABELS[deposit.reason].toLowerCase() : "required"}. Refunded in full once the carrier accepts their package in time.`
+                      : "No deposit on this trade."
+                }
+              >
+                <option value="auto">Automatic (from Settings and their record)</option>
+                <option value="required">Require a deposit</option>
+                <option value="waived">No deposit</option>
+              </SelectField>
             </div>
             <TextArea
               label="Conditions (optional)"
@@ -336,7 +352,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
               maxLength={4000}
               value={revision}
               onChange={(e) => setRevision(e.target.value)}
-              hint={`Emailed to the customer. Our cards stay held for ${settings.revisionHours} hours while they update their list.`}
+              hint={`Emailed to the customer. They have ${settings.revisionHours} hours to send their changes; nothing is reserved meanwhile.`}
             />
             <div className="gg-drawer-actions__buttons">
               <Button variant="primary" onClick={finish} loading={busy === "revise"} disabled={busy !== null || !revision.trim()}>
@@ -354,7 +370,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
               maxLength={2000}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              hint="The trade closes, our cards are released, and the customer is emailed this reason."
+              hint="The trade closes (nothing was reserved) and the customer is emailed this reason."
             />
             <div className="gg-drawer-actions__buttons">
               <Button variant="danger" onClick={finish} loading={busy === "reject"} disabled={busy !== null || !reason.trim()}>

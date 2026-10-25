@@ -294,7 +294,12 @@ function OfferCardRow({
             {blocked && editable ? ". Take it off to send your list." : ""}
           </span>
         )}
-        {reviewed && <ReviewNote card={card} beforeShipping={trade.status === "awaiting_shipment"} />}
+        {reviewed && (
+          <ReviewNote
+            card={card}
+            beforeShipping={trade.status === "awaiting_confirmation" || trade.status === "awaiting_deposit" || trade.status === "awaiting_shipment"}
+          />
+        )}
       </span>
       <span className="gg-tc-line__qty">
         {editable ? (
