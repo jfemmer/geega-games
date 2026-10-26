@@ -10,11 +10,20 @@ import { SHIP_FROM } from "../../../store/lib/shipFrom";
 import { US_REGIONS } from "../../../store/lib/usAddress";
 import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, type TradeSettings } from "../../../store/lib/tradeCenter";
 import { addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
-import { NUMBER_LABELS, formOf, readExcludedDates, settingsInputOf, type MoneyKey, type NumberKey, type SettingsForm } from "./tradeSettingsForm";
+import {
+  NUMBER_LABELS,
+  formOf,
+  readExcludedDates,
+  settingsInputOf,
+  shippingTiersPreview,
+  type MoneyKey,
+  type NumberKey,
+  type SettingsForm,
+} from "./tradeSettingsForm";
 
 // Admin → Trades → Settings: every trade term in one form (the store owner
-// saves; other staff can look). The rate and minimum are what the Trade
-// Cards page advertises. Turning trading on needs the address customers
+// saves; other staff can look). The rate, the minimums and the shipping
+// tiers are what the Trade Cards page advertises. Turning trading on needs the address customers
 // mail their cards to; nothing fills it in by itself ("Use the store's
 // return address" copies the label return address into the form, to check
 // and save). Pausing stops new trades only: trades already started carry on
@@ -97,6 +106,7 @@ function SettingsEditor({
   const dirty = JSON.stringify(form) !== JSON.stringify(formOf(saved));
   const termsChanged = form.depositTerms.replace(/\r\n/g, "\n").trim() !== saved.depositTerms;
   const preview = deadlinePreview(form);
+  const tiers = shippingTiersPreview(form);
 
   async function save(next: SettingsForm, kind: "save" | "pause" | "resume", done: string) {
     const input = settingsInputOf(next);
@@ -233,9 +243,26 @@ function SettingsEditor({
         )}
       </Group>
 
+      <Group
+        title="Minimum trade and shipping our cards"
+        intro="Customers can add our cards below the minimum, but can't start or send a trade until they reach it. Shipping our cards is paid by card with the final payment, never out of trade credit, and never charged on a trade that doesn't finish. Each trade keeps the shipping rates it started with."
+      >
+        <div className="gg-form-grid">
+          {moneyField("minTradeValueCents", "Minimum trade, our cards", "At their trade (regular) prices. Shipping doesn't count toward it.")}
+          {moneyField("shipFeeCents", "Shipping under the free-shipping threshold")}
+          {moneyField("freeShipThresholdCents", "Free shipping from, our cards", "At or above the minimum.")}
+          {moneyField("freeShipFeeCents", "Shipping from the threshold up", "0 for free shipping.")}
+          {moneyField(
+            "shipCostEstimateCents",
+            "What shipping our cards costs us",
+            "An estimate for the trade economics report, used when a trade has no label or recorded postage. Customers never see it.",
+          )}
+        </div>
+        {tiers && <p className="gg-card-meta">{tiers}</p>}
+      </Group>
+
       <Group title="Limits" intro="Keeps trades a size you can handle.">
         <div className="gg-form-grid">
-          {moneyField("minTradeValueCents", "Smallest trade, our cards")}
           {moneyField("maxTradeValueCents", "Largest trade, our cards", "Blank for no limit.")}
           {numberField("maxActiveTrades", "trades")}
           {numberField("maxWantedLines", "different cards")}

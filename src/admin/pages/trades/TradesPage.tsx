@@ -29,19 +29,20 @@ import {
 import { DEPOSIT_STATUS_TONE, REVIEW_FLAG_SHORT, TRADE_STATUS_TONE, waitingOnStaff } from "./tradeLabels";
 import { TradeDrawer } from "./TradeDrawer";
 import { TradeSettingsPanel } from "./TradeSettingsPanel";
-import { CustomersTab, DepositsTab, ReservedTab } from "./TradeOverviewTabs";
+import { CustomersTab, DepositsTab, EconomicsTab, ReservedTab } from "./TradeOverviewTabs";
 
 // Admin → Trades: online trades from the storefront's Trade Cards page.
 // Trades tab: the list (waiting on you, open, reserved, abandoned,
 // completed, all, or one status or deposit status; search by TR number,
 // name or email) and each trade in a drawer (TradeDrawer) with everything
-// staff do to it. Deposits, Reserved and Customers: overviews. Settings:
-// rates, limits, deadlines, deposits, reliability, the address customers
-// mail their cards to, and turning trading on, off or paused. ?trade=<id>
-// opens a trade (staff alerts link here); ?tab=<tab> opens a tab.
+// staff do to it. Deposits, Reserved, Customers and Economics: overviews.
+// Settings: rates, minimums, shipping, limits, deadlines, deposits,
+// reliability, the address customers mail their cards to, and turning
+// trading on, off or paused. ?trade=<id> opens a trade (staff alerts link
+// here); ?tab=<tab> opens a tab.
 
-type View = "trades" | "deposits" | "reserved" | "customers" | "settings";
-const VIEWS: readonly View[] = ["trades", "deposits", "reserved", "customers", "settings"];
+type View = "trades" | "deposits" | "reserved" | "customers" | "economics" | "settings";
+const VIEWS: readonly View[] = ["trades", "deposits", "reserved", "customers", "economics", "settings"];
 
 const MAIN_FILTERS: { key: TradeListFilter; label: string }[] = [
   { key: "waiting", label: "Waiting on you" },
@@ -212,6 +213,7 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
           { key: "deposits", label: "Deposits" },
           { key: "reserved", label: "Reserved", count: counts.reserved || undefined },
           { key: "customers", label: "Customers" },
+          { key: "economics", label: "Economics" },
           { key: "settings", label: "Settings" },
         ]}
       />
@@ -226,6 +228,8 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
         <ReservedTab onOpenTrade={setSelectedId} />
       ) : view === "customers" ? (
         <CustomersTab />
+      ) : view === "economics" ? (
+        <EconomicsTab onOpenTrade={setSelectedId} />
       ) : (
         <SectionCard title="Trades" className="gg-trades-list">
           <div className="gg-toolbar gg-trades__toolbar">

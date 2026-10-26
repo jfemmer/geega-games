@@ -47,7 +47,9 @@ function Settlement({
 }: Pick<TradePanelProps, "trade" | "owner" | "busy" | "run"> & { onOpenOrder: (orderId: string) => void }) {
   const money = tradeMoney(trade);
   const [cashNote, setCashNote] = useState("");
-  const usedCents = Math.max(money.wantedCents + money.shippingCents - money.dueCents, 0);
+  // Credit covers our cards only; shipping is always part of the card payment.
+  const usedCents = Math.min(trade.creditIssuedCents ?? money.creditCents, money.wantedCents);
+  const shippingPaid = Math.min(money.shippingCents, money.dueCents);
   const paidBy = trade.paymentReference?.startsWith("manual: ")
     ? `Recorded by hand: ${trade.paymentReference.slice("manual: ".length)}`
     : trade.paymentReference?.startsWith("pi_")
@@ -70,13 +72,25 @@ function Settlement({
           <dd>{formatCents(trade.creditIssuedCents ?? 0)}</dd>
         </div>
         <div>
-          <dt>Used on their order (our cards and shipping)</dt>
+          <dt>Used on our cards</dt>
           <dd>{formatCents(usedCents)}</dd>
         </div>
         {money.dueCents > 0 && (
           <div>
-            <dt>Paid{paidBy ? ` (${paidBy})` : ""}</dt>
+            <dt>
+              Paid{paidBy ? ` (${paidBy})` : ""}
+              <span className="gg-card-meta">
+                {" "}
+                {formatCents(money.dueCents - shippingPaid)} for our cards, {formatCents(shippingPaid)} shipping
+              </span>
+            </dt>
             <dd>{formatCents(money.dueCents)}</dd>
+          </div>
+        )}
+        {money.dueCents === 0 && (
+          <div>
+            <dt>Shipping our cards</dt>
+            <dd>{money.shippingCents === 0 ? "Free" : formatCents(money.shippingCents)}</dd>
           </div>
         )}
         {money.cashCents > 0 ? (

@@ -52,6 +52,7 @@ import {
 } from "../../src/store/lib/tradeCenter.js";
 import { addQualifyingHours, excludedDateSet } from "../../src/store/lib/tradeDeadlines.js";
 import { readCustomerRecord, privilegesFor, type DepositOverride } from "../../src/store/lib/tradeRules.js";
+import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomics } from "../../src/store/lib/tradeEconomics.js";
 
 // /api/admin/trade-center: admin Trades (online trades from the storefront's
 // Trade Cards page). Staff only (requireStaff); settings, keeping a deposit,
@@ -67,6 +68,7 @@ import { readCustomerRecord, privilegesFor, type DepositOverride } from "../../s
 //   GET ?view=reserved                               → { lines, settings, owner }   our cards held for trades
 //   GET ?view=customers                              → { customers, settings, owner } reliability
 //   GET ?view=deposits                               → { totals, trades, settings, owner }
+//   GET ?view=economics[&days=30|90|365]             → { totals, trades, days, settings, owner }  finished trades
 // (`owner`: the caller is the store owner, so the page shows owner-only controls.)
 //   POST { action, … }:
 //     saveSettings      { settings }                         owner
@@ -89,6 +91,7 @@ import { readCustomerRecord, privilegesFor, type DepositOverride } from "../../s
 //     clearFault        { tradeId }                          owner
 //     setCustomerFlags  { userId, depositRequired, blocked, note? }  owner
 //     inspect, confirmAsDescribed, sendFinalOffer, reopenInspection, setWanted,
+//     setPostage        { tradeId, postageCents | null }     what shipping our cards cost (finished trades)
 //     markReturned, importCard, recordPayment (owner), markCashPaid (owner), message
 //
 // Every change and total is the database's (trade_* functions, one
@@ -121,6 +124,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (view === "reserved") return sendJson(res, 200, { ok: true, lines: await reservedLines(admin), settings: settingsView(settings), owner });
       if (view === "customers") return sendJson(res, 200, { ok: true, customers: await customerList(admin, settings), settings: settingsView(settings), owner });
       if (view === "deposits") return sendJson(res, 200, { ok: true, ...(await depositOverview(admin)), settings: settingsView(settings), owner });
+      if (view === "economics") {
+        return sendJson(res, 200, { ok: true, ...(await economicsReport(admin, settings, req.query.days)), settings: settingsView(settings), owner });
+      }
       return sendJson(res, 200, {
         ok: true,
         ...(await listTrades(admin, req.query.filter, req.query.q, req.query.deposit)),
@@ -602,6 +608,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
 
+      case "setPostage": {
+        // What shipping our cards actually cost (for the trade economics),
+        // when the label wasn't bought through EasyPost. null clears it.
+        const raw = body.postageCents;
+        const cents = raw === null || raw === "" ? null : wholeNumber(raw, 0, 100_000);
+        if (raw !== null && raw !== "" && cents === null) throw new HttpError(400, "Enter what the postage cost, from $0.00 to $1,000.00.");
+        const { data, error } = await admin
+          .from("trade_requests")
+          .update({ outbound_postage_cents: cents })
+          .eq("id", tradeId)
+          .in("status", ["approved_for_fulfillment", "completed"])
+          .select("id");
+        if (error) throw new HttpError(500, "We couldn't save the postage. Try again.");
+        if (!data || data.length === 0) throw new HttpError(409, "Postage is recorded once the trade is finished.");
+        await logEvent(admin, tradeId, staff, "postage_recorded", status, status, { postage_cents: cents, was: t.outbound_postage_cents });
+        await audit("set_postage", { postageCents: cents });
+        break;
+      }
+
       case "message": {
         const text = cleanText(body.body, TRADE_LIMITS.maxMessage);
         if (!text) throw new HttpError(400, "Write a message first.");
@@ -914,6 +939,126 @@ async function depositOverview(admin: Admin) {
   return { totals, trades: (data ?? []).map(staffSummaryView) };
 }
 
+const ECONOMICS_PERIODS = new Set([30, 90, 365]);
+/** Trades counted at most (a safety stop; the report says when it's reached). */
+const ECONOMICS_MAX_TRADES = 20_000;
+const ECONOMICS_LISTED = 100;
+/** Rows per request: PostgREST returns at most 1,000 at a time. */
+const PAGE = 1000;
+/** Ids per `in` filter, to keep each request's URL short. */
+const IN_CHUNK = 100;
+
+type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
+
+/** Every row a query returns, a page at a time (rows from..to of a stable order). */
+async function allPages<T>(load: (from: number, to: number) => Page<T>, max = Number.POSITIVE_INFINITY): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; from < max; from += PAGE) {
+    const { data, error } = await load(from, Math.min(from + PAGE, max) - 1);
+    if (error) throw new HttpError(500, "We couldn't load the trade numbers. Try again.");
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < Math.min(PAGE, max - from)) break;
+  }
+  return out;
+}
+
+/** Rows whose key is one of `ids`: a chunk of ids at a time, every page of each. */
+async function selectIn<T>(ids: string[], load: (chunk: string[], from: number, to: number) => Page<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    const chunk = ids.slice(i, i + IN_CHUNK);
+    out.push(...(await allPages((from, to) => load(chunk, from, to))));
+  }
+  return out;
+}
+
+/**
+ * What finished trades did to retail-priced inventory, with shipping (the
+ * theoretical inventory-value difference, not profit): over the last `days`
+ * days, or all time.
+ */
+async function economicsReport(admin: Admin, settings: TradeSettingsRow, rawDays: unknown) {
+  const asked = typeof rawDays === "string" ? Number(rawDays) : Number.NaN;
+  const days = ECONOMICS_PERIODS.has(asked) ? asked : null;
+  const since = days !== null ? new Date(Date.now() - days * 86_400_000).toISOString() : null;
+  const rows = await allPages((from, to) => {
+    let query = admin
+      .from("trade_requests")
+      .select(
+        "id, trade_number, status, customer_name, customer_email, final_value_cents, wanted_total_cents, shipping_cents, outbound_postage_cents, order_id, paid_at, credit_rate_percent",
+      )
+      .in("status", ["approved_for_fulfillment", "completed"]);
+    if (since) query = query.gte("paid_at", since);
+    return query.order("paid_at", { ascending: false }).order("id", { ascending: true }).range(from, to);
+  }, ECONOMICS_MAX_TRADES);
+  const orderIds = rows.map((t) => t.order_id).filter((id): id is string => Boolean(id));
+  const [orders, cards] = await Promise.all([
+    selectIn(orderIds, (chunk, from, to) =>
+      admin.from("orders").select("id, postage_cost_cents").in("id", chunk).order("id", { ascending: true }).range(from, to),
+    ),
+    selectIn(
+      rows.map((t) => t.id),
+      (chunk, from, to) =>
+        admin
+          .from("trade_offer_cards")
+          .select("id, trade_request_id, scryfall_id, card_name, finish, verified_condition, reported_condition, final_quantity, final_unit_cents")
+          .in("trade_request_id", chunk)
+          .gt("final_quantity", 0)
+          .order("id", { ascending: true })
+          .range(from, to),
+    ),
+  ]);
+  const postage = new Map(orders.map((o) => [o.id, o.postage_cost_cents]));
+  const perTrade: { trade: (typeof rows)[number]; economics: TradeEconomics }[] = [];
+  for (const t of rows) {
+    const economics = tradeEconomics(
+      {
+        finalValueCents: t.final_value_cents,
+        wantedTotalCents: t.wanted_total_cents,
+        shippingCents: t.shipping_cents,
+        orderPostageCents: t.order_id ? (postage.get(t.order_id) ?? null) : null,
+        outboundPostageCents: t.outbound_postage_cents,
+      },
+      settings.ship_cost_estimate_cents,
+    );
+    if (economics) perTrade.push({ trade: t, economics });
+  }
+  const counted = new Set(perTrade.map((r) => r.trade.id));
+  const totals = economicsTotals(
+    perTrade.map((r) => r.economics),
+    acceptedCardCounts(
+      cards
+        .filter((c) => counted.has(c.trade_request_id))
+        .map((c) => ({
+          scryfallId: c.scryfall_id,
+          cardName: c.card_name,
+          finish: c.finish,
+          condition: c.verified_condition ?? c.reported_condition,
+          quantity: c.final_quantity ?? 0,
+          unitCents: c.final_unit_cents ?? 0,
+        })),
+      settings.min_card_value_cents,
+    ),
+  );
+  return {
+    days,
+    totals,
+    /** The safety stop was reached: older trades aren't counted. */
+    truncated: rows.length >= ECONOMICS_MAX_TRADES,
+    trades: perTrade.slice(0, ECONOMICS_LISTED).map(({ trade: t, economics }) => ({
+      id: t.id,
+      tradeNumber: t.trade_number,
+      status: t.status,
+      customerName: t.customer_name,
+      customerEmail: t.customer_email,
+      paidAt: t.paid_at,
+      creditRatePercent: t.credit_rate_percent,
+      economics,
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
@@ -1103,8 +1248,15 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
   const maxTrade = o.maxTradeValueCents === null || o.maxTradeValueCents === undefined || o.maxTradeValueCents === ""
     ? null
     : num(o, "maxTradeValueCents", r.maxTradeValueCents, "Largest trade");
-  const minTrade = num(o, "minTradeValueCents", r.minTradeValueCents, "Smallest trade");
-  if (maxTrade !== null && maxTrade < minTrade) throw new HttpError(400, "The largest trade can't be smaller than the smallest.");
+  const minTrade = num(o, "minTradeValueCents", r.minTradeValueCents, "Minimum trade");
+  if (maxTrade !== null && maxTrade < minTrade) throw new HttpError(400, "The largest trade can't be smaller than the minimum.");
+  // Shipping our cards: never negative, free shipping no dearer than the
+  // standard rate, and a threshold a trade can actually reach.
+  const shipFee = num(o, "shipFeeCents", r.shipFeeCents, "Shipping under the free-shipping threshold");
+  const freeShipFee = num(o, "freeShipFeeCents", r.shipFeeCents, "Shipping from the threshold up");
+  const freeShipThreshold = num(o, "freeShipThresholdCents", r.freeShipThresholdCents, "Free shipping from");
+  if (freeShipFee > shipFee) throw new HttpError(400, "Shipping from the free-shipping threshold up can't cost more than below it.");
+  if (freeShipThreshold < minTrade) throw new HttpError(400, "Free shipping has to start at or above the minimum trade.");
 
   const band1Max = num(o, "depositBand1MaxCents", r.depositBandMaxCents, "First deposit band");
   const band2Max = num(o, "depositBand2MaxCents", r.depositBandMaxCents, "Second deposit band");
@@ -1203,6 +1355,10 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
     notify_customer: o.notifyCustomer !== false,
     notify_staff: o.notifyStaff !== false,
     shipping_paid_by: o.shippingPaidBy === "store" ? "store" : "customer",
+    ship_fee_cents: shipFee,
+    free_ship_threshold_cents: freeShipThreshold,
+    free_ship_fee_cents: freeShipFee,
+    ship_cost_estimate_cents: num(o, "shipCostEstimateCents", r.shipCostEstimateCents, "What shipping costs us"),
     ...address,
     packing_instructions: packing,
     return_policy: returns,

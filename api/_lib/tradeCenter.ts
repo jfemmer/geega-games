@@ -38,6 +38,7 @@ import {
   type TradeMessage,
   type TradeOfferCard,
   type TradeOfferInput,
+  type TradeOutgoing,
   type TradeReviewFlag,
   type TradeSettings,
   type TradeShipToInput,
@@ -79,6 +80,11 @@ export type TradeSettingsRow = Database["public"]["Tables"]["trade_settings"]["R
 export type TradeDisputeRow = Database["public"]["Tables"]["trade_disputes"]["Row"];
 export type TradeExtensionRow = Database["public"]["Tables"]["trade_extensions"]["Row"];
 export type TradeConsentRow = Database["public"]["Tables"]["trade_consents"]["Row"];
+/** The trade's order, as far as shipping our cards goes (and what the label cost). */
+export type TradeOrderShipping = Pick<
+  Database["public"]["Tables"]["orders"]["Row"],
+  "id" | "status" | "tracking_carrier" | "tracking_number" | "shipped_at" | "delivered_at" | "postage_cost_cents"
+>;
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DISPUTE_BUCKET = "trade-dispute-files";
@@ -229,6 +235,9 @@ export function termsOf(s: TradeSettingsRow): TradeTerms {
     processingFeeCents: s.processing_fee_cents,
     cashPayoutEnabled: s.cash_payout_enabled,
     shippingPaidBy: s.shipping_paid_by === "store" ? "store" : "customer",
+    shipFeeCents: s.ship_fee_cents,
+    freeShipThresholdCents: s.free_ship_threshold_cents,
+    freeShipFeeCents: s.free_ship_fee_cents,
     packingInstructions: s.packing_instructions,
     returnPolicy: s.return_policy,
     excludedSetCodes: s.excluded_set_codes ?? [],
@@ -287,6 +296,10 @@ export function settingsView(s: TradeSettingsRow): TradeSettings {
     notifyCustomer: s.notify_customer,
     notifyStaff: s.notify_staff,
     shippingPaidBy: s.shipping_paid_by === "store" ? "store" : "customer",
+    shipFeeCents: s.ship_fee_cents,
+    freeShipThresholdCents: s.free_ship_threshold_cents,
+    freeShipFeeCents: s.free_ship_fee_cents,
+    shipCostEstimateCents: s.ship_cost_estimate_cents,
     shipTo: shipToAddress(s),
     packingInstructions: s.packing_instructions,
     returnPolicy: s.return_policy,
@@ -401,6 +414,8 @@ export interface TradeBundle {
   events: TradeEventRow[];
   messages: TradeMessageRow[];
   disputes: TradeDisputeRow[];
+  /** The trade's order, once it's finished: our cards' shipment and its postage. */
+  order?: TradeOrderShipping | null;
 }
 
 export async function loadTradeRow(admin: Admin, tradeId: string): Promise<TradeRow | null> {
@@ -422,6 +437,17 @@ export async function loadTradeBundle(admin: Admin, tradeId: string): Promise<Tr
   if (items.error || offers.error || events.error || messages.error || disputes.error) {
     throw new HttpError(500, "We couldn't load that trade. Try again.");
   }
+  let order: TradeOrderShipping | null = null;
+  if (trade.order_id) {
+    const found = await admin
+      .from("orders")
+      .select("id, status, tracking_carrier, tracking_number, shipped_at, delivered_at, postage_cost_cents")
+      .eq("id", trade.order_id)
+      .maybeSingle();
+    // The order's shipment is extra: the trade still shows without it.
+    if (found.error) console.error("[tradeCenter] couldn't load the trade's order", trade.order_id, found.error.message);
+    else order = (found.data as TradeOrderShipping | null) ?? null;
+  }
   return {
     trade,
     items: items.data ?? [],
@@ -429,6 +455,7 @@ export async function loadTradeBundle(admin: Admin, tradeId: string): Promise<Tr
     events: events.data ?? [],
     messages: messages.data ?? [],
     disputes: disputes.data ?? [],
+    order,
   };
 }
 
@@ -641,6 +668,17 @@ export interface ViewExtras {
   now?: number;
 }
 
+function outgoingOf(order: TradeOrderShipping | null | undefined): TradeOutgoing | null {
+  if (!order) return null;
+  return {
+    status: order.status,
+    carrier: order.tracking_carrier,
+    tracking: order.tracking_number,
+    shippedAt: order.shipped_at,
+    deliveredAt: order.delivered_at,
+  };
+}
+
 function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSettingsRow | null, extras: ViewExtras) {
   const { trade: t, items, messages } = bundle;
   const status = statusOf(t.status);
@@ -666,6 +704,9 @@ function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSetting
     excessCents: t.excess_cents,
     excessHandling: t.excess_handling === "cash" ? ("cash" as const) : ("store_credit" as const),
     cashPayoutCents: t.cash_payout_cents,
+    shipFeeCents: t.ship_fee_cents,
+    freeShipThresholdCents: t.free_ship_threshold_cents,
+    freeShipFeeCents: t.free_ship_fee_cents,
     listDueAt: t.list_due_at,
     confirmBy: t.confirm_by,
     shipBy: t.ship_by,
@@ -686,6 +727,8 @@ function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSetting
       shippedOnTime: t.shipped_on_time,
       deliveredAt: t.inbound_delivered_at,
       autoTracked: carrierTracked,
+      shippedOn: t.inbound_shipped_on,
+      packagingConfirmedAt: t.inbound_packaging_confirmed_at,
     },
     returnStatus: returnStatusOf(t.return_status),
     returnCarrier: t.return_carrier,
@@ -696,6 +739,7 @@ function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSetting
     customerNote: t.customer_note,
     closeReason: t.close_reason,
     shipTo: shipToOf(t),
+    outgoing: outgoingOf(bundle.order),
     wanted: items.map((row) => wantedView(row, extras.availability)),
     messages: messages.filter((m) => forStaff || m.visible_to_customer).map((m) => messageView(m, forStaff)),
     mailTo: showMailTo && settings ? shipToAddress(settings) : null,
@@ -886,6 +930,8 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
     returnedAt: t.returned_at,
     cashPaidAt: t.cash_paid_at,
     paymentReference: t.payment_reference,
+    orderPostageCents: bundle.order?.postage_cost_cents ?? null,
+    outboundPostageCents: t.outbound_postage_cents,
   };
 }
 

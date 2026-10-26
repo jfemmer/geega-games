@@ -298,13 +298,23 @@ export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelP
             <dd>{formatCents(preview.wantedCents)}</dd>
           </div>
           <div>
-            <dt>Shipping our cards</dt>
+            <dt>Our cards the credit doesn&rsquo;t cover</dt>
+            <dd>{formatCents(preview.cardBalanceCents)}</dd>
+          </div>
+          <div>
+            <dt>Shipping our cards (paid by card, not credit)</dt>
             <dd>{preview.shippingCents === 0 ? "Free" : formatCents(preview.shippingCents)}</dd>
           </div>
           <div className="gg-trd-money__total">
-            <dt>{preview.dueCents > 0 ? "They pay by card" : "Store credit left over"}</dt>
-            <dd>{formatCents(preview.dueCents > 0 ? preview.dueCents : preview.excessCents)}</dd>
+            <dt>{preview.dueCents > 0 ? "They pay by card" : "Nothing to pay by card"}</dt>
+            <dd>{formatCents(preview.dueCents)}</dd>
           </div>
+          {preview.excessCents > 0 && (
+            <div>
+              <dt>Credit left over</dt>
+              <dd>{formatCents(preview.excessCents)}</dd>
+            </div>
+          )}
         </dl>
         {preview.cashOptionCents > 0 && (
           <label className="gg-check-inline gg-trd-cash">

@@ -50,6 +50,19 @@
 --   declined_after_inspection  They declined the final offer: no penalty.
 --   canceled_by_store       We canceled: any deposit is refunded.
 --
+-- Money: our cards (at their regular prices, wanted_total_cents) must add up
+-- to at least trade_settings.min_trade_value_cents ($75 by default) to start
+-- a trade or send it for review; a draft can dip below it while the customer
+-- edits. Trade credit is credit_rate_percent (80%) of the value of their
+-- cards, less any processing fee, and covers our cards only. Shipping our
+-- cards to the customer is ship_fee_cents ($3.99) under
+-- free_ship_threshold_cents ($200) of our cards and free_ship_fee_cents ($0)
+-- from there (trade_shipping_fee); each trade keeps the rates it started on.
+-- Shipping is paid by card with whatever the credit doesn't cover of our
+-- cards, settled when the final offer is accepted, and never charged on a
+-- trade that doesn't finish. ship_cost_estimate_cents is what a shipment
+-- costs the store, for the internal economics only.
+--
 -- Qualifying time: Sundays (midnight to midnight, America/Chicago) and the
 -- dates in trade_settings.excluded_dates don't count; Saturdays do. The
 -- server works every deadline out once (src/store/lib/tradeDeadlines.ts)
@@ -176,9 +189,19 @@ Your cards must be shipped within the displayed deadline. Sundays do not count t
   max_active_trades integer not null default 2 check (max_active_trades between 1 and 20),
   max_wanted_lines integer not null default 40 check (max_wanted_lines between 1 and 200),
   max_offered_lines integer not null default 100 check (max_offered_lines between 1 and 500),
-  min_trade_value_cents integer not null default 0 check (min_trade_value_cents between 0 and 100000000),
+  -- Our cards (regular prices) must add up to this to start or send a trade.
+  min_trade_value_cents integer not null default 7500 check (min_trade_value_cents between 0 and 100000000),
   max_trade_value_cents integer check (max_trade_value_cents is null or max_trade_value_cents between 1 and 100000000),
   processing_fee_cents integer not null default 0 check (processing_fee_cents between 0 and 1000000),
+
+  -- Shipping our cards to the customer (paid by card, never out of trade
+  -- credit): ship_fee_cents under free_ship_threshold_cents of our cards,
+  -- free_ship_fee_cents from there. New trades copy these.
+  ship_fee_cents integer not null default 399 check (ship_fee_cents between 0 and 10000),
+  free_ship_threshold_cents integer not null default 20000 check (free_ship_threshold_cents between 1 and 100000000),
+  free_ship_fee_cents integer not null default 0 check (free_ship_fee_cents between 0 and 10000),
+  -- What a shipment of our cards actually costs the store (internal reports only).
+  ship_cost_estimate_cents integer not null default 600 check (ship_cost_estimate_cents between 0 and 10000),
 
   cash_payout_enabled boolean not null default false,
   cash_rate_percent integer not null default 50 check (cash_rate_percent between 1 and 100),
@@ -210,13 +233,14 @@ Your cards must be shipped within the displayed deadline. Sundays do not count t
 
   constraint trade_settings_deposit_bands_order
     check (deposit_band1_max_cents < deposit_band2_max_cents and deposit_band2_max_cents < deposit_band3_max_cents),
-  constraint trade_settings_loyalty_order check (loyalty_tier1_trades < loyalty_tier2_trades)
+  constraint trade_settings_loyalty_order check (loyalty_tier1_trades < loyalty_tier2_trades),
+  constraint trade_settings_free_ship_fee check (free_ship_fee_cents <= ship_fee_cents)
 );
 
 insert into public.trade_settings (id) values (true) on conflict (id) do nothing;
 
 comment on table public.trade_settings is
-  'Trade Center settings (one row): on/off and pause, credit rate and card minimum, condition values, deadlines (qualifying time), deposits, reliability, limits, cash payouts, eligibility, and the address and policies customers see.';
+  'Trade Center settings (one row): on/off and pause, credit rate and card minimum, condition values, deadlines (qualifying time), deposits, reliability, limits and the trade minimum, shipping our cards, cash payouts, eligibility, and the address and policies customers see.';
 
 -- 2. Trades -----------------------------------------------------------------------
 create table if not exists public.trade_requests (
@@ -242,6 +266,10 @@ create table if not exists public.trade_requests (
   min_card_value_cents integer not null check (min_card_value_cents >= 0),
   condition_percents jsonb not null check (jsonb_typeof(condition_percents) = 'object'),
   processing_fee_cents integer not null default 0 check (processing_fee_cents >= 0),
+  -- Shipping our cards on this trade (trade_shipping_fee): the rates when it started.
+  ship_fee_cents integer not null default 399 check (ship_fee_cents between 0 and 10000),
+  free_ship_threshold_cents integer not null default 20000 check (free_ship_threshold_cents between 1 and 100000000),
+  free_ship_fee_cents integer not null default 0 check (free_ship_fee_cents between 0 and 10000),
 
   -- Our cards, at the prices fixed when they were added.
   wanted_total_cents integer not null default 0 check (wanted_total_cents >= 0),
@@ -297,6 +325,11 @@ create table if not exists public.trade_requests (
   inbound_carrier text check (inbound_carrier is null or char_length(inbound_carrier) <= 40),
   inbound_tracking text check (inbound_tracking is null or char_length(inbound_tracking) <= 60),
   inbound_tracking_added_at timestamptz,
+  -- The day they say they shipped (optional; the carrier's scan is what counts).
+  inbound_shipped_on date,
+  -- When they confirmed this package is protected and tracked (each new
+  -- tracking number needs it again).
+  inbound_packaging_confirmed_at timestamptz,
   inbound_tracker_id text check (inbound_tracker_id is null or char_length(inbound_tracker_id) <= 100),
   inbound_tracking_status text check (inbound_tracking_status is null or char_length(inbound_tracking_status) <= 40),
   -- The carrier's scans, oldest first: [{ status, detail, message, at, location }].
@@ -338,6 +371,9 @@ create table if not exists public.trade_requests (
   ship_postal_code text check (ship_postal_code is null or char_length(ship_postal_code) <= 20),
 
   order_id uuid unique references public.orders(id) on delete set null,
+  -- What shipping our cards cost, recorded by staff when the label wasn't
+  -- bought through the order (internal economics only).
+  outbound_postage_cents integer check (outbound_postage_cents is null or outbound_postage_cents between 0 and 100000),
   payment_reference text,
   credit_issued_cents integer check (credit_issued_cents is null or credit_issued_cents >= 0),
 
@@ -859,6 +895,19 @@ as $$
   returning wanted_total_cents;
 $$;
 
+-- Shipping our cards for this much of our cards, on a trade's terms: nothing
+-- for no cards, the free rate from the threshold up, the fee below it.
+create or replace function public.trade_shipping_fee(p_wanted_cents integer, p_fee integer, p_threshold integer, p_free_fee integer)
+returns integer
+language sql
+immutable
+set search_path to 'public'
+as $$
+  select case when coalesce(p_wanted_cents, 0) <= 0 then 0
+              when p_wanted_cents >= p_threshold then p_free_fee
+              else p_fee end;
+$$;
+
 -- A customer's record, from their trades (for reliability and privileges).
 -- recent_faults: customer-caused abandonments in the last p_window_days that
 -- staff haven't cleared.
@@ -993,6 +1042,7 @@ begin
   insert into public.trade_requests (
     user_id, customer_name, customer_email, status,
     credit_rate_percent, min_card_value_cents, condition_percents, processing_fee_cents,
+    ship_fee_cents, free_ship_threshold_cents, free_ship_fee_cents,
     list_due_at
   ) values (
     p_user_id, left(nullif(btrim(p_customer_name), ''), 120), left(nullif(btrim(p_customer_email), ''), 254), 'awaiting_trade_list',
@@ -1000,6 +1050,7 @@ begin
     jsonb_build_object('NM', s.condition_nm_percent, 'LP', s.condition_lp_percent, 'MP', s.condition_mp_percent,
                        'HP', s.condition_hp_percent, 'DMG', s.condition_dmg_percent),
     s.processing_fee_cents,
+    s.ship_fee_cents, s.free_ship_threshold_cents, s.free_ship_fee_cents,
     now() + make_interval(days => s.draft_days)
   ) returning * into v_trade;
 
@@ -1015,7 +1066,9 @@ begin
 
   v_total := public.trade_recount_wanted(v_trade.id);
   if v_total < s.min_trade_value_cents then
-    raise exception 'Trades start at % of our cards.', to_char(s.min_trade_value_cents / 100.0, 'FM$999,999,990.00') using errcode = 'GT005';
+    raise exception 'Add % more in cards to reach the % minimum trade value.',
+      to_char((s.min_trade_value_cents - v_total) / 100.0, 'FM$999,999,990.00'),
+      to_char(s.min_trade_value_cents / 100.0, 'FM$999,999,990.00') using errcode = 'GT005';
   end if;
   if s.max_trade_value_cents is not null and v_total > s.max_trade_value_cents then
     raise exception 'A trade can include up to % of our cards.', to_char(s.max_trade_value_cents / 100.0, 'FM$999,999,990.00') using errcode = 'GT006';
@@ -1400,12 +1453,15 @@ security definer
 set search_path to 'public'
 as $$
 declare
+  s public.trade_settings%rowtype;
   v_trade public.trade_requests%rowtype;
   v_cards integer;
   v_blocked integer;
   v_wanted integer;
+  v_total integer;
 begin
   perform public.trade_require_service_role();
+  select * into s from public.trade_settings where id;
   select * into v_trade from public.trade_requests where id = p_trade_id for update;
   if not found or v_trade.user_id is distinct from p_user_id then
     raise exception 'That trade isn''t there.' using errcode = 'GT404';
@@ -1430,6 +1486,13 @@ begin
     where trade_request_id = p_trade_id and status = 'requested';
   if v_wanted = 0 then
     raise exception 'Add at least one of our cards first.' using errcode = 'GT010';
+  end if;
+  -- Our cards can dip below the minimum while the customer edits; not to send.
+  v_total := public.trade_recount_wanted(p_trade_id);
+  if v_total < s.min_trade_value_cents then
+    raise exception 'Add % more in cards to reach the % minimum trade value.',
+      to_char((s.min_trade_value_cents - v_total) / 100.0, 'FM$999,999,990.00'),
+      to_char(s.min_trade_value_cents / 100.0, 'FM$999,999,990.00') using errcode = 'GT005';
   end if;
 
   update public.trade_requests set
@@ -1986,10 +2049,16 @@ $$;
 -- 17. Their package ----------------------------------------------------------------------
 -- A tracking number (checked for its carrier's format by the server). It
 -- doesn't count as shipped: only the carrier's acceptance scan does. The
--- same number on another customer's trade is refused.
+-- same number on another customer's trade is refused. A new number (the
+-- first, or a replacement shipment) needs the customer's confirmation that
+-- the package is protected and tracked, kept with its time; fixing the
+-- carrier keeps it. The ship date is optional, from the day the cards were
+-- reserved to today.
 -- result: added, changed (a different number: the scans start over), unchanged.
+drop function if exists public.trade_record_tracking(uuid, text, text, text, uuid, text);
 create or replace function public.trade_record_tracking(
-  p_trade_id uuid, p_carrier text, p_tracking text, p_actor_type text, p_actor_id uuid, p_actor_label text
+  p_trade_id uuid, p_carrier text, p_tracking text, p_packaging_confirmed boolean, p_shipped_on date,
+  p_actor_type text, p_actor_id uuid, p_actor_label text
 ) returns text
 language plpgsql
 security definer
@@ -1998,6 +2067,8 @@ as $$
 declare
   v_trade public.trade_requests%rowtype;
   v_result text;
+  v_new_shipment boolean;
+  v_today date := (now() at time zone 'America/Chicago')::date;
 begin
   perform public.trade_require_service_role();
   if p_carrier is null or p_carrier not in ('USPS', 'UPS', 'FedEx', 'Other') then
@@ -2013,7 +2084,20 @@ begin
   if v_trade.status not in ('awaiting_shipment', 'tracking_submitted') then
     raise exception 'Add a tracking number once your cards are reserved, before the carrier scans them.' using errcode = 'GT009';
   end if;
+  if p_shipped_on is not null and (
+       p_shipped_on > v_today + 1
+       or p_shipped_on < (coalesce(v_trade.reserved_at, v_trade.created_at) at time zone 'America/Chicago')::date - 1) then
+    raise exception 'The ship date has to be between the day your cards were reserved and today.' using errcode = 'GT010';
+  end if;
+  v_new_shipment := v_trade.inbound_tracking is distinct from p_tracking;
+  if v_new_shipment and not coalesce(p_packaging_confirmed, false) then
+    raise exception 'Confirm that your cards are securely packaged and shipped with tracking.' using errcode = 'GT010';
+  end if;
   if v_trade.inbound_tracking = p_tracking and v_trade.inbound_carrier = p_carrier then
+    -- The same package: only a ship date can be added or corrected.
+    if p_shipped_on is not null and p_shipped_on is distinct from v_trade.inbound_shipped_on then
+      update public.trade_requests set inbound_shipped_on = p_shipped_on where id = p_trade_id;
+    end if;
     return 'unchanged';
   end if;
   if exists (select 1 from public.trade_requests t
@@ -2034,12 +2118,15 @@ begin
     inbound_accepted_at = null,
     inbound_acceptance_source = null,
     shipped_on_time = null,
+    inbound_shipped_on = case when v_new_shipment then p_shipped_on else coalesce(p_shipped_on, inbound_shipped_on) end,
+    inbound_packaging_confirmed_at = case when v_new_shipment then now() else inbound_packaging_confirmed_at end,
     review_flag = case when review_flag in ('late_acceptance', 'early_scan', 'tracking_check') then null else review_flag end
   where id = p_trade_id;
   perform public.trade_log(p_trade_id, p_actor_type, p_actor_id, p_actor_label,
     case when v_result = 'added' then 'tracking_added' else 'tracking_changed' end,
     v_trade.status, 'tracking_submitted',
-    jsonb_build_object('carrier', p_carrier, 'tracking', p_tracking, 'was', v_trade.inbound_tracking));
+    jsonb_build_object('carrier', p_carrier, 'tracking', p_tracking, 'was', v_trade.inbound_tracking,
+                       'shipped_on', p_shipped_on, 'packaging_confirmed', v_new_shipment));
   return v_result;
 end;
 $$;
@@ -2692,8 +2779,6 @@ declare
   v_excess integer;
   v_cash integer;
   v_unexplained text;
-  c_tracked_cents constant integer := 550;           -- as checkout_place_order_core
-  c_free_shipping_threshold constant integer := 7500;
 begin
   perform public.trade_require_service_role();
   select * into s from public.trade_settings where id;
@@ -2732,8 +2817,9 @@ begin
   end if;
   v_credit := greatest(round(v_value * v_trade.credit_rate_percent / 100.0)::int - v_trade.processing_fee_cents, 0);
   v_wanted := public.trade_recount_wanted(p_trade_id);
-  v_shipping := case when v_wanted >= c_free_shipping_threshold then 0 else c_tracked_cents end;
-  v_excess := greatest(v_credit - (v_wanted + v_shipping), 0);
+  v_shipping := public.trade_shipping_fee(v_wanted, v_trade.ship_fee_cents, v_trade.free_ship_threshold_cents, v_trade.free_ship_fee_cents);
+  -- Credit covers our cards only; shipping is paid by card.
+  v_excess := greatest(v_credit - v_wanted, 0);
 
   if coalesce(p_cash_for_excess, false) then
     if not s.cash_payout_enabled then
@@ -2767,7 +2853,8 @@ $$;
 -- our cards at their trade prices, spends the credit on it, records any card
 -- payment for the rest, and hands the reserved cards over to that order.
 -- Safe to call again: an already-finished trade just returns its order.
--- Shipping mirrors checkout: tracked, free from $75 of cards.
+-- Shipping (trade_accept_final settled it) is paid by card, never out of
+-- the credit: the credit covers our cards only.
 create or replace function public.trade_finalize_core(p_trade_id uuid, p_paid_cents integer, p_payment_reference text)
 returns uuid
 language plpgsql
@@ -2778,6 +2865,7 @@ declare
   v_trade public.trade_requests%rowtype;
   v_order_id uuid;
   v_email text;
+  v_wanted integer;
   v_total integer;
   v_credit integer;
   v_issue integer;
@@ -2805,9 +2893,11 @@ begin
     raise exception 'This trade has no email address to put on its order.' using errcode = 'GT009';
   end if;
 
-  v_total := public.trade_recount_wanted(p_trade_id) + v_trade.shipping_cents;
+  v_wanted := public.trade_recount_wanted(p_trade_id);
+  v_total := v_wanted + v_trade.shipping_cents;
   v_credit := v_trade.final_credit_cents;
-  v_spend := least(v_credit, v_total);
+  -- The credit pays for our cards only; shipping is part of the card payment.
+  v_spend := least(v_credit, v_wanted);
   -- Cash for the excess (when staff offered it) is paid by hand, so only the
   -- credit the order uses is issued; otherwise all of it, the rest kept.
   v_issue := case when v_trade.excess_handling = 'cash' then v_spend else v_credit end;
@@ -2887,7 +2977,7 @@ begin
     status = 'approved_for_fulfillment',
     order_id = v_order_id,
     amount_due_cents = v_due,
-    excess_cents = greatest(v_credit - v_total, 0),
+    excess_cents = greatest(v_credit - v_wanted, 0),
     credit_issued_cents = v_issue,
     payment_reference = case when v_due = 0 then payment_reference else p_payment_reference end,
     paid_at = now(),
@@ -2902,7 +2992,8 @@ begin
 
   perform public.trade_log(p_trade_id, 'system', null, null, 'finalized', v_trade.status, 'approved_for_fulfillment',
     jsonb_build_object('order_id', v_order_id, 'credit_issued_cents', v_issue, 'credit_used_cents', v_spend,
-                       'paid_cents', v_due, 'excess_cents', greatest(v_credit - v_total, 0)));
+                       'paid_cents', v_due, 'shipping_cents', v_trade.shipping_cents,
+                       'excess_cents', greatest(v_credit - v_wanted, 0)));
   return v_order_id;
 end;
 $$;
@@ -2927,8 +3018,6 @@ declare
   v_shipping integer;
   v_due integer;
   v_order uuid;
-  c_tracked_cents constant integer := 550;           -- as checkout_place_order_core
-  c_free_shipping_threshold constant integer := 7500;
 begin
   perform public.trade_require_service_role();
   select * into s from public.trade_settings where id;
@@ -2956,9 +3045,11 @@ begin
     raise exception 'Enter a 5-digit ZIP code.' using errcode = 'GT010';
   end if;
 
+  -- Shipping for the cards on the trade now, on its terms; paid by card with
+  -- whatever the credit doesn't cover of our cards.
   v_wanted := public.trade_recount_wanted(p_trade_id);
-  v_shipping := case when v_wanted >= c_free_shipping_threshold then 0 else c_tracked_cents end;
-  v_due := greatest(v_wanted + v_shipping - v_trade.final_credit_cents, 0);
+  v_shipping := public.trade_shipping_fee(v_wanted, v_trade.ship_fee_cents, v_trade.free_ship_threshold_cents, v_trade.free_ship_fee_cents);
+  v_due := greatest(v_wanted - v_trade.final_credit_cents, 0) + v_shipping;
 
   update public.trade_requests set
     ship_name = left(nullif(btrim(p_ship_name), ''), 120),
@@ -2969,7 +3060,7 @@ begin
     ship_postal_code = v_zip,
     shipping_cents = v_shipping,
     amount_due_cents = v_due,
-    excess_cents = greatest(v_trade.final_credit_cents - (v_wanted + v_shipping), 0),
+    excess_cents = greatest(v_trade.final_credit_cents - v_wanted, 0),
     accepted_at = now()
   where id = p_trade_id;
 
@@ -3193,6 +3284,7 @@ begin
     'public.trade_put_line(uuid, bigint, uuid, integer, boolean)',
     'public.trade_release_line(uuid, text, text)',
     'public.trade_recount_wanted(uuid)',
+    'public.trade_shipping_fee(integer, integer, integer, integer)',
     'public.trade_customer_stats(uuid, integer)',
     'public.trade_customer_list(integer)',
     'public.trade_start(uuid, jsonb, text, text)',
@@ -3210,7 +3302,7 @@ begin
     'public.trade_reserve_core(uuid, bigint)',
     'public.trade_confirm(uuid, uuid, integer, text, integer, timestamptz, text, text, text)',
     'public.trade_reserve(uuid, text, integer, integer, timestamptz)',
-    'public.trade_record_tracking(uuid, text, text, text, uuid, text)',
+    'public.trade_record_tracking(uuid, text, text, boolean, date, text, uuid, text)',
     'public.trade_record_scan(uuid, text, text, text, jsonb, timestamptz, timestamptz, timestamptz)',
     'public.trade_verify_shipment(uuid, timestamptz, boolean, boolean, text, uuid, text)',
     'public.trade_mark_received(uuid, uuid, text)',

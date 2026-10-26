@@ -23,7 +23,7 @@ import {
 // step (review and approval with the deposit, waiting for confirmation, the
 // shipment and its scans, proof of shipping, the deposit, inspection and the
 // final offer, payment, wrapping up, an expired reservation), the Deposits,
-// Reserved and Customers tabs, and the trade settings. The repository is a
+// Reserved, Customers and Economics tabs, and the trade settings. The repository is a
 // stand-in: these tests are about what staff see and exactly what each
 // button sends.
 
@@ -35,6 +35,7 @@ const repo = vi.hoisted(() => ({
   reserved: vi.fn(),
   customers: vi.fn(),
   deposits: vi.fn(),
+  economics: vi.fn(),
   setCustomerFlags: vi.fn(),
   review: vi.fn(),
   requestRevision: vi.fn(),
@@ -62,6 +63,7 @@ const repo = vi.hoisted(() => ({
   importCard: vi.fn(),
   recordPayment: vi.fn(),
   markCashPaid: vi.fn(),
+  setPostage: vi.fn(),
   message: vi.fn(),
 }));
 vi.mock("../src/admin/repositories/tradeCenter.supabase", () => ({ tradeCenterRepository: repo }));
@@ -198,10 +200,14 @@ describe("review", () => {
     await user.click(within(within(dialog).getByRole("group", { name: "Decision for Mox Diamond" })).getByRole("button", { name: "Approve" }));
     await user.type(within(dialog).getByLabelText("Value each for Mox Diamond"), "380");
     await user.selectOptions(within(dialog).getByLabelText("How many Ragavan, Nimble Pilferer to approve"), "1");
-    // $80 + $46.80 + $380 approved → $405.44 credit, more than our $88.99 of cards.
+    // $80 + $46.80 + $380 approved → $405.44 credit, more than our $88.99 of cards (which take $111.24
+    // of theirs at 80%); shipping our cards, $3.99, is paid by card, not out of the credit.
     const preview = within(dialog).getByText("Approved value").closest("dl")!;
     expect(within(preview).getByText("Approved value").nextElementSibling).toHaveTextContent("$506.80");
-    expect(within(preview).getByText("Store credit left over").nextElementSibling).toHaveTextContent("$316.45");
+    expect(within(preview).getByText("Their cards needed to cover ours at 80%").nextElementSibling).toHaveTextContent("$111.24");
+    expect(within(preview).getByText("Shipping our cards (paid by card, not credit)").nextElementSibling).toHaveTextContent("$3.99");
+    expect(within(preview).getByText("They would pay by card").nextElementSibling).toHaveTextContent("$3.99");
+    expect(within(preview).getByText("Credit left over").nextElementSibling).toHaveTextContent("$316.45");
 
     // The customer gets the confirmation window (Sundays don't count); nothing is reserved yet; no deposit on $88.99.
     expect(within(dialog).getByText(/to confirm \(48 hours; Sundays don’t count\)\. Nothing is reserved until they confirm\./)).toBeInTheDocument();
@@ -333,10 +339,12 @@ describe("receiving, inspection and the final offer", () => {
     await user.click(await within(dialog).findByRole("button", { name: "The other card arrived as approved" }));
     await waitFor(() => expect(repo.confirmAsDescribed).toHaveBeenCalledWith(TRADE_ID));
 
-    // $80 + $39 = $119 of cards → $95.20 credit, against $88.99 of ours (free shipping): $6.21 left.
+    // $80 + $39 = $119 of cards → $95.20 credit, against $88.99 of ours: $6.21 left over, and
+    // $3.99 shipping paid by card.
     const final = within(dialog).getByText("Final offer").closest("div")!;
-    await waitFor(() => expect(within(final).getByText("Store credit left over").nextElementSibling).toHaveTextContent("$6.21"));
+    await waitFor(() => expect(within(final).getByText("Credit left over").nextElementSibling).toHaveTextContent("$6.21"));
     expect(within(final).getByText("Trade credit at 80%").nextElementSibling).toHaveTextContent("$95.20");
+    expect(within(final).getByText("They pay by card").nextElementSibling).toHaveTextContent("$3.99");
     // Cash instead: $6.21 of credit at 60/80 → $4.66.
     await user.click(within(final).getByLabelText(/Offer \$4\.66 cash for the credit left over instead/));
     repo.sendFinalOffer.mockResolvedValue(answer({ ...INSPECTING, status: "awaiting_final_approval", finalValueCents: 11900, finalCreditCents: 9520, offered: [sheoldredDone, ragavanDone, APPROVED[2]] }));
@@ -436,6 +444,77 @@ describe("payment and wrapping up", () => {
     await user.type(within(mailBack).getByLabelText("Tracking number (optional)"), "9400 1118 9922 3197 4284 90");
     await user.click(within(mailBack).getByRole("button", { name: "Mark returned and email the customer" }));
     await waitFor(() => expect(repo.markReturned).toHaveBeenCalledWith(TRADE_ID, { carrier: "USPS", trackingNumber: "9400 1118 9922 3197 4284 90" }));
+  });
+
+  it("shows a finished trade's shipping against its cost and the inventory-value difference, both shipments, and records the postage", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "completed",
+      wantedTotalCents: 20000,
+      finalValueCents: 25000,
+      finalCreditCents: 20000,
+      shippingCents: 0,
+      amountDueCents: 0,
+      excessCents: 0,
+      creditIssuedCents: 20000,
+      paidAt: "2026-10-24T12:00:00Z",
+      orderId: "order-9",
+      outgoing: { status: "shipped", carrier: "USPS", tracking: "9400111899223197428490", shippedAt: "2026-10-25T15:00:00Z", deliveredAt: null },
+      shipment: shipment({
+        carrier: "UPS",
+        tracking: "1Z999AA10123456784",
+        shippedOn: "2026-10-20",
+        packagingConfirmedAt: "2026-10-20T15:00:00Z",
+        deliveredAt: "2026-10-22T15:00:00Z",
+      }),
+      offered: APPROVED,
+    });
+    const dialog = await openTrade(trade);
+    // $250 in, $200 out, free shipping, no postage recorded: the $6 estimate, so $44 after shipping.
+    const econ = within(dialog).getByRole("heading", { name: "Shipping and inventory value" }).parentElement!;
+    expect(within(econ).getByText("Shipping charged").nextElementSibling).toHaveTextContent("Free");
+    expect(within(econ).getByText("Estimated shipping cost").nextElementSibling).toHaveTextContent("$6.00");
+    expect(within(econ).getByText(/Actual shipping cost/).nextElementSibling).toHaveTextContent("Not recorded");
+    expect(within(econ).getByText("Net shipping expense").nextElementSibling).toHaveTextContent("$6.00");
+    expect(within(econ).getByText("Gross inventory value difference").nextElementSibling).toHaveTextContent("+$50.00");
+    expect(within(econ).getByText("Shipping-adjusted inventory value difference").nextElementSibling).toHaveTextContent("+$44.00");
+    expect(econ).toHaveTextContent("It isn’t profit");
+    // Both shipments, with the packaging confirmation.
+    const shipments = within(dialog).getByRole("heading", { name: "Shipments" }).closest("section")!;
+    expect(within(shipments).getByRole("link", { name: "1Z999AA10123456784" })).toHaveAttribute("href", expect.stringContaining("ups.com"));
+    expect(shipments).toHaveTextContent("Customer says they shipped Tue, Oct 20");
+    expect(shipments).toHaveTextContent("packaging confirmed");
+    expect(shipments).toHaveTextContent("Our cards to the customer: Shipped");
+    expect(within(shipments).getByRole("link", { name: "9400111899223197428490" })).toHaveAttribute("href", expect.stringContaining("usps.com"));
+    // The postage, recorded by hand.
+    repo.setPostage.mockResolvedValue(answer({ ...trade, outboundPostageCents: 540 }));
+    await user.click(within(econ).getByRole("button", { name: "Record the postage" }));
+    await user.type(within(econ).getByLabelText("What the postage for our cards cost"), "5.40");
+    await user.click(within(econ).getByRole("button", { name: "Save postage" }));
+    await waitFor(() => expect(repo.setPostage).toHaveBeenCalledWith(TRADE_ID, 540));
+    const after = within(dialog).getByRole("heading", { name: "Shipping and inventory value" }).parentElement!;
+    await waitFor(() => expect(within(after).getByText(/Actual shipping cost/).nextElementSibling).toHaveTextContent("$5.40"));
+    expect(within(after).getByText("Shipping-adjusted inventory value difference").nextElementSibling).toHaveTextContent("+$44.60");
+  });
+
+  it("shows shipping by card apart from the credit while payment is due", async () => {
+    // $150 of our cards, $187.50 accepted: $150 of credit covers the cards; the $3.99 shipping is paid by card.
+    const trade = staffTrade({
+      status: "awaiting_payment",
+      wantedTotalCents: 15000,
+      finalValueCents: 18750,
+      finalCreditCents: 15000,
+      shippingCents: 399,
+      amountDueCents: 399,
+      excessCents: 0,
+      offered: APPROVED,
+    });
+    const dialog = await openTrade(trade);
+    const money = within(dialog).getByRole("heading", { name: "What it adds up to" }).closest("section")!;
+    expect(within(money).getByText("Our cards the credit doesn’t cover").nextElementSibling).toHaveTextContent("$0.00");
+    expect(within(money).getByText(/Shipping our cards/).nextElementSibling).toHaveTextContent("$3.99");
+    expect(within(money).getByText("The customer pays by card").nextElementSibling).toHaveTextContent("$3.99");
+    expect(within(dialog).getByRole("heading", { name: "Waiting for $3.99" })).toBeInTheDocument();
   });
 
   it("leaves the cash payout to the owner", async () => {
@@ -817,6 +896,82 @@ describe("the Deposits, Reserved and Customers tabs", () => {
   });
 });
 
+describe("the Economics tab", () => {
+  it("adds up what finished trades did to inventory value, by period, and opens a trade", async () => {
+    const user = userEvent.setup();
+    const totals = {
+      trades: 2,
+      incomingMarketCents: 43750,
+      outgoingRetailCents: 35000,
+      grossDifferenceCents: 8750,
+      shippingChargedCents: 399,
+      shippingCostCents: 1110,
+      estimatedShipments: 1,
+      netShippingCents: 711,
+      adjustedDifferenceCents: 8039,
+      averageOutgoingCents: 17500,
+      acceptedSingles: 5,
+      uniqueListings: 3,
+    };
+    const row = {
+      id: "t-a",
+      tradeNumber: 1007,
+      status: "completed",
+      customerName: "Ann Lee",
+      customerEmail: "ann@example.com",
+      paidAt: "2026-10-24T12:00:00Z",
+      creditRatePercent: 80,
+      economics: {
+        incomingMarketCents: 25000,
+        outgoingRetailCents: 20000,
+        grossDifferenceCents: 5000,
+        shippingChargedCents: 0,
+        shippingCostCents: 600,
+        shippingCostSource: "estimate",
+        netShippingCents: 600,
+        adjustedDifferenceCents: 4400,
+      },
+    };
+    repo.economics.mockResolvedValue({ days: 90, totals, trades: [row], settings: TRADE_SETTINGS, owner: true });
+    repo.get.mockResolvedValue({ trade: staffTrade({ id: "t-a", tradeNumber: 1001 }), settings: TRADE_SETTINGS, owner: true });
+    renderPage("tab=economics");
+    expect(await screen.findByText("Net change in retail-priced inventory")).toBeInTheDocument();
+    expect(repo.economics).toHaveBeenCalledWith(90);
+    expect(screen.getByText("Net change in retail-priced inventory").parentElement?.parentElement).toHaveTextContent("+$87.50");
+    expect(screen.getByText("After shipping", { selector: ".gg-stat__label" }).parentElement?.parentElement).toHaveTextContent("+$80.39");
+    expect(screen.getByText("Trades finished").parentElement?.parentElement).toHaveTextContent("Average $175.00 of our cards");
+    expect(screen.getByText("Singles taken worth $15.00+").parentElement?.parentElement).toHaveTextContent("3 different listings");
+    expect(screen.getByText(/Theoretical inventory-value differences/)).toHaveTextContent("1 of 2 shipments counted at the $6.00 estimate");
+    const line = screen.getByText("TR-1007").closest("tr")!;
+    expect(line).toHaveTextContent("+$44.00");
+    expect(line).toHaveTextContent("estimated");
+    await user.click(screen.getByRole("tab", { name: "All time" }));
+    await waitFor(() => expect(repo.economics).toHaveBeenLastCalledWith(null));
+    await user.click(await screen.findByText("TR-1007"));
+    await waitFor(() => expect(repo.get).toHaveBeenCalledWith("t-a"));
+  });
+
+  it("says so when no trades finished in the period", async () => {
+    const zero = {
+      trades: 0,
+      incomingMarketCents: 0,
+      outgoingRetailCents: 0,
+      grossDifferenceCents: 0,
+      shippingChargedCents: 0,
+      shippingCostCents: 0,
+      estimatedShipments: 0,
+      netShippingCents: 0,
+      adjustedDifferenceCents: 0,
+      averageOutgoingCents: 0,
+      acceptedSingles: 0,
+      uniqueListings: 0,
+    };
+    repo.economics.mockResolvedValue({ days: 90, totals: zero, trades: [], settings: TRADE_SETTINGS, owner: true });
+    renderPage("tab=economics");
+    expect(await screen.findByText("No finished trades in this period")).toBeInTheDocument();
+  });
+});
+
 describe("settings", () => {
   async function openSettings(owner = true, settings = TRADE_SETTINGS) {
     repo.settings.mockResolvedValue({ settings, owner });
@@ -898,6 +1053,47 @@ describe("settings", () => {
       excludedDates: ["2026-11-26", "2026-12-25"],
       depositTerms: `${TRADE_SETTINGS.depositTerms} Questions? Ask us.`,
     });
+  });
+
+  it("sets the minimum trade and shipping our cards, with the tiers spelled out", async () => {
+    const user = userEvent.setup();
+    await openSettings(true, { ...TRADE_SETTINGS, minTradeValueCents: 7500 });
+    expect(screen.getByText("Under $75.00: can't start a trade · $75.00 to $199.99: $3.99 · $200.00 or more: free")).toBeInTheDocument();
+    const fee = screen.getByLabelText("Shipping under the free-shipping threshold ($)");
+    await user.clear(fee);
+    await user.type(fee, "4.49");
+    const estimate = screen.getByLabelText("What shipping our cards costs us ($)");
+    await user.clear(estimate);
+    await user.type(estimate, "6.50");
+    expect(screen.getByText(/\$75\.00 to \$199\.99: \$4\.49/)).toBeInTheDocument();
+    repo.saveSettings.mockResolvedValue({ settings: { ...TRADE_SETTINGS, minTradeValueCents: 7500, shipFeeCents: 449, shipCostEstimateCents: 650 }, owner: true });
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(repo.saveSettings).toHaveBeenCalled());
+    expect(repo.saveSettings.mock.calls[0][0]).toMatchObject({
+      minTradeValueCents: 7500,
+      shipFeeCents: 449,
+      freeShipThresholdCents: 20000,
+      freeShipFeeCents: 0,
+      shipCostEstimateCents: 650,
+    });
+  });
+
+  it("won't let free shipping start below the minimum, or cost more from the threshold up", async () => {
+    const user = userEvent.setup();
+    await openSettings(true, { ...TRADE_SETTINGS, minTradeValueCents: 7500 });
+    const threshold = screen.getByLabelText("Free shipping from, our cards ($)");
+    await user.clear(threshold);
+    await user.type(threshold, "50");
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("Free shipping has to start at or above the minimum trade.")).toBeInTheDocument();
+    await user.clear(threshold);
+    await user.type(threshold, "200");
+    const upper = screen.getByLabelText("Shipping from the threshold up ($)");
+    await user.clear(upper);
+    await user.type(upper, "5");
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("Shipping from the free-shipping threshold up can't cost more than below it.")).toBeInTheDocument();
+    expect(repo.saveSettings).not.toHaveBeenCalled();
   });
 
   it("refuses deposit bands that don't go up", async () => {

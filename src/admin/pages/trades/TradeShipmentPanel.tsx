@@ -4,9 +4,9 @@ import { SelectField, TextArea, TextField } from "../../components/ui/Field";
 import { formatCents, formatDateTime } from "../../utils/format";
 import { tradeCenterRepository } from "../../repositories/tradeCenter.supabase";
 import { carrierLabel, trackingUrlFor } from "../../../store/lib/tracking";
-import { formatDeadline } from "../../../store/lib/tradeCenter";
+import { formatDeadline, type StaffTrade } from "../../../store/lib/tradeCenter";
 import { scanStatusLabel } from "../../../store/lib/tradeTracking";
-import { shipByPreview } from "./tradeMath";
+import { formatDateInput, shipByPreview } from "./tradeMath";
 import type { TradePanelProps } from "./types";
 
 // Their package, for staff: the tracking number and every carrier scan, and
@@ -61,6 +61,7 @@ export function TradeShipmentPanel({ trade, busy, run }: TradePanelProps) {
       ) : (
         <p className="gg-card-meta">{waiting ? "No tracking number yet." : "No tracking number was added."}</p>
       )}
+      {s.tracking && <PackagingLine trade={trade} />}
       {s.tracking && (
         <p className="gg-card-meta">
           {s.autoTracked
@@ -121,6 +122,18 @@ export function TradeShipmentPanel({ trade, busy, run }: TradePanelProps) {
 
       {waiting && <ReleaseReservation trade={trade} busy={busy} run={run} />}
     </section>
+  );
+}
+
+/** The day they say they shipped, and when they confirmed the packaging (for this tracking number). */
+export function PackagingLine({ trade }: { trade: StaffTrade }) {
+  const s = trade.shipment;
+  return (
+    <p className="gg-card-meta">
+      {s.shippedOn ? `Customer says they shipped ${formatDateInput(s.shippedOn)}` : "No ship date given"}
+      {" · "}
+      {s.packagingConfirmedAt ? `packaging confirmed ${formatDateTime(s.packagingConfirmedAt)}` : "packaging not confirmed"}
+    </p>
   );
 }
 

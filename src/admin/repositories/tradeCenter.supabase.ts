@@ -11,6 +11,7 @@ import {
   type TradeWantedInput,
 } from "../../store/lib/tradeCenter";
 import type { CustomerRecord, DepositOverride, Privileges } from "../../store/lib/tradeRules";
+import type { EconomicsTotals, TradeEconomics } from "../../store/lib/tradeEconomics";
 
 // Admin → Trades (online trades from the storefront's Trade Cards page).
 // Everything goes through /api/admin/trade-center (service role, staff only):
@@ -64,6 +65,32 @@ export interface DepositTotals {
   /** Stripe's processing fees on deposits (absorbed by the store, never taken from refunds). */
   feesCents: number;
   awaitingPaymentCents: number;
+}
+
+/** A finished trade's effect on inventory value, with shipping (Economics tab; theoretical, not profit). */
+export interface EconomicsTrade {
+  id: string;
+  tradeNumber: number;
+  status: TradeStatus;
+  customerName: string | null;
+  customerEmail: string | null;
+  paidAt: string | null;
+  creditRatePercent: number;
+  economics: TradeEconomics;
+}
+
+export type EconomicsPeriod = 30 | 90 | 365 | null;
+
+export interface EconomicsResult {
+  /** The window in days; null for all time. */
+  days: EconomicsPeriod;
+  totals: EconomicsTotals;
+  /** The latest finished trades in the window (up to 100). */
+  trades: EconomicsTrade[];
+  /** Too many trades to count them all: the oldest were left out. */
+  truncated?: boolean;
+  settings: TradeSettings;
+  owner: boolean;
 }
 
 export interface TradeListResult {
@@ -153,6 +180,13 @@ export const tradeCenterRepository = {
 
   deposits(): Promise<{ totals: DepositTotals; trades: StaffTradeSummary[]; settings: TradeSettings; owner: boolean }> {
     return adminFetch(`${ADMIN_TRADE_CENTER_API}?view=deposits`);
+  },
+
+  /** Finished trades over the last `days` days (null: all time). */
+  economics(days: EconomicsPeriod): Promise<EconomicsResult> {
+    const params = new URLSearchParams({ view: "economics" });
+    if (days !== null) params.set("days", String(days));
+    return adminFetch(`${ADMIN_TRADE_CENTER_API}?${params.toString()}`);
   },
 
   /** Owner: a deposit on every trade of theirs, or no new trades for now. */
@@ -292,6 +326,11 @@ export const tradeCenterRepository = {
 
   markCashPaid(tradeId: string, note: string) {
     return post({ action: "markCashPaid", tradeId, note });
+  },
+
+  /** What shipping our cards cost, when the label wasn't bought through EasyPost (finished trades); null clears it. */
+  setPostage(tradeId: string, postageCents: number | null) {
+    return post({ action: "setPostage", tradeId, postageCents });
   },
 
   message(tradeId: string, body: string, visibleToCustomer: boolean) {

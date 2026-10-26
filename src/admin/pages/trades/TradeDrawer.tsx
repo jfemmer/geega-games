@@ -26,14 +26,17 @@ import {
   type TradeStatus,
 } from "../../../store/lib/tradeCenter";
 import { LOYALTY_TIER_LABELS, onTimePercent } from "../../../store/lib/tradeRules";
+import { tradeEconomics } from "../../../store/lib/tradeEconomics";
+import { carrierLabel, trackingUrlFor } from "../../../store/lib/tracking";
+import { ORDER_STATUS_LABELS, type OrderStatus } from "../../../store/lib/orderStatus";
 import { CUSTOMER_FAULT_LABELS, REVIEW_FLAG_LABELS, TRADE_STATUS_TONE, customerEmailNote } from "./tradeLabels";
-import { extendedDeadline, pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
+import { centsInput, extendedDeadline, parseUnitCents, pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
 import { CardThumb, OfferCardHead } from "./TradeCardBits";
 import { TradeReviewPanel } from "./TradeReviewPanel";
 import { TradeInspectionPanel } from "./TradeInspectionPanel";
 import { MailBack, TradeWrapUpPanel } from "./TradeWrapUpPanel";
 import { TradeDepositPanel, TradeDisputesPanel } from "./TradeDepositPanel";
-import { TradeExpiredPanel, TradeShipmentPanel } from "./TradeShipmentPanel";
+import { PackagingLine, TradeExpiredPanel, TradeShipmentPanel } from "./TradeShipmentPanel";
 import { TradeHistory, TradeMessagesPanel } from "./TradeConversation";
 import type { TradePanelProps } from "./types";
 
@@ -57,7 +60,7 @@ const STAFF_NEXT: Record<TradeStatus, string> = {
   received: "The package is here. Inspect the cards below.",
   under_inspection: "Finish inspecting, then send the final offer.",
   awaiting_final_approval: "Final offer sent. Waiting for the customer to accept it, ask for an adjustment, or decline.",
-  awaiting_payment: "Accepted. Waiting for the customer to pay the difference by card.",
+  awaiting_payment: "Accepted. Waiting for the customer to pay by card: any of our cards the credit doesn't cover, and shipping.",
   approved_for_fulfillment: "Finished. Pack and ship their order, and add the cards you took to inventory.",
   completed: "Complete: their order shipped.",
   rejected: "Rejected before it was confirmed. Nothing was reserved.",
@@ -212,7 +215,8 @@ function TradeBody(props: TradePanelProps & { onOpenOrder: (orderId: string) => 
     <div className="gg-trd">
       <CustomerSection trade={trade} />
       <StandingSection {...props} />
-      <MoneySection trade={trade} />
+      <MoneySection {...props} />
+      <ShipmentsSection trade={trade} />
       <TradeDepositPanel {...props} />
       <TradeDisputesPanel {...props} />
 
@@ -517,22 +521,31 @@ function ConfirmationPanel({ trade, busy, run }: TradePanelProps) {
   );
 }
 
-function MoneySection({ trade }: { trade: StaffTrade }) {
+/**
+ * What the trade adds up to: both sides' values, the rate applied, what the
+ * credit doesn't cover, shipping our cards (paid by card, never out of
+ * credit), the card payment and any credit left over. Once it's finished:
+ * what shipping cost against what was charged, the theoretical change in
+ * inventory value, and our cards' shipment.
+ */
+function MoneySection({ trade, settings, busy, run }: TradePanelProps) {
   const m = tradeMoney(trade);
   const ourCount = trade.wanted.filter((w) => w.status !== "released").reduce((n, w) => n + w.quantity, 0);
   const stage = m.valueStage === "final" ? "final" : m.valueStage === "approved" ? "approved" : "estimated";
+  const finished = trade.status === "approved_for_fulfillment" || trade.status === "completed";
+  const settled = trade.shippingCents !== null;
   return (
     <section className="gg-trd__section">
       <h3>What it adds up to</h3>
       <dl className="gg-trd-money">
         <div>
           <dt>
-            Our cards ({ourCount} card{ourCount === 1 ? "" : "s"})
+            Our cards ({ourCount} card{ourCount === 1 ? "" : "s"}, retail)
           </dt>
           <dd>{formatCents(m.wantedCents)}</dd>
         </div>
         <div>
-          <dt>Their cards ({stage})</dt>
+          <dt>Their cards ({stage}, market)</dt>
           <dd>{formatCents(m.valueCents)}</dd>
         </div>
         <div>
@@ -542,21 +555,204 @@ function MoneySection({ trade }: { trade: StaffTrade }) {
           <dd>{formatCents(m.creditCents)}</dd>
         </div>
         <div>
-          <dt>Shipping our cards</dt>
+          <dt>Our cards the credit doesn&rsquo;t cover</dt>
+          <dd>{formatCents(m.cardBalanceCents)}</dd>
+        </div>
+        <div>
+          <dt>
+            Shipping our cards{" "}
+            <span className="gg-card-meta">
+              {trade.paidAt ? "collected with the payment" : settled ? "set when they accepted" : "as the trade stands"}
+            </span>
+          </dt>
           <dd>{m.shippingCents === 0 ? "Free" : formatCents(m.shippingCents)}</dd>
         </div>
         <div className="gg-trd-money__total">
+          <dt>{m.dueCents > 0 ? (trade.paidAt ? "Paid by card" : "The customer pays by card") : "Nothing to pay by card"}</dt>
+          <dd>{formatCents(m.dueCents)}</dd>
+        </div>
+        {m.excessCents > 0 && (
+          <div>
+            <dt>{m.cashCents > 0 ? "Credit left over, paid as cash" : "Credit left over (store credit)"}</dt>
+            <dd>{formatCents(m.cashCents > 0 ? m.cashCents : m.excessCents)}</dd>
+          </div>
+        )}
+      </dl>
+      {finished && <TradeEconomicsBlock trade={trade} settings={settings} busy={busy} run={run} />}
+    </section>
+  );
+}
+
+const SHIPMENT_PANEL_STATUSES: ReadonlySet<TradeStatus> = new Set(["awaiting_shipment", "tracking_submitted", "in_transit"]);
+
+/** Both shipments at a glance once their package is past the shipment step: theirs to us, and our cards to them. */
+function ShipmentsSection({ trade }: { trade: StaffTrade }) {
+  const s = trade.shipment;
+  const showTheirs = s.tracking !== null && !SHIPMENT_PANEL_STATUSES.has(trade.status);
+  if (!showTheirs && !trade.outgoing) return null;
+  const url = trackingUrlFor(s.carrier, s.tracking);
+  return (
+    <section className="gg-trd__section" aria-labelledby="gg-trd-shipments-title">
+      <h3 id="gg-trd-shipments-title">Shipments</h3>
+      {showTheirs && (
+        <>
+          <p className="gg-trd-outgoing">
+            <strong>Their cards to us:</strong> {carrierLabel(s.carrier)}{" "}
+            {url ? (
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                {s.tracking}
+              </a>
+            ) : (
+              s.tracking
+            )}
+            {s.acceptedAt ? <span className="gg-card-meta"> · carrier accepted {formatDateTime(s.acceptedAt)}</span> : null}
+            {s.deliveredAt ? <span className="gg-card-meta"> · delivered {formatDateTime(s.deliveredAt)}</span> : null}
+          </p>
+          <PackagingLine trade={trade} />
+        </>
+      )}
+      <OutgoingShipmentLine trade={trade} />
+    </section>
+  );
+}
+
+/** A finished trade: shipping cost against what was charged, and the theoretical inventory-value difference. */
+function TradeEconomicsBlock({ trade, settings, busy, run }: Pick<TradePanelProps, "trade" | "settings" | "busy" | "run">) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [postage, setPostage] = useState(centsInput(trade.outboundPostageCents));
+  const e = tradeEconomics(
+    {
+      finalValueCents: trade.finalValueCents,
+      wantedTotalCents: trade.wantedTotalCents,
+      shippingCents: trade.shippingCents,
+      orderPostageCents: trade.orderPostageCents,
+      outboundPostageCents: trade.outboundPostageCents,
+    },
+    settings.shipCostEstimateCents,
+  );
+  if (!e) return null;
+  const source =
+    e.shippingCostSource === "label" ? "label bought here" : e.shippingCostSource === "recorded" ? "recorded" : "estimate, from Settings";
+
+  async function save(clear: boolean) {
+    const raw = postage.trim();
+    const cents = clear || raw === "" ? null : parseUnitCents(raw);
+    if (!clear && raw !== "" && (cents === null || cents > 100_000)) {
+      toast.error("Enter what the postage cost, like 5.40.");
+      return;
+    }
+    const ok = await run("postage", () => tradeCenterRepository.setPostage(trade.id, cents), cents === null ? "Postage cleared." : "Postage saved.");
+    if (ok) setEditing(false);
+  }
+
+  return (
+    <div className="gg-trd-econ">
+      <h4>Shipping and inventory value</h4>
+      <dl className="gg-trd-money">
+        <div>
+          <dt>Shipping charged</dt>
+          <dd>{e.shippingChargedCents === 0 ? "Free" : formatCents(e.shippingChargedCents)}</dd>
+        </div>
+        <div>
+          <dt>Estimated shipping cost</dt>
+          <dd>{formatCents(settings.shipCostEstimateCents)}</dd>
+        </div>
+        <div>
           <dt>
-            {m.dueCents > 0
-              ? "The customer pays by card"
-              : m.cashCents > 0
-                ? "Cash for the credit left over"
-                : "Store credit left over"}
+            Actual shipping cost <span className="gg-card-meta">({source})</span>
           </dt>
-          <dd>{formatCents(m.dueCents > 0 ? m.dueCents : m.cashCents > 0 ? m.cashCents : m.excessCents)}</dd>
+          <dd>{e.shippingCostSource === "estimate" ? "Not recorded" : formatCents(e.shippingCostCents)}</dd>
+        </div>
+        <div>
+          <dt>Net shipping expense</dt>
+          <dd>{e.netShippingCents < 0 ? `−${formatCents(-e.netShippingCents)}` : formatCents(e.netShippingCents)}</dd>
+        </div>
+        <div>
+          <dt>Gross inventory value difference</dt>
+          <dd>{signedCents(e.grossDifferenceCents)}</dd>
+        </div>
+        <div className="gg-trd-money__total">
+          <dt>Shipping-adjusted inventory value difference</dt>
+          <dd>{signedCents(e.adjustedDifferenceCents)}</dd>
         </div>
       </dl>
-    </section>
+      <p className="gg-card-meta">
+        Theoretical: the market value of their cards we took, less the retail value of ours, less net shipping. It isn&rsquo;t profit: it
+        doesn&rsquo;t account for what our cards cost us, fees or cash flow.
+      </p>
+      {e.shippingCostSource !== "label" &&
+        (editing ? (
+          <div className="gg-trd-form gg-trd-postage">
+            <label className="gg-trd-field">
+              <span>What the postage cost</span>
+              <span className="gg-trd-dollar">
+                <input
+                  className="gg-input"
+                  inputMode="decimal"
+                  value={postage}
+                  placeholder="0.00"
+                  aria-label="What the postage for our cards cost"
+                  onChange={(ev) => setPostage(ev.target.value)}
+                />
+              </span>
+            </label>
+            <div className="gg-drawer-actions__buttons">
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy !== null}>
+                Cancel
+              </Button>
+              {trade.outboundPostageCents !== null && (
+                <Button size="sm" variant="secondary" onClick={() => void save(true)} disabled={busy !== null}>
+                  Clear
+                </Button>
+              )}
+              <Button size="sm" variant="primary" onClick={() => void save(false)} loading={busy === "postage"} disabled={busy !== null}>
+                Save postage
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="gg-drawer-actions__buttons">
+            <Button size="sm" variant="secondary" icon="edit" onClick={() => setEditing(true)} disabled={busy !== null}>
+              {trade.outboundPostageCents !== null ? "Change the postage" : "Record the postage"}
+            </Button>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+/** "+$44.00" or "−$12.50". */
+function signedCents(cents: number): string {
+  return `${cents < 0 ? "−" : "+"}${formatCents(Math.abs(cents))}`;
+}
+
+/** Our cards on their way to the customer (the trade's order). */
+function OutgoingShipmentLine({ trade }: { trade: StaffTrade }) {
+  const o = trade.outgoing;
+  if (!o) return null;
+  const url = trackingUrlFor(o.carrier, o.tracking);
+  return (
+    <p className="gg-card-meta gg-trd-outgoing">
+      <strong>Our cards to the customer:</strong> {ORDER_STATUS_LABELS[o.status as OrderStatus] ?? o.status}
+      {o.tracking ? (
+        <>
+          {" "}
+          · {carrierLabel(o.carrier)}{" "}
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              {o.tracking}
+            </a>
+          ) : (
+            o.tracking
+          )}
+        </>
+      ) : (
+        " · no tracking yet"
+      )}
+      {o.shippedAt ? ` · shipped ${formatDateTime(o.shippedAt)}` : ""}
+      {o.deliveredAt ? ` · delivered ${formatDateTime(o.deliveredAt)}` : ""}
+    </p>
   );
 }
 

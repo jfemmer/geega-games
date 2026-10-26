@@ -139,6 +139,7 @@ const EVENT_LABELS: Record<string, string> = {
   returned: "Cards mailed back",
   card_imported: "Card added to inventory",
   cash_paid: "Cash paid out",
+  postage_recorded: "Postage for our cards recorded",
   reminder_sent: "Reminder emailed to the customer",
   staff_alerted: "Staff alerted",
 };
@@ -233,8 +234,21 @@ export function eventDetail(e: StaffTradeEvent): string | null {
       return text(d.note);
     case "tracking_added":
     case "tracking_changed":
+      return join(
+        text(d.carrier),
+        text(d.tracking),
+        text(d.shipped_on) ? `shipped ${text(d.shipped_on)}` : null,
+        d.packaging_confirmed === true ? "packaging confirmed" : null,
+      );
     case "returned":
       return join(text(d.carrier), text(d.tracking));
+    case "postage_recorded":
+      return d.postage_cents === null ? "cleared" : cents(d.postage_cents);
+    case "final_accepted":
+      return join(
+        typeof d.shipping_cents === "number" ? `shipping ${d.shipping_cents > 0 ? cents(d.shipping_cents) : "free"}` : null,
+        typeof d.amount_due_cents === "number" ? `due ${cents(d.amount_due_cents)}` : null,
+      );
     case "early_scan":
     case "late_acceptance":
       return join(when(d.accepted_at) ? `scanned ${when(d.accepted_at)}` : null, when(d.ship_by) ? `deadline ${when(d.ship_by)}` : null);

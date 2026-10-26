@@ -6,13 +6,15 @@
 // How a trade runs end to end, and the database side, is explained in
 // supabase/migrations/20261025200000_trade_center.sql; deadlines are in
 // tradeDeadlines.ts, the deposit and reliability in tradeRules.ts, tracking
-// numbers and carrier scans in tradeTracking.ts.
+// numbers and carrier scans in tradeTracking.ts, the trade minimum and
+// shipping our cards in tradeShipping.ts.
 //
 // Pure module: no React, browser, Node or Supabase imports. Money is whole cents.
 
 import { formatStoreDeadline } from "./tradeDeadlines.js";
 import type { DepositOverride, DepositReason, CustomerRecord, Privileges } from "./tradeRules.js";
 import type { TrackingScan } from "./tradeTracking.js";
+import { DEFAULT_SHIPPING_TERMS, tradeShippingCents, type ShippingTerms } from "./tradeShipping.js";
 
 export const TRADE_CENTER_PATH = "/trade-cards";
 export const MY_TRADES_PATH = "/account/trades";
@@ -142,7 +144,7 @@ export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
   received: "Your package arrived. We'll inspect your cards next.",
   under_inspection: "We're inspecting your cards and will email your final offer when we're done.",
   awaiting_final_approval: "Your final offer is ready. Accept it, ask for an adjustment, or decline it with no penalty.",
-  awaiting_payment: "Pay the difference by card to finish your trade.",
+  awaiting_payment: "Pay what's left by card (any of our cards your credit doesn't cover, and shipping them to you) to finish your trade.",
   approved_for_fulfillment: "Your trade is done. We're packing your new cards.",
   completed: "Your new cards have shipped.",
   rejected: "We couldn't accept this trade.",
@@ -419,11 +421,16 @@ export interface TradeTerms {
   maxActiveTrades: number;
   maxWantedLines: number;
   maxOfferedLines: number;
+  /** Our cards (retail value) must add up to this to start or send a trade. */
   minTradeValueCents: number;
   maxTradeValueCents: number | null;
   processingFeeCents: number;
   cashPayoutEnabled: boolean;
   shippingPaidBy: "customer" | "store";
+  /** Shipping our cards to them: under the free-shipping threshold, and from it up (paid by card). */
+  shipFeeCents: number;
+  freeShipThresholdCents: number;
+  freeShipFeeCents: number;
   packingInstructions: string;
   returnPolicy: string;
   excludedSetCodes: string[];
@@ -534,28 +541,26 @@ export function tradePriceCents(listing: { priceCents: number | null; originalPr
   return listing.priceCents;
 }
 
-/** Our cards ship tracked, free from $75 of cards: the same as checkout. */
-export const TRADE_TRACKED_SHIPPING_CENTS = 550;
-export const TRADE_FREE_SHIPPING_FROM_CENTS = 7500;
-
-export function tradeShippingCents(wantedCents: number): number {
-  if (wantedCents <= 0) return 0;
-  return wantedCents >= TRADE_FREE_SHIPPING_FROM_CENTS ? 0 : TRADE_TRACKED_SHIPPING_CENTS;
-}
-
+/** What a trade adds up to. Trade credit covers our cards only; shipping is paid by card. */
 export interface TradeComparison {
-  /** Our cards, at their trade prices. */
+  /** Our cards, at their trade (retail) prices. */
   wantedCents: number;
-  /** Shipping our cards to the customer. */
+  /** Shipping our cards to the customer, paid by card. */
   shippingCents: number;
-  /** Their cards. */
+  /** Their cards' market value (estimated, approved or final). */
   offeredValueCents: number;
   creditCents: number;
-  /** Still to pay (by card, at the end) when the credit falls short; 0 when covered. */
-  remainingCents: number;
-  /** Credit beyond our cards and shipping; kept as store credit. 0 when there's none. */
+  /** The market value of their cards it takes to cover our cards at the trade rate. */
+  requiredValueCents: number;
+  /** Credit spent on our cards. */
+  creditAppliedCents: number;
+  /** Our cards the credit doesn't cover (paid by card). */
+  cardBalanceCents: number;
+  /** Everything paid by card at the end: the card balance plus shipping. */
+  cashDueCents: number;
+  /** Credit beyond our cards; kept as store credit. 0 when there's none. */
   excessCents: number;
-  /** About how much more card value would cover everything; 0 when covered. */
+  /** About how much more card value would cover our cards; 0 when covered. */
   moreValueNeededCents: number;
 }
 
@@ -564,22 +569,33 @@ export function tradeComparison(input: {
   offeredValueCents: number;
   ratePercent: number;
   feeCents?: number;
-  /** Defaults to what checkout would charge for `wantedCents`. */
+  /** Shipping our cards; defaults to the tiers in `shipping` for `wantedCents`. */
   shippingCents?: number;
+  shipping?: ShippingTerms;
 }): TradeComparison {
   const fee = input.feeCents ?? 0;
-  const shippingCents = input.shippingCents ?? tradeShippingCents(input.wantedCents);
+  const shippingCents = input.shippingCents ?? tradeShippingCents(input.wantedCents, input.shipping ?? DEFAULT_SHIPPING_TERMS);
   const creditCents = tradeCreditCents(input.offeredValueCents, input.ratePercent, fee);
-  const due = input.wantedCents + shippingCents;
+  const creditAppliedCents = Math.min(creditCents, input.wantedCents);
+  const cardBalanceCents = input.wantedCents - creditAppliedCents;
+  const requiredValueCents = valueForCreditCents(input.wantedCents, input.ratePercent, fee);
   return {
     wantedCents: input.wantedCents,
     shippingCents,
     offeredValueCents: input.offeredValueCents,
     creditCents,
-    remainingCents: Math.max(due - creditCents, 0),
-    excessCents: Math.max(creditCents - due, 0),
-    moreValueNeededCents: Math.max(valueForCreditCents(due, input.ratePercent, fee) - input.offeredValueCents, 0),
+    requiredValueCents,
+    creditAppliedCents,
+    cardBalanceCents,
+    cashDueCents: cardBalanceCents + shippingCents,
+    excessCents: Math.max(creditCents - input.wantedCents, 0),
+    moreValueNeededCents: Math.max(requiredValueCents - input.offeredValueCents, 0),
   };
+}
+
+/** A trade's own shipping terms (each keeps the ones it started on). */
+export function tradeShippingTerms(t: { shipFeeCents: number; freeShipThresholdCents: number; freeShipFeeCents: number }): ShippingTerms {
+  return { shipFeeCents: t.shipFeeCents, freeShipThresholdCents: t.freeShipThresholdCents, freeShipFeeCents: t.freeShipFeeCents };
 }
 
 /**
@@ -841,6 +857,20 @@ export interface TradeShipment {
   deliveredAt: string | null;
   /** The scans are checked automatically (otherwise staff verify by hand). */
   autoTracked: boolean;
+  /** The day they say they shipped ("YYYY-MM-DD"; optional, the carrier's scan is what counts). */
+  shippedOn: string | null;
+  /** When they confirmed the package is protected and tracked (for this tracking number). */
+  packagingConfirmedAt: string | null;
+}
+
+/** Our cards on their way to the customer (the trade's order). */
+export interface TradeOutgoing {
+  /** The order's status: paid, packing, ready_to_ship, shipped, delivered… */
+  status: string;
+  carrier: string | null;
+  tracking: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
 }
 
 /** What the confirmation page needs, worked out by the server. */
@@ -884,11 +914,16 @@ export interface CustomerTrade {
   approvedValueCents: number | null;
   finalValueCents: number | null;
   finalCreditCents: number | null;
+  /** Shipping our cards, settled when they accept the final offer. */
   shippingCents: number | null;
   amountDueCents: number | null;
   excessCents: number | null;
   excessHandling: "store_credit" | "cash";
   cashPayoutCents: number | null;
+  /** The shipping terms the trade started on. */
+  shipFeeCents: number;
+  freeShipThresholdCents: number;
+  freeShipFeeCents: number;
   /** A draft or revision closes after this. */
   listDueAt: string | null;
   /** An approved trade must be confirmed by this. */
@@ -912,6 +947,8 @@ export interface CustomerTrade {
   closeReason: string | null;
   /** Where our cards ship (once they accept the final offer). */
   shipTo: TradeAddress | null;
+  /** Our cards on their way to them, once the trade's order exists. */
+  outgoing: TradeOutgoing | null;
   wanted: TradeWantedItem[];
   offered: TradeOfferCard[];
   messages: TradeMessage[];
@@ -1041,6 +1078,9 @@ export interface StaffTrade extends Omit<CustomerTrade, "offered" | "timeline" |
   returnedAt: string | null;
   cashPaidAt: string | null;
   paymentReference: string | null;
+  /** What shipping our cards cost: a label bought through EasyPost (on the order), or what staff recorded. */
+  orderPostageCents: number | null;
+  outboundPostageCents: number | null;
 }
 
 /** A row in admin Trades. */
@@ -1126,6 +1166,11 @@ export interface TradeSettings {
   notifyCustomer: boolean;
   notifyStaff: boolean;
   shippingPaidBy: "customer" | "store";
+  shipFeeCents: number;
+  freeShipThresholdCents: number;
+  freeShipFeeCents: number;
+  /** What a shipment of our cards actually costs us, for the internal economics only. */
+  shipCostEstimateCents: number;
   shipTo: TradeAddress | null;
   packingInstructions: string;
   returnPolicy: string;
@@ -1162,6 +1207,9 @@ export const TRADE_SETTING_RANGES = {
   cashRatePercent: [1, 100],
   overstockThreshold: [0, 1000],
   maxExcludedDates: [0, 200],
+  shipFeeCents: [0, 10_000],
+  freeShipThresholdCents: [1, 100_000_000],
+  shipCostEstimateCents: [0, 10_000],
 } as const;
 
 // ---------------------------------------------------------------------------

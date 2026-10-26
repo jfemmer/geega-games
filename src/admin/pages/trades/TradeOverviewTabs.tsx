@@ -12,6 +12,8 @@ import { useToast } from "../../hooks/useToast";
 import { formatCents, formatDateTime, timeAgo } from "../../utils/format";
 import {
   tradeCenterRepository,
+  type EconomicsPeriod,
+  type EconomicsTrade,
   type ReservedLine,
   type TradeCustomerRow,
 } from "../../repositories/tradeCenter.supabase";
@@ -33,7 +35,9 @@ import { DEPOSIT_STATUS_TONE, TRADE_STATUS_TONE } from "./tradeLabels";
 // right now and each trade's deadline. Customers: everyone who has traded,
 // their record (completed trades, on-time shipping, abandoned
 // reservations) and what it earns them; the store owner can require a
-// deposit on every trade of theirs or pause their new trades.
+// deposit on every trade of theirs or pause their new trades. Economics:
+// what finished trades did to retail-priced inventory, with shipping
+// (theoretical inventory-value differences, not profit).
 
 type DepositFilter = "all" | "attention" | DepositStatus;
 
@@ -146,6 +150,137 @@ export function DepositsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =>
           <DataTable columns={columns} rows={rows} rowKey={(t) => t.id} onRowClick={(t) => onOpenTrade(t.id)} caption="Deposits" />
         )}
       </SectionCard>
+    </>
+  );
+}
+
+const ECONOMICS_PERIODS: { key: string; days: EconomicsPeriod; label: string }[] = [
+  { key: "30", days: 30, label: "30 days" },
+  { key: "90", days: 90, label: "90 days" },
+  { key: "365", days: 365, label: "12 months" },
+  { key: "all", days: null, label: "All time" },
+];
+
+/** "+$44.00" or "−$12.50". */
+function signed(cents: number): string {
+  return `${cents < 0 ? "−" : "+"}${formatCents(Math.abs(cents))}`;
+}
+
+export function EconomicsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) => void }) {
+  const [period, setPeriod] = useState("90");
+  const days = ECONOMICS_PERIODS.find((p) => p.key === period)?.days ?? null;
+  const data = useAsync(() => tradeCenterRepository.economics(days), [days]);
+  const t = data.data?.totals;
+  const settings = data.data?.settings;
+  const trades = data.data?.trades ?? [];
+
+  const columns: Column<EconomicsTrade>[] = [
+    {
+      key: "trade",
+      header: "Trade",
+      render: (r) => (
+        <div className="gg-ordercell">
+          <span className="gg-ordercell__num">{tradeLabel(r.tradeNumber)}</span>
+          <span className="gg-ordercell__cust">{r.customerName || r.customerEmail || "Customer"}</span>
+        </div>
+      ),
+    },
+    { key: "in", header: "Their cards (market)", align: "right", render: (r) => formatCents(r.economics.incomingMarketCents) },
+    { key: "out", header: "Our cards (retail)", align: "right", render: (r) => formatCents(r.economics.outgoingRetailCents) },
+    { key: "gross", header: "Gross difference", align: "right", secondary: true, render: (r) => signed(r.economics.grossDifferenceCents) },
+    {
+      key: "ship",
+      header: "Net shipping",
+      align: "right",
+      secondary: true,
+      render: (r) => (
+        <span className="gg-trades__value">
+          {formatCents(r.economics.netShippingCents < 0 ? 0 : r.economics.netShippingCents)}
+          {r.economics.netShippingCents < 0 && <span className="gg-trades__stage">{formatCents(-r.economics.netShippingCents)} over cost</span>}
+          {r.economics.shippingCostSource === "estimate" && <span className="gg-trades__stage">estimated</span>}
+        </span>
+      ),
+    },
+    { key: "adjusted", header: "After shipping", align: "right", render: (r) => <strong>{signed(r.economics.adjustedDifferenceCents)}</strong> },
+    {
+      key: "paid",
+      header: "Finished",
+      secondary: true,
+      render: (r) => <span className="gg-card-meta">{r.paidAt ? formatDateTime(r.paidAt) : "—"}</span>,
+    },
+  ];
+
+  return (
+    <>
+      <Tabs
+        ariaLabel="Period"
+        active={period}
+        onChange={setPeriod}
+        items={ECONOMICS_PERIODS.map((p) => ({ key: p.key, label: p.label }))}
+      />
+      {data.loading && !data.data ? (
+        <TableSkeleton rows={5} cols={6} />
+      ) : data.error ? (
+        <ErrorState message={data.error} onRetry={data.reload} />
+      ) : t ? (
+        <>
+          <div className="gg-statgrid">
+            <StatCard label="Trades finished" value={String(t.trades)} icon="swap" caption={t.trades ? `Average ${formatCents(t.averageOutgoingCents)} of our cards` : undefined} />
+            <StatCard label="Their cards in (market)" value={formatCents(t.incomingMarketCents)} icon="arrowDown" />
+            <StatCard label="Our cards out (retail)" value={formatCents(t.outgoingRetailCents)} icon="arrowUp" />
+            <StatCard
+              label="Net change in retail-priced inventory"
+              value={signed(t.grossDifferenceCents)}
+              icon="layers"
+              accent={t.grossDifferenceCents < 0 ? "warning" : "default"}
+            />
+            <StatCard
+              label="Shipping: cost less charged"
+              value={formatCents(Math.max(t.netShippingCents, 0))}
+              icon="truck"
+              caption={`${formatCents(t.shippingCostCents)} cost, ${formatCents(t.shippingChargedCents)} charged`}
+            />
+            <StatCard label="After shipping" value={signed(t.adjustedDifferenceCents)} icon="trends" caption="Theoretical, not profit" />
+            <StatCard
+              label={`Singles taken worth ${settings ? formatCents(settings.minCardValueCents) : "the minimum"}+`}
+              value={String(t.acceptedSingles)}
+              icon="cards"
+              caption={`${t.uniqueListings} different listing${t.uniqueListings === 1 ? "" : "s"}`}
+            />
+          </div>
+          <p className="gg-card-meta gg-trd-econ__note">
+            Theoretical inventory-value differences: the market value of the cards we took in, less the retail value of the cards we sent,
+            less what shipping our cards cost beyond what customers paid. They aren&rsquo;t profit: they don&rsquo;t account for what our
+            cards cost us, payment fees or cash flow.
+            {t.estimatedShipments > 0 && settings
+              ? ` ${t.estimatedShipments} of ${t.trades} shipment${t.trades === 1 ? "" : "s"} counted at the ${formatCents(settings.shipCostEstimateCents)} estimate (no label bought here or postage recorded).`
+              : ""}
+          </p>
+          <SectionCard title="Finished trades" className="gg-trades-list">
+            {trades.length === 0 ? (
+              <EmptyState
+                icon="swap"
+                title="No finished trades in this period"
+                message="Trades show up here once the customer has accepted the final offer and paid."
+              />
+            ) : (
+              <DataTable
+                columns={columns}
+                rows={trades}
+                rowKey={(r) => r.id}
+                onRowClick={(r) => onOpenTrade(r.id)}
+                caption="Finished trades and what each did to inventory value"
+              />
+            )}
+            {t.trades > trades.length && (
+              <p className="gg-card-meta">
+                Showing the latest {trades.length} of {t.trades}.{" "}
+                {data.data?.truncated ? "The totals above count the latest 20,000 only." : "The totals above count all of them."}
+              </p>
+            )}
+          </SectionCard>
+        </>
+      ) : null}
     </>
   );
 }

@@ -9,8 +9,10 @@ import {
   timeLeft,
   tradeCreditCents,
   tradeLabel,
+  tradeShippingTerms,
   type CustomerTrade,
 } from "../../lib/tradeCenter";
+import { moneyShort, tradeShippingCents } from "../../lib/tradeShipping";
 import type { ConfirmResponse } from "../../lib/tradeCenterApi";
 import { TradeCardPayment } from "./TradeCardForm";
 import { returnUrlFor } from "./tradePayment";
@@ -51,6 +53,7 @@ export function TradeConfirmPanel({
   const late = now > confirmBy;
   const value = trade.approvedValueCents ?? trade.estimatedValueCents;
   const credit = tradeCreditCents(value, trade.creditRatePercent, trade.processingFeeCents);
+  const shipping = tradeShippingCents(trade.wantedTotalCents, tradeShippingTerms(trade));
   const onlineOk = c.canPayOnline && isStripeConfigured;
   const wanted = trade.wanted.filter((w) => w.status === "requested" || w.status === "reserved");
   const short = wanted.filter((w) => w.available !== null && w.available < w.quantity);
@@ -104,8 +107,22 @@ export function TradeConfirmPanel({
           </dd>
         </div>
         <div>
+          <dt>Shipping our cards to you</dt>
+          <dd>
+            {shipping > 0 ? formatCents(shipping) : "FREE"}
+            <span className="gg-tc-facts__sub">
+              {shipping > 0
+                ? `Tracked; ${trade.freeShipFeeCents > 0 ? `${moneyShort(trade.freeShipFeeCents)}` : "free"} from ${moneyShort(trade.freeShipThresholdCents)}. Paid by card once you accept the final offer, never now.`
+                : "Tracked, on us."}
+            </span>
+          </dd>
+        </div>
+        <div>
           <dt>Refundable deposit</dt>
-          <dd>{deposit > 0 ? formatCents(deposit) : "None needed"}</dd>
+          <dd>
+            {deposit > 0 ? formatCents(deposit) : "None needed"}
+            {deposit > 0 && <span className="gg-tc-facts__sub">Separate from shipping and your trade&rsquo;s payment</span>}
+          </dd>
         </div>
         <div>
           <dt>Confirmation deadline</dt>

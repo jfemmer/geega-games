@@ -6,7 +6,7 @@ import { useToast } from "../../hooks/useToast";
 import { useNow } from "../../../store/lib/useNow";
 import { formatCents } from "../../utils/format";
 import { tradeCenterRepository, type ReviewCardInput } from "../../repositories/tradeCenter.supabase";
-import { formatDeadline, tradeComparison, type StaffTradeOfferCard } from "../../../store/lib/tradeCenter";
+import { formatDeadline, tradeComparison, tradeShippingTerms, type StaffTradeOfferCard } from "../../../store/lib/tradeCenter";
 import { DEPOSIT_REASON_LABELS, type DepositOverride } from "../../../store/lib/tradeRules";
 import {
   centsInput,
@@ -60,6 +60,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
     offeredValueCents: tally.approvedValueCents,
     ratePercent: trade.creditRatePercent,
     feeCents: trade.processingFeeCents,
+    shipping: tradeShippingTerms(trade),
   });
 
   /** The changed cards as the review sends them, or null (and a message) if one isn't ready. */
@@ -276,13 +277,27 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
           <dd>{formatCents(preview.creditCents)}</dd>
         </div>
         <div>
-          <dt>Our cards and shipping</dt>
-          <dd>{formatCents(preview.wantedCents + preview.shippingCents)}</dd>
+          <dt>Our cards</dt>
+          <dd>{formatCents(preview.wantedCents)}</dd>
+        </div>
+        <div>
+          <dt>Their cards needed to cover ours at {trade.creditRatePercent}%</dt>
+          <dd>{formatCents(preview.requiredValueCents)}</dd>
+        </div>
+        <div>
+          <dt>Shipping our cards (paid by card, not credit)</dt>
+          <dd>{preview.shippingCents === 0 ? "Free" : formatCents(preview.shippingCents)}</dd>
         </div>
         <div className="gg-trd-money__total">
-          <dt>{preview.remainingCents > 0 ? "They would pay" : "Store credit left over"}</dt>
-          <dd>{formatCents(preview.remainingCents > 0 ? preview.remainingCents : preview.excessCents)}</dd>
+          <dt>{preview.cashDueCents > 0 ? "They would pay by card" : "Nothing to pay by card"}</dt>
+          <dd>{formatCents(preview.cashDueCents)}</dd>
         </div>
+        {preview.excessCents > 0 && (
+          <div>
+            <dt>Credit left over</dt>
+            <dd>{formatCents(preview.excessCents)}</dd>
+          </div>
+        )}
       </dl>
 
       <div className="gg-trd-decide">

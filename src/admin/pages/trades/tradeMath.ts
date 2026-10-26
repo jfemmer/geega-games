@@ -5,7 +5,7 @@ import {
   cashForExcessCents,
   conditionPercent,
   tradeCreditCents,
-  tradeShippingCents,
+  tradeShippingTerms,
   type CardConditionCode,
   type ConditionPercents,
   type StaffTrade,
@@ -14,6 +14,7 @@ import {
 } from "../../../store/lib/tradeCenter";
 import { STORE_TIME_ZONE, addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
 import { depositFor, type DepositDecision, type DepositOverride } from "../../../store/lib/tradeRules";
+import { tradeShippingCents } from "../../../store/lib/tradeShipping";
 
 // The arithmetic behind admin Trades: what a trade adds up to at each stage,
 // the deadlines and deposit an action would set, the review and inspection
@@ -104,10 +105,13 @@ export interface TradeMoney {
   valueCents: number;
   valueStage: "estimated" | "approved" | "final";
   creditCents: number;
+  /** Shipping our cards to the customer: paid by card, never out of trade credit. */
   shippingCents: number;
-  /** The customer pays this by card (0 when the credit covers everything). */
+  /** Our cards the credit doesn't cover. */
+  cardBalanceCents: number;
+  /** The customer pays this by card: the card balance plus shipping. */
   dueCents: number;
-  /** Credit beyond our cards and shipping. */
+  /** Credit beyond our cards (kept as store credit, or paid in cash when the final offer included it). */
   excessCents: number;
   /** Cash staff pay by hand for the excess, when the final offer included it. */
   cashCents: number;
@@ -117,16 +121,17 @@ export function tradeMoney(t: StaffTrade): TradeMoney {
   const valueStage = t.finalValueCents != null ? "final" : t.approvedValueCents != null ? "approved" : "estimated";
   const valueCents = t.finalValueCents ?? t.approvedValueCents ?? t.estimatedValueCents;
   const creditCents = t.finalCreditCents ?? tradeCreditCents(valueCents, t.creditRatePercent, t.processingFeeCents);
-  const shippingCents = t.shippingCents ?? tradeShippingCents(t.wantedTotalCents);
-  const total = t.wantedTotalCents + shippingCents;
+  const shippingCents = t.shippingCents ?? tradeShippingCents(t.wantedTotalCents, tradeShippingTerms(t));
+  const cardBalanceCents = Math.max(t.wantedTotalCents - creditCents, 0);
   return {
     wantedCents: t.wantedTotalCents,
     valueCents,
     valueStage,
     creditCents,
     shippingCents,
-    dueCents: t.amountDueCents ?? Math.max(total - creditCents, 0),
-    excessCents: t.excessCents ?? Math.max(creditCents - total, 0),
+    cardBalanceCents,
+    dueCents: t.amountDueCents ?? cardBalanceCents + shippingCents,
+    excessCents: t.excessCents ?? Math.max(creditCents - t.wantedTotalCents, 0),
     cashCents: t.excessHandling === "cash" ? (t.cashPayoutCents ?? 0) : 0,
   };
 }
@@ -351,7 +356,11 @@ export interface FinalOfferPreview {
   valueCents: number;
   creditCents: number;
   wantedCents: number;
+  /** Shipping our cards, paid by card (trade credit covers cards only). */
   shippingCents: number;
+  /** Our cards the credit doesn't cover. */
+  cardBalanceCents: number;
+  /** Paid by card: the card balance plus shipping. */
   dueCents: number;
   excessCents: number;
   /** Cash for the excess at the cash rate, when cash payouts are on. 0 otherwise. */
@@ -368,15 +377,16 @@ export function finalOfferPreview(
     .filter((c) => c.inspected && (c.finalQuantity ?? 0) > 0)
     .reduce((sum, c) => sum + (c.finalQuantity ?? 0) * (c.finalUnitCents ?? 0), 0);
   const creditCents = tradeCreditCents(valueCents, t.creditRatePercent, t.processingFeeCents);
-  const shippingCents = tradeShippingCents(t.wantedTotalCents);
-  const total = t.wantedTotalCents + shippingCents;
-  const excessCents = Math.max(creditCents - total, 0);
+  const shippingCents = tradeShippingCents(t.wantedTotalCents, tradeShippingTerms(t));
+  const cardBalanceCents = Math.max(t.wantedTotalCents - creditCents, 0);
+  const excessCents = Math.max(creditCents - t.wantedTotalCents, 0);
   return {
     valueCents,
     creditCents,
     wantedCents: t.wantedTotalCents,
     shippingCents,
-    dueCents: Math.max(total - creditCents, 0),
+    cardBalanceCents,
+    dueCents: cardBalanceCents + shippingCents,
     excessCents,
     cashOptionCents:
       settings.cashPayoutEnabled && excessCents > 0 ? cashForExcessCents(excessCents, t.creditRatePercent, settings.cashRatePercent) : 0,

@@ -254,6 +254,9 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     await expectError(`insert into public.inventory_reservations (inventory_item_id, quantity) values ('99999999-9999-4999-8999-999999999999', 1)`, "a hold with no holder is still refused", "23514");
     const s0 = await one("select * from public.trade_settings");
     check(s0.enabled === false && s0.credit_rate_percent === 80 && s0.min_card_value_cents === 1500, "one row: off, 80%, $15 minimum");
+    check(s0.min_trade_value_cents === 7500, "trades start at $75 of our cards");
+    check(s0.ship_fee_cents === 399 && s0.free_ship_threshold_cents === 20000 && s0.free_ship_fee_cents === 0 && s0.ship_cost_estimate_cents === 600,
+      "shipping our cards: $3.99, free from $200; $6 is what a shipment costs us");
     check(s0.confirmation_hours === 48 && s0.ship_days_new === 3 && s0.ship_days_tier1 === 4 && s0.ship_days_tier2 === 5, "48 hours to confirm; 3, 4 or 5 days to ship");
     check(s0.loyalty_tier1_trades === 3 && s0.loyalty_tier2_trades === 10, "more time after 3 and 10 completed trades");
     check(s0.deposits_enabled && s0.deposit_threshold_cents === 30000 && s0.deposit_band1_cents === 500 && s0.deposit_band2_cents === 1000
@@ -263,6 +266,8 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check(s0.excluded_dates.length === 0 && s0.scan_grace_hours === 24, "no extra excluded days; a day's grace for a carrier scan");
     check(/refunded in full/.test(s0.deposit_terms) && /Sundays do not count/.test(s0.deposit_terms) && s0.deposit_terms_version === 1, "the deposit terms customers agree to");
     await expectError(`update public.trade_settings set deposit_band2_max_cents = 5000`, "deposit bands must go up", "23514");
+    await expectError(`update public.trade_settings set free_ship_fee_cents = 500`, "shipping from the threshold up can't cost more than below it", "23514");
+    await expectError(`update public.trade_settings set ship_fee_cents = -1`, "no negative shipping fee", "23514");
     const bucket = await one(`select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'trade-dispute-files'`);
     check(bucket && bucket.public === false && bucket.allowed_mime_types.includes("application/pdf"), "a private bucket for proof of shipping");
   });
@@ -277,6 +282,8 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     await db.exec("update public.trade_settings set enabled = true, paused = true, pause_message = 'Back Monday.'");
     await expectError(`select public.trade_start('${users.ann}', '${items([ring, 1])}', 'Ann', 'ann@example.com')`, "or while it's paused, with its message", "GT001");
     await db.exec("update public.trade_settings set paused = false");
+    // The trades below use cheap cards; the $75 minimum has its own section.
+    await db.exec("update public.trade_settings set min_trade_value_cents = 0");
   });
 
   it("asking for cards holds nothing", async () => {
@@ -439,13 +446,21 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
   });
 
   it("tracking numbers: checked, and shipped only once the carrier scans it", async () => {
-    await expectError(`select public.trade_record_tracking('${t4}', 'DHL', '9400111202555842355555', 'customer', null, 'dan')`, "an unknown carrier is refused", "GT010");
-    await expectError(`select public.trade_record_tracking('${t4}', 'USPS', 'abc', 'customer', null, 'dan')`, "so is a malformed number", "GT010");
-    check((await one(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', 'customer', null, 'dan') as r`)).r === "added", "Dan's tracking number is added");
+    await expectError(`select public.trade_record_tracking('${t4}', 'DHL', '9400111202555842355555', true, null, 'customer', null, 'dan')`, "an unknown carrier is refused", "GT010");
+    await expectError(`select public.trade_record_tracking('${t4}', 'USPS', 'abc', true, null, 'customer', null, 'dan')`, "so is a malformed number", "GT010");
+    await expectError(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', false, null, 'customer', null, 'dan')`,
+      "not without confirming the cards are packaged securely and tracked", "GT010");
+    await expectError(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', true, (now() + interval '3 days')::date, 'customer', null, 'dan')`,
+      "a ship date in the future is refused", "GT010");
+    check((await one(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', true, null, 'customer', null, 'dan') as r`)).r === "added", "Dan's tracking number is added");
     const t4b = await tradeRow(t4);
     check(t4b.status === "tracking_submitted" && t4b.inbound_accepted_at === null && t4b.shipped_on_time === null, "it isn't shipped until the carrier scans it");
-    check((await one(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', 'customer', null, 'dan') as r`)).r === "unchanged", "sending it again changes nothing");
-    await expectError(`select public.trade_record_tracking('${t6}', 'USPS', '9400111202555842355555', 'customer', null, 'fay')`, "the same number on another customer's trade is refused", "GT010");
+    check(t4b.inbound_packaging_confirmed_at !== null && t4b.inbound_shipped_on === null, "his packaging confirmation is kept, with its time");
+    check((await one(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', false, null, 'customer', null, 'dan') as r`)).r === "unchanged",
+      "sending it again changes nothing, and needs no new confirmation");
+    check((await one(`select public.trade_record_tracking('${t4}', 'USPS', '9400111202555842355555', false, (now() at time zone 'America/Chicago')::date, 'customer', null, 'dan') as r`)).r === "unchanged"
+      && (await tradeRow(t4)).inbound_shipped_on !== null, "the day he shipped can be added later");
+    await expectError(`select public.trade_record_tracking('${t6}', 'USPS', '9400111202555842355555', true, null, 'customer', null, 'fay')`, "the same number on another customer's trade is refused", "GT010");
   });
 
   it("carrier scans: an acceptance in time verifies the shipment and refunds the deposit", async () => {
@@ -463,7 +478,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check((await tradeRow(t4)).status === "received" && (await tradeRow(t4)).needs_staff === true, "waiting for inspection, on staff's list");
 
     // The deposit comes back on a timely scan.
-    await db.query(`select public.trade_record_tracking($1, 'UPS', '1Z999AA10123456784', 'customer', null, 'fay')`, [t6]);
+    await db.query(`select public.trade_record_tracking($1, 'UPS', '1Z999AA10123456784', true, null, 'customer', null, 'fay')`, [t6]);
     await db.exec(`update public.trade_requests set approved_at = now() - interval '1 day', ship_by = now() + interval '1 hour' where id = '${t6}'`);
     check((await one(`select public.trade_record_scan($1, '1Z999AA10123456784', 'trk_6', 'in_transit', '[]'::jsonb, now() - interval '5 minutes', null, now()) as r`, [t6])).r === "verified", "Fay's package is accepted in time");
     check((await tradeRow(t6)).deposit_status === "refund_pending" && (await tradeRow(t6)).deposit_refund_requested_at, "her whole deposit is to be refunded");
@@ -542,7 +557,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     const tT = await approvedTrade(users.dan, [[dan2, 1]], { deposit: 500 });
     await confirm(tT, users.dan, { pi: "pi_t" });
     await reserve(tT, "pi_t", 500);
-    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842399999', 'customer', null, 'dan')`, [tT]);
+    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842399999', true, null, 'customer', null, 'dan')`, [tT]);
     await db.exec(`update public.trade_requests set ship_by = now() - interval '2 hours' where id = '${tT}'`);
     check(!(await expire(24)).some((r) => r.expired_trade_id === tT), "past the deadline but inside the grace for a scan: not expired");
     check(!(await expire(1, false)).some((r) => r.expired_trade_id === tT), "with no automatic tracking, never expired (staff check it)");
@@ -556,7 +571,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     const tLate = await approvedTrade(users.cat, [[cat2, 1]], { deposit: 500 });
     await confirm(tLate, users.cat, { pi: "pi_late2" });
     await reserve(tLate, "pi_late2", 500);
-    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842388888', 'customer', null, 'cat')`, [tLate]);
+    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842388888', true, null, 'customer', null, 'cat')`, [tLate]);
     await db.exec(`update public.trade_requests set approved_at = now() - interval '3 days', ship_by = now() - interval '3 hours' where id = '${tLate}'`);
     check((await one(`select public.trade_record_scan($1, '9400111202555842388888', 'trk_l', 'in_transit', '[]'::jsonb, now() - interval '1 hour', null, now()) as r`, [tLate])).r === "late", "the first scan came two hours after the deadline");
     const tLater = await tradeRow(tLate);
@@ -572,7 +587,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     const gus2 = await inv("Vampiric Tutor", 1, 4000);
     const tEarly = await approvedTrade(users.gus, [[gus2, 1]]);
     await confirm(tEarly, users.gus);
-    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842377777', 'customer', null, 'gus')`, [tEarly]);
+    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842377777', true, null, 'customer', null, 'gus')`, [tEarly]);
     check((await one(`select public.trade_record_scan($1, '9400111202555842377777', 'trk_e', 'in_transit', '[]'::jsonb, now() - interval '30 days', null, now()) as r`, [tEarly])).r === "early", "an old package's scan doesn't count");
     check((await tradeRow(tEarly)).review_flag === "early_scan" && (await tradeRow(tEarly)).status === "tracking_submitted", "staff check it");
     const eDispute = (await one(`select public.trade_open_dispute($1, $2, 'I shipped it this week', '[]'::jsonb) as id`, [tEarly, users.gus])).id;
@@ -609,7 +624,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     tV = await approvedTrade(users.ann, [[ann2, 1]], { deposit: 500 });
     await confirm(tV, users.ann, { pi: "pi_v" });
     await reserve(tV, "pi_v", 500);
-    await db.query(`select public.trade_record_tracking($1, 'Other', 'LOCALCOURIER123', 'customer', null, 'ann')`, [tV]);
+    await db.query(`select public.trade_record_tracking($1, 'Other', 'LOCALCOURIER123', true, null, 'customer', null, 'ann')`, [tV]);
     await expectError(`select public.trade_verify_shipment('${tV}', now() + interval '1 day', true, true, null, null, 'jacob')`, "an acceptance date in the future is refused", "GT010");
     const vOk = (await one(`select public.trade_verify_shipment($1, now() - interval '1 hour', true, true, 'Courier receipt', null, 'jacob') as d`, [tV])).d;
     check(vOk === "refund_pending" && (await tradeRow(tV)).inbound_acceptance_source === "staff", "verified on time by staff: the deposit is refunded");
@@ -622,6 +637,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check(dec.closed && tVd.status === "declined_after_inspection" && tVd.customer_fault === null, "declined, with nothing counted against Ann");
     check(tVd.return_status === "pending" && tVd.needs_staff && (await holds(tV)) === 0, "her cards are to go back; our card is for sale again");
     check(tVd.deposit_status === "refund_pending", "the deposit refund carries on (never kept for declining)");
+    check(tVd.shipping_cents === null && tVd.amount_due_cents === null && tVd.order_id === null, "no shipping charged, no order: nothing was fulfilled");
   });
 
   it("the store canceling refunds the deposit", async () => {
@@ -679,12 +695,16 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     const credit = (await one(`select public.trade_send_final_offer($1, false, null, 'jacob') as c`, [tF])).c;
     check(credit === 4800 && (await tradeRow(tF)).status === "awaiting_final_approval", "the final offer: $60.00 at 80% = $48.00 credit");
     const acc = await one(`select * from public.trade_accept_final($1, $2, 'Eve', '1 Main St', null, 'St. Louis', 'MO', '63101')`, [tF, users.eve]);
-    check(acc.new_status === "approved_for_fulfillment" && acc.due_cents === 0, "accepted: finished at once");
-    const order = await one(`select * from public.orders where id = $1`, [acc.new_order_id]);
-    check(order.subtotal_cents === 300 && order.store_credit_used_cents === 850 && order.payment_provider === "store_credit", "the order: $3.00 of cards plus $5.50 shipping, paid with credit");
+    check(acc.new_status === "awaiting_payment" && acc.due_cents === 399, "accepted: the credit covers the cards, the $3.99 shipping is paid by card");
+    const tFa = await tradeRow(tF);
+    check(tFa.shipping_cents === 399 && tFa.amount_due_cents === 399 && tFa.excess_cents === 4800 - 300, "the credit beyond our cards is left over (shipping isn't taken out of it)");
+    const orderId = (await one(`select public.trade_record_payment($1, 399, 'pi_ship_eve') as o`, [tF])).o;
+    const order = await one(`select * from public.orders where id = $1`, [orderId]);
+    check(order.subtotal_cents === 300 && order.shipping_cents === 399 && order.store_credit_used_cents === 300 && order.amount_due_cents === 399
+      && order.payment_provider === "stripe", "the order: $3.00 of cards paid with credit, $3.99 shipping paid by card");
     check((await one(`select status from public.inventory_reservations where trade_request_id = $1 and status <> 'released'`, [tF])).status === "fulfilled", "the reservation became the order");
-    check((await one(`select public.store_credit_balance($1) as b`, [users.eve])).b === 4800 - 850, "the rest of the credit stays as store credit");
-    await db.exec(`update public.orders set status = 'shipped' where id = '${acc.new_order_id}'`);
+    check((await one(`select public.store_credit_balance($1) as b`, [users.eve])).b === 4800 - 300, "the rest of the credit stays as store credit");
+    await db.exec(`update public.orders set status = 'shipped' where id = '${orderId}'`);
     check((await tradeRow(tF)).status === "completed", "complete when the order ships");
     check((await one(`select public.trade_customer_stats($1, 365) as s`, [users.eve])).s.completed_trades === 1, "and it counts toward Eve's completed trades");
   });
@@ -694,7 +714,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     await confirm(tP, users.dan);
     await db.exec(`update public.trade_requests set status = 'awaiting_final_approval', final_value_cents = 100, final_credit_cents = 80 where id = '${tP}'`);
     const accP = await one(`select * from public.trade_accept_final($1, $2, 'Dan', '4 Pine', null, 'Ballwin', 'MO', '63011')`, [tP, users.dan]);
-    check(accP.new_status === "awaiting_payment" && accP.due_cents === 300 + 550 - 80, "$3.00 + $5.50 shipping less $0.80 credit: $7.70 to pay");
+    check(accP.new_status === "awaiting_payment" && accP.due_cents === 300 - 80 + 399, "$3.00 of cards less $0.80 credit, plus $3.99 shipping: $6.19 to pay");
     await expectError(`select public.trade_record_payment('${tP}', 100, 'pi_short')`, "a payment short of what's due doesn't finish it", "GT008");
     const oP = (await one(`select public.trade_record_payment($1, $2, 'pi_123') as o`, [tP, accP.due_cents])).o;
     check((await one(`select public.trade_record_payment($1, $2, 'pi_123') as o`, [tP, accP.due_cents])).o === oP, "the webhook arriving too finds the same order");
@@ -702,6 +722,93 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     const newInv = (await one(`select public.trade_import_card($1, 7499, 'Binder 3', 'jacob') as i`, [sheol.id])).i;
     const added = await one(`select quantity, price_cents, cost_cents from public.inventory_items where id = $1`, [newInv]);
     check(added.quantity === 1 && added.price_cents === 7499 && added.cost_cents === 4800, "a trade-in goes into inventory at its cost (80% of $60.00)");
+  });
+
+  it("declining with the payment still due charges nothing: no shipping, no order, no credit", async () => {
+    const dz = await inv("Dark Ritual", 1, 1500);
+    const tDz = await approvedTrade(users.dan, [[dz, 1]]);
+    await confirm(tDz, users.dan);
+    await db.exec(`update public.trade_requests set status = 'awaiting_final_approval', final_value_cents = 1000, final_credit_cents = 800 where id = '${tDz}'`);
+    const acc = await one(`select * from public.trade_accept_final($1, $2, 'Dan', '4 Pine', null, 'Ballwin', 'MO', '63011')`, [tDz, users.dan]);
+    check(acc.new_status === "awaiting_payment" && acc.due_cents === 1500 - 800 + 399, "$15.00 of cards less $8.00 credit, plus $3.99 shipping: $10.99 due");
+    const before = (await one(`select public.store_credit_balance($1) as b`, [users.dan])).b;
+    const dec = await close(tDz, "declined_after_inspection", ["awaiting_final_approval", "awaiting_payment"]);
+    const row = await tradeRow(tDz);
+    check(dec.closed && row.status === "declined_after_inspection" && row.order_id === null && row.paid_at === null, "declined before paying: no order, nothing collected");
+    check((await one(`select public.store_credit_balance($1) as b`, [users.dan])).b === before, "and no trade credit issued");
+    check((await holds(tDz)) === 0, "our card is for sale again");
+    await expectError(`select public.trade_record_payment('${tDz}', ${acc.due_cents}, 'pi_after_decline')`, "a payment after it closed doesn't finish it", "GT009");
+  });
+
+  it("shipping our cards: $3.99 under $200, free from $200, on the trade's own terms", async () => {
+    const fee = async (cents: number) => (await one(`select public.trade_shipping_fee($1::int, 399, 20000, 0) as f`, [cents])).f;
+    check((await fee(7500)) === 399 && (await fee(10000)) === 399 && (await fee(19999)) === 399, "$75, $100 and $199.99 of cards: $3.99");
+    check((await fee(20000)) === 0 && (await fee(50000)) === 0, "$200 and $500: free");
+    check((await fee(0)) === 0, "no cards, no shipping");
+
+    const big = await inv("City of Traitors", 1, 20000);
+    const tB2 = await approvedTrade(users.eve, [[big, 1]]);
+    await confirm(tB2, users.eve);
+    await db.exec(`update public.trade_requests set status = 'awaiting_final_approval', final_value_cents = 25000, final_credit_cents = 20000 where id = '${tB2}'`);
+    const accB = await one(`select * from public.trade_accept_final($1, $2, 'Eve', '1 Main St', null, 'St. Louis', 'MO', '63101')`, [tB2, users.eve]);
+    check(accB.new_status === "approved_for_fulfillment" && accB.due_cents === 0, "$250 of cards at 80% covers $200: free shipping, nothing to pay, finished at once");
+    const orderB = await one(`select * from public.orders where id = $1`, [accB.new_order_id]);
+    check(orderB.shipping_cents === 0 && orderB.store_credit_used_cents === 20000 && orderB.payment_provider === "store_credit", "the order ships free, paid with the trade credit");
+
+    // Under $200, shipping is paid by card even when the credit covers the cards,
+    // at the rate the trade started with.
+    const mid = await inv("Mana Vault", 1, 15000);
+    const tM3 = await approvedTrade(users.eve, [[mid, 1]]);
+    check((await tradeRow(tM3)).ship_fee_cents === 399, "the trade keeps the shipping terms it started on");
+    await db.exec(`update public.trade_settings set ship_fee_cents = 599`);
+    await confirm(tM3, users.eve);
+    await db.exec(`update public.trade_requests set status = 'awaiting_final_approval', final_value_cents = 18750, final_credit_cents = 15000 where id = '${tM3}'`);
+    const accM = await one(`select * from public.trade_accept_final($1, $2, 'Eve', '1 Main St', null, 'St. Louis', 'MO', '63101')`, [tM3, users.eve]);
+    check(accM.new_status === "awaiting_payment" && accM.due_cents === 399,
+      "$150 of cards, $187.50 accepted at 80% = $150 credit: $0 for cards, $3.99 shipping (a later change to the rate doesn't apply)");
+    check((await tradeRow(tM3)).excess_cents === 0, "nothing left over");
+    await db.exec(`update public.trade_settings set ship_fee_cents = 399`);
+  });
+
+  it("the minimum trade value: $74.99 can't start or be sent, $75 can", async () => {
+    await db.exec(`update public.trade_settings set min_trade_value_cents = 7500`);
+    const under = await inv("Chrome Mox", 1, 7499);
+    const exact = await inv("Grim Monolith", 1, 7500);
+    const half = await inv("Mox Amber", 1, 5000);
+    await expectError(`select public.trade_start('${users.eve}', '${items([under, 1])}', 'Eve', 'eve@example.com')`,
+      "$74.99 of our cards can't start a trade", "GT005");
+    try {
+      await db.query(`select public.trade_start($1, $2::jsonb, 'Eve', 'e')`, [users.eve, items([half, 1])]);
+    } catch (e) {
+      check((e as Error).message === "Add $25.00 more in cards to reach the $75.00 minimum trade value.", "it says how much more to add");
+    }
+    const tMin = (await one(`select public.trade_start($1, $2::jsonb, 'Eve', 'e') as id`, [users.eve, items([exact, 1])])).id;
+    check(!!tMin && (await tradeRow(tMin)).wanted_total_cents === 7500, "$75.00 can");
+    await one(`select public.trade_save_offer($1, $2, $3::jsonb) as v`, [tMin, users.eve, JSON.stringify([card()])]);
+    // Swapping to cheaper cards on the draft is allowed; sending it isn't.
+    check((await one(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_trade_list'], 'customer', $3, 'eve') as t`, [tMin, items([half, 1]), users.eve])).t === 5000,
+      "a draft can go under the minimum while they shop");
+    await expectError(`select public.trade_submit('${tMin}', '${users.eve}', null)`, "but can't be sent under it", "GT005");
+    await one(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_trade_list'], 'customer', $3, 'eve') as t`, [tMin, items([half, 1], [exact, 1]), users.eve]);
+    await db.query(`select public.trade_submit($1, $2, null)`, [tMin, users.eve]);
+    check((await tradeRow(tMin)).status === "pending_review", "back over it, it's sent");
+    await db.exec(`update public.trade_settings set min_trade_value_cents = 0`);
+  });
+
+  it("packaging confirmation for a replacement shipment", async () => {
+    const pk = await inv("Ancient Tomb", 1, 4000);
+    const tPk = await approvedTrade(users.eve, [[pk, 1]]);
+    await confirm(tPk, users.eve);
+    await db.query(`select public.trade_record_tracking($1, 'USPS', '9400111202555842311111', true, null, 'customer', null, 'eve')`, [tPk]);
+    const first = (await tradeRow(tPk)).inbound_packaging_confirmed_at;
+    await expectError(`select public.trade_record_tracking('${tPk}', 'USPS', '9400111202555842322222', false, null, 'customer', null, 'eve')`,
+      "a new tracking number (a replacement shipment) needs the confirmation again", "GT010");
+    check((await one(`select public.trade_record_tracking($1, 'Other', '9400111202555842311111', false, null, 'customer', null, 'eve') as r`, [tPk])).r === "changed",
+      "fixing only the carrier is the same package: no new confirmation");
+    check(new Date((await tradeRow(tPk)).inbound_packaging_confirmed_at).getTime() === new Date(first).getTime(), "(the first confirmation stands)");
+    check((await one(`select public.trade_record_tracking($1, 'USPS', '9400111202555842322222', true, null, 'customer', null, 'eve') as r`, [tPk])).r === "changed",
+      "a replacement shipment, confirmed again");
+    check(new Date((await tradeRow(tPk)).inbound_packaging_confirmed_at).getTime() >= new Date(first).getTime(), "with a new confirmation time");
   });
 
   it("staff's list, push alerts, RLS and grants", async () => {

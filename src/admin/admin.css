@@ -3972,6 +3972,14 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-trd-import .gg-trd-field .gg-trd-dollar .gg-input { width: 120px; }
 .gg-trd-plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; }
 
+/* A finished trade's shipping cost and inventory-value difference; both shipments */
+.gg-trd-econ { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid var(--gg-line); border-radius: var(--gg-radius); background: var(--gg-surface-2); }
+.gg-trd-econ h4 { margin: 0; font-size: 0.92rem; color: var(--gg-text); }
+.gg-trd-econ > p { margin: 0; line-height: 1.45; }
+.gg-trd-econ__note { margin: 4px 0 12px; line-height: 1.5; max-width: 72ch; }
+.gg-trd-postage .gg-trd-field { max-width: 180px; }
+.gg-trd-outgoing { margin: 0 0 4px; font-size: 0.88rem; line-height: 1.5; overflow-wrap: anywhere; }
+
 /* The customer's record, flags and faults, extensions */
 .gg-trd-record { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--gg-radius-sm); background: var(--gg-surface-2); border: 1px solid var(--gg-line); }
 .gg-trd-badges { display: inline-flex; flex-wrap: wrap; gap: 6px; }

@@ -2,19 +2,22 @@ import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "../../../supabase";
 import { formatCents } from "../../lib/money";
 import { UsStateSelect } from "../UsStateSelect";
+import { shippingLabel } from "../../lib/tradeShipping";
 import {
   CONDITION_NAMES,
   TRADE_LIMITS,
   offerChanges,
   printingLabel,
   tradeComparison,
+  tradeShippingTerms,
   type CustomerTrade,
   type TradeShipToInput,
 } from "../../lib/tradeCenter";
 
 // The final offer, after inspection: what we estimated before they shipped
 // and what we're offering now, card by card with the reason for every
-// change, and what that does to the money; then the customer's answer.
+// change, and what that does to the money (trade credit covers our cards;
+// shipping them is paid by card); then the customer's answer.
 // Accepting asks where to ship our cards (a saved address or a new one);
 // asking for an adjustment is a message to staff; declining shows the
 // return policy first and never costs the deposit. Nothing is final until
@@ -55,21 +58,17 @@ export function TradeFinalOffer({
   const approvedValue = trade.approvedValueCents ?? 0;
   const finalValue = trade.finalValueCents ?? 0;
   const diff = finalValue - approvedValue;
-  const before = tradeComparison({
+  const money = {
     wantedCents: trade.wantedTotalCents,
-    offeredValueCents: approvedValue,
     ratePercent: trade.creditRatePercent,
     feeCents: trade.processingFeeCents,
     shippingCents: trade.shippingCents ?? undefined,
-  });
-  const after = tradeComparison({
-    wantedCents: trade.wantedTotalCents,
-    offeredValueCents: finalValue,
-    ratePercent: trade.creditRatePercent,
-    feeCents: trade.processingFeeCents,
-    shippingCents: trade.shippingCents ?? undefined,
-  });
-  const bottom = (c: typeof before) => (c.remainingCents > 0 ? `${formatCents(c.remainingCents)} to pay` : `${formatCents(c.excessCents)} credit left over`);
+    shipping: tradeShippingTerms(trade),
+  };
+  const before = tradeComparison({ ...money, offeredValueCents: approvedValue });
+  const after = tradeComparison({ ...money, offeredValueCents: finalValue });
+  const bottom = (c: typeof before) =>
+    c.cashDueCents > 0 ? `${formatCents(c.cashDueCents)} to pay by card` : `${formatCents(c.excessCents)} credit left over`;
   // Still held (normally it's refunded once the carrier accepts the package):
   // declining refunds it too.
   const depositBack = trade.deposit.status === "paid" || trade.deposit.status === "forfeiture_review";
@@ -108,15 +107,38 @@ export function TradeFinalOffer({
           </dd>
         </div>
         <div>
-          <dt>{after.remainingCents > 0 ? "You'd pay by card" : "Credit left over"}</dt>
+          <dt>Shipping our cards to you</dt>
           <dd>
-            {formatCents(after.remainingCents > 0 ? after.remainingCents : after.excessCents)}
+            {shippingLabel(after.shippingCents, after.wantedCents)}
+            <span className="gg-tc-facts__sub">{after.shippingCents > 0 ? "Paid by card, not out of your credit" : "Tracked, on us"}</span>
+          </dd>
+        </div>
+        <div className="gg-tc-compare__total">
+          <dt>You&rsquo;d pay by card</dt>
+          <dd>
+            {formatCents(after.cashDueCents)}
+            <span className="gg-tc-facts__sub">
+              {after.cardBalanceCents > 0
+                ? `${formatCents(after.cardBalanceCents)} for our cards + ${shippingLabel(after.shippingCents, after.wantedCents).toLowerCase()} shipping`
+                : after.shippingCents > 0
+                  ? "Shipping only: your credit covers our cards"
+                  : "Your credit covers everything"}
+            </span>
             {diff !== 0 && <span className="gg-tc-facts__sub">before: {bottom(before)}</span>}
           </dd>
         </div>
+        {after.excessCents > 0 && (
+          <div className="gg-tc-compare__up">
+            <dt>Credit left over</dt>
+            <dd>
+              {formatCents(after.excessCents)}
+              <span className="gg-tc-facts__sub">{cash !== null ? `Paid to you as ${formatCents(cash)} cash` : "Kept as store credit"}</span>
+            </dd>
+          </div>
+        )}
       </dl>
       <div className="gg-tc-table-wrap">
-        <table className="gg-tc-table">
+        <table className="gg-tc-table gg-tc-table--stack">
           <thead>
             <tr>
               <th scope="col">Card</th>
@@ -144,13 +166,13 @@ export function TradeFinalOffer({
                       </ul>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Approved">
                     {c.approvedQuantity ?? 0} × {formatCents(c.approvedUnitCents ?? 0)}
                   </td>
-                  <td>
+                  <td data-label="Final">
                     <strong>{finalQty > 0 ? `${finalQty} × ${formatCents(c.finalUnitCents ?? 0)}` : "Not taken"}</strong>
                   </td>
-                  <td>
+                  <td data-label="Change">
                     {change && change.differenceCents !== 0
                       ? `${change.differenceCents < 0 ? "−" : "+"}${formatCents(Math.abs(change.differenceCents))}`
                       : "None"}
@@ -184,7 +206,7 @@ export function TradeFinalOffer({
         </button>
       </div>
 
-      {mode === "accept" && <AcceptForm busy={busy} onAccept={onAccept} onCancel={() => setMode(null)} />}
+      {mode === "accept" && <AcceptForm busy={busy} dueCents={after.cashDueCents} onAccept={onAccept} onCancel={() => setMode(null)} />}
       {mode === "adjust" && (
         <AdjustForm
           busy={busy}
@@ -205,10 +227,13 @@ export function TradeFinalOffer({
 
 function AcceptForm({
   busy,
+  dueCents,
   onAccept,
   onCancel,
 }: {
   busy: boolean;
+  /** Paid by card once they accept: our cards the credit doesn't cover, and shipping. */
+  dueCents: number;
   onAccept: (shipTo: { addressId: string } | { address: TradeShipToInput }) => Promise<boolean>;
   onCancel: () => void;
 }) {
@@ -300,7 +325,9 @@ function AcceptForm({
         </div>
       )}
       <p className="gg-tc-line__meta">
-        Accepting finishes your trade. If your trade credit doesn&rsquo;t cover everything, you&rsquo;ll pay the rest by card next.
+        {dueCents > 0
+          ? `Next you'll pay ${formatCents(dueCents)} by card. Once it's paid, we pack and ship your new cards with tracking.`
+          : "Your credit covers everything, so accepting finishes your trade and we pack and ship your new cards with tracking."}
       </p>
       <div className="gg-tc-pick__actions">
         <button type="submit" className="gg-btn" disabled={busy || saved === null}>

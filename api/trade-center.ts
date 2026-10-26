@@ -76,7 +76,8 @@ import { checkTrackingNumber } from "../src/store/lib/tradeTracking.js";
 //     confirm        { tradeId, acknowledged, termsVersion }     confirm an approved trade
 //                    → { trade, clientSecret?, depositCents? }   (with a deposit: pay it to reserve)
 //     confirmDeposit { tradeId, paymentIntentId }                record the deposit once Stripe says it went through
-//     tracking       { tradeId, carrier, trackingNumber }        their package (counts once the carrier scans it)
+//     tracking       { tradeId, carrier, trackingNumber,          their package (counts once the carrier scans it); a new
+//                      packagingConfirmed, shippedOn? }           number needs packagingConfirmed; shippedOn is YYYY-MM-DD
 //     proofUploads   { tradeId, draftId, files: [...] }          → { uploads }: signed links to upload proof of shipping
 //     proof          { tradeId, draftId, note }                  send proof of shipping (the reservation waits for staff)
 //     askForTime     { tradeId, note }                           ask staff for more time
@@ -588,10 +589,19 @@ async function addTracking(
     typeof body.trackingNumber === "string" ? body.trackingNumber : "",
   );
   if (!check.ok) throw new HttpError(400, check.message);
+  // A first or replacement shipment needs their confirmation that it's
+  // packaged securely and tracked (the database checks this too).
+  const packagingConfirmed = body.packagingConfirmed === true;
+  if (t.inbound_tracking !== check.tracking && !packagingConfirmed) {
+    throw new HttpError(400, "Confirm that your cards are securely packaged and shipped with tracking.");
+  }
+  const shippedOn = readShipDate(body.shippedOn);
   const { data, error } = await admin.rpc("trade_record_tracking", {
     p_trade_id: t.id,
     p_carrier: check.carrier,
     p_tracking: check.tracking,
+    p_packaging_confirmed: packagingConfirmed,
+    p_shipped_on: shippedOn,
     p_actor_type: "customer",
     p_actor_id: customer.userId,
     p_actor_label: customer.email,
@@ -606,6 +616,19 @@ async function addTracking(
     const outcome = await checkTradeTracking(admin, fresh.trade);
     await followUpScan(admin, settings, t.id, outcome);
   }
+}
+
+/** The optional day they shipped: "YYYY-MM-DD" (the database checks it's in range), or null for none. */
+function readShipDate(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new HttpError(400, "Enter the date you shipped, or leave it blank.");
+  }
+  const noon = Date.parse(`${value}T12:00:00Z`);
+  if (!Number.isFinite(noon) || new Date(noon).toISOString().slice(0, 10) !== value) {
+    throw new HttpError(400, "Enter the date you shipped, or leave it blank.");
+  }
+  return value;
 }
 
 const PROOF_STATUSES: ReadonlySet<string> = new Set(["awaiting_shipment", "tracking_submitted", "expired"]);
@@ -832,7 +855,14 @@ async function startPayment(
       payment_method_types: ["card"],
       receipt_email: t.customer_email ?? undefined,
       description: `Geega Games trade ${tradeLabel(t.trade_number)}`,
-      metadata: { kind: "trade", trade_request_id: t.id, trade_number: String(t.trade_number) },
+      // What the payment is for, kept apart: our cards the credit didn't cover, and shipping them.
+      metadata: {
+        kind: "trade",
+        trade_request_id: t.id,
+        trade_number: String(t.trade_number),
+        shipping_cents: String(Math.min(t.shipping_cents ?? 0, due)),
+        cards_cents: String(due - Math.min(t.shipping_cents ?? 0, due)),
+      },
     },
     { idempotencyKey: `trade-pi-${t.id}-${due}-${t.accepted_at ?? ""}` },
   );

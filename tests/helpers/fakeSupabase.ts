@@ -1,7 +1,7 @@
 // A small in-memory stand-in for the Supabase service-role client, enough for
 // the partner program's and scan endpoints' API tests: from(table) with
 // select / insert / upsert / update / delete, the filters those endpoints use (eq, neq, is, in, gte, lte, gt, lt,
-// not … is), order, limit, single / maybeSingle and head counts; rpc();
+// not … is), order, limit, range, single / maybeSingle and head counts; rpc();
 // auth.getUser (staff sessions) and auth.admin.getUserById; and storage
 // (signed photo and upload URLs, plus download/upload against state.files).
 //
@@ -66,6 +66,7 @@ class Query implements PromiseLike<Result> {
   private orderBy: { column: string; ascending: boolean; nullsFirst: boolean }[] = [];
   // (nullsFirst defaults like Postgres: NULLS LAST ascending, NULLS FIRST descending.)
   private limitTo: number | null = null;
+  private rangeOf: [number, number] | null = null;
   private head = false;
   private wantCount = false;
   private returning = false;
@@ -183,6 +184,11 @@ class Query implements PromiseLike<Result> {
   }
   limit(n: number) {
     this.limitTo = n;
+    return this;
+  }
+  /** Rows from..to (inclusive, after ordering), like PostgREST's Range. */
+  range(from: number, to: number) {
+    this.rangeOf = [from, to];
     return this;
   }
   single() {
@@ -336,6 +342,7 @@ class Query implements PromiseLike<Result> {
         return ascending ? compare(av, bv) : compare(bv, av);
       });
     }
+    if (this.rangeOf !== null) out = out.slice(this.rangeOf[0], this.rangeOf[1] + 1);
     if (this.limitTo !== null) out = out.slice(0, this.limitTo);
     return this.shape(out, matched.length);
   }

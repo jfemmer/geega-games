@@ -22,7 +22,7 @@ import {
   unitForCondition,
   updateInspectDraft,
 } from "../src/admin/pages/trades/tradeMath";
-import { formOf, readExcludedDates, settingsInputOf } from "../src/admin/pages/trades/tradeSettingsForm";
+import { formOf, readExcludedDates, settingsInputOf, shippingTiersPreview } from "../src/admin/pages/trades/tradeSettingsForm";
 import { actorLabel, customerEmailNote, eventDetail, eventLabel, waitingOnStaff } from "../src/admin/pages/trades/tradeLabels";
 import { copiesToReturn } from "../src/store/lib/tradeCenter";
 import { PERCENTS, TRADE_SETTINGS, privileges, record, staffCard, staffTrade } from "./helpers/tradeFixtures";
@@ -80,13 +80,45 @@ describe("dates and money inputs", () => {
 
 describe("what a trade adds up to", () => {
   it("uses the latest value: estimate, then approved, then final", () => {
-    // $88.99 of our cards ships free (from $75).
-    expect(tradeMoney(trade())).toMatchObject({ valueStage: "estimated", valueCents: 16000, creditCents: 12800, shippingCents: 0, dueCents: 0, excessCents: 3901 });
-    expect(tradeMoney(trade({ approvedValueCents: 10000 }))).toMatchObject({ valueStage: "approved", creditCents: 8000, dueCents: 899, excessCents: 0 });
-    expect(tradeMoney(trade({ wantedTotalCents: 5000 }))).toMatchObject({ shippingCents: 550, excessCents: 7250 });
+    // $88.99 of our cards: $3.99 shipping (free from $200), paid by card even with credit to spare.
+    expect(tradeMoney(trade())).toMatchObject({
+      valueStage: "estimated",
+      valueCents: 16000,
+      creditCents: 12800,
+      shippingCents: 399,
+      cardBalanceCents: 0,
+      dueCents: 399,
+      excessCents: 3901,
+    });
+    // Credit short of our cards: the rest of our cards plus shipping.
+    expect(tradeMoney(trade({ approvedValueCents: 10000 }))).toMatchObject({
+      valueStage: "approved",
+      creditCents: 8000,
+      cardBalanceCents: 899,
+      dueCents: 1298,
+      excessCents: 0,
+    });
+    expect(tradeMoney(trade({ wantedTotalCents: 5000 }))).toMatchObject({ shippingCents: 399, dueCents: 399, excessCents: 7800 });
+    // $200 or more of our cards ships free.
+    expect(tradeMoney(trade({ wantedTotalCents: 20000, estimatedValueCents: 25000 }))).toMatchObject({
+      creditCents: 20000,
+      shippingCents: 0,
+      dueCents: 0,
+      excessCents: 0,
+    });
+    // Each trade keeps the shipping it started on.
+    expect(tradeMoney(trade({ shipFeeCents: 599 })).shippingCents).toBe(599);
     // Once settled, the trade's own numbers.
-    const settled = trade({ finalValueCents: 15000, finalCreditCents: 12000, shippingCents: 0, amountDueCents: 0, excessCents: 3101, excessHandling: "cash", cashPayoutCents: 2326 });
-    expect(tradeMoney(settled)).toMatchObject({ valueStage: "final", creditCents: 12000, shippingCents: 0, excessCents: 3101, cashCents: 2326 });
+    const settled = trade({
+      finalValueCents: 15000,
+      finalCreditCents: 12000,
+      shippingCents: 399,
+      amountDueCents: 399,
+      excessCents: 3101,
+      excessHandling: "cash",
+      cashPayoutCents: 2326,
+    });
+    expect(tradeMoney(settled)).toMatchObject({ valueStage: "final", creditCents: 12000, shippingCents: 399, dueCents: 399, excessCents: 3101, cashCents: 2326 });
   });
 
   it("takes the processing fee off the credit", () => {
@@ -200,17 +232,22 @@ describe("inspection", () => {
         card({ id: "b", reviewStatus: "rejected" }),
       ],
     });
-    // $100 of cards → $80 credit; $50 of ours + $5.50 shipping; $24.50 left; cash at 60/80.
+    // $100 of cards → $80 credit; it covers our $50 with $30 left over (cash at 60/80: $22.50);
+    // shipping ($3.99) is paid by card, never out of the credit.
     expect(finalOfferPreview(t, SETTINGS)).toEqual({
       valueCents: 10000,
       creditCents: 8000,
       wantedCents: 5000,
-      shippingCents: 550,
-      dueCents: 0,
-      excessCents: 2450,
-      cashOptionCents: 1838,
+      shippingCents: 399,
+      cardBalanceCents: 0,
+      dueCents: 399,
+      excessCents: 3000,
+      cashOptionCents: 2250,
       uninspected: 0,
     });
+    // Credit short of our cards: the rest of our cards and shipping, nothing left over.
+    const short = finalOfferPreview({ ...t, wantedTotalCents: 9000 }, SETTINGS);
+    expect(short).toMatchObject({ cardBalanceCents: 1000, shippingCents: 399, dueCents: 1399, excessCents: 0, cashOptionCents: 0 });
     expect(finalOfferPreview(t, { ...SETTINGS, cashPayoutEnabled: false }).cashOptionCents).toBe(0);
     const waiting = trade({ offered: [card({ reviewStatus: "approved", approvedQuantity: 1 })] });
     expect(finalOfferPreview(waiting, SETTINGS).uninspected).toBe(1);
@@ -297,9 +334,29 @@ describe("the settings form", () => {
       allowForfeiture: false,
       abandonPolicy: "deposit",
       depositTerms: SETTINGS.depositTerms,
+      shipFeeCents: 399,
+      freeShipThresholdCents: 20000,
+      freeShipFeeCents: 0,
+      shipCostEstimateCents: 600,
     });
     // The terms version is the server's to set.
     expect(input).not.toHaveProperty("depositTermsVersion");
+  });
+
+  it("previews the shipping tiers as typed", () => {
+    const form = formOf({ ...SETTINGS, minTradeValueCents: 7500 });
+    expect(shippingTiersPreview(form)).toBe("Under $75.00: can't start a trade · $75.00 to $199.99: $3.99 · $200.00 or more: free");
+    expect(shippingTiersPreview({ ...form, money: { ...form.money, freeShipFeeCents: "1.99" } })).toBe(
+      "Under $75.00: can't start a trade · $75.00 to $199.99: $3.99 · $200.00 or more: $1.99",
+    );
+    // No minimum: no "can't start" tier. Free shipping at the minimum: no middle tier.
+    expect(shippingTiersPreview(formOf(SETTINGS))).toBe("$0.00 to $199.99: $3.99 · $200.00 or more: free");
+    expect(shippingTiersPreview({ ...form, money: { ...form.money, freeShipThresholdCents: "75" } })).toBe(
+      "Under $75.00: can't start a trade · $75.00 or more: free",
+    );
+    // Something that isn't valid yet: nothing to preview.
+    expect(shippingTiersPreview({ ...form, money: { ...form.money, freeShipThresholdCents: "50" } })).toBeNull();
+    expect(shippingTiersPreview({ ...form, money: { ...form.money, shipFeeCents: "abc" } })).toBeNull();
   });
 
   it("reads the days that don't count: real dates only, sorted, without repeats", () => {
@@ -316,7 +373,27 @@ describe("the settings form", () => {
     });
     expect(settingsInputOf({ ...form, conditions: { ...form.conditions, LP: "120" } })).toEqual({ problem: "Lightly Played: enter a percentage from 0 to 100." });
     expect(settingsInputOf({ ...form, money: { ...form.money, minTradeValueCents: "50", maxTradeValueCents: "20" } })).toEqual({
-      problem: "The largest trade can't be smaller than the smallest.",
+      problem: "The largest trade can't be smaller than the minimum.",
+    });
+    // Shipping: no negative or oversized fees, no free shipping below the minimum, never dearer from the threshold up.
+    expect(settingsInputOf({ ...form, money: { ...form.money, shipFeeCents: "-1" } })).toEqual({
+      problem: "Shipping under the free-shipping threshold: enter an amount from $0.00 to $100.00.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, freeShipThresholdCents: "0" } })).toEqual({
+      problem: "Free shipping from: enter an amount from $0.01 to $1,000,000.00.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, freeShipFeeCents: "4.99" } })).toEqual({
+      problem: "Shipping from the free-shipping threshold up can't cost more than below it.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, minTradeValueCents: "75", freeShipThresholdCents: "50" } })).toEqual({
+      problem: "Free shipping has to start at or above the minimum trade.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, shipCostEstimateCents: "150" } })).toEqual({
+      problem: "What shipping costs us: enter an amount from $0.00 to $100.00.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, minTradeValueCents: "75", shipFeeCents: "4.50" } })).toMatchObject({
+      minTradeValueCents: 7500,
+      shipFeeCents: 450,
     });
     const noAddress = { ...form, shipTo: { name: "", line1: "", line2: "", city: "", state: "", postalCode: "" } };
     expect(settingsInputOf(noAddress)).toEqual({ problem: "Add the address customers mail their cards to before turning trading on." });

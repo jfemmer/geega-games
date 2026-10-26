@@ -7,29 +7,30 @@ import { authLinkWithReturn } from "../lib/authRedirect";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { FaqSection, HeroPoints } from "../components/SellLandingSections";
 import { TradeWantedList } from "../components/trades/TradeWantedList";
+import { TradeShippingProgress } from "../components/trades/TradeShippingProgress";
 import { tradeActions, useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart, tradeCartCount, tradeCartTotalCents, useTradeCart } from "../lib/tradeCart";
 import {
   CARD_CONDITIONS,
   CONDITION_NAMES,
   TRADE_CENTER_PATH,
-  TRADE_FREE_SHIPPING_FROM_CENTS,
-  TRADE_TRACKED_SHIPPING_CENTS,
   myTradePath,
   tradeCreditCents,
   tradingOpen,
   type TradeTerms,
 } from "../lib/tradeCenter";
 import { depositBands } from "../lib/tradeRules";
+import { minimumMessage, moneyShort, requiredValueCents } from "../lib/tradeShipping";
 import { addQualifyingDays, storeDateKey, storeInstant, weekdayOfKey } from "../lib/tradeDeadlines";
 import { breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 
 // Trade Cards (/trade-cards): what trading with us is, how cards are valued,
-// the deposit, the customer's trade cart (our cards they picked with "Add to
-// trade"), and starting a trade. Every number on this page comes from the
-// Trade Center settings staff control (the rate, the minimum, condition
-// values, deadlines, deposits), so the page can't promise anything the trade
-// itself won't do.
+// the minimum trade and shipping, the deposit, the customer's trade cart (our
+// cards they picked with "Add to trade", with the bar toward the minimum and
+// free shipping), and starting a trade (once the cart reaches the minimum).
+// Every number on this page comes from the Trade Center settings staff
+// control (the rate, the minimums, shipping, condition values, deadlines,
+// deposits), so the page can't promise anything the trade itself won't do.
 
 const EXAMPLE_MARKET_CENTS = 4000;
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -49,6 +50,13 @@ function confirmWindow(t: TradeTerms | null): string {
   return t.confirmationHours % 24 === 0 ? plural(t.confirmationHours / 24, "day") : plural(t.confirmationHours, "hour");
 }
 
+/** "Our cards ship to you tracked: $3.99, or free on $200 or more of our cards." */
+function ourShipping(t: TradeTerms | null): string {
+  if (!t) return "Our cards ship to you tracked, free on bigger trades.";
+  const free = t.freeShipFeeCents > 0 ? moneyShort(t.freeShipFeeCents) : "free";
+  return `Our cards ship to you tracked: ${moneyShort(t.shipFeeCents)}, or ${free} on ${moneyShort(t.freeShipThresholdCents)} or more of our cards.`;
+}
+
 function faqItems(t: TradeTerms | null): { question: string; answer: string }[] {
   const rate = t ? `${t.creditRatePercent}%` : "a set share";
   const min = t ? formatCents(t.minCardValueCents) : "a set amount";
@@ -64,6 +72,12 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
     {
       question: "How is my trade credit worked out?",
       answer: `Each card starts at its market reference price (the current price on Scryfall, which comes from TCGplayer) for its finish, adjusted for condition. Your trade credit is ${rate} of what your cards are worth. We confirm values when we review your list and again when your cards arrive.`,
+    },
+    {
+      question: "Is there a minimum trade?",
+      answer: t
+        ? `Yes: at least ${moneyShort(t.minTradeValueCents)} of our cards per trade, at their regular prices (shipping doesn't count toward it). You can add cards below that while you shop; you'll need to reach it to start your trade. At ${rate} trade credit, ${moneyShort(t.minTradeValueCents)} of our cards takes ${formatCents(requiredValueCents(t.minTradeValueCents, t.creditRatePercent, t.processingFeeCents))} of your cards to cover completely.`
+        : "Yes: each trade needs a minimum value of our cards, shown in your trade cart.",
     },
     {
       question: "Do my cards have to cover everything I pick?",
@@ -93,10 +107,11 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
     },
     {
       question: "Who pays for shipping?",
-      answer:
+      answer: `${
         t?.shippingPaidBy === "store"
-          ? `We cover shipping your cards to us; we'll arrange it once your trade is approved. Our cards ship to you tracked: ${formatCents(TRADE_TRACKED_SHIPPING_CENTS)}, or free on ${formatCents(TRADE_FREE_SHIPPING_FROM_CENTS)} or more of our cards.`
-          : `You pay to ship your cards to us (use a tracked service). Our cards ship to you tracked: ${formatCents(TRADE_TRACKED_SHIPPING_CENTS)}, or free on ${formatCents(TRADE_FREE_SHIPPING_FROM_CENTS)} or more of our cards.`,
+          ? "We cover shipping your cards to us; we'll arrange it once your trade is approved."
+          : "You ship your cards to us at your cost, with tracking (we'll show you how to pack them)."
+      } ${ourShipping(t)} It's paid by card when your trade is final, never out of your trade credit, and never charged on a trade that's canceled or declined.`,
     },
     {
       question: "What if my cards arrive in a different condition, or one is missing?",
@@ -140,8 +155,10 @@ export default function TradeCardsPage() {
   const rate = terms?.creditRatePercent ?? null;
   const count = tradeCartCount(cart);
   const total = tradeCartTotalCents(cart);
+  const belowMinimum = terms !== null && total < terms.minTradeValueCents;
 
   async function start() {
+    if (belowMinimum) return;
     if (!user) {
       navigate(authLinkWithReturn("/login", TRADE_CENTER_PATH));
       return;
@@ -163,6 +180,7 @@ export default function TradeCardsPage() {
     ? [
         `${terms.creditRatePercent}% of your cards' value as trade credit`,
         `Cards worth ${formatCents(terms.minCardValueCents)} or more each`,
+        `Free tracked shipping on ${moneyShort(terms.freeShipThresholdCents)} or more of our cards`,
         "Our cards reserved for you once you confirm",
         "Decline the final offer with no penalty",
       ]
@@ -230,6 +248,7 @@ export default function TradeCardsPage() {
               <p className="gg-tc-cart__total">
                 Our cards: <strong>{formatCents(total)}</strong>
               </p>
+              {terms && <TradeShippingProgress wantedCents={total} terms={terms} />}
               <p className="gg-tc-line__meta">
                 Trade prices are our regular prices (sale prices don&rsquo;t apply to trades). We check each card is still
                 available when you start.
@@ -241,7 +260,21 @@ export default function TradeCardsPage() {
               )}
               {open ? (
                 <>
-                  <button type="button" className="gg-btn" disabled={starting} onClick={() => void start()}>
+                  {terms && (
+                    <p
+                      className={belowMinimum ? "gg-tc-minimum gg-tc-minimum--short" : "gg-tc-minimum gg-tc-minimum--met"}
+                      id="gg-tc-cart-minimum"
+                    >
+                      {minimumMessage(total, terms.minTradeValueCents)}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="gg-btn"
+                    disabled={starting || belowMinimum}
+                    aria-describedby={terms ? "gg-tc-cart-minimum" : undefined}
+                    onClick={() => void start()}
+                  >
                     {starting ? "Starting…" : user ? "Start my trade" : "Sign in to start my trade"}
                   </button>
                   <p className="gg-tc-line__meta">
@@ -261,7 +294,10 @@ export default function TradeCardsPage() {
         <h2>How it works</h2>
         <ol className="gg-collect-steps">
           <li>
-            <strong>Pick our cards.</strong> Add the cards you want from our shop to your trade cart.
+            <strong>Pick our cards.</strong> Add the cards you want from our shop to your trade cart
+            {terms
+              ? `: at least ${moneyShort(terms.minTradeValueCents)} of them. ${moneyShort(terms.freeShipThresholdCents)} or more ships free.`
+              : "."}
           </li>
           <li>
             <strong>List your cards.</strong> Start your trade, then search for each card, paste a list or upload a CSV.
@@ -281,8 +317,9 @@ export default function TradeCardsPage() {
             and it counts once the carrier scans your package. We inspect every card when it arrives.
           </li>
           <li>
-            <strong>Accept your final offer.</strong> Pay any difference by card, or keep extra credit for next time, and we ship your
-            new cards. Or decline with no penalty and we mail yours back.
+            <strong>Accept your final offer.</strong> Pay by card for any of our cards your credit doesn&rsquo;t cover, plus shipping
+            {terms ? ` (${moneyShort(terms.shipFeeCents)}, or free on ${moneyShort(terms.freeShipThresholdCents)} or more)` : ""}, or keep extra
+            credit for next time, and we ship your new cards with tracking. Or decline with no penalty and we mail yours back.
           </li>
         </ol>
       </section>
@@ -315,6 +352,8 @@ export default function TradeCardsPage() {
           <li>Estimates are a starting point: we confirm values at review, and again when your cards arrive.</li>
         </ul>
       </section>
+
+      {terms && <ShippingSection terms={terms} />}
 
       {terms?.depositsEnabled && <DepositSection terms={terms} />}
 
@@ -359,6 +398,64 @@ function ValueTable({ terms }: { terms: TradeTerms }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** The minimum trade and what shipping our cards costs, by how much of our cards is on the trade. */
+function ShippingSection({ terms }: { terms: TradeTerms }) {
+  const min = terms.minTradeValueCents;
+  const threshold = terms.freeShipThresholdCents;
+  const free = terms.freeShipFeeCents > 0 ? moneyShort(terms.freeShipFeeCents) : "FREE";
+  return (
+    <section className="gg-collect-section" id="shipping">
+      <h2>Minimum trade and shipping</h2>
+      <p className="gg-collect-lead">
+        Every trade needs at least {moneyShort(min)} of our cards. We ship them to you with tracking, and shipping is paid by card when your
+        trade is final, never out of your trade credit.
+      </p>
+      <div className="gg-tc-table-wrap">
+        <table className="gg-tc-table gg-tc-valuetable">
+          <caption>Shipping our cards to you, by the value of our cards on your trade</caption>
+          <thead>
+            <tr>
+              <th scope="col">Our cards</th>
+              <th scope="col">Shipping</th>
+            </tr>
+          </thead>
+          <tbody>
+            {min > 0 && (
+              <tr>
+                <th scope="row">Under {moneyShort(min)}</th>
+                <td>Add more to start a trade</td>
+              </tr>
+            )}
+            {threshold > min && (
+              <tr>
+                <th scope="row">
+                  {moneyShort(min)} to {moneyShort(threshold - 1)}
+                </th>
+                <td>{moneyShort(terms.shipFeeCents)}</td>
+              </tr>
+            )}
+            <tr>
+              <th scope="row">{moneyShort(threshold)} or more</th>
+              <td>
+                <strong>{free}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <ul className="gg-tc-rules">
+        <li>
+          At {terms.creditRatePercent}% trade credit, covering {moneyShort(min)} of our cards completely takes{" "}
+          {formatCents(requiredValueCents(min, terms.creditRatePercent, terms.processingFeeCents))} of your cards. Short of that? Pay the
+          rest by card at the end.
+        </li>
+        <li>You ship your cards to us separately, at your cost, with tracking. We&rsquo;ll show you how to pack them.</li>
+        <li>Shipping is never charged on a trade that&rsquo;s canceled or declined, and it&rsquo;s separate from any deposit.</li>
+      </ul>
+    </section>
   );
 }
 

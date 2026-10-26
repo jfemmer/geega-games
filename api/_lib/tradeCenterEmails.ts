@@ -22,9 +22,9 @@ import {
   tradeComparison,
   tradeCreditCents,
   tradeLabel,
-  tradeShippingCents,
   type TradeOfferCard,
 } from "../../src/store/lib/tradeCenter.js";
+import { PACKING_CHECKLIST, PROTECT_YOUR_CARDS, tradeShippingCents, type ShippingTerms } from "../../src/store/lib/tradeShipping.js";
 import { trackingUrlFor } from "../../src/store/lib/tracking.js";
 
 // Trade Center emails and staff alerts. Like the other *Emails modules every
@@ -74,7 +74,16 @@ function daysPhrase(days: number): string {
   return days === 1 ? "1 day" : `${days} days`;
 }
 
-/** Our cards, their cards and the bottom line, as the itemized box. */
+/** The shipping terms a trade started on. */
+function shippingTermsOf(b: TradeBundle): ShippingTerms {
+  const t = b.trade;
+  return { shipFeeCents: t.ship_fee_cents, freeShipThresholdCents: t.free_ship_threshold_cents, freeShipFeeCents: t.free_ship_fee_cents };
+}
+
+/**
+ * Our cards, their cards and the bottom line, as the itemized box. Trade
+ * credit covers our cards only; shipping our cards is paid by card.
+ */
 function comparisonBlock(
   b: TradeBundle,
   value: number,
@@ -88,18 +97,21 @@ function comparisonBlock(
     offeredValueCents: value,
     ratePercent: t.credit_rate_percent,
     feeCents: t.processing_fee_cents,
-    shippingCents,
+    shippingCents: shippingCents ?? tradeShippingCents(t.wanted_total_cents, shippingTermsOf(b)),
   });
   const lines = [
     { label: "Our cards", value: money(c.wantedCents) },
-    { label: "Shipping our cards to you", value: c.shippingCents === 0 ? "Free" : money(c.shippingCents) },
     { label: valueLabel, value: money(value) },
     { label: `Trade credit at ${t.credit_rate_percent}%`, value: money(c.creditCents) },
   ];
   if (t.processing_fee_cents > 0) lines.push({ label: "Processing fee (taken from the credit)", value: money(t.processing_fee_cents) });
-  return c.remainingCents > 0
-    ? { lines, totalLabel: "You'd pay by card", total: money(c.remainingCents), footnote }
-    : { lines, totalLabel: "Trade credit left over", total: money(c.excessCents), footnote };
+  if (c.cardBalanceCents > 0) lines.push({ label: "Left to pay for our cards", value: money(c.cardBalanceCents) });
+  lines.push({ label: "Shipping our cards to you (paid by card)", value: c.shippingCents === 0 ? "Free" : money(c.shippingCents) });
+  if (c.cashDueCents > 0 && c.excessCents > 0) lines.push({ label: "Trade credit left over (store credit)", value: money(c.excessCents) });
+  if (c.cashDueCents > 0 || c.excessCents === 0) {
+    return { lines, totalLabel: c.cashDueCents > 0 ? "You'd pay by card" : "Nothing to pay by card", total: money(c.cashDueCents), footnote };
+  }
+  return { lines, totalLabel: "Trade credit left over", total: money(c.excessCents), footnote };
 }
 
 function mailToBlock(settings: TradeSettingsRow): NoticeEmailData["address"] | null {
@@ -370,16 +382,18 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           {
             title: "Packing your cards",
             items: [
+              ...PACKING_CHECKLIST,
               settings.packing_instructions,
               `Put a slip of paper with your trade ID, ${label}, inside the package.`,
               settings.shipping_paid_by === "store"
                 ? "We cover shipping your cards to us: reply to this email before you ship and we'll arrange it."
-                : "You pay to ship your cards to us. Please use a tracked service.",
+                : "You buy the shipping label for your cards to us. Every trade shipment needs tracking.",
               ...(rejected.length > 0 ? [`Leave out the ${rejected.length === 1 ? "card" : `${rejected.length} cards`} we didn't approve (marked on your trade page).`] : []),
             ],
           },
         ],
         button: { href: url, label: "Add your tracking number" },
+        closing: [`${PROTECT_YOUR_CARDS.paragraphs[2]} ${PROTECT_YOUR_CARDS.damage}`],
       });
     }
 
@@ -524,7 +538,6 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           value,
           "Your cards (final value)",
           cash ? `Instead of store credit for what's left over, we'll pay you ${money(cash)} in cash.` : null,
-          tradeShippingCents(t.wanted_total_cents),
         ),
         lists:
           changes.length > 0
@@ -547,16 +560,25 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       });
     }
 
-    case "awaiting_payment":
-      return sendCustomer(b, settings, "trade_awaiting_payment", `trade-awaiting-payment-${t.id}-${t.accepted_at}`, `Trade ${label}: pay ${money(t.amount_due_cents ?? 0)} to finish`, {
-        previewText: "Pay the difference by card to finish your trade.",
-        heading: "One last step: pay the difference",
+    case "awaiting_payment": {
+      const due = t.amount_due_cents ?? 0;
+      const shipping = t.shipping_cents ?? 0;
+      const cards = Math.max(due - shipping, 0);
+      return sendCustomer(b, settings, "trade_awaiting_payment", `trade-awaiting-payment-${t.id}-${t.accepted_at}`, `Trade ${label}: pay ${money(due)} to finish`, {
+        previewText: "Pay by card to finish your trade.",
+        heading: "One last step: pay by card",
         paragraphs: [
-          `${greet} you accepted the final offer for trade ${label}. Your trade credit covers ${money(t.final_credit_cents ?? 0)}; the remaining ${money(t.amount_due_cents ?? 0)} is due${t.payment_due_at ? ` by ${formatDeadline(t.payment_due_at)}` : ""}.`,
-          "Pay by card on your trade page and we'll pack your new cards right away.",
+          `${greet} you accepted the final offer for trade ${label}. Your trade credit covers ${cards > 0 ? `${money(Math.min(t.final_credit_cents ?? 0, t.wanted_total_cents))} of our cards` : "our cards"}; ${money(due)} is due by card${t.payment_due_at ? ` by ${formatDeadline(t.payment_due_at)}` : ""}.`,
+          "Pay on your trade page and we'll pack your new cards right away.",
         ],
-        button: { href: url, label: `Pay ${money(t.amount_due_cents ?? 0)}` },
+        rows: [
+          ...(cards > 0 ? [{ label: "Left to pay for our cards", value: money(cards) }] : []),
+          { label: "Shipping our cards to you", value: shipping === 0 ? "Free" : money(shipping) },
+          { label: "To pay by card", value: money(due) },
+        ],
+        button: { href: url, label: `Pay ${money(due)}` },
       });
+    }
 
     case "finalized": {
       const issued = t.credit_issued_cents ?? 0;
@@ -564,7 +586,8 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       const excess = t.excess_cents ?? 0;
       const cash = t.excess_handling === "cash" ? (t.cash_payout_cents ?? 0) : 0;
       const orderNumber = t.order_id ? `GG-${t.order_id.slice(0, 8).toUpperCase()}` : null;
-      const spent = (t.wanted_total_cents + (t.shipping_cents ?? 0)) - due;
+      // Credit covers our cards only; shipping was paid by card.
+      const spent = Math.min(t.final_credit_cents ?? 0, t.wanted_total_cents);
       return sendCustomer(b, settings, "trade_finalized", `trade-finalized-${t.id}`, `Trade ${label}: final trade approved`, {
         previewText: "Your new cards are being packed.",
         heading: "Your trade is final",

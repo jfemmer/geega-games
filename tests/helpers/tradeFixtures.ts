@@ -119,6 +119,8 @@ export function shipment(over: Partial<TradeShipment> = {}): TradeShipment {
     shippedOnTime: null,
     deliveredAt: null,
     autoTracked: true,
+    shippedOn: null,
+    packagingConfirmedAt: null,
     ...over,
   };
 }
@@ -152,6 +154,9 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     excessCents: null,
     excessHandling: "store_credit",
     cashPayoutCents: null,
+    shipFeeCents: 399,
+    freeShipThresholdCents: 20000,
+    freeShipFeeCents: 0,
     listDueAt: null,
     confirmBy: null,
     shipBy: null,
@@ -171,6 +176,7 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     customerNote: null,
     closeReason: null,
     shipTo: null,
+    outgoing: null,
     wanted: [
       wantedItem({ status: "requested" }),
       wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Arcane Signet", setCode: "CMR", collectorNumber: "297", finish: "foil", quantity: 2, unitPriceCents: 450, status: "requested" }),
@@ -212,6 +218,8 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     returnedAt: null,
     cashPaidAt: null,
     paymentReference: null,
+    orderPostageCents: null,
+    outboundPostageCents: null,
     ...over,
   };
 }
@@ -300,6 +308,10 @@ export const TRADE_SETTINGS: TradeSettings = {
   notifyCustomer: true,
   notifyStaff: true,
   shippingPaidBy: "customer",
+  shipFeeCents: 399,
+  freeShipThresholdCents: 20000,
+  freeShipFeeCents: 0,
+  shipCostEstimateCents: 600,
   shipTo: { name: "Geega Games", line1: "100 Test Ave", line2: null, city: "Ballwin", state: "MO", postalCode: "63011" },
   packingInstructions: "Sleeve them.",
   returnPolicy: "We mail them back.",
@@ -339,6 +351,8 @@ export function customerTrade(over: Partial<CustomerTrade> = {}): CustomerTrade 
     returnedAt: _returnedAt,
     cashPaidAt: _cashPaidAt,
     paymentReference: _paymentReference,
+    orderPostageCents: _orderPostageCents,
+    outboundPostageCents: _outboundPostageCents,
     ...base
   } = staffTrade();
   const deposit = {
@@ -430,6 +444,9 @@ export const TRADE_TERMS: TradeTerms = {
   processingFeeCents: 0,
   cashPayoutEnabled: false,
   shippingPaidBy: "customer",
+  shipFeeCents: 399,
+  freeShipThresholdCents: 20000,
+  freeShipFeeCents: 0,
   packingInstructions: "Sleeve them.",
   returnPolicy: "We mail them back.",
   excludedSetCodes: [],

@@ -248,6 +248,10 @@ function settingsRow(over: Record<string, unknown> = {}) {
     notify_customer: true,
     notify_staff: true,
     shipping_paid_by: "customer",
+    ship_fee_cents: 399,
+    free_ship_threshold_cents: 20000,
+    free_ship_fee_cents: 0,
+    ship_cost_estimate_cents: 600,
     ship_to_name: "Geega Games",
     ship_to_line1: "100 Test Ave",
     ship_to_line2: null,
@@ -286,6 +290,9 @@ function tradeRow(over: Record<string, unknown> = {}) {
     excess_handling: "store_credit",
     cash_payout_cents: null,
     cash_paid_at: null,
+    ship_fee_cents: 399,
+    free_ship_threshold_cents: 20000,
+    free_ship_fee_cents: 0,
     list_due_at: iso(Date.now() + 14 * DAY),
     confirm_by: null,
     confirm_by_original: null,
@@ -324,6 +331,9 @@ function tradeRow(over: Record<string, unknown> = {}) {
     inbound_acceptance_source: null,
     shipped_on_time: null,
     inbound_delivered_at: null,
+    inbound_shipped_on: null,
+    inbound_packaging_confirmed_at: null,
+    outbound_postage_cents: null,
     review_flag: null,
     review_flag_at: null,
     customer_fault: null,
@@ -583,11 +593,27 @@ beforeEach(() => {
   rpc("trade_short_lines", () => ({ data: [], error: null }));
   rpc("trade_mark_unavailable", () => ({ data: null, error: null }));
   rpc("trade_expire_due", () => ({ data: [], error: null }));
+  // As the database does it (tradeCenterDb.test.ts runs the real one): a new
+  // number needs the packaging confirmation; the same one only takes a date.
   rpc("trade_record_tracking", (args) => {
     const t = find(args.p_trade_id);
     const was = t.inbound_tracking;
-    if (was === args.p_tracking) return { data: "unchanged", error: null };
-    Object.assign(t, { status: "tracking_submitted", inbound_carrier: args.p_carrier, inbound_tracking: args.p_tracking, inbound_tracking_added_at: iso(Date.now()) });
+    const newShipment = was !== args.p_tracking;
+    if (newShipment && args.p_packaging_confirmed !== true) {
+      return { data: null, error: { code: "GT010", message: "Confirm that your cards are securely packaged and shipped with tracking." } };
+    }
+    if (!newShipment && t.inbound_carrier === args.p_carrier) {
+      if (args.p_shipped_on) t.inbound_shipped_on = args.p_shipped_on;
+      return { data: "unchanged", error: null };
+    }
+    Object.assign(t, {
+      status: "tracking_submitted",
+      inbound_carrier: args.p_carrier,
+      inbound_tracking: args.p_tracking,
+      inbound_tracking_added_at: iso(Date.now()),
+      inbound_shipped_on: newShipment ? (args.p_shipped_on ?? null) : (args.p_shipped_on ?? t.inbound_shipped_on),
+      inbound_packaging_confirmed_at: newShipment ? iso(Date.now()) : t.inbound_packaging_confirmed_at,
+    });
     return { data: was ? "changed" : "added", error: null };
   });
   // The deposit's paths (trade_deposit_update): anything else is refused.
@@ -713,8 +739,14 @@ describe("GET /api/trade-center (public terms)", () => {
       depositBand3Cents: 2000,
       depositTerms: DEPOSIT_TERMS,
       depositTermsVersion: 3,
+      minTradeValueCents: 0,
+      shipFeeCents: 399,
+      freeShipThresholdCents: 20000,
+      freeShipFeeCents: 0,
     });
     expect(terms).not.toHaveProperty("allowForfeiture");
+    // What shipping costs the store is for staff only.
+    expect(terms).not.toHaveProperty("shipCostEstimateCents");
     expect(JSON.stringify(res.body)).not.toContain("100 Test Ave");
   });
 
@@ -771,6 +803,23 @@ describe("starting and building a trade (1, 2, 3)", () => {
     expect((await ann.post({ action: "start", items: [{ inventoryItemId: SIGNET, quantity: 1 }] })).body.message).toBe(
       "Trading is paused for your account. Message us.",
     );
+    // Under the minimum (the database checks our cards' total at their trade prices).
+    rpc("trade_start", () => ({ data: null, error: { code: "GT005", message: "Add $73.75 more in cards to reach the $75.00 minimum trade value." } }));
+    const small = await ann.post({ action: "start", items: [{ inventoryItemId: SIGNET, quantity: 1 }] });
+    expect(small.statusCode).toBe(400);
+    expect(small.body.message).toBe("Add $73.75 more in cards to reach the $75.00 minimum trade value.");
+  });
+
+  it("won't send a trade for review under the minimum, in the database's words", async () => {
+    const t = tradeRow({ wanted_total_cents: 7499 });
+    trades().push(t);
+    state.tables.trade_offer_cards.push(offerRow(t.id));
+    rpc("trade_submit", () => ({ data: null, error: { code: "GT005", message: "Add $0.01 more in cards to reach the $75.00 minimum trade value." } }));
+    const res = await ann.post({ action: "submit", tradeId: t.id });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toBe("Add $0.01 more in cards to reach the $75.00 minimum trade value.");
+    expect(t.status).toBe("awaiting_trade_list");
+    expect(sent).toHaveLength(0);
   });
 
   it("refuses quantities that aren't whole numbers from 1 to 99", async () => {
@@ -1142,16 +1191,48 @@ describe("shipping, tracking and proof of shipping (8, 9, 10)", () => {
     const mismatch = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "1Z999AA10123456784" });
     expect(mismatch.statusCode).toBe(400);
     expect(mismatch.body.message).toBe("That looks like a UPS tracking number. Choose UPS, or check the number.");
-    const res = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400 1118 9922-3197 4284 90" });
+    // Not without their confirmation that it's packaged securely and tracked.
+    const unconfirmed = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400 1118 9922-3197 4284 90" });
+    expect(unconfirmed.statusCode).toBe(400);
+    expect(unconfirmed.body.message).toBe("Confirm that your cards are securely packaged and shipped with tracking.");
+    expect(rpcArgs("trade_record_tracking")).toHaveLength(0);
+    // A ship date that isn't a real date is refused before anything is saved.
+    const badDate = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400111899223197428490", packagingConfirmed: true, shippedOn: "2026-02-30" });
+    expect(badDate.statusCode).toBe(400);
+    expect(badDate.body.message).toBe("Enter the date you shipped, or leave it blank.");
+    const res = await ann.post({
+      action: "tracking",
+      tradeId: t.id,
+      carrier: "USPS",
+      trackingNumber: "9400 1118 9922-3197 4284 90",
+      packagingConfirmed: true,
+      shippedOn: "2026-10-24",
+    });
     expect(res.statusCode).toBe(200);
-    expect(rpcArgs("trade_record_tracking")[0]).toMatchObject({ p_carrier: "USPS", p_tracking: "9400111899223197428490", p_actor_type: "customer", p_actor_id: ANN });
-    expect(t).toMatchObject({ status: "tracking_submitted", inbound_tracking: "9400111899223197428490" });
+    expect(rpcArgs("trade_record_tracking")[0]).toMatchObject({
+      p_carrier: "USPS",
+      p_tracking: "9400111899223197428490",
+      p_packaging_confirmed: true,
+      p_shipped_on: "2026-10-24",
+      p_actor_type: "customer",
+      p_actor_id: ANN,
+    });
+    expect(t).toMatchObject({ status: "tracking_submitted", inbound_tracking: "9400111899223197428490", inbound_shipped_on: "2026-10-24" });
+    const shipmentView = (res.body.trade as { shipment: { shippedOn: string | null; packagingConfirmedAt: string | null } }).shipment;
+    expect(shipmentView.shippedOn).toBe("2026-10-24");
+    expect(shipmentView.packagingConfirmedAt).not.toBeNull();
     expect(emailTypes()).toEqual(["trade_tracking_added", "trade_staff_tracking"]);
     expect(sent[0].text).toContain("Your shipment counts once the carrier scans the package");
-    // The same number again changes nothing and emails nobody.
+    // The same number again needs no new confirmation, changes nothing and emails nobody.
     sent.length = 0;
-    await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400111899223197428490" });
+    const again = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400111899223197428490" });
+    expect(again.statusCode).toBe(200);
+    expect(rpcArgs("trade_record_tracking")[1]).toMatchObject({ p_packaging_confirmed: false, p_shipped_on: null });
     expect(sent).toHaveLength(0);
+    // A replacement number does need it again.
+    const replacement = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400111899223197428491" });
+    expect(replacement.statusCode).toBe(400);
+    expect(t.inbound_tracking).toBe("9400111899223197428490");
     // Not checked automatically here (no tracking service configured): the page says staff verify it.
     expect(((res.body.trade as { shipment: { autoTracked: boolean } }).shipment.autoTracked)).toBe(false);
   });
@@ -1259,7 +1340,7 @@ describe("automatic carrier tracking (9)", () => {
       return { data: "verified", error: null };
     });
 
-    const res = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: USPS });
+    const res = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: USPS, packagingConfirmed: true });
     expect(res.statusCode).toBe(200);
     // A new tracker for the number (EasyPost bills per tracker: its id is kept).
     expect(easypost.loads).toEqual([{ trackerId: null, shipmentId: null, trackingNumber: USPS, carrier: "USPS" }]);
@@ -1282,7 +1363,7 @@ describe("automatic carrier tracking (9)", () => {
     const t = approvedTrade({ status: "awaiting_shipment", ship_by: iso(Date.now() + 48 * HOUR) });
     easypost.trackers.set(USPS, { id: "trk_2", status: "pre_transit", tracking_details: [{ status: "pre_transit", status_detail: "label_created", message: "Shipping Label Created", datetime: iso(Date.now() - HOUR) }] });
     rpc("trade_record_scan", () => ({ data: "updated", error: null }));
-    await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: USPS });
+    await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: USPS, packagingConfirmed: true });
     expect(rpcArgs("trade_record_scan")[0]).toMatchObject({ p_accepted_at: null, p_status: "pre_transit" });
     expect(emailTypes()).toEqual(["trade_tracking_added", "trade_staff_tracking"]);
   });
@@ -1341,13 +1422,13 @@ describe("automatic carrier tracking (9)", () => {
   it("checks nothing for a carrier it can't track, or when the tracking service fails (staff verify by hand)", async () => {
     easypost.connected = true;
     const other = approvedTrade({ status: "awaiting_shipment", ship_by: iso(Date.now() + 48 * HOUR) });
-    await ann.post({ action: "tracking", tradeId: other.id, carrier: "Other", trackingNumber: "LOCALCOURIER123" });
+    await ann.post({ action: "tracking", tradeId: other.id, carrier: "Other", trackingNumber: "LOCALCOURIER123", packagingConfirmed: true });
     expect(easypost.loads).toHaveLength(0);
     expect(other.status).toBe("tracking_submitted");
 
     easypost.fail = true;
     const t = approvedTrade({ status: "awaiting_shipment", ship_by: iso(Date.now() + 48 * HOUR) });
-    const res = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: USPS });
+    const res = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: USPS, packagingConfirmed: true });
     expect(res.statusCode).toBe(200);
     expect(rpcArgs("trade_record_scan")).toHaveLength(0);
     expect(t.status).toBe("tracking_submitted");
@@ -1475,6 +1556,38 @@ describe("the final offer and paying the rest (12, 13)", () => {
       state.tables.trade_messages.push({ id: fakeId(), trade_request_id: t.id, author_type: "customer", body: "hi", created_at: iso(Date.now()) });
     }
     expect((await ann.post({ action: "message", tradeId: t.id, body: "one more" })).statusCode).toBe(429);
+  });
+
+  it("asks for shipping by card even when the credit covers our cards, and says what the payment is for", async () => {
+    // $150 of our cards, $187.50 of theirs accepted: $150 of credit covers the cards; $3.99 shipping is paid by card.
+    const t = tradeRow({ status: "awaiting_final_approval", wanted_total_cents: 15000, final_value_cents: 18750, final_credit_cents: 15000 });
+    trades().push(t);
+    rpc("trade_accept_final", () => {
+      Object.assign(t, {
+        status: "awaiting_payment",
+        shipping_cents: 399,
+        amount_due_cents: 399,
+        excess_cents: 0,
+        accepted_at: iso(Date.now()),
+        payment_due_at: iso(Date.now() + 7 * DAY),
+      });
+      return { data: [{ new_status: "awaiting_payment", due_cents: 399, new_order_id: null }], error: null };
+    });
+    const res = await ann.post({ action: "accept", tradeId: t.id, address: { line1: "1 Main St", city: "St. Louis", state: "MO", postalCode: "63101" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.amountDueCents).toBe(399);
+    const view = res.body.trade as Record<string, unknown>;
+    expect(view).toMatchObject({ shippingCents: 399, amountDueCents: 399, shipFeeCents: 399, freeShipThresholdCents: 20000, freeShipFeeCents: 0 });
+    const email = sent.find((e) => e.emailType === "trade_awaiting_payment")!;
+    expect(email.text).toContain("Your trade credit covers our cards; $3.99 is due by card");
+    expect(email.text).toContain("Shipping our cards to you");
+    expect(email.text).not.toContain("Left to pay for our cards");
+    // The card payment says what it's for: shipping, nothing for the cards.
+    expect((await ann.post({ action: "pay", tradeId: t.id })).statusCode).toBe(200);
+    expect(stripeState.created[0].params).toMatchObject({
+      amount: 399,
+      metadata: { kind: "trade", trade_request_id: t.id, shipping_cents: "399", cards_cents: "0" },
+    });
   });
 
   describe("paying the rest by card", () => {
@@ -2267,6 +2380,29 @@ describe("admin Trades: after the trade (13, 14)", () => {
     expect((state.tables.admin_audit_log[0] as Record<string, unknown>).action).toBe("trade.import_card");
   });
 
+  it("records what shipping our cards cost on a finished trade, for the economics; clears it; not before it's finished", async () => {
+    const t = tradeRow({ status: "approved_for_fulfillment", final_value_cents: 25000, wanted_total_cents: 20000, shipping_cents: 0 });
+    trades().push(t);
+    expect((await staff.post({ action: "setPostage", tradeId: t.id, postageCents: -5 })).statusCode).toBe(400);
+    expect((await staff.post({ action: "setPostage", tradeId: t.id, postageCents: 100001 })).statusCode).toBe(400);
+    expect((await staff.post({ action: "setPostage", tradeId: t.id, postageCents: "5.40" })).statusCode).toBe(400);
+    const res = await staff.post({ action: "setPostage", tradeId: t.id, postageCents: 540 });
+    expect(res.statusCode).toBe(200);
+    expect(t.outbound_postage_cents).toBe(540);
+    expect((res.body.trade as { outboundPostageCents: number | null }).outboundPostageCents).toBe(540);
+    expect(eventNames(t.id)).toContain("postage_recorded");
+    expect((state.tables.admin_audit_log.at(-1) as Record<string, unknown>).action).toBe("trade.set_postage");
+    expect(sent).toHaveLength(0);
+    await staff.post({ action: "setPostage", tradeId: t.id, postageCents: null });
+    expect(t.outbound_postage_cents).toBeNull();
+    const open = tradeRow({ status: "under_inspection" });
+    trades().push(open);
+    const early = await staff.post({ action: "setPostage", tradeId: open.id, postageCents: 540 });
+    expect(early.statusCode).toBe(409);
+    expect(early.body.message).toBe("Postage is recorded once the trade is finished.");
+    expect(open.outbound_postage_cents).toBeNull();
+  });
+
   it("sends a message to the customer, or keeps a note for staff", async () => {
     const t = tradeRow({ status: "pending_review" });
     trades().push(t);
@@ -2274,6 +2410,75 @@ describe("admin Trades: after the trade (13, 14)", () => {
     expect(sent).toHaveLength(0);
     await staff.post({ action: "message", tradeId: t.id, body: "We'll have an answer tomorrow.", visibleToCustomer: true });
     expect(emailTypes()).toEqual(["trade_message"]);
+  });
+});
+
+describe("admin Trades: economics (16)", () => {
+  it("adds up finished trades: market value in, retail value out, and shipping cost against what was charged", async () => {
+    const now = Date.now();
+    // $250 in, $200 out, free shipping, no label or postage: counted at the $6 estimate, so $44 after shipping.
+    const a = tradeRow({ status: "completed", final_value_cents: 25000, wanted_total_cents: 20000, shipping_cents: 0, paid_at: iso(now - DAY) });
+    // $187.50 in, $150 out, $3.99 charged, a label bought here for $5.10.
+    const order = { id: fakeId(), postage_cost_cents: 510 };
+    const b = tradeRow({ status: "approved_for_fulfillment", final_value_cents: 18750, wanted_total_cents: 15000, shipping_cents: 399, order_id: order.id, paid_at: iso(now - 2 * DAY) });
+    // Postage staff recorded by hand.
+    const c = tradeRow({ status: "completed", final_value_cents: 10000, wanted_total_cents: 9000, shipping_cents: 399, outbound_postage_cents: 450, paid_at: iso(now - 3 * DAY) });
+    // Long ago: only counted for all time.
+    const old = tradeRow({ status: "completed", final_value_cents: 5000, wanted_total_cents: 7500, shipping_cents: 399, paid_at: iso(now - 200 * DAY) });
+    // Not finished, or closed: never counted.
+    const open = tradeRow({ status: "awaiting_payment", final_value_cents: 9000, wanted_total_cents: 8000, paid_at: null });
+    const declined = tradeRow({ status: "declined_after_inspection", final_value_cents: 9000, wanted_total_cents: 8000, paid_at: null });
+    trades().push(a, b, c, old, open, declined);
+    (state.tables.orders ??= []).push(order);
+    // Two $80 Sheoldreds (one listing), a $12 card (under the $15 minimum: a listing, not a $15+ single), one not taken.
+    state.tables.trade_offer_cards.push(
+      offerRow(a.id, { quantity: 2, final_quantity: 2, final_unit_cents: 8000, verified_condition: "NM", inspected_at: iso(now) }),
+      offerRow(b.id, { scryfall_id: ELVES, card_name: "Llanowar Elves", final_quantity: 1, final_unit_cents: 1200, inspected_at: iso(now) }),
+      offerRow(c.id, { final_quantity: 0, final_unit_cents: 0, inspected_at: iso(now) }),
+      offerRow(open.id, { final_quantity: 3, final_unit_cents: 3000, inspected_at: iso(now) }),
+    );
+
+    const res = await staff.get({ view: "economics", days: "90" });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.days).toBe(90);
+    expect(res.body.totals).toEqual({
+      trades: 3,
+      incomingMarketCents: 53750,
+      outgoingRetailCents: 44000,
+      grossDifferenceCents: 9750,
+      shippingChargedCents: 798,
+      shippingCostCents: 1560,
+      estimatedShipments: 1,
+      netShippingCents: 762,
+      adjustedDifferenceCents: 8988,
+      averageOutgoingCents: 14667,
+      acceptedSingles: 2,
+      uniqueListings: 2,
+    });
+    const rows = res.body.trades as { id: string; tradeNumber: number; economics: Record<string, unknown> }[];
+    expect(rows.map((r) => r.id)).toEqual([a.id, b.id, c.id]);
+    expect(rows[0].economics).toEqual({
+      incomingMarketCents: 25000,
+      outgoingRetailCents: 20000,
+      grossDifferenceCents: 5000,
+      shippingChargedCents: 0,
+      shippingCostCents: 600,
+      shippingCostSource: "estimate",
+      netShippingCents: 600,
+      adjustedDifferenceCents: 4400,
+    });
+    expect(rows[1].economics).toMatchObject({ shippingCostCents: 510, shippingCostSource: "label", netShippingCents: 111 });
+    expect(rows[2].economics).toMatchObject({ shippingCostCents: 450, shippingCostSource: "recorded", netShippingCents: 51 });
+    // The estimate comes from Settings.
+    expect((res.body.settings as { shipCostEstimateCents: number }).shipCostEstimateCents).toBe(600);
+
+    const all = await staff.get({ view: "economics" });
+    expect(all.body.days).toBeNull();
+    expect((all.body.totals as { trades: number }).trades).toBe(4);
+    // A period it doesn't offer means all time.
+    expect((await staff.get({ view: "economics", days: "7" })).body.days).toBeNull();
+    // Customers never see it.
+    expect((await ann.get({ view: "economics" })).body).not.toHaveProperty("totals");
   });
 });
 
@@ -2329,16 +2534,25 @@ describe("admin Trades: settings (16)", () => {
     notifyCustomer: true,
     notifyStaff: true,
     shippingPaidBy: "customer",
+    shipFeeCents: 399,
+    freeShipThresholdCents: 20000,
+    freeShipFeeCents: 0,
+    shipCostEstimateCents: 600,
     shipTo: { name: "Geega Games", line1: "200 New St", city: "Ballwin", state: "missouri", postalCode: "63011" },
     packingInstructions: "Sleeve them.",
     returnPolicy: "We mail them back.",
   };
 
   it("saves valid settings, normalized, with an audit entry; the terms version only moves when the text does", async () => {
-    const res = await owner.post({ action: "saveSettings", settings: valid });
+    const res = await owner.post({ action: "saveSettings", settings: { ...valid, minTradeValueCents: 7500, shipFeeCents: 450, shipCostEstimateCents: 650 } });
     expect(res.statusCode).toBe(200);
     const row = settings();
     expect(row).toMatchObject({
+      min_trade_value_cents: 7500,
+      ship_fee_cents: 450,
+      free_ship_threshold_cents: 20000,
+      free_ship_fee_cents: 0,
+      ship_cost_estimate_cents: 650,
       ship_to_line1: "200 New St",
       ship_to_state: "MO",
       excluded_set_codes: ["LEA"],
@@ -2365,6 +2579,15 @@ describe("admin Trades: settings (16)", () => {
     expect(await bad({ depositBand1Cents: 10 })).toBe(400);
     expect(await bad({ confirmationHours: 0 })).toBe(400);
     expect(await bad({ depositTerms: "  " })).toBe(400);
+    // Shipping: no negative fees, a real threshold at or above the minimum, never dearer from the threshold up.
+    const shipping = async (over: Record<string, unknown>) => (await owner.post({ action: "saveSettings", settings: { ...valid, ...over } })).body.message;
+    expect(await shipping({ shipFeeCents: -1 })).toBe("Shipping under the free-shipping threshold: enter a whole number from 0 to 10000.");
+    expect(await shipping({ freeShipFeeCents: -50 })).toMatch(/^Shipping from the threshold up:/);
+    expect(await shipping({ freeShipThresholdCents: 0 })).toMatch(/^Free shipping from:/);
+    expect(await shipping({ shipCostEstimateCents: 10001 })).toMatch(/^What shipping costs us:/);
+    expect(await shipping({ shipFeeCents: 399, freeShipFeeCents: 500 })).toBe("Shipping from the free-shipping threshold up can't cost more than below it.");
+    expect(await shipping({ minTradeValueCents: 7500, freeShipThresholdCents: 5000 })).toBe("Free shipping has to start at or above the minimum trade.");
+    expect(await bad({ shipFeeCents: "3.99" })).toBe(400);
     // An impossible date is refused, not a server error.
     const impossible = await owner.post({ action: "saveSettings", settings: { ...valid, excludedDates: ["2026-13-01"] } });
     expect(impossible.statusCode).toBe(400);

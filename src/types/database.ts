@@ -3940,12 +3940,16 @@ export type Database = {
           final_credit_cents: number | null
           final_offer_at: string | null
           final_value_cents: number | null
+          free_ship_fee_cents: number
+          free_ship_threshold_cents: number
           id: string
           inbound_acceptance_source: string | null
           inbound_accepted_at: string | null
           inbound_carrier: string | null
           inbound_delivered_at: string | null
           inbound_last_event_at: string | null
+          inbound_packaging_confirmed_at: string | null
+          inbound_shipped_on: string | null
           inbound_tracker_id: string | null
           inbound_tracking: string | null
           inbound_tracking_added_at: string | null
@@ -3956,6 +3960,7 @@ export type Database = {
           min_card_value_cents: number
           needs_staff: boolean
           order_id: string | null
+          outbound_postage_cents: number | null
           paid_at: string | null
           payment_due_at: string | null
           payment_reference: string | null
@@ -3972,6 +3977,7 @@ export type Database = {
           ship_by_original: string | null
           ship_city: string | null
           ship_days: number | null
+          ship_fee_cents: number
           ship_line1: string | null
           ship_line2: string | null
           ship_name: string | null
@@ -4034,12 +4040,16 @@ export type Database = {
           final_credit_cents?: number | null
           final_offer_at?: string | null
           final_value_cents?: number | null
+          free_ship_fee_cents?: number
+          free_ship_threshold_cents?: number
           id?: string
           inbound_acceptance_source?: string | null
           inbound_accepted_at?: string | null
           inbound_carrier?: string | null
           inbound_delivered_at?: string | null
           inbound_last_event_at?: string | null
+          inbound_packaging_confirmed_at?: string | null
+          inbound_shipped_on?: string | null
           inbound_tracker_id?: string | null
           inbound_tracking?: string | null
           inbound_tracking_added_at?: string | null
@@ -4050,6 +4060,7 @@ export type Database = {
           min_card_value_cents: number
           needs_staff?: never
           order_id?: string | null
+          outbound_postage_cents?: number | null
           paid_at?: string | null
           payment_due_at?: string | null
           payment_reference?: string | null
@@ -4066,6 +4077,7 @@ export type Database = {
           ship_by_original?: string | null
           ship_city?: string | null
           ship_days?: number | null
+          ship_fee_cents?: number
           ship_line1?: string | null
           ship_line2?: string | null
           ship_name?: string | null
@@ -4128,12 +4140,16 @@ export type Database = {
           final_credit_cents?: number | null
           final_offer_at?: string | null
           final_value_cents?: number | null
+          free_ship_fee_cents?: number
+          free_ship_threshold_cents?: number
           id?: string
           inbound_acceptance_source?: string | null
           inbound_accepted_at?: string | null
           inbound_carrier?: string | null
           inbound_delivered_at?: string | null
           inbound_last_event_at?: string | null
+          inbound_packaging_confirmed_at?: string | null
+          inbound_shipped_on?: string | null
           inbound_tracker_id?: string | null
           inbound_tracking?: string | null
           inbound_tracking_added_at?: string | null
@@ -4144,6 +4160,7 @@ export type Database = {
           min_card_value_cents?: number
           needs_staff?: never
           order_id?: string | null
+          outbound_postage_cents?: number | null
           paid_at?: string | null
           payment_due_at?: string | null
           payment_reference?: string | null
@@ -4160,6 +4177,7 @@ export type Database = {
           ship_by_original?: string | null
           ship_city?: string | null
           ship_days?: number | null
+          ship_fee_cents?: number
           ship_line1?: string | null
           ship_line2?: string | null
           ship_name?: string | null
@@ -4209,6 +4227,8 @@ export type Database = {
           excluded_card_names: string[]
           excluded_dates: string[]
           excluded_set_codes: string[]
+          free_ship_fee_cents: number
+          free_ship_threshold_cents: number
           id: boolean
           loyalty_tier1_trades: number
           loyalty_tier2_trades: number
@@ -4230,9 +4250,11 @@ export type Database = {
           return_policy: string
           revision_hours: number
           scan_grace_hours: number
+          ship_cost_estimate_cents: number
           ship_days_new: number
           ship_days_tier1: number
           ship_days_tier2: number
+          ship_fee_cents: number
           ship_reminder_hours: number
           ship_to_city: string | null
           ship_to_line1: string | null
@@ -4277,6 +4299,8 @@ export type Database = {
           excluded_card_names?: string[]
           excluded_dates?: string[]
           excluded_set_codes?: string[]
+          free_ship_fee_cents?: number
+          free_ship_threshold_cents?: number
           id?: boolean
           loyalty_tier1_trades?: number
           loyalty_tier2_trades?: number
@@ -4298,9 +4322,11 @@ export type Database = {
           return_policy?: string
           revision_hours?: number
           scan_grace_hours?: number
+          ship_cost_estimate_cents?: number
           ship_days_new?: number
           ship_days_tier1?: number
           ship_days_tier2?: number
+          ship_fee_cents?: number
           ship_reminder_hours?: number
           ship_to_city?: string | null
           ship_to_line1?: string | null
@@ -4345,6 +4371,8 @@ export type Database = {
           excluded_card_names?: string[]
           excluded_dates?: string[]
           excluded_set_codes?: string[]
+          free_ship_fee_cents?: number
+          free_ship_threshold_cents?: number
           id?: boolean
           loyalty_tier1_trades?: number
           loyalty_tier2_trades?: number
@@ -4366,9 +4394,11 @@ export type Database = {
           return_policy?: string
           revision_hours?: number
           scan_grace_hours?: number
+          ship_cost_estimate_cents?: number
           ship_days_new?: number
           ship_days_tier1?: number
           ship_days_tier2?: number
+          ship_fee_cents?: number
           ship_reminder_hours?: number
           ship_to_city?: string | null
           ship_to_line1?: string | null
@@ -5688,6 +5718,8 @@ export type Database = {
           p_actor_label: string | null
           p_actor_type: string
           p_carrier: string
+          p_packaging_confirmed: boolean
+          p_shipped_on: string | null
           p_tracking: string
           p_trade_id: string
         }

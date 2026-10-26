@@ -23,6 +23,7 @@ import {
   formatDeadline,
   timeLeft,
   tradeLabel,
+  tradeShippingTerms,
   tradeStepIndex,
   type CustomerTrade,
   type TradeOfferInput,
@@ -30,7 +31,10 @@ import {
   type TradeWantedInput,
   type TradeWantedItem,
 } from "../../lib/tradeCenter";
-import { TradeBalance } from "./TradeBalance";
+import { ORDER_STATUS_LABELS, type OrderStatus } from "../../lib/orderStatus";
+import { minimumMessage } from "../../lib/tradeShipping";
+import { DepositLine, TradeBalance } from "./TradeBalance";
+import { TradeShippingProgress } from "./TradeShippingProgress";
 import { TradeWantedList, type TradeWantedRow } from "./TradeWantedList";
 import { OfferCardsEditor } from "./OfferCardsEditor";
 import { TradeConfirmPanel } from "./TradeConfirmPanel";
@@ -45,11 +49,14 @@ import { TradeMessages, TradeTimeline } from "./TradeMessages";
 // with where it stands. While the customer builds their list: our cards
 // (still on sale: nothing is reserved yet), their cards (search, paste or
 // CSV, each priced by the server), the running total, and "Send for
-// review". Then the review, the confirmation (with the refundable deposit
-// when there is one), the shipping deadline and tracking, the inspection,
-// the final offer and its answer, the payment, and how it all settled; or,
-// for a trade that stopped, why, and what happens to the deposit and any
-// cards that reached us. Messages and history all the way through.
+// review" (once our cards reach the trade minimum; the bar under our cards
+// shows how far they are from it and from free shipping). Then the review,
+// the confirmation (with the refundable deposit when there is one), the
+// shipping deadline and tracking, the inspection, the final offer and its
+// answer, the payment (any of our cards the credit doesn't cover, and
+// shipping them), how it all settled and our cards on their way; or, for a
+// trade that stopped, why, and what happens to the deposit and any cards
+// that reached us. Messages and history all the way through.
 
 const ESTIMATED: ReadonlySet<TradeStatus> = new Set(["awaiting_trade_list", "revision_requested", "pending_review"]);
 const APPROVED: ReadonlySet<TradeStatus> = new Set([
@@ -254,6 +261,9 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
   const value =
     valueLabel === "estimated" ? trade.estimatedValueCents : valueLabel === "approved" ? (trade.approvedValueCents ?? 0) : (trade.finalValueCents ?? 0);
   const step = tradeStepIndex(status);
+  const shippingTerms = tradeShippingTerms(trade);
+  const minTradeValueCents = terms?.minTradeValueCents ?? 0;
+  const belowMinimum = trade.wantedTotalCents < minTradeValueCents;
   const lastWord = [...trade.messages].reverse().find((m) => m.authorType === "staff" || m.authorType === "system");
   const listDue = trade.listDueAt ? Date.parse(trade.listDueAt) : null;
 
@@ -282,6 +292,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
     ...(trade.offered.length === 0 ? ["Add the cards you're trading in."] : []),
     ...(blocked.length > 0 ? [`Take off the ${blocked.length === 1 ? "card" : `${blocked.length} cards`} we can't accept.`] : []),
     ...(onTrade.length === 0 ? ["Add at least one of our cards."] : []),
+    ...(onTrade.length > 0 && belowMinimum ? [minimumMessage(trade.wantedTotalCents, minTradeValueCents)] : []),
     ...(shortLines.length > 0
       ? [`${shortLines.length === 1 ? "One of our cards has" : `${shortLines.length} of our cards have`} fewer copies left than you picked.`]
       : []),
@@ -378,11 +389,13 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
               trade={trade}
               terms={terms}
               busy={busy}
-              onTracking={(carrier, number) =>
+              onTracking={(shipment) =>
                 run(
                   "tracking",
-                  () => tradeActions.tracking(tradeId, carrier, number),
-                  "Thanks! Your shipment counts as soon as the carrier scans your package.",
+                  () => tradeActions.tracking(tradeId, shipment),
+                  shipment.trackingNumber === trade.shipment.tracking
+                    ? "Saved."
+                    : "Thanks! Your shipment counts as soon as the carrier scans your package.",
                 )
               }
               onProof={(text, files) =>
@@ -476,6 +489,9 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
                   : undefined
               }
             />
+            {editable && (
+              <TradeShippingProgress wantedCents={trade.wantedTotalCents} terms={{ ...shippingTerms, minTradeValueCents }} />
+            )}
             {editable && fromCart.length > 0 && (
               <div className="gg-tc-cartmerge">
                 <p>
@@ -524,7 +540,10 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
               valueLabel={valueLabel}
               ratePercent={trade.creditRatePercent}
               feeCents={trade.processingFeeCents}
+              shipping={shippingTerms}
               shippingCents={trade.shippingCents ?? undefined}
+              canAddCards={editable}
+              deposit={<DepositLine trade={trade} />}
               footnote={
                 valueLabel === "estimated"
                   ? "Market prices are a starting point. We confirm values when we review your list and again when your cards arrive."
@@ -783,26 +802,44 @@ function CancelTrade({
 
 function Settled({ trade }: { trade: CustomerTrade }) {
   const due = trade.amountDueCents ?? 0;
-  const spent = trade.wantedTotalCents + (trade.shippingCents ?? 0) - due;
+  const shipping = trade.shippingCents ?? 0;
+  const shippingPaid = Math.min(shipping, due);
+  const cardsPaid = due - shippingPaid;
+  const credit = trade.creditIssuedCents ?? trade.finalCreditCents ?? 0;
+  const creditOnCards = Math.min(credit, trade.wantedTotalCents);
   const cash = trade.excessHandling === "cash" ? (trade.cashPayoutCents ?? 0) : 0;
   return (
     <section className="gg-tc-panel gg-tc-settled" aria-labelledby="gg-tc-settled-title">
       <h2 id="gg-tc-settled-title">How your trade settled</h2>
       <dl className="gg-tc-balance__rows">
         <div>
-          <dt>Trade credit issued</dt>
-          <dd>{formatCents(trade.creditIssuedCents ?? 0)}</dd>
+          <dt>Our cards</dt>
+          <dd>{formatCents(trade.wantedTotalCents)}</dd>
         </div>
-        <div>
-          <dt>Used on your order</dt>
-          <dd>{formatCents(Math.max(spent, 0))}</dd>
-        </div>
-        {due > 0 && (
+        {trade.finalValueCents != null && (
           <div>
-            <dt>Paid by card</dt>
-            <dd>{formatCents(due)}</dd>
+            <dt>Your cards (final value)</dt>
+            <dd>{formatCents(trade.finalValueCents)}</dd>
           </div>
         )}
+        <div className="gg-tc-balance__credit">
+          <dt>Trade credit issued at {trade.creditRatePercent}%</dt>
+          <dd>{formatCents(credit)}</dd>
+        </div>
+        <div>
+          <dt>Credit used on our cards</dt>
+          <dd>{formatCents(creditOnCards)}</dd>
+        </div>
+        {cardsPaid > 0 && (
+          <div>
+            <dt>Paid by card for our cards</dt>
+            <dd>{formatCents(cardsPaid)}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Shipping our cards to you</dt>
+          <dd>{shipping > 0 ? `${formatCents(shippingPaid)} paid by card` : "FREE"}</dd>
+        </div>
         {cash > 0 ? (
           <div>
             <dt>Cash for the credit left over</dt>
@@ -815,7 +852,9 @@ function Settled({ trade }: { trade: CustomerTrade }) {
           </div>
         ) : null}
       </dl>
+      <DepositLine trade={trade} />
       {cash > 0 && <p className="gg-tc-line__meta">We&rsquo;ll be in touch to pay you the cash.</p>}
+      <OutgoingShipment trade={trade} />
       {trade.orderId && (
         <Link to={`/account/orders/${trade.orderId}`} className="gg-btn gg-btn-ghost">
           View your order
@@ -828,6 +867,60 @@ function Settled({ trade }: { trade: CustomerTrade }) {
       )}
       <ComingBack trade={trade} />
     </section>
+  );
+}
+
+/** Our cards on their way to the customer: the trade's order, its status and tracking. */
+function OutgoingShipment({ trade }: { trade: CustomerTrade }) {
+  const o = trade.outgoing;
+  const to = trade.shipTo;
+  const where = to ? [to.name, `${to.city}, ${to.state}`].filter(Boolean).join(", ") : null;
+  if (!o) {
+    return (
+      <div className="gg-tc-outgoing">
+        <h3>We&rsquo;re packing your new cards</h3>
+        <p className="gg-tc-line__meta">
+          They ship with tracking{where ? ` to ${where}` : ""}, and we&rsquo;ll email you the tracking number.
+        </p>
+      </div>
+    );
+  }
+  const status = o.status as OrderStatus;
+  const halted = status === "cancelled" || status === "refunded";
+  const delivered = status === "delivered" || o.deliveredAt !== null;
+  const shipped = delivered || status === "shipped" || o.shippedAt !== null;
+  const url = trackingUrlFor(o.carrier, o.tracking);
+  const heading = halted
+    ? `Your order was ${(ORDER_STATUS_LABELS[status] ?? o.status).toLowerCase()}`
+    : delivered
+      ? "Your new cards were delivered"
+      : shipped
+        ? "Your new cards are on the way"
+        : "We're packing your new cards";
+  return (
+    <div className="gg-tc-outgoing">
+      <h3>{heading}</h3>
+      {o.tracking ? (
+        <p>
+          {carrierLabel(o.carrier)} tracking{" "}
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              {o.tracking}
+            </a>
+          ) : (
+            <strong>{o.tracking}</strong>
+          )}
+          {o.shippedAt ? <span className="gg-tc-line__meta"> · shipped {formatDeadline(o.shippedAt)}</span> : null}
+          {o.deliveredAt ? <span className="gg-tc-line__meta"> · delivered {formatDeadline(o.deliveredAt)}</span> : null}
+        </p>
+      ) : halted ? (
+        <p className="gg-tc-line__meta">Questions? Send us a message below.</p>
+      ) : (
+        <p className="gg-tc-line__meta">
+          They ship with tracking{where ? ` to ${where}` : ""}, and we&rsquo;ll email you the tracking number.
+        </p>
+      )}
+    </div>
   );
 }
 

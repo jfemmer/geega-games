@@ -51,7 +51,11 @@ export type MoneyKey =
   | "depositBand1Cents"
   | "depositBand2Cents"
   | "depositBand3Cents"
-  | "depositBand4Cents";
+  | "depositBand4Cents"
+  | "shipFeeCents"
+  | "freeShipThresholdCents"
+  | "freeShipFeeCents"
+  | "shipCostEstimateCents";
 
 export interface SettingsForm {
   enabled: boolean;
@@ -138,7 +142,7 @@ export const NUMBER_LABELS: Record<NumberKey, string> = {
 const MONEY_RULES: Record<Exclude<MoneyKey, "maxTradeValueCents">, { range: readonly [number, number]; label: string }> = {
   minCardValueCents: { range: R.minCardValueCents, label: "Minimum card value" },
   processingFeeCents: { range: R.processingFeeCents, label: "Processing fee" },
-  minTradeValueCents: { range: R.minTradeValueCents, label: "Smallest trade" },
+  minTradeValueCents: { range: R.minTradeValueCents, label: "Minimum trade" },
   depositThresholdCents: { range: R.depositThresholdCents, label: "Deposit required from" },
   depositBand1MaxCents: { range: R.depositBandMaxCents, label: "First deposit band, up to" },
   depositBand2MaxCents: { range: R.depositBandMaxCents, label: "Second deposit band, up to" },
@@ -147,6 +151,10 @@ const MONEY_RULES: Record<Exclude<MoneyKey, "maxTradeValueCents">, { range: read
   depositBand2Cents: { range: R.depositCents, label: "Deposit, second band" },
   depositBand3Cents: { range: R.depositCents, label: "Deposit, third band" },
   depositBand4Cents: { range: R.depositCents, label: "Deposit, top band" },
+  shipFeeCents: { range: R.shipFeeCents, label: "Shipping under the free-shipping threshold" },
+  freeShipThresholdCents: { range: R.freeShipThresholdCents, label: "Free shipping from" },
+  freeShipFeeCents: { range: R.shipFeeCents, label: "Shipping from the threshold up" },
+  shipCostEstimateCents: { range: R.shipCostEstimateCents, label: "What shipping costs us" },
 };
 
 const MONEY_KEYS = Object.keys(MONEY_RULES) as Exclude<MoneyKey, "maxTradeValueCents">[];
@@ -196,6 +204,24 @@ function wholeIn(text: string, [min, max]: readonly [number, number]): number | 
   return n >= min && n <= max ? n : null;
 }
 
+/**
+ * The shipping tiers the form would set, in words ("Under $75: can't start ·
+ * $75 to $199.99: $3.99 · $200 or more: free"); null while an amount isn't valid.
+ */
+export function shippingTiersPreview(form: SettingsForm): string | null {
+  const read = (key: MoneyKey) => parsePriceCents(form.money[key] || "0");
+  const min = read("minTradeValueCents");
+  const fee = read("shipFeeCents");
+  const threshold = read("freeShipThresholdCents");
+  const freeFee = read("freeShipFeeCents");
+  if (min === null || fee === null || threshold === null || freeFee === null || threshold < 1 || threshold < min || freeFee > fee) return null;
+  const parts: string[] = [];
+  if (min > 0) parts.push(`Under ${formatUsd(min)}: can't start a trade`);
+  if (threshold > min) parts.push(`${formatUsd(min)} to ${formatUsd(threshold - 1)}: ${fee === 0 ? "free" : formatUsd(fee)}`);
+  parts.push(`${formatUsd(threshold)} or more: ${freeFee === 0 ? "free" : formatUsd(freeFee)}`);
+  return parts.join(" · ");
+}
+
 /** "2026-11-26" and the like, one per line or separated by commas; null names the first that isn't a real date. */
 export function readExcludedDates(text: string): { dates: string[] } | { bad: string } {
   const out = new Set<string>();
@@ -242,7 +268,13 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
     maxTrade = parsePriceCents(form.money.maxTradeValueCents);
     const [min, max] = R.maxTradeValueCents;
     if (maxTrade === null || maxTrade < min || maxTrade > max) return { problem: `Largest trade: enter an amount up to ${formatUsd(max)}, or leave it blank.` };
-    if (maxTrade < money.minTradeValueCents) return { problem: "The largest trade can't be smaller than the smallest." };
+    if (maxTrade < money.minTradeValueCents) return { problem: "The largest trade can't be smaller than the minimum." };
+  }
+  if (money.freeShipFeeCents > money.shipFeeCents) {
+    return { problem: "Shipping from the free-shipping threshold up can't cost more than below it." };
+  }
+  if (money.freeShipThresholdCents < money.minTradeValueCents) {
+    return { problem: "Free shipping has to start at or above the minimum trade." };
   }
   if (!(money.depositBand1MaxCents < money.depositBand2MaxCents && money.depositBand2MaxCents < money.depositBand3MaxCents)) {
     return { problem: "Deposit bands have to go up: each one starts where the last ends." };

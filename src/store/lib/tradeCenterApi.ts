@@ -153,6 +153,13 @@ interface SignedUpload {
   signedUrl: string;
 }
 
+export interface TradeTrackingInput {
+  carrier: string;
+  trackingNumber: string;
+  packagingConfirmed: boolean;
+  shippedOn: string | null;
+}
+
 export const tradeActions = {
   start: (items: TradeWantedInput[]) => act("start", { items }),
   setWanted: (tradeId: string, items: TradeWantedInput[]) => act("setWanted", { tradeId, items }),
@@ -166,7 +173,11 @@ export const tradeActions = {
     act("cancel", { tradeId, reason, acceptDepositReview }),
   withdraw: (tradeId: string, reason: string | null) => act("withdraw", { tradeId, reason }),
   askForTime: (tradeId: string, note: string) => act("askForTime", { tradeId, note }),
-  tracking: (tradeId: string, carrier: string, trackingNumber: string) => act("tracking", { tradeId, carrier, trackingNumber }),
+  /**
+   * Their tracking number. A new number (first or replacement shipment) needs
+   * their packaging confirmation; the ship date is optional ("YYYY-MM-DD").
+   */
+  tracking: (tradeId: string, shipment: TradeTrackingInput) => act("tracking", { tradeId, ...shipment }),
   /**
    * Proof of shipping: the files go straight to private storage through
    * signed links (nothing passes through our server), then the note is sent
