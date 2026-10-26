@@ -4959,7 +4959,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      apply_aged_inventory_deals: { Args: never; Returns: number }
       campaign_audience_count: {
         Args: { p_audience: Database["public"]["Enums"]["campaign_audience"] }
         Returns: number
