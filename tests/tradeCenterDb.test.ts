@@ -11,6 +11,8 @@ import { PGlite } from "@electric-sql/pglite";
 // run in order and build on each other, like the trades they follow.
 
 const MIGRATION = readFileSync(new URL("../supabase/migrations/20261025200000_trade_center.sql", import.meta.url), "utf8");
+// Follow-ups that ran on production after it, in order.
+const FOLLOW_UPS = [readFileSync(new URL("../supabase/migrations/20261026233000_trade_function_search_path.sql", import.meta.url), "utf8")];
 
 const STANDINS = `
 create role anon; create role authenticated; create role service_role;
@@ -246,6 +248,10 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
   it("runs, and running it again changes nothing", async () => {
     await db.exec(MIGRATION);
     await db.exec(MIGRATION);
+    for (const sql of FOLLOW_UPS) {
+      await db.exec(sql);
+      await db.exec(sql);
+    }
     await db.exec(`insert into auth.users (id, email) values ${Object.entries(users).map(([n, id]) => `('${id}', '${n}@example.com')`).join(", ")}`);
   });
 
@@ -823,5 +829,10 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check(grants.length === 0, "anon and authenticated have no table access");
     const fnGrants = await all(`select p.proname from pg_proc p where p.proname like 'trade\\_%' and has_function_privilege('authenticated', p.oid, 'execute') and p.proname <> 'trade_regular_price'`);
     check(fnGrants.length === 0, `and can't run any trade function${fnGrants.length ? ": " + fnGrants.map((f) => f.proname).join(", ") : ""}`);
+    // Supabase's advisor flags a function without a fixed search path (function_search_path_mutable).
+    const loose = await all(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and (p.proname like 'trade\\_%' or p.proname = 'tg_trade_order_shipped')
+        and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'::text[])) c where c like 'search_path=%')`);
+    check(loose.length === 0, `every trade function pins its search path${loose.length ? ": " + loose.map((f) => f.proname).join(", ") : ""}`);
   });
 });
