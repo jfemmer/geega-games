@@ -12,6 +12,7 @@ import {
 } from "../lib/useCatalog";
 import ProductCard from "../components/ProductCard";
 import CatalogFiltersPanel from "../components/CatalogFiltersPanel";
+import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 const SORTS: { value: CatalogSort; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
   { value: "name_desc", label: "Name Z → A" },
@@ -166,6 +167,8 @@ export default function ShopPage() {
               {error}
             </div>
           )}
+
+          <TradeCartProgress />
 
           {loading ? (
             <div className="gg-grid" aria-hidden="true">

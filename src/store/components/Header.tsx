@@ -109,6 +109,25 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
+  // The header sticks to the top, so a jump to a spot on the page (the trade
+  // cart, a form) would land under it: its height becomes the page's scroll
+  // padding (--gg-header-height in store.css), kept current as it changes.
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty("--gg-header-height", `${el.offsetHeight}px`);
+    publish();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--gg-header-height");
+    };
+  }, []);
+
   const selectSuggestion = (name: string) => {
     // A chosen suggestion is an immediate, direct navigation — cancel both
     // debounces so a stale timer can't fire afterward and stomp on it.
@@ -148,7 +167,7 @@ export default function Header() {
   };
 
   return (
-    <header className="gg-header">
+    <header className="gg-header" ref={headerRef}>
       <div className="gg-header-row">
         <Link to="/" aria-label="Geega Games home">
           <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />

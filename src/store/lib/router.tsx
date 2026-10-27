@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,11 @@ type RouterContextValue = {
 };
 
 const RouterContext = createContext<RouterContextValue | null>(null);
+
+/** Smooth scrolling, unless the visitor asked for reduced motion. */
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
 
 export function RouterProvider({
   children,
@@ -47,26 +53,57 @@ export function RouterProvider({
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  // A link's #fragment isn't part of the route: the page for the path
+  // renders, then the element with that id scrolls into view (the trade cart
+  // on /trade-cards#trade-cart). Kept until the effect below runs, after the
+  // new page is on screen.
+  const pendingHash = useRef<string | null>(null);
+  const [hashNavigations, setHashNavigations] = useState(0);
+
   const navigate = useCallback(
     (to: string, opts?: { replace?: boolean }) => {
-      const [toPath, toSearch = ""] = to.split("?");
-      const url = toSearch ? `${toPath}?${toSearch}` : toPath;
+      const hashAt = to.indexOf("#");
+      const hash = hashAt >= 0 ? to.slice(hashAt + 1) : "";
+      const [rawPath, toSearch = ""] = (hashAt >= 0 ? to.slice(0, hashAt) : to).split("?");
+      // Only a fragment or a query ("#trade-cart"): the same page.
+      const toPath = rawPath || (hash || toSearch ? window.location.pathname : "") || "/";
+      const url = `${toSearch ? `${toPath}?${toSearch}` : toPath}${hash ? `#${hash}` : ""}`;
       if (opts?.replace) {
         window.history.replaceState({}, "", url);
       } else {
         window.history.pushState({}, "", url);
       }
-      setPath(toPath || "/");
+      setPath(toPath);
       setSearch(toSearch ? `?${toSearch}` : "");
+      if (hash) {
+        pendingHash.current = hash;
+        setHashNavigations((n) => n + 1);
+        return;
+      }
       // Scroll to top on navigation, matching normal page-nav expectations,
       // unless the user prefers reduced motion (then jump without smoothing).
-      const reduce = window.matchMedia(
-        "(prefers-reduced-motion: reduce)",
-      ).matches;
-      window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
     },
     [],
   );
+
+  useEffect(() => {
+    const hash = pendingHash.current;
+    if (!hash) return;
+    pendingHash.current = null;
+    let id = hash;
+    try {
+      id = decodeURIComponent(hash);
+    } catch {
+      // A malformed escape: look for it as typed.
+    }
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView?.({ behavior: scrollBehavior(), block: "start" });
+    } else {
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
+    }
+  }, [hashNavigations]);
 
   const value = useMemo<RouterContextValue>(
     () => ({

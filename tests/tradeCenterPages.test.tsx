@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CustomerTrade, CustomerTradeSummary, TradeTerms } from "../src/store/lib/tradeCenter";
+import type { CatalogCard } from "../src/store/lib/useCatalog";
 import { TRADE_ID, TRADE_TERMS, confirmation, customerCard, customerSummary, customerTrade, shipment } from "./helpers/tradeFixtures";
 
 // The storefront's Trade Center: the Trade Cards page and its trade cart,
@@ -116,12 +117,14 @@ vi.stubGlobal("fetch", fetchMock);
 Element.prototype.scrollIntoView = vi.fn();
 
 const { RouterProvider } = await import("../src/store/lib/router");
-const { resetTradeTermsForTests } = await import("../src/store/lib/tradeCenterApi");
+const { loadTradeTerms, resetTradeTermsForTests } = await import("../src/store/lib/tradeCenterApi");
 const { resetTradeCartForTests } = await import("../src/store/lib/tradeCart");
 const { default: TradeCardsPage } = await import("../src/store/pages/TradeCardsPage");
 const { default: TradeDetail } = await import("../src/store/components/trades/TradeDetail");
 const { default: MyTrades } = await import("../src/store/components/trades/MyTrades");
 const { default: CardDetailPage } = await import("../src/store/pages/CardDetailPage");
+const { default: ProductCard } = await import("../src/store/components/ProductCard");
+const { TradeCartProgress } = await import("../src/store/components/trades/TradeCartProgress");
 
 function at(path: string, ui: React.ReactNode) {
   window.history.replaceState({}, "", path);
@@ -316,6 +319,116 @@ describe("Add to trade on a card page", () => {
     await screen.findByRole("heading", { level: 1, name: "Sheoldred, the Apocalypse" });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "Add to trade" })).toBeNull();
+  });
+});
+
+describe("Add to trade on the shop's cards", () => {
+  /** A copy in the shop's grid; on deal by default (15% off $80). */
+  const shopCard = (over: Partial<CatalogCard> = {}): CatalogCard => ({
+    id: "inv-1",
+    oracleId: "o-sheol",
+    name: "Sheoldred, the Apocalypse",
+    set: "dmu",
+    setName: "Dominaria United",
+    collectorNumber: "107",
+    type: "Legendary Creature — Phyrexian Praetor",
+    rarity: "mythic",
+    quantity: 2,
+    imageUrl: null,
+    priceCents: 6800,
+    condition: "NM",
+    finish: "nonfoil",
+    foil: false,
+    scryfallId: null,
+    isDeal: true,
+    originalPriceCents: 8000,
+    dealDiscountPercent: 15,
+    dealSource: "manual",
+    dealNote: null,
+    variantType: null,
+    ...over,
+  });
+  const bolt = (over: Partial<CatalogCard> = {}) =>
+    shopCard({ id: "inv-2", oracleId: "o-bolt", name: "Lightning Bolt", set: "2xm", setName: "Double Masters", collectorNumber: "117", priceCents: 250, isDeal: false, originalPriceCents: null, dealDiscountPercent: null, dealSource: null, ...over });
+
+  it("adds a card to the trade cart at its regular price, then leads to the cart", async () => {
+    const user = userEvent.setup();
+    world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
+    at(
+      "/shop",
+      <>
+        <TradeCartProgress />
+        <ProductCard card={shopCard()} />
+        <ProductCard card={bolt()} />
+      </>,
+    );
+    const add = await screen.findByRole("button", { name: "Add to trade: Sheoldred, the Apocalypse" });
+    expect(add).toHaveTextContent(/^Add to trade$/);
+    // Deals don't apply to trades: the deal card says what it trades at; the other doesn't need to.
+    expect(screen.getAllByText(/^Trades at/)).toHaveLength(1);
+    expect(add).toHaveAccessibleDescription("Trades at $80.00");
+    expect(screen.getByRole("button", { name: "Add to trade: Lightning Bolt" })).not.toHaveAccessibleDescription();
+    // Nothing in the trade cart yet: no progress.
+    expect(screen.queryByRole("progressbar")).toBeNull();
+
+    await user.click(add);
+
+    const inTrade = screen.getByRole("link", { name: "In your trade: Sheoldred, the Apocalypse. Review your trade" });
+    expect(inTrade).toHaveTextContent("In your trade ✓");
+    expect(inTrade).toHaveAttribute("href", "/trade-cards#trade-cart");
+    // The button became the link: focus stays on it.
+    expect(inTrade).toHaveFocus();
+    expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "[]")).toEqual([
+      expect.objectContaining({
+        inventoryItemId: "inv-1",
+        cardName: "Sheoldred, the Apocalypse",
+        setCode: "dmu",
+        condition: "NM",
+        finish: "nonfoil",
+        tradePriceCents: 8000,
+        maxQuantity: 2,
+        quantity: 1,
+        cardPath: "/shop/card/sheoldred-the-apocalypse",
+      }),
+    ]);
+    // The other card is untouched, and the progress above the grid follows the cart: $80 is past the $75 minimum.
+    expect(screen.getByRole("button", { name: "Add to trade: Lightning Bolt" })).toBeInTheDocument();
+    expect(screen.getByText("You’re $120 away from FREE shipping!")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review your trade" })).toHaveAttribute("href", "/trade-cards#trade-cart");
+  });
+
+  it("shows a card that's already in the trade cart as in it", async () => {
+    window.localStorage.setItem("gg-trade-cart", JSON.stringify([{ ...CART_ITEM, inventoryItemId: "inv-1", cardName: "Sheoldred, the Apocalypse" }]));
+    at("/shop", <ProductCard card={shopCard()} />);
+    expect(await screen.findByRole("link", { name: "In your trade: Sheoldred, the Apocalypse. Review your trade" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Add to trade/ })).toBeNull();
+  });
+
+  it("isn't offered for a card that's sold out or not for sale", async () => {
+    at(
+      "/shop",
+      <>
+        <ProductCard card={bolt()} />
+        <ProductCard card={shopCard({ id: "inv-3", name: "Sold Out Sheoldred", quantity: 0 })} />
+        <ProductCard card={bolt({ id: "inv-4", name: "Unpriced Bolt", priceCents: null })} />
+        <ProductCard card={bolt({ id: "inv-5", name: "Free Bolt", priceCents: 0 })} />
+      </>,
+    );
+    expect(await screen.findByRole("button", { name: "Add to trade: Lightning Bolt" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Add to trade/ })).toHaveLength(1);
+  });
+
+  it.each([
+    ["switched off", { enabled: false }],
+    ["paused", { paused: true }],
+  ])("isn't offered while trading is %s", async (_label, change) => {
+    world.terms = { ...TRADE_TERMS, ...change };
+    at("/shop", <ProductCard card={bolt()} />);
+    await act(async () => {
+      await loadTradeTerms();
+    });
+    expect(screen.getByRole("button", { name: "Add to cart" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Add to trade/ })).toBeNull();
   });
 });
 

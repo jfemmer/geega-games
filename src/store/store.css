@@ -12,6 +12,11 @@
 }
 
 /* ---- Header ---- */
+/* Jumps to a spot on the page (#trade-cart, a form) stop below the sticky
+   header; Header.tsx keeps --gg-header-height current. */
+html {
+  scroll-padding-top: calc(var(--gg-header-height, 0px) + 0.75rem);
+}
 .gg-header {
   position: sticky;
   top: 0;
@@ -624,6 +629,32 @@
 .gg-card-cta {
   width: 100%;
   justify-content: center;
+}
+/* "Add to trade" under "Add to cart" on shop cards (Trade Center). */
+.gg-card-trade {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+/* Two classes so it wins over .gg-btn-ghost, declared below. */
+.gg-btn.gg-card-trade__in {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  text-decoration: none;
+  color: var(--gg-ok);
+  border-color: currentColor;
+  background: #f0fdf4;
+}
+.gg-btn.gg-card-trade__in:hover:not(:disabled) {
+  background: #dcfce7;
+}
+/* A deal's trade price (trades use the regular price), with the stock line. */
+.gg-card-trade__price {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #5b5362;
 }
 .gg-btn-ghost {
   background: transparent;

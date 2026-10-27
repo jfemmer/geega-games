@@ -11,6 +11,7 @@ import {
   type CatalogSort,
 } from "../lib/useCatalog";
 import ProductCard from "../components/ProductCard";
+import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 
 const SORTS: { value: CatalogSort; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
@@ -104,6 +105,8 @@ export default function ShopSetPage({ code }: { code: string }) {
           {error}
         </div>
       )}
+
+      <TradeCartProgress />
 
       {!loading && cards.length === 0 && !error ? (
         <div className="gg-empty">

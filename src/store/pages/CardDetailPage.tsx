@@ -16,8 +16,8 @@ import { useAuth } from "../lib/AuthContext";
 import { useWishlist } from "../lib/WishlistContext";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { useTradeTerms } from "../lib/tradeCenterApi";
-import { tradeCart, tradeCartTotalCents, useTradeCart } from "../lib/tradeCart";
-import { TradeShippingProgress } from "../components/trades/TradeShippingProgress";
+import { tradeCart } from "../lib/tradeCart";
+import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
 
 // One indexable page per unique card (grouped by oracle_id across every
@@ -82,7 +82,6 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   // "Add to trade" (Trade Center): shown once staff switch trading on.
   const tradeTerms = useTradeTerms();
   const canTrade = tradingOpen(tradeTerms);
-  const tradeCartTotal = tradeCartTotalCents(useTradeCart());
   const [tradeAddedId, setTradeAddedId] = useState<string | null>(null);
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
@@ -275,18 +274,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
               </>
             )}
           </p>
-          {canTrade && tradeTerms && tradeCartTotal > 0 && (
-            <TradeShippingProgress
-              compact
-              wantedCents={tradeCartTotal}
-              terms={tradeTerms}
-              action={
-                <Link to={`${TRADE_CENTER_PATH}#trade-cart`} className="gg-tc-progress__link">
-                  Review your trade
-                </Link>
-              }
-            />
-          )}
+          <TradeCartProgress />
           <ul className="gg-card-detail__listinglist">
             {listings.map((l) => (
               <li
