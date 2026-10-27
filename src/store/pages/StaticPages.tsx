@@ -14,6 +14,7 @@ import {
   LEGAL_NAME,
   MAX_DRIVE_HOURS,
   ORGANIZATION_ID,
+  OWNER_NAME,
   WEBSITE_JSON_LD,
   absoluteUrl,
   breadcrumbJsonLd,
@@ -327,10 +328,12 @@ export function ReturnsPage() {
 // /about — who runs Geega Games, what it does, and (because Google's AI
 // Overview has confused the two) that it has nothing to do with the
 // streamer "GEEGA". The same facts are in the site-wide JSON-LD
-// (legalName, disambiguatingDescription) in src/seo/site.ts. Only verified
-// facts: the legal entity is from the Terms of Service; how the business
-// buys and sells is from the sell pages and the owner (2026-09-26: meetups,
-// mail, and a booth or table at events).
+// (legalName, founder, disambiguatingDescription) in src/seo/site.ts. Only
+// verified facts: the legal entity is from the Terms of Service; how the
+// business buys and sells is from the sell pages and the owner (2026-09-26:
+// meetups and mail; 2026-10-27: no events right now, so the page doesn't
+// mention them). The owner's name and what he says about Marvel, the dog in
+// the logo, are his own words (2026-10-27), quoted as he gave them.
 const ABOUT_JSON_LD = [
   breadcrumbJsonLd([{ name: "About", path: "/about" }]),
   {
@@ -346,8 +349,7 @@ const ABOUT_JSON_LD = [
 export function AboutPage() {
   useSEO({
     title: "About Geega Games — St. Louis Magic: The Gathering Shop & Card Buyer",
-    description:
-      "Geega Games is an independently owned St. Louis card business: hand-graded Magic singles online and at local events, and a buyer of Magic collections by mail or in person. Not affiliated with the streamer GEEGA.",
+    description: `Geega Games is an independently owned St. Louis card business run by ${OWNER_NAME}: hand-graded Magic singles online, and a buyer of Magic collections by mail or in person. Not affiliated with the streamer GEEGA.`,
     path: "/about",
     jsonLd: ABOUT_JSON_LD,
   });
@@ -358,17 +360,16 @@ export function AboutPage() {
         <h1>About Geega Games</h1>
         <p>
           Geega Games is a small, independently owned trading card business based in St. Louis,
-          Missouri, run by {LEGAL_NAME}, a Missouri limited liability company. We sell Magic: The
-          Gathering singles and buy Magic cards and whole collections.
+          Missouri, run by {OWNER_NAME} through {LEGAL_NAME}, a Missouri limited liability company.
+          We sell Magic: The Gathering singles and buy Magic cards and whole collections.
         </p>
 
         <h2>What we do</h2>
         <ul>
           <li>
             <strong>Sell Magic singles.</strong> Every card is graded by hand before it&rsquo;s listed
-            (see our <Link to="/condition-guide">condition guide</Link>), shipped from St. Louis — and
-            you&rsquo;ll also find us with a booth or table at local events.{" "}
-            <Link to="/shop">Shop singles</Link>
+            (see our <Link to="/condition-guide">condition guide</Link>) and shipped from St.
+            Louis. <Link to="/shop">Shop singles</Link>
           </li>
           <li>
             <strong>Buy Magic cards and collections.</strong> We meet up anywhere around St. Louis,
@@ -388,6 +389,29 @@ export function AboutPage() {
             ))}
           </li>
         </ul>
+
+        <h2>Meet Marvel</h2>
+        <div className="gg-about-marvel">
+          <img
+            src="/logo.png"
+            alt="Marvel, the dog in the Geega Games logo"
+            width={600}
+            height={480}
+            loading="lazy"
+            className="gg-about-marvel__img"
+          />
+          <div>
+            <p>The dog in our logo is Marvel.</p>
+            <blockquote className="gg-about-marvel__quote">
+              <p>
+                &ldquo;Marvel is one of the sweetest dogs you&rsquo;ll ever meet. She can be
+                intimidating at first, but she&rsquo;s very sweet once you get to know her. I model
+                the business around this. We believe in the best customer service possible.&rdquo;
+              </p>
+              <footer>— {OWNER_NAME}</footer>
+            </blockquote>
+          </div>
+        </div>
 
         <h2>How we work</h2>
         <ul>

@@ -7801,3 +7801,43 @@ html {
     width: 100%;
   }
 }
+
+/* ---- About: Meet Marvel ---- */
+.gg-about-marvel {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  margin: 0 0 1.25rem;
+}
+.gg-about-marvel__img {
+  flex: none;
+  width: 150px;
+  height: auto;
+}
+.gg-about-marvel p {
+  margin: 0 0 0.75rem;
+}
+.gg-about-marvel__quote {
+  margin: 0;
+  padding: 0.85rem 1.1rem;
+  border-left: 4px solid var(--gg-purple-2);
+  border-radius: 0 10px 10px 0;
+  background: #faf6ff;
+}
+.gg-about-marvel__quote p {
+  margin: 0 0 0.5rem;
+  line-height: 1.6;
+}
+.gg-about-marvel__quote footer {
+  font-weight: 600;
+  color: var(--gg-ink);
+}
+@media (max-width: 560px) {
+  .gg-about-marvel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .gg-about-marvel__img {
+    width: 120px;
+  }
+}

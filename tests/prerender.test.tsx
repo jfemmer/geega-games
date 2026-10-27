@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderPage } from "../src/prerender";
 import { seoRoutes } from "../src/seo/routes";
+import { SITE_JSON_LD } from "../src/seo/site";
 
 // Runs in vitest's default node environment — no window, no document — which
 // is exactly the build-time prerender's situation. If any storefront page,
@@ -19,6 +20,25 @@ describe("build-time prerender", () => {
     // Real content, not a loading shell — the whole point of prerendering.
     expect(html).toContain('<header class="gg-header"');
     expect(html).toContain('<footer class="footer"');
+  });
+
+  it("says on /about who runs Geega Games and introduces Marvel, in the owner's words", () => {
+    const { html, seo } = renderPage("/about");
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(text).toContain("run by Jacob Femmer through Geega Games LLC");
+    expect(text).toContain("Meet Marvel");
+    expect(text).toContain("Marvel is one of the sweetest dogs you’ll ever meet.");
+    expect(text).toContain("We believe in the best customer service possible.");
+    expect(seo?.description).toContain("run by Jacob Femmer");
+    // No events right now (owner, 2026-10-27): nothing may claim them.
+    expect(text).not.toMatch(/local events|booth|table at/i);
+    expect(seo?.description).not.toMatch(/events/i);
+  });
+
+  it("names the owner in the business details search engines read, and claims no events", () => {
+    const site = SITE_JSON_LD as { founder?: { name?: string }; description?: string };
+    expect(site.founder).toEqual({ "@type": "Person", name: "Jacob Femmer" });
+    expect(site.description).not.toMatch(/events/i);
   });
 
   it("renders the not-found page for an address the app doesn't have", () => {

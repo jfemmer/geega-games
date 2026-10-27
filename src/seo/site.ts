@@ -75,6 +75,9 @@ export const ORGANIZATION_ID = `${PRODUCTION_ORIGIN}/#organization`;
 /** The business's legal entity, as stated in the Terms of Service. */
 export const LEGAL_NAME = "Geega Games LLC";
 
+/** Who runs Geega Games, as the owner asked to be named on /about (2026-10-27). */
+export const OWNER_NAME = "Jacob Femmer";
+
 /**
  * Tells search engines (and the AI answers built on them) that Geega Games is
  * not the similarly-named streamer "GEEGA" — Google's AI Overview has
@@ -209,9 +212,11 @@ export const SITE_JSON_LD: object = {
   "@id": ORGANIZATION_ID,
   name: "Geega Games",
   legalName: LEGAL_NAME,
+  // No events right now (owner, 2026-10-27): say only what the business does today.
   description:
-    "Magic: The Gathering singles shop and card buyer based in St. Louis, Missouri. Sells singles online and at local events, and buys MTG cards and collections at meetups around St. Louis, within about a 6-hour drive, and by mail nationwide.",
+    "Magic: The Gathering singles shop and card buyer based in St. Louis, Missouri. Sells singles online, and buys MTG cards and collections at meetups around St. Louis, within about a 6-hour drive, and by mail nationwide.",
   disambiguatingDescription: DISAMBIGUATING_DESCRIPTION,
+  founder: { "@type": "Person", name: OWNER_NAME },
   url: `${PRODUCTION_ORIGIN}/`,
   logo: `${PRODUCTION_ORIGIN}/logo.png`,
   image: `${PRODUCTION_ORIGIN}/og-image.png`,
