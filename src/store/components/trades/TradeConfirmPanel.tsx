@@ -103,7 +103,7 @@ export function TradeConfirmPanel({
           <dt>Your trade-in cards (approved estimate)</dt>
           <dd>
             {formatCents(value)}
-            <span className="gg-tc-facts__sub">{formatCents(credit)} in trade credit</span>
+            <span className="gg-tc-facts__sub">Priced at TCG low. {formatCents(credit)} in trade credit.</span>
           </dd>
         </div>
         <div>

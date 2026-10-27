@@ -185,7 +185,7 @@ export function EconomicsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =
         </div>
       ),
     },
-    { key: "in", header: "Their cards (market)", align: "right", render: (r) => formatCents(r.economics.incomingMarketCents) },
+    { key: "in", header: "Their cards (TCG low)", align: "right", render: (r) => formatCents(r.economics.incomingMarketCents) },
     { key: "out", header: "Our cards (retail)", align: "right", render: (r) => formatCents(r.economics.outgoingRetailCents) },
     { key: "gross", header: "Gross difference", align: "right", secondary: true, render: (r) => signed(r.economics.grossDifferenceCents) },
     {
@@ -226,7 +226,7 @@ export function EconomicsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =
         <>
           <div className="gg-statgrid">
             <StatCard label="Trades finished" value={String(t.trades)} icon="swap" caption={t.trades ? `Average ${formatCents(t.averageOutgoingCents)} of our cards` : undefined} />
-            <StatCard label="Their cards in (market)" value={formatCents(t.incomingMarketCents)} icon="arrowDown" />
+            <StatCard label="Their cards in (TCG low)" value={formatCents(t.incomingMarketCents)} icon="arrowDown" />
             <StatCard label="Our cards out (retail)" value={formatCents(t.outgoingRetailCents)} icon="arrowUp" />
             <StatCard
               label="Net change in retail-priced inventory"
@@ -249,7 +249,7 @@ export function EconomicsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =
             />
           </div>
           <p className="gg-card-meta gg-trd-econ__note">
-            Theoretical inventory-value differences: the market value of the cards we took in, less the retail value of the cards we sent,
+            Theoretical inventory-value differences: what the cards we took in are worth (the TCG low you set), less the retail value of the cards we sent,
             less what shipping our cards cost beyond what customers paid. They aren&rsquo;t profit: they don&rsquo;t account for what our
             cards cost us, payment fees or cash flow.
             {t.estimatedShipments > 0 && settings

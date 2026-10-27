@@ -1,10 +1,11 @@
 // Internal trade economics (admin Trades): what a finished trade did to our
 // retail-priced inventory, with shipping. These are theoretical
-// inventory-value differences at market and retail prices, not profit: they
+// inventory-value differences (their cards at the TCG low staff set, ours
+// at retail), not profit: they
 // don't account for what the store paid for its cards (cost basis), cash
 // flow, payment fees or anything else in the books.
 //
-//   gross difference    = accepted market value in − retail value out
+//   gross difference    = accepted value in (TCG low) − retail value out
 //   net shipping        = what shipping our cards cost − the fee charged
 //   shipping-adjusted   = gross difference − net shipping
 //
@@ -13,7 +14,7 @@
 // Pure module: no React, browser, Node or Supabase imports. Money is whole cents.
 
 export interface TradeEconomicsInput {
-  /** Accepted market value of their cards (after inspection); null before the final offer. */
+  /** Accepted value of their cards after inspection (the TCG low staff set); null before the final offer. */
   finalValueCents: number | null;
   /** Our cards, at their retail (trade) prices. */
   wantedTotalCents: number;

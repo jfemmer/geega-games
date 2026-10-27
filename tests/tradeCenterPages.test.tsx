@@ -27,6 +27,8 @@ const world = vi.hoisted(() => ({
   missing: false,
   /** A POST's answer (default: ok with the current trade). */
   respond: null as null | ((body: Record<string, unknown>) => { status: number; json: Record<string, unknown> }),
+  /** What the public card search (/api/sell/scryfall-search) finds. */
+  printings: [] as Record<string, unknown>[],
 }));
 
 vi.mock("../src/supabase", () => {
@@ -97,6 +99,7 @@ const CARD_DETAIL = {
 const fetchMock = vi.fn(async (url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) => {
   const u = new URL(url, "http://localhost");
   const reply = (status: number, json: unknown) => ({ ok: status < 400, status, json: async () => json });
+  if (u.pathname === "/api/sell/scryfall-search") return reply(200, { data: world.printings, totalCards: world.printings.length, hasMore: false, page: 1 });
   if (u.pathname !== "/api/trade-center") return reply(404, { ok: false });
   if ((init?.method ?? "GET") === "GET") {
     if (u.searchParams.get("view") === "mine") return reply(200, { ok: true, terms: world.terms, trades: world.trades });
@@ -158,6 +161,7 @@ beforeEach(() => {
   world.posts = [];
   world.respond = null;
   world.missing = false;
+  world.printings = [];
   fetchMock.mockClear();
 });
 
@@ -166,34 +170,93 @@ afterEach(() => {
 });
 
 describe("the Trade Cards page (1)", () => {
-  it("advertises the terms and starts a trade from the trade cart, as the signed-in customer", async () => {
+  /** The cart's cards, the summary beside them, and how trading works, once the terms have loaded. */
+  async function openCart() {
+    at("/trade-cards", <TradeCardsPage />);
+    await screen.findByRole("heading", { level: 1, name: "Your trade cart" });
+    const how = await screen.findByRole("region", { name: "How trading works" });
+    await waitFor(() => expect(how).toHaveTextContent("80% of your cards’ final TCG low"));
+    return how;
+  }
+
+  it("is a trade cart: our cards, what of theirs it takes at TCG low, and starting the trade as the signed-in customer", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
     world.respond = () => ({ status: 200, json: { ok: true, terms: TRADE_TERMS, trade: customerTrade({ id: "new-trade" }) } });
-    at("/trade-cards", <TradeCardsPage />);
-    expect(await screen.findByText("80% of your cards' value as trade credit")).toBeInTheDocument();
-    expect(screen.getByText("Cards worth $15.00 or more each")).toBeInTheDocument();
-    const cart = screen.getByRole("heading", { name: "Your trade cart" }).parentElement!;
-    expect(cart).toHaveTextContent("The One Ring");
-    expect(cart).toHaveTextContent("Our cards: $79.99");
-    // Starting doesn't reserve anything.
-    expect(cart).toHaveTextContent("Starting a trade doesn’t reserve these yet");
+    await openCart();
+    // What the page is, in a line.
+    expect(screen.getByText(/We price your cards at TCG low, and you get 80% of that as trade credit toward ours\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Your trades" })).toHaveAttribute("href", "/account/trades");
 
-    await user.click(within(cart).getByRole("button", { name: "Start my trade" }));
+    const items = screen.getByRole("region", { name: "Cards you want (1)" });
+    expect(items).toHaveTextContent("The One Ring");
+    expect(within(items).getByRole("link", { name: "Add more cards" })).toHaveAttribute("href", "/shop");
+    expect(items).toHaveTextContent("Trade prices are our regular prices");
+
+    const summary = screen.getByRole("complementary", { name: "Trade summary" });
+    expect(summary).toHaveTextContent("Our cards (1)$79.99");
+    // $79.99 of our cards at 80% trade credit takes $99.99 of theirs, at TCG low.
+    expect(within(summary).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, trade in $99.99 of your cards at TCG low");
+    expect(summary).toHaveTextContent("At 80% trade credit. Trade in less and pay the rest by card, or more and keep the extra as store credit.");
+    // Starting doesn't reserve anything.
+    expect(summary).toHaveTextContent("Starting a trade doesn’t reserve these yet");
+
+    await user.click(within(summary).getByRole("button", { name: "Start my trade" }));
     await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-trade"));
     expect(world.posts).toEqual([{ body: { action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }] }, auth: "Bearer member-token" }]);
     expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "null")).toEqual([]);
   });
 
+  it("starts empty, with the way to the shop and how trading works", async () => {
+    const how = await openCart();
+    expect(screen.getByRole("heading", { level: 2, name: "Your trade cart is empty" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Browse cards to trade for" })).toHaveAttribute("href", "/shop");
+    expect(screen.queryByRole("complementary", { name: "Trade summary" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /start my trade/i })).toBeNull();
+    expect(how).toBeInTheDocument();
+  });
+
+  it("explains trading in short steps: the list priced at TCG low when we review it, conditions from each card's age, and values that can change when the cards arrive", async () => {
+    const how = await openCart();
+    const steps = within(how).getAllByRole("listitem").map((li) => li.textContent);
+    expect(steps).toEqual([
+      "Pick our cards. Add cards from our shop to this cart. $200 or more of our cards ships free.",
+      "Send us your list. Start your trade, then search for the cards you’re trading in or paste a list. We set each card’s condition from its age, and show you a rough estimate.",
+      "We review it at TCG low. We price each of your cards at its TCG low (the lowest price listed on TCGplayer) for its condition, and email you when your trade is approved.",
+      "Confirm and ship. Confirm within 2 days to reserve our cards (trades of $300.00 or more take a refundable deposit), then ship yours with tracking within 3 days. Sundays don’t count.",
+      "We check your cards. When they arrive we check each card’s condition, so its value can go up or down. You’ll see every change and why.",
+      "Accept your final offer. 80% of your cards’ final TCG low is your credit toward ours. Pay any difference by card or keep leftover credit for next time, and we ship our cards to you. Or decline with no penalty and we mail yours back.",
+    ]);
+    // How a card's age sets the condition it's listed at.
+    const ages = within(how).getByRole("table", { name: /From when the card’s printing came out/ });
+    expect(within(ages).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
+      "Under 3 years oldNear Mint",
+      "3 to 10 years oldLightly Played",
+      "10 to 20 years oldModerately Played",
+      "20 years or olderHeavily Played",
+    ]);
+    // The FAQ says the same.
+    expect(screen.getByText("How do you decide my cards' condition?")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /From when each printing came out: Near Mint under 3 years old, Lightly Played 3 to 10 years, Moderately Played 10 to 20 years, Heavily Played 20 years or older\. When your cards arrive we check every one/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/we price each of your cards at its TCG low \(TCGplayer's lowest listed price\) for its condition and finish\. Your trade credit is 80% of that\./)).toBeInTheDocument();
+    expect(screen.getByText(/One in better shape than listed is worth more, and one in worse shape is worth less/)).toBeInTheDocument();
+    // No minimum set: the page doesn't advertise a $0 one.
+    expect(screen.getByText(/^Not right now: a trade can be any amount of our cards\./)).toBeInTheDocument();
+    expect(how).not.toHaveTextContent("$0");
+  });
+
   it("explains reservations, the confirmation and shipping windows and the deposit, from the settings", async () => {
-    at("/trade-cards", <TradeCardsPage />);
-    expect(await screen.findByText("Our cards reserved for you once you confirm")).toBeInTheDocument();
-    expect(screen.getByText("Decline the final offer with no penalty")).toBeInTheDocument();
+    await openCart();
     // The worked example is a real deadline: 3 qualifying days from Friday 2 PM skips Sunday.
     expect(screen.getByText(/confirm on a Friday at 2 PM and you'd ship by Tuesday at 2 PM/)).toBeInTheDocument();
     expect(screen.getByText(/Once we approve it you have 48 hours to confirm \(Sundays don't count\)/)).toBeInTheDocument();
+    expect(screen.getByText("Ask us to take another look, or decline it. We mail them back.")).toBeInTheDocument();
 
-    const deposit = screen.getByRole("heading", { name: "The refundable deposit" }).closest("section")!;
+    const deposit = screen.getByText("The refundable deposit").closest("details")!;
     expect(deposit).toHaveTextContent("trades with $300.00 or more of our cards need a small deposit to confirm");
     const rows = within(deposit).getAllByRole("row").slice(1).map((r) => r.textContent);
     expect(rows).toEqual([
@@ -207,9 +270,9 @@ describe("the Trade Cards page (1)", () => {
 
   it("doesn't advertise a deposit while deposits are off", async () => {
     world.terms = { ...TRADE_TERMS, depositsEnabled: false };
-    at("/trade-cards", <TradeCardsPage />);
-    await screen.findByText("80% of your cards' value as trade credit");
-    expect(screen.queryByRole("heading", { name: "The refundable deposit" })).toBeNull();
+    const how = await openCart();
+    expect(screen.queryByText("The refundable deposit")).toBeNull();
+    expect(how).not.toHaveTextContent("deposit");
     expect(screen.getByText(/Not right now\. If a trade ever needs one/)).toBeInTheDocument();
   });
 
@@ -222,6 +285,7 @@ describe("the Trade Cards page (1)", () => {
     expect(window.location.pathname).toBe("/login");
     expect(window.location.search).toBe("?next=%2Ftrade-cards");
     expect(world.posts).toEqual([]);
+    expect(screen.queryByRole("link", { name: "Your trades" })).toBeNull();
   });
 
   it("says when new trades are paused, and won't start one", async () => {
@@ -232,53 +296,62 @@ describe("the Trade Cards page (1)", () => {
     expect(screen.queryByRole("button", { name: /start my trade/i })).toBeNull();
   });
 
-  it("won't start a trade under the minimum, and shows the way to it and to free shipping as cards change", async () => {
+  it("won't start a trade under the minimum, and follows the cart: the minimum, free shipping and the TCG low it takes", async () => {
     const user = userEvent.setup();
     world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
     const signet = { ...CART_ITEM, inventoryItemId: "i2", cardName: "Arcane Signet", quantity: 2, maxQuantity: 9, tradePriceCents: 2500 };
     window.localStorage.setItem("gg-trade-cart", JSON.stringify([signet]));
-    at("/trade-cards", <TradeCardsPage />);
-    const cart = (await screen.findByRole("heading", { name: "Your trade cart" })).parentElement!;
-    const copies = (n: number) => user.selectOptions(within(cart).getByLabelText("How many Arcane Signet"), String(n));
-    // $50 of our cards: browse and add freely, but not start.
-    expect(within(cart).getByText("Add $25 more to start your trade!")).toBeInTheDocument();
-    expect(within(cart).getByText("Add $25 more in cards to reach the $75 minimum trade value!")).toBeInTheDocument();
-    expect(within(cart).getByRole("button", { name: "Start my trade" })).toBeDisabled();
+    await openCart();
+    const summary = screen.getByRole("complementary", { name: "Trade summary" });
+    const copies = (n: number) => user.selectOptions(screen.getByLabelText("How many Arcane Signet"), String(n));
+    const need = () => within(summary).getByText(/^To cover our cards, trade in/).closest("p");
+    // $50 of our cards: browse and add freely, but not start. It takes $62.50 of theirs at TCG low.
+    expect(within(summary).getByText("Add $25 more to start your trade!")).toBeInTheDocument();
+    expect(within(summary).getByText("Add $25 more in cards to reach the $75 minimum trade value!")).toBeInTheDocument();
+    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
+    expect(need()).toHaveTextContent("To cover our cards, trade in $62.50 of your cards at TCG low");
     // Shipping our cards is its own line, apart from shipping theirs to us.
-    expect(cart).toHaveTextContent("Shipping our cards to youTracked, free from $200 · paid by card when your trade is final$3.99");
-    expect(cart).toHaveTextContent("You ship your cards to us separately, with tracking, at your cost.");
+    expect(summary).toHaveTextContent("Shipping our cards to youTracked, free from $200 · paid by card when your trade is final$3.99");
+    expect(screen.getByText(/You ship your cards to us separately, with tracking, at your cost\./)).toBeInTheDocument();
     // $100: past the minimum, $100 from free shipping.
     await copies(4);
-    expect(within(cart).getByText("You’re $100 away from FREE shipping!")).toBeInTheDocument();
-    expect(within(cart).getByText("Your trade meets the minimum value requirement!")).toBeInTheDocument();
-    expect(within(cart).getByRole("button", { name: "Start my trade" })).toBeEnabled();
-    expect(within(cart).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+    expect(screen.getByRole("region", { name: "Cards you want (4)" })).toBeInTheDocument();
+    expect(within(summary).getByText("You’re $100 away from FREE shipping!")).toBeInTheDocument();
+    expect(within(summary).getByText("Your trade meets the minimum value requirement!")).toBeInTheDocument();
+    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeEnabled();
+    expect(within(summary).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+    expect(need()).toHaveTextContent("trade in $125.00 of your cards at TCG low");
+    expect(summary).toHaveTextContent("Our cards (4)$100.00");
     // $175: nearly there. $200: free.
     await copies(7);
-    expect(within(cart).getByText("Add just $25 more to unlock FREE shipping!")).toBeInTheDocument();
+    expect(within(summary).getByText("Add just $25 more to unlock FREE shipping!")).toBeInTheDocument();
     await copies(8);
-    expect(within(cart).getByText("Your trade qualifies for FREE tracked shipping!")).toBeInTheDocument();
-    expect(cart).toHaveTextContent("Shipping our cards to youTracked, on usFREE");
+    expect(within(summary).getByText("Your trade qualifies for FREE tracked shipping!")).toBeInTheDocument();
+    expect(summary).toHaveTextContent("Shipping our cards to youTracked, on usFREE");
+    expect(need()).toHaveTextContent("trade in $250.00 of your cards at TCG low");
+    // The bar doesn't repeat the shipping line in the summary.
+    expect(within(summary).queryByText(/^Shipping:/)).toBeNull();
     // Back under the minimum: the start is off again.
     await copies(1);
-    expect(within(cart).getByRole("button", { name: "Start my trade" })).toBeDisabled();
+    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
     expect(world.posts).toEqual([]);
   });
 
-  it("spells out the minimum and the shipping tiers from the settings", async () => {
-    world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
-    at("/trade-cards", <TradeCardsPage />);
-    const section = (await screen.findByRole("heading", { name: "Minimum trade and shipping" })).closest("section")!;
-    expect(section).toHaveTextContent("Every trade needs at least $75 of our cards.");
-    expect(within(section).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
-      "Under $75Add more to start a trade",
-      "$75 to $199.99$3.99",
-      "$200 or moreFREE",
-    ]);
-    expect(section).toHaveTextContent("covering $75 of our cards completely takes $93.75 of your cards");
-    expect(section).toHaveTextContent("Shipping is never charged on a trade that’s canceled or declined, and it’s separate from any deposit.");
-    expect(screen.getByText(/Yes: at least \$75 of our cards per trade/)).toBeInTheDocument();
-    expect(screen.getByText("Free tracked shipping on $200 or more of our cards")).toBeInTheDocument();
+  it("spells out the minimum, shipping and the processing fee from the settings", async () => {
+    world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500, processingFeeCents: 200 };
+    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    const how = await openCart();
+    expect(how).toHaveTextContent("Trades start at $75 of our cards, and $200 or more ships free.");
+    const know = screen.getByRole("region", { name: "Good to know" });
+    expect(know).toHaveTextContent("Cards worth less than $15.00 each, in their condition, can’t be traded.");
+    expect(know).toHaveTextContent("Our cards ship to you tracked: $3.99, or free on $200 or more of our cards. Paid by card when your trade is final, never out of your trade credit.");
+    expect(know).toHaveTextContent("Shipping is never charged on a trade that’s canceled or declined, and it’s separate from any deposit.");
+    expect(know).toHaveTextContent("A processing fee of $2.00 comes off each trade’s credit.");
+    // The fee is covered too: ($79.99 + $2.00) at 80% takes $102.49 of theirs.
+    const summary = screen.getByRole("complementary", { name: "Trade summary" });
+    expect(summary).toHaveTextContent("To cover our cards, trade in $102.49 of your cards at TCG low");
+    expect(summary).toHaveTextContent("At 80% trade credit, after the $2.00 processing fee.");
+    expect(screen.getByText(/Yes: at least \$75 of our cards per trade/)).toHaveTextContent("takes $96.25 of your cards at TCG low to cover completely");
   });
 
   it("shows the start's refusal in its own words", async () => {
@@ -307,6 +380,8 @@ describe("Add to trade on a card page", () => {
     // The bar follows the cart: $80 is past the $75 minimum, $120 short of free shipping.
     expect(screen.getByText("You’re $120 away from FREE shipping!")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Our cards toward free shipping" })).toHaveAttribute("aria-valuenow", "80");
+    // And what it takes of theirs: $80 at 80% trade credit is $100 at TCG low.
+    expect(screen.getByText(/to cover ours/)).toHaveTextContent("Trade in $100.00 of your cards at TCG low to cover ours (80% trade credit)");
     expect(screen.getByRole("link", { name: "Review your trade" })).toHaveAttribute("href", "/trade-cards#trade-cart");
     expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "[]")).toEqual([
       expect.objectContaining({ inventoryItemId: "listing-1", tradePriceCents: 8000, maxQuantity: 2, quantity: 1 }),
@@ -394,6 +469,8 @@ describe("Add to trade on the shop's cards", () => {
     // The other card is untouched, and the progress above the grid follows the cart: $80 is past the $75 minimum.
     expect(screen.getByRole("button", { name: "Add to trade: Lightning Bolt" })).toBeInTheDocument();
     expect(screen.getByText("You’re $120 away from FREE shipping!")).toBeInTheDocument();
+    expect(screen.getByText(/to cover ours/)).toHaveTextContent("Trade in $100.00 of your cards at TCG low to cover ours (80% trade credit)");
+    expect(screen.getByText(/^Shipping:/)).toHaveTextContent("Shipping: $3.99");
     expect(screen.getByRole("link", { name: "Review your trade" })).toHaveAttribute("href", "/trade-cards#trade-cart");
   });
 
@@ -499,6 +576,79 @@ describe("a trade's page", () => {
     expect(balance).toHaveTextContent("About $37.50 more in your cards would cover ours, or pay the rest by card at the end.");
   });
 
+  /** "YYYY-MM-DD", `years` years before today: a printing's release date. */
+  const releasedYearsAgo = (years: number) => new Date(Date.now() - years * 365.25 * 86_400_000).toISOString().slice(0, 10);
+  /** Ragavan, as the public card search finds it: out 4½ years, so it's listed Lightly Played. */
+  const ragavanPrinting = (releasedAt: string | null = releasedYearsAgo(4.5)) => ({
+    scryfallId: "s9",
+    cardName: "Ragavan, Nimble Pilferer",
+    setName: "Modern Horizons 2",
+    setCode: "mh2",
+    collectorNumber: "138",
+    rarity: "mythic",
+    imageUrl: "",
+    availableFinishes: ["nonfoil", "foil"],
+    treatments: [],
+    scryfallPriceCents: 5200,
+    releasedAt,
+    prices: { usd: 5200, usdFoil: 6000, usdEtched: null },
+  });
+  const draftWithNoCards = () => customerTrade({ status: "awaiting_trade_list", listDueAt: "2099-01-01T05:59:59Z", estimatedValueCents: 0, offered: [] });
+
+  it("adds a card from the search at the condition its age gives: nothing to pick, and none sent", async () => {
+    const user = userEvent.setup();
+    const released = releasedYearsAgo(4.5);
+    world.printings = [ragavanPrinting(released)];
+    world.trade = draftWithNoCards();
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    // The page explains it before they start.
+    expect(await screen.findByText(/We set each card’s condition from its age \(Near Mint under 3 years old/)).toHaveTextContent(
+      "We price your cards at TCG low when we review your list, and check their condition when they arrive, so values can go up or down.",
+    );
+    await user.type(screen.getByLabelText("Search for a card"), "Ragavan");
+    await user.click(await screen.findByRole("button", { name: /Ragavan, Nimble Pilferer/ }));
+
+    const pick = screen.getByText("Ragavan, Nimble Pilferer", { selector: ".gg-tc-pick__name" }).closest(".gg-tc-pick") as HTMLElement;
+    expect(pick).toHaveTextContent(`Condition: Lightly PlayedPrinted in ${released.slice(0, 4)}. Set from the card’s age; we check it when your cards arrive.`);
+    expect(within(pick).queryByRole("combobox")).toBeNull();
+    expect(pick).toHaveTextContent("Estimated $46.80 each (today’s market price $52.00 × 90% for Lightly Played). We set the price at TCG low when we review your list.");
+
+    await user.click(within(pick).getByRole("button", { name: "Add to my cards" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "saveOffer", tradeId: TRADE_ID, cards: [{ scryfallId: "s9", finish: "nonfoil", quantity: 1 }] });
+  });
+
+  it("lists a brand-new printing, or one with no date, as Near Mint", async () => {
+    const user = userEvent.setup();
+    world.printings = [ragavanPrinting(null)];
+    world.trade = draftWithNoCards();
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    await user.type(await screen.findByLabelText("Search for a card"), "Ragavan");
+    await user.click(await screen.findByRole("button", { name: /Ragavan, Nimble Pilferer/ }));
+    const pick = screen.getByText("Ragavan, Nimble Pilferer", { selector: ".gg-tc-pick__name" }).closest(".gg-tc-pick") as HTMLElement;
+    expect(pick).toHaveTextContent("Condition: Near MintSet from the card’s age; we check it when your cards arrive.");
+    expect(pick).toHaveTextContent("Estimated $52.00 each (today’s market price $52.00). We set the price at TCG low when we review your list.");
+  });
+
+  it("ignores a condition written in a pasted list: each card's comes from its age", async () => {
+    const user = userEvent.setup();
+    world.printings = [ragavanPrinting()];
+    world.trade = draftWithNoCards();
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    await user.click(await screen.findByRole("button", { name: "Paste it or upload a CSV" }));
+    await user.click(screen.getByLabelText("Paste your list"));
+    await user.paste("2 Ragavan, Nimble Pilferer [MH2] 138 NM");
+    await user.click(screen.getByRole("button", { name: "Read my list" }));
+
+    const row = (await screen.findByText("2 Ragavan, Nimble Pilferer [MH2] 138 NM")).closest("li") as HTMLElement;
+    expect(within(row).getByText("Lightly Played")).toBeInTheDocument();
+    expect(row).toHaveTextContent("~$46.80 ea");
+    expect(within(row).queryByRole("combobox", { name: /Condition/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Add 1 card" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "saveOffer", tradeId: TRADE_ID, cards: [{ scryfallId: "s9", finish: "nonfoil", quantity: 2 }] });
+  });
+
   it("adds up the trade in the order it's read: what it takes, the credit, the rest of our cards, shipping by card, the deposit apart", async () => {
     world.trade = customerTrade({
       status: "awaiting_shipment",
@@ -512,7 +662,7 @@ describe("a trade's page", () => {
     const balance = await screen.findByRole("region", { name: "Your trade" });
     // $150 of ours takes $187.50 of theirs at 80%; $150 approved earns $120: $30 of our cards and $3.99 shipping by card.
     expect(balance).toHaveTextContent("Our cards$150.00");
-    expect(balance).toHaveTextContent("Your cards needed to cover themAt 80% trade credit$187.50");
+    expect(balance).toHaveTextContent("Your cards neededAt TCG low, to cover ours at 80% trade credit$187.50");
     expect(balance).toHaveTextContent("Your cards (approved)$150.00");
     expect(balance).toHaveTextContent("Trade credit at 80%$120.00");
     expect(balance).toHaveTextContent("Left to pay for our cards$30.00");
@@ -600,6 +750,7 @@ describe("a trade's page", () => {
     expect(panel).toHaveTextContent("Until you do, our cards stay on sale.");
     expect(panel).toHaveTextContent("Refundable depositNone needed");
     expect(panel).toHaveTextContent("Total reserved market value$88.99");
+    expect(panel).toHaveTextContent("Your trade-in cards (approved estimate)$80.00Priced at TCG low. $64.00 in trade credit.");
     expect(panel).toHaveTextContent("if you confirm now: 3 days, Sundays don’t count");
     expect(panel).toHaveTextContent("Approved on this condition: Sheoldred must be Near Mint.");
     expect(within(panel).getByRole("heading", { name: "What confirming means" })).toBeInTheDocument();

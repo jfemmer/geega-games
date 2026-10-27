@@ -508,7 +508,7 @@ export function eligibilityMessage(eligibility: TradeEligibility, minCardValueCe
     case "eligible":
       return "Eligible";
     case "needs_review":
-      return "No current market price. We'll value it by hand.";
+      return "No price found yet. We'll price it when we review your list.";
     case "below_minimum":
       return `Under our ${formatUsd(minCardValueCents)} minimum per card, in this condition`;
     case "excluded_set":
@@ -729,7 +729,8 @@ export interface TradeOfferInput {
   id?: string;
   scryfallId: string;
   finish: TradeFinish;
-  condition: CardConditionCode;
+  /** Not used by the server: it sets the condition from the printing's age (tradeConditions). */
+  condition?: CardConditionCode;
   quantity: number;
   customerEstimateCents?: number | null;
   note?: string | null;

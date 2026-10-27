@@ -155,7 +155,8 @@ export function reviewDraftOf(card: StaffTradeOfferCard): ReviewDraft {
   return {
     decision: card.reviewStatus,
     quantity: card.reviewStatus === "approved" && card.approvedQuantity ? card.approvedQuantity : card.quantity,
-    unit: centsInput(card.reviewStatus === "approved" ? card.approvedUnitCents : card.estimatedUnitCents),
+    // Staff type each card's TCG low; nothing is filled in from the market estimate.
+    unit: centsInput(card.reviewStatus === "approved" ? card.approvedUnitCents : null),
     reviewNote: card.reviewNote ?? "",
     internalNote: card.internalNote ?? "",
   };
@@ -180,7 +181,7 @@ export function reviewInput(card: StaffTradeOfferCard, draft: ReviewDraft): Revi
     return { problem: `${card.cardName}: approve 1 to ${card.quantity}.` };
   }
   const unit = parseUnitCents(draft.unit);
-  if (unit === null) return { problem: `${card.cardName}: enter a value for each copy.` };
+  if (unit === null) return { problem: `${card.cardName}: enter its TCG low (each).` };
   return { id: card.id, reviewStatus: "approved", approvedQuantity: draft.quantity, approvedUnitCents: unit, ...notes };
 }
 
@@ -188,16 +189,21 @@ export interface ReviewTally {
   approved: number;
   rejected: number;
   pending: number;
+  /** Approved cards with no TCG low typed in yet. */
+  unpriced: number;
   /** Approved copies × value each, as the drafts stand. */
   approvedValueCents: number;
 }
 
 export function reviewTally(cards: StaffTradeOfferCard[], drafts: Record<string, ReviewDraft>): ReviewTally {
-  const tally: ReviewTally = { approved: 0, rejected: 0, pending: 0, approvedValueCents: 0 };
+  const tally: ReviewTally = { approved: 0, rejected: 0, pending: 0, unpriced: 0, approvedValueCents: 0 };
   for (const card of cards) {
     const d = drafts[card.id] ?? reviewDraftOf(card);
     tally[d.decision] += 1;
-    if (d.decision === "approved") tally.approvedValueCents += d.quantity * (parseUnitCents(d.unit) ?? 0);
+    if (d.decision !== "approved") continue;
+    const unit = parseUnitCents(d.unit);
+    if (unit === null) tally.unpriced += 1;
+    else tally.approvedValueCents += d.quantity * unit;
   }
   return tally;
 }

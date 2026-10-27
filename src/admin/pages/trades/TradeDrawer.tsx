@@ -545,7 +545,7 @@ function MoneySection({ trade, settings, busy, run }: TradePanelProps) {
           <dd>{formatCents(m.wantedCents)}</dd>
         </div>
         <div>
-          <dt>Their cards ({stage}, market)</dt>
+          <dt>Their cards ({stage === "estimated" ? "estimated at market" : `${stage}, TCG low`})</dt>
           <dd>{formatCents(m.valueCents)}</dd>
         </div>
         <div>
@@ -678,8 +678,8 @@ function TradeEconomicsBlock({ trade, settings, busy, run }: Pick<TradePanelProp
         </div>
       </dl>
       <p className="gg-card-meta">
-        Theoretical: the market value of their cards we took, less the retail value of ours, less net shipping. It isn&rsquo;t profit: it
-        doesn&rsquo;t account for what our cards cost us, fees or cash flow.
+        Theoretical: what their cards we took are worth (the TCG low you set), less the retail value of ours, less net shipping. It
+        isn&rsquo;t profit: it doesn&rsquo;t account for what our cards cost us, fees or cash flow.
       </p>
       {e.shippingCostSource !== "label" &&
         (editing ? (

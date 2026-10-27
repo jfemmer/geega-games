@@ -143,21 +143,25 @@ describe("the deposit an approval would set", () => {
 });
 
 describe("review", () => {
-  it("starts from the estimate and only counts real changes", () => {
+  it("starts with the value empty for staff to type its TCG low (not the market estimate), and only counts real changes", () => {
     const c = card();
     const draft = reviewDraftOf(c);
-    expect(draft).toEqual({ decision: "pending", quantity: 2, unit: "80.00", reviewNote: "", internalNote: "" });
+    expect(draft).toEqual({ decision: "pending", quantity: 2, unit: "", reviewNote: "", internalNote: "" });
     expect(reviewChanged(c, draft)).toBe(false);
-    expect(reviewChanged(c, { ...draft, unit: "80" })).toBe(false); // the same amount, typed differently
+    expect(reviewChanged(c, { ...draft, unit: "80" })).toBe(false); // a value only counts once the card is approved
     expect(reviewChanged(c, { ...draft, decision: "approved" })).toBe(true);
     const saved = card({ reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 7000 });
     expect(reviewDraftOf(saved)).toMatchObject({ decision: "approved", quantity: 1, unit: "70.00" });
+    expect(reviewChanged(saved, { ...reviewDraftOf(saved), unit: "70" })).toBe(false); // the same amount, typed differently
+    expect(reviewChanged(saved, { ...reviewDraftOf(saved), unit: "72.50" })).toBe(true);
   });
 
   it("sends a decision only when it's complete", () => {
     const c = card();
     expect(reviewInput(c, { ...reviewDraftOf(c), decision: "approved", quantity: 3 })).toEqual({ problem: "Sheoldred, the Apocalypse: approve 1 to 2." });
-    expect(reviewInput(c, { ...reviewDraftOf(c), decision: "approved", unit: "" })).toEqual({ problem: "Sheoldred, the Apocalypse: enter a value for each copy." });
+    // Approving needs its TCG low typed in: nothing is taken from the estimate.
+    expect(reviewInput(c, { ...reviewDraftOf(c), decision: "approved" })).toEqual({ problem: "Sheoldred, the Apocalypse: enter its TCG low (each)." });
+    expect(reviewInput(c, { ...reviewDraftOf(c), decision: "approved", unit: "abc" })).toEqual({ problem: "Sheoldred, the Apocalypse: enter its TCG low (each)." });
     expect(reviewInput(c, { ...reviewDraftOf(c), decision: "approved", quantity: 1, unit: "75", reviewNote: " Nice " })).toEqual({
       id: "c1",
       reviewStatus: "approved",
@@ -172,8 +176,12 @@ describe("review", () => {
   it("tallies decisions and the approved value as the drafts stand", () => {
     const a = card({ id: "a" });
     const b = card({ id: "b", estimatedUnitCents: null, referencePriceCents: null });
-    const tally = reviewTally([a, b], { a: { ...reviewDraftOf(a), decision: "approved", quantity: 1 } });
-    expect(tally).toEqual({ approved: 1, rejected: 0, pending: 1, approvedValueCents: 8000 });
+    const c = card({ id: "c" });
+    const tally = reviewTally([a, b, c], {
+      a: { ...reviewDraftOf(a), decision: "approved", quantity: 1, unit: "76.50" },
+      c: { ...reviewDraftOf(c), decision: "approved" }, // no TCG low typed yet: counts nothing
+    });
+    expect(tally).toEqual({ approved: 2, rejected: 0, pending: 1, unpriced: 1, approvedValueCents: 7650 });
   });
 });
 

@@ -17,16 +17,28 @@ export function CardThumb({ imageUrl }: { imageUrl: string | null }) {
   );
 }
 
-/** A customer's card: picture, name, printing, what they told us, and how we priced it. */
+/** TCGplayer's search for a card, to look up its TCG low (staff pick the printing there). */
+function tcgplayerSearchUrl(cardName: string): string {
+  return `https://www.tcgplayer.com/search/magic/product?productLineName=magic&q=${encodeURIComponent(cardName)}&view=grid`;
+}
+
+/**
+ * A customer's card: picture, name, printing, what they told us, and how we
+ * estimated it (today's market price for the condition its age gives;
+ * staff price it at TCG low). With `lookup`, a link to look up its TCG low.
+ */
 export function OfferCardHead({
   card,
   minCardValueCents,
   showPricing = true,
+  lookup = false,
   aside,
 }: {
   card: StaffTradeOfferCard;
   minCardValueCents: number;
   showPricing?: boolean;
+  /** A "Look up TCG low" link (review and inspection). */
+  lookup?: boolean;
   aside?: ReactNode;
 }) {
   const printing = printingLabel(card);
@@ -41,9 +53,16 @@ export function OfferCardHead({
         {showPricing && (
           <p className="gg-trd-card__meta">
             {card.referencePriceCents != null && card.estimatedUnitCents != null
-              ? `Market ${formatCents(card.referencePriceCents)} × ${card.conditionPercent}% = ${formatCents(card.estimatedUnitCents)} each`
-              : "No market price: value it by hand"}
+              ? `Market estimate ${formatCents(card.referencePriceCents)} × ${card.conditionPercent}% = ${formatCents(card.estimatedUnitCents)} each`
+              : "No market price"}
             {card.stockOnHand ? ` · ${card.stockOnHand} in stock` : ""}
+          </p>
+        )}
+        {lookup && (
+          <p className="gg-trd-card__meta">
+            <a href={tcgplayerSearchUrl(card.cardName)} target="_blank" rel="noopener noreferrer">
+              Look up TCG low on TCGplayer
+            </a>
           </p>
         )}
         {showPricing && card.eligibility !== "eligible" && card.eligibility !== "needs_review" && (

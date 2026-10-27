@@ -140,7 +140,9 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
       ? "Add the address customers mail their cards to (Settings) before approving."
       : tally.pending > 0
         ? `Approve or reject every card first (${tally.pending} left).`
-        : tally.approved === 0
+        : tally.unpriced > 0
+          ? `Enter the TCG low for each card you approve (${tally.unpriced} left).`
+          : tally.approved === 0
           ? "Approve at least one card, or reject the trade."
           : shortLines.length > 0
             ? `Some of our cards sold since the customer picked them (${shortLines.map((w) => w.cardName).join(", ")}). Lower or take them off under Our cards, or ask the customer to pick again.`
@@ -152,13 +154,14 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
         <h3 id="gg-trd-review-title">Review their cards</h3>
         {undecidedWithEstimate.length > 0 && (
           <Button size="sm" variant="secondary" icon="check" onClick={approveRestAtEstimate} disabled={busy !== null}>
-            Approve the rest at their estimates
+            Approve the rest at market estimates
           </Button>
         )}
       </div>
       <p className="gg-card-meta">
-        Values default to the estimate (market price × their condition&rsquo;s percentage). Cards with no market price need a
-        value typed in. Notes to the customer show on their trade page and in the email.
+        Enter each card&rsquo;s TCG low for its listed condition (set from the card&rsquo;s age; you&rsquo;ll check the real condition
+        when the cards arrive). The market estimate is there for reference. Notes to the customer show on their trade page and
+        in the email.
       </p>
 
       <ul className="gg-trd-cards">
@@ -167,7 +170,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
           const unit = parseUnitCents(d.unit);
           return (
             <li key={c.id} className={`gg-trd-card gg-trd-card--${d.decision}`}>
-              <OfferCardHead card={c} minCardValueCents={trade.minCardValueCents} />
+              <OfferCardHead card={c} minCardValueCents={trade.minCardValueCents} lookup />
               <div className="gg-trd-card__controls">
                 <div className="gg-trd-seg" role="group" aria-label={`Decision for ${c.cardName}`}>
                   <button
@@ -210,14 +213,14 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
                         <input
                           className="gg-input"
                           inputMode="decimal"
-                          aria-label={`Value each for ${c.cardName}`}
+                          aria-label={`TCG low each for ${c.cardName}`}
                           value={d.unit}
                           placeholder="0.00"
                           aria-invalid={unit === null || undefined}
                           onChange={(e) => change(c, { unit: e.target.value })}
                         />
                       </span>
-                      <span>each</span>
+                      <span>TCG low each</span>
                     </label>
                     <strong className="gg-trd-card__total">{unit === null ? "—" : formatCents(unit * d.quantity)}</strong>
                   </div>

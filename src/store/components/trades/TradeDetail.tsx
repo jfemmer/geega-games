@@ -37,6 +37,7 @@ import { DepositLine, TradeBalance } from "./TradeBalance";
 import { TradeShippingProgress } from "./TradeShippingProgress";
 import { TradeWantedList, type TradeWantedRow } from "./TradeWantedList";
 import { OfferCardsEditor } from "./OfferCardsEditor";
+import { conditionAgeSummary } from "../../lib/tradeConditions";
 import { TradeConfirmPanel } from "./TradeConfirmPanel";
 import { TradeDepositCard } from "./TradeDepositCard";
 import { TradeShippingPanel } from "./TradeShippingPanel";
@@ -524,7 +525,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
             <h2 id="gg-tc-theirs-title">Your cards</h2>
             {editable && (
               <p className="gg-tc-line__meta">
-                Each card is valued at its market reference price for its condition. Cards worth less than{" "}
+                We set each card&rsquo;s condition from its age ({conditionAgeSummary()}). We price your cards at TCG low when we
+                review your list, and check their condition when they arrive, so values can go up or down. Cards worth less than{" "}
                 {formatCents(trade.minCardValueCents)} each can&rsquo;t be traded.
               </p>
             )}
@@ -546,9 +548,9 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
               deposit={<DepositLine trade={trade} />}
               footnote={
                 valueLabel === "estimated"
-                  ? "Market prices are a starting point. We confirm values when we review your list and again when your cards arrive."
+                  ? "Estimates use today's market prices. We price each card at TCG low when we review your list, and check its condition when your cards arrive."
                   : valueLabel === "approved"
-                    ? "Final values are confirmed when your cards arrive and we inspect them."
+                    ? "Approved at TCG low. When your cards arrive we check their condition, and values can go up or down."
                     : null
               }
             >

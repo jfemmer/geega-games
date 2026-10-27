@@ -111,8 +111,8 @@ export function TradeMoneyRows({
       </div>
       <div className="gg-tc-balance__need">
         <dt>
-          Your cards needed to cover them
-          <span className="gg-tc-balance__hint">At {ratePercent}% trade credit</span>
+          Your cards needed
+          <span className="gg-tc-balance__hint">At TCG low, to cover ours at {ratePercent}% trade credit</span>
         </dt>
         <dd>{formatCents(c.requiredValueCents)}</dd>
       </div>

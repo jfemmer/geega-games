@@ -4,7 +4,6 @@ import { formatCents } from "../../lib/money";
 import type { SellPrinting } from "../../lib/sellTypes";
 import {
   BLOCKING_ELIGIBILITY,
-  CARD_CONDITIONS,
   CONDITION_NAMES,
   FINISH_NAMES,
   TRADE_LIMITS,
@@ -13,21 +12,23 @@ import {
   eligibilityFor,
   eligibilityMessage,
   estimatedUnitCents,
-  type CardConditionCode,
   type CustomerTrade,
   type TradeFinish,
   type TradeOfferCard,
   type TradeOfferInput,
   type TradeTerms,
 } from "../../lib/tradeCenter";
+import { conditionForAge, printedYear } from "../../lib/tradeConditions";
 import { OfferImport } from "./OfferImport";
 import { finishesOf, offerInputs, printingPrice } from "./offerHelpers";
 
 // The customer's cards on a trade. While they can still change the list:
 // find each card's exact printing (the same public card search as Sell Your
-// Cards), pick its finish, condition and how many, or paste a list / upload
-// a CSV; change or remove lines. Every change is saved straight away and
-// priced by the server, so the estimates shown are always the server's.
+// Cards), pick its finish and how many, or paste a list / upload a CSV;
+// change or remove lines. Each card's condition comes from its printing's
+// age (tradeConditions; staff check it when the cards arrive). Every change
+// is saved straight away and priced by the server, so the estimates shown
+// are always the server's; staff price each card at TCG low at review.
 // After the list is sent it's read-only, with staff's review and, later,
 // what the inspection found.
 
@@ -115,7 +116,6 @@ export function OfferCardsEditor({
               editable={editable}
               saving={saving}
               onQuantity={(quantity) => void change(current.map((c) => (c.id === card.id ? { ...c, quantity } : c)))}
-              onCondition={(condition) => void change(current.map((c) => (c.id === card.id ? { ...c, condition } : c)))}
               onRemove={() => void change(current.filter((c) => c.id !== card.id))}
             />
           ))}
@@ -142,8 +142,10 @@ function AddPrinting({
 }) {
   const finishes = finishesOf(printing);
   const [finish, setFinish] = useState<TradeFinish>(finishes[0]);
-  const [condition, setCondition] = useState<CardConditionCode>("NM");
   const [quantity, setQuantity] = useState(1);
+  // Set from the printing's age, as the server will.
+  const condition = conditionForAge(printing.releasedAt);
+  const year = printedYear(printing.releasedAt);
   const reference = printingPrice(printing, finish);
   const pct = conditionPercent(trade.conditionPercents, condition);
   const estimate = estimatedUnitCents(reference, pct);
@@ -175,39 +177,34 @@ function AddPrinting({
             </label>
           ))}
         </fieldset>
-        <div className="gg-tc-pick__row">
-          <label className="gg-field">
-            <span>Condition</span>
-            <select value={condition} onChange={(e) => setCondition(e.target.value as CardConditionCode)}>
-              {CARD_CONDITIONS.map((c) => (
-                <option key={c} value={c}>
-                  {CONDITION_NAMES[c]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="gg-field">
-            <span>How many</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={TRADE_LIMITS.maxQuantity}
-              value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, Math.min(TRADE_LIMITS.maxQuantity, Math.floor(Number(e.target.value) || 1))))}
-            />
-          </label>
-        </div>
+        <p className="gg-tc-pick__condition">
+          Condition: <strong>{CONDITION_NAMES[condition]}</strong>
+          <span className="gg-tc-line__meta">
+            {year ? `Printed in ${year}. ` : ""}Set from the card&rsquo;s age; we check it when your cards arrive.
+          </span>
+        </p>
+        <label className="gg-field gg-tc-pick__qty">
+          <span>How many</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={TRADE_LIMITS.maxQuantity}
+            value={quantity}
+            onChange={(e) => setQuantity(Math.max(1, Math.min(TRADE_LIMITS.maxQuantity, Math.floor(Number(e.target.value) || 1))))}
+          />
+        </label>
         <p className={blocked ? "gg-tc-pick__estimate gg-tc-pick__estimate--blocked" : "gg-tc-pick__estimate"} aria-live="polite">
           {estimate !== null ? (
             <>
-              About <strong>{formatCents(estimate)}</strong> each{" "}
+              Estimated <strong>{formatCents(estimate)}</strong> each{" "}
               <span className="gg-tc-line__meta">
-                ({formatCents(reference)} market price{pct !== 100 ? ` × ${pct}% for ${CONDITION_NAMES[condition]}` : ""})
+                (today&rsquo;s market price {formatCents(reference)}{pct !== 100 ? ` × ${pct}% for ${CONDITION_NAMES[condition]}` : ""}). We set
+                the price at TCG low when we review your list.
               </span>
             </>
           ) : (
-            <>No current market price for this finish. We&rsquo;ll value it by hand when we review your list.</>
+            <>No price for this finish yet. We&rsquo;ll price it at TCG low when we review your list.</>
           )}
           {blocked && <span className="gg-tc-pick__why">{eligibilityMessage(eligibility, trade.minCardValueCents)}.</span>}
         </p>
@@ -216,7 +213,7 @@ function AddPrinting({
             type="button"
             className="gg-btn"
             disabled={saving || blocked}
-            onClick={() => onAdd({ scryfallId: printing.scryfallId, finish, condition, quantity })}
+            onClick={() => onAdd({ scryfallId: printing.scryfallId, finish, quantity })}
           >
             {saving ? "Adding…" : "Add to my cards"}
           </button>
@@ -235,7 +232,6 @@ function OfferCardRow({
   editable,
   saving,
   onQuantity,
-  onCondition,
   onRemove,
 }: {
   card: TradeOfferCard;
@@ -243,7 +239,6 @@ function OfferCardRow({
   editable: boolean;
   saving: boolean;
   onQuantity: (quantity: number) => void;
-  onCondition: (condition: CardConditionCode) => void;
   onRemove: () => void;
 }) {
   const blocked = BLOCKING_ELIGIBILITY.has(card.eligibility);
@@ -259,35 +254,12 @@ function OfferCardRow({
       <span className="gg-tc-line__main">
         <span className="gg-tc-line__name">{card.cardName}</span>
         <span className="gg-tc-line__meta">{printingLabel(card)}</span>
-        <span className="gg-tc-line__condition">
-          {editable ? (
-            <select
-              className="gg-tc-inline-select"
-              aria-label={`Condition of ${card.cardName}`}
-              value={card.reportedCondition}
-              disabled={saving}
-              onChange={(e) => onCondition(e.target.value as CardConditionCode)}
-            >
-              {CARD_CONDITIONS.map((c) => (
-                <option key={c} value={c}>
-                  {CONDITION_NAMES[c]}
-                </option>
-              ))}
-            </select>
-          ) : (
-            CONDITION_NAMES[card.reportedCondition]
-          )}
-        </span>
-        <span className="gg-tc-line__value">
-          {card.referencePriceCents !== null ? (
-            <>
-              Market {formatCents(card.referencePriceCents)}
-              {card.conditionPercent !== 100 ? ` × ${card.conditionPercent}%` : ""} = {formatCents(card.estimatedUnitCents)} each
-            </>
-          ) : (
-            "Valued by hand at review"
-          )}
-        </span>
+        <span className="gg-tc-line__condition">{CONDITION_NAMES[card.reportedCondition]}</span>
+        {!reviewed && (
+          <span className="gg-tc-line__value">
+            {card.estimatedUnitCents !== null ? `Estimated ${formatCents(card.estimatedUnitCents)} each` : "Priced when we review your list"}
+          </span>
+        )}
         {card.eligibility !== "eligible" && !reviewed && (
           <span className={blocked ? "gg-tc-flag gg-tc-flag--bad" : "gg-tc-flag"}>
             {eligibilityMessage(card.eligibility, trade.minCardValueCents)}
@@ -354,7 +326,7 @@ function LineValue({ card, blocked, lineEstimate }: { card: TradeOfferCard; bloc
   }
   if (card.reviewStatus === "rejected") return <span className="gg-tc-line__each">Not taken</span>;
   if (blocked) return <span className="gg-tc-line__each">Not counted</span>;
-  if (lineEstimate === null) return <span className="gg-tc-line__each">By hand</span>;
+  if (lineEstimate === null) return <span className="gg-tc-line__each">At review</span>;
   return (
     <>
       <strong>{formatCents(lineEstimate)}</strong>

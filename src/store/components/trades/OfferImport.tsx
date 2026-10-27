@@ -4,19 +4,18 @@ import { searchSellPrintings } from "../../lib/sellApi";
 import type { SellPrinting } from "../../lib/sellTypes";
 import { formatCents } from "../../lib/money";
 import {
-  CARD_CONDITIONS,
   CONDITION_NAMES,
   FINISH_NAMES,
   TRADE_LIMITS,
   conditionPercent,
   estimatedUnitCents,
   isTradeFinish,
-  type CardConditionCode,
   type CustomerTrade,
   type TradeFinish,
   type TradeOfferInput,
   type TradeTerms,
 } from "../../lib/tradeCenter";
+import { conditionForAge } from "../../lib/tradeConditions";
 import { finishesOf, printingPrice } from "./offerHelpers";
 
 // Paste a card list or upload a CSV for a trade. The text is read in the
@@ -24,8 +23,10 @@ import { finishesOf, printingPrice } from "./offerHelpers";
 // collection export, our own CSV, or one card per line), each line is
 // matched to its exact printing with the public card search, and the
 // customer checks everything on a review screen (which printing, finish,
-// condition, how many) before anything is added. Only what they confirm is
-// sent, as printings and quantities; the server prices it.
+// how many) before anything is added. A condition in the list is ignored:
+// each card's condition comes from its printing's age (tradeConditions).
+// Only what they confirm is sent, as printings and quantities; the server
+// prices it.
 
 /** Files larger than this aren't read. */
 export const MAX_IMPORT_BYTES = 256 * 1024;
@@ -39,7 +40,6 @@ export interface ImportRow {
   raw: string;
   name: string;
   quantity: number;
-  condition: CardConditionCode;
   /** The finish the line asked for. */
   wantFinish: string | null;
   candidates: SellPrinting[];
@@ -108,7 +108,7 @@ export function OfferImport({
     setNote(null);
     const parsed = parseCardListText(raw).filter((line) => line.cardName.trim().length > 0);
     if (parsed.length === 0) {
-      setError("We couldn't find any cards in that. Put one card per line, like “2 Lightning Bolt [2XM] foil LP”.");
+      setError("We couldn't find any cards in that. Put one card per line, like “2 Lightning Bolt [2XM] foil”.");
       return;
     }
     if (limit <= 0) {
@@ -134,7 +134,6 @@ export function OfferImport({
         raw: line.rawInput,
         name: line.cardName,
         quantity: Math.min(Math.max(line.quantity, 1), TRADE_LIMITS.maxQuantity),
-        condition: line.condition ?? "NM",
         wantFinish: line.finish,
         candidates,
         printingId: status === "matched" ? candidates[0].scryfallId : null,
@@ -176,7 +175,6 @@ export function OfferImport({
     const inputs: TradeOfferInput[] = chosen.map((r) => ({
       scryfallId: r.printingId as string,
       finish: r.finish,
-      condition: r.condition,
       quantity: r.quantity,
     }));
     setError(null);
@@ -188,15 +186,16 @@ export function OfferImport({
       <div className="gg-tc-import">
         <h3 className="gg-tc-import__title">Check your list</h3>
         <p className="gg-tc-line__meta">
-          We matched each line to a printing. Check the printing, finish, condition and quantity, untick anything you
-          don&rsquo;t want to add, then add them to your cards.
+          We matched each line to a printing. Check the printing, finish and quantity, untick anything you don&rsquo;t want
+          to add, then add them to your cards. Each card&rsquo;s condition comes from its age.
         </p>
         {note && <p className="gg-alert gg-alert-warn">{note}</p>}
         <ul className="gg-tc-import__rows">
           {rows.map((row) => {
             const printing = row.candidates.find((p) => p.scryfallId === row.printingId);
             const reference = printing ? printingPrice(printing, row.finish) : null;
-            const estimate = estimatedUnitCents(reference, conditionPercent(trade.conditionPercents, row.condition));
+            const condition = printing ? conditionForAge(printing.releasedAt) : null;
+            const estimate = condition ? estimatedUnitCents(reference, conditionPercent(trade.conditionPercents, condition)) : null;
             return (
               <li key={row.key} className={row.status === "missing" ? "gg-tc-import__row gg-tc-import__row--missing" : "gg-tc-import__row"}>
                 <label className="gg-tc-import__include">
@@ -247,17 +246,6 @@ export function OfferImport({
                         </option>
                       ))}
                     </select>
-                    <select
-                      aria-label={`Condition of ${row.name}`}
-                      value={row.condition}
-                      onChange={(e) => update(row.key, { condition: e.target.value as CardConditionCode })}
-                    >
-                      {CARD_CONDITIONS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
                     <input
                       aria-label={`How many ${row.name}`}
                       type="number"
@@ -269,7 +257,10 @@ export function OfferImport({
                         update(row.key, { quantity: Math.max(1, Math.min(TRADE_LIMITS.maxQuantity, Math.floor(Number(e.target.value) || 1))) })
                       }
                     />
-                    <span className="gg-tc-import__est">{estimate !== null ? `~${formatCents(estimate)} ea` : "By hand"}</span>
+                    <span className="gg-tc-import__est">
+                      {condition && <span className="gg-tc-import__cond">{CONDITION_NAMES[condition]}</span>}
+                      {estimate !== null ? `~${formatCents(estimate)} ea` : printing ? "At review" : ""}
+                    </span>
                   </span>
                 )}
               </li>
@@ -303,7 +294,7 @@ export function OfferImport({
         <textarea
           rows={6}
           value={text}
-          placeholder={"2 Sheoldred, the Apocalypse [DMU] LP\n1 Ragavan, Nimble Pilferer (MH2) 138 foil\n4 Lightning Bolt"}
+          placeholder={"2 Sheoldred, the Apocalypse [DMU]\n1 Ragavan, Nimble Pilferer (MH2) 138 foil\n4 Lightning Bolt"}
           onChange={(e) => setText(e.target.value)}
           disabled={progress !== null}
         />
@@ -312,14 +303,14 @@ export function OfferImport({
         <summary>What can I paste or upload?</summary>
         <p>
           One card per line: how many, the name, then anything else you know, like the set code in brackets, the
-          collector number, the condition (NM, LP, MP, HP or DMG) and &ldquo;foil&rdquo; or &ldquo;etched&rdquo;.
+          collector number and &ldquo;foil&rdquo; or &ldquo;etched&rdquo;. You don&rsquo;t need a condition: we set each
+          card&rsquo;s condition from its age.
         </p>
         <p>
           Or a CSV file (up to {Math.round(MAX_IMPORT_BYTES / 1024)} KB and {TRADE_LIMITS.maxImportLines} cards) with a
           header row. We read these columns: <strong>Quantity</strong>, <strong>Name</strong> (or Card),{" "}
-          <strong>Set Code</strong> (or Set), <strong>Card Number</strong> (or Collector Number),{" "}
-          <strong>Condition</strong>, and <strong>Printing</strong> (or Finish). A collection export from the
-          TCGplayer app works as it is.
+          <strong>Set Code</strong> (or Set), <strong>Card Number</strong> (or Collector Number) and{" "}
+          <strong>Printing</strong> (or Finish). A collection export from the TCGplayer app works as it is.
         </p>
       </details>
       {error && (
@@ -354,7 +345,7 @@ export function OfferImport({
           Cancel
         </button>
       </div>
-      <p className="gg-tc-line__meta">{CONDITION_NAMES.NM} is assumed when a line doesn&rsquo;t say.</p>
+      <p className="gg-tc-line__meta">We set each card&rsquo;s condition from its age, so you don&rsquo;t need to list one.</p>
     </div>
   );
 }

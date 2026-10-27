@@ -279,7 +279,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           b,
           t.estimated_value_cents,
           "Your cards (estimated)",
-          `Estimates use each card's market reference price for its condition.${blocked > 0 ? ` ${blocked} card${blocked === 1 ? " has" : "s have"} no current price and will be valued by hand.` : ""} We confirm values when we review your trade, and again when your cards arrive.`,
+          `Estimates use today's market prices, with each card's condition set from its age.${blocked > 0 ? ` ${blocked} card${blocked === 1 ? " has" : "s have"} no price yet.` : ""} We'll price your cards at TCG low when we review your trade, and check their condition when they arrive, so values can go up or down.`,
         ),
         button: view,
       });
@@ -335,7 +335,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         previewText: confirmBy ? `Confirm your trade by ${confirmBy} to reserve our cards.` : "Confirm your trade to reserve our cards.",
         heading: "Your trade is approved",
         paragraphs: [
-          `${greet} good news: we've approved trade ${label}, with your cards valued at ${money(value)} (${money(credit)} in trade credit).`,
+          `${greet} good news: we've approved trade ${label}. We priced your cards at TCG low: ${money(value)}, or ${money(credit)} in trade credit. When they arrive we check each card's condition, so the final value can go up or down.`,
           confirmBy
             ? `You have until ${confirmBy} to confirm it: ${hoursPhrase(settings.confirmation_hours)}, not counting Sundays. If it isn't confirmed by then, the approval expires.`
             : "Confirm it on your trade page to reserve our cards.",

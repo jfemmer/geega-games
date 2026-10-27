@@ -48,6 +48,7 @@ import {
   type TradeWantedItem,
 } from "../../src/store/lib/tradeCenter.js";
 import { addQualifyingDays, addQualifyingHours } from "../../src/store/lib/tradeDeadlines.js";
+import { conditionForAge } from "../../src/store/lib/tradeConditions.js";
 import {
   depositFor,
   privilegesFor,
@@ -1012,7 +1013,11 @@ export function readWantedInputs(raw: unknown, maxLines: number): TradeWantedInp
   });
 }
 
-/** The customer's cards. The same printing, finish and condition twice becomes one line. */
+/**
+ * The customer's cards. The same printing and finish twice becomes one line:
+ * its condition comes from the printing's age (priceOffers), so any
+ * condition the browser sends is ignored.
+ */
 export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput[] {
   if (!Array.isArray(raw)) throw new HttpError(400, "Your cards didn't come through. Try again.");
   const merged = new Map<string, TradeOfferInput>();
@@ -1020,20 +1025,19 @@ export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput
     const o = (item ?? {}) as Record<string, unknown>;
     const scryfallId = typeof o.scryfallId === "string" && UUID_RE.test(o.scryfallId) ? o.scryfallId.toLowerCase() : null;
     const finish = isTradeFinish(o.finish) ? o.finish : null;
-    const condition = isConditionCode(o.condition) ? o.condition : null;
     const quantity = wholeNumber(o.quantity, 1, TRADE_LIMITS.maxQuantity);
     const id = typeof o.id === "string" && UUID_RE.test(o.id) ? o.id.toLowerCase() : undefined;
     const estimate =
       o.customerEstimateCents === undefined || o.customerEstimateCents === null
         ? null
         : wholeNumber(o.customerEstimateCents, 0, TRADE_LIMITS.maxEstimateCents);
-    if (!scryfallId || !finish || !condition || quantity === null) {
-      throw new HttpError(400, "One of your cards is missing its printing, finish, condition or quantity.");
+    if (!scryfallId || !finish || quantity === null) {
+      throw new HttpError(400, "One of your cards is missing its printing, finish or quantity.");
     }
     if (o.customerEstimateCents !== undefined && o.customerEstimateCents !== null && estimate === null) {
       throw new HttpError(400, "One of your price notes isn't a number we can use.");
     }
-    const key = `${scryfallId}|${finish}|${condition}`;
+    const key = `${scryfallId}|${finish}`;
     const earlier = merged.get(key);
     if (earlier) {
       earlier.quantity = Math.min(earlier.quantity + quantity, TRADE_LIMITS.maxQuantity);
@@ -1044,7 +1048,6 @@ export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput
       id,
       scryfallId,
       finish,
-      condition,
       quantity,
       customerEstimateCents: estimate,
       note: cleanText(o.note, TRADE_LIMITS.maxCardNote),
@@ -1106,6 +1109,8 @@ interface PrintingInfo {
   finishes: string[];
   prices: { usd: number | null; usdFoil: number | null; usdEtched: number | null };
   checkedAt: string | null;
+  /** "YYYY-MM-DD": the customer's card is listed at the condition its age gives (tradeConditions). */
+  releasedAt: string | null;
 }
 
 function imageFromJson(images: Json | null): string | null {
@@ -1122,7 +1127,7 @@ export async function loadPrintings(admin: Admin, ids: string[]): Promise<Map<st
   const { data: cached, error } = await admin
     .from("card_printings")
     .select(
-      "scryfall_id, card_name, set_code, set_name, collector_number, available_finishes, images, price_usd_cents, price_usd_foil_cents, price_usd_etched_cents, prices_updated_at",
+      "scryfall_id, card_name, set_code, set_name, collector_number, available_finishes, images, price_usd_cents, price_usd_foil_cents, price_usd_etched_cents, prices_updated_at, released_at",
     )
     .in("scryfall_id", ids);
   if (error) console.error("[tradeCenter] card_printings read failed", error.message);
@@ -1137,6 +1142,7 @@ export async function loadPrintings(admin: Admin, ids: string[]): Promise<Map<st
       finishes: row.available_finishes ?? [],
       prices: { usd: row.price_usd_cents, usdFoil: row.price_usd_foil_cents, usdEtched: row.price_usd_etched_cents },
       checkedAt: row.prices_updated_at,
+      releasedAt: row.released_at ?? null,
     });
   }
   const now = Date.now();
@@ -1160,6 +1166,7 @@ export async function loadPrintings(admin: Admin, ids: string[]): Promise<Map<st
         finishes: p.availableFinishes,
         prices: { usd: p.prices.usd, usdFoil: p.prices.usdFoil, usdEtched: p.prices.usdEtched },
         checkedAt,
+        releasedAt: p.releasedAt ?? null,
       });
     }
     await Promise.allSettled([...fetched.values()].map((card) => cachePrinting(admin, card)));
@@ -1201,9 +1208,12 @@ export interface PricedOffer {
 
 /**
  * Prices the customer's cards for a trade: each printing's market reference
- * for its finish, the trade's condition percentage, and whether we can take
- * it (the trade's minimum, and today's exclusions and overstock limit).
- * The card's name, set and picture come from Scryfall, never the browser.
+ * for its finish, the trade's percentage for the condition the printing's
+ * age gives (tradeConditions: the browser's condition is never used), and
+ * whether we can take it (the trade's minimum, and today's exclusions and
+ * overstock limit). These are estimates: staff price each card at TCG low
+ * when they review the list. The card's name, set and picture come from
+ * Scryfall, never the browser.
  */
 export async function priceOffers(
   admin: Admin,
@@ -1239,7 +1249,8 @@ export async function priceOffers(
       throw new HttpError(400, `${p.cardName} (${p.setCode}) doesn't come in ${input.finish === "nonfoil" ? "non-foil" : input.finish}.`);
     }
     const reference = referencePriceFor(p.prices, input.finish);
-    const pct = conditionPercent(percents, input.condition);
+    const condition = conditionForAge(p.releasedAt);
+    const pct = conditionPercent(percents, condition);
     const estimate = estimatedUnitCents(reference, pct);
     const onHand = stock.get(input.scryfallId) ?? 0;
     return {
@@ -1252,7 +1263,7 @@ export async function priceOffers(
       finish: input.finish,
       image_url: p.imageUrl,
       quantity: input.quantity,
-      reported_condition: input.condition,
+      reported_condition: condition,
       customer_estimate_cents: input.customerEstimateCents ?? null,
       customer_note: input.note ?? null,
       reference_price_cents: reference,

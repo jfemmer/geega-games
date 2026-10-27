@@ -5,34 +5,30 @@ import { useSEO } from "../lib/useSEO";
 import { formatCents } from "../lib/money";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { SUPPORT_EMAIL } from "./StaticPages";
-import { FaqSection, HeroPoints } from "../components/SellLandingSections";
+import { FaqSection } from "../components/SellLandingSections";
 import { TradeWantedList } from "../components/trades/TradeWantedList";
 import { TradeShippingProgress } from "../components/trades/TradeShippingProgress";
 import { tradeActions, useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart, tradeCartCount, tradeCartTotalCents, useTradeCart } from "../lib/tradeCart";
-import {
-  CARD_CONDITIONS,
-  CONDITION_NAMES,
-  TRADE_CENTER_PATH,
-  myTradePath,
-  tradeCreditCents,
-  tradingOpen,
-  type TradeTerms,
-} from "../lib/tradeCenter";
+import { MY_TRADES_PATH, TRADE_CENTER_PATH, myTradePath, tradingOpen, type TradeTerms } from "../lib/tradeCenter";
 import { depositBands } from "../lib/tradeRules";
-import { minimumMessage, moneyShort, requiredValueCents } from "../lib/tradeShipping";
+import { minimumMessage, moneyShort, requiredValueCents, shippingLabel, tradeShippingCents } from "../lib/tradeShipping";
+import { conditionAgeRules, conditionAgeSummary } from "../lib/tradeConditions";
 import { addQualifyingDays, storeDateKey, storeInstant, weekdayOfKey } from "../lib/tradeDeadlines";
 import { breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 
-// Trade Cards (/trade-cards): what trading with us is, how cards are valued,
-// the minimum trade and shipping, the deposit, the customer's trade cart (our
-// cards they picked with "Add to trade", with the bar toward the minimum and
-// free shipping), and starting a trade (once the cart reaches the minimum).
-// Every number on this page comes from the Trade Center settings staff
-// control (the rate, the minimums, shipping, condition values, deadlines,
-// deposits), so the page can't promise anything the trade itself won't do.
+// Trade Cards (/trade-cards): the trade cart. Our cards the customer picked
+// with "Add to trade", with quantities and a way to take them off; beside
+// them the summary a cart would have, plus what trading needs: how much of
+// their cards, at TCG low, it takes to cover ours at the trade rate, the
+// minimum and free shipping, and starting the trade. Under that, how
+// trading works in a few short steps (we price their cards at TCG low when
+// we review the list; conditions come from each card's age; we check them
+// when the cards arrive, so values can go up or down), the rules worth
+// knowing, the deposit, and the FAQ. Every number comes from the Trade
+// Center settings staff control, so the page can't promise anything the
+// trade itself won't do.
 
-const EXAMPLE_MARKET_CENTS = 4000;
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function plural(n: number, word: string): string {
@@ -71,13 +67,19 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
     },
     {
       question: "How is my trade credit worked out?",
-      answer: `Each card starts at its market reference price (the current price on Scryfall, which comes from TCGplayer) for its finish, adjusted for condition. Your trade credit is ${rate} of what your cards are worth. We confirm values when we review your list and again when your cards arrive.`,
+      answer: `When we review your list, we price each of your cards at its TCG low (TCGplayer's lowest listed price) for its condition and finish. Your trade credit is ${rate} of that. The estimates you see while you build your trade use today's market prices, so they're a rough guide.`,
+    },
+    {
+      question: "How do you decide my cards' condition?",
+      answer: `From when each printing came out: ${conditionAgeSummary()}. When your cards arrive we check every one, and a card in better or worse shape is worth more or less. Your final offer shows every change and why.`,
     },
     {
       question: "Is there a minimum trade?",
-      answer: t
-        ? `Yes: at least ${moneyShort(t.minTradeValueCents)} of our cards per trade, at their regular prices (shipping doesn't count toward it). You can add cards below that while you shop; you'll need to reach it to start your trade. At ${rate} trade credit, ${moneyShort(t.minTradeValueCents)} of our cards takes ${formatCents(requiredValueCents(t.minTradeValueCents, t.creditRatePercent, t.processingFeeCents))} of your cards to cover completely.`
-        : "Yes: each trade needs a minimum value of our cards, shown in your trade cart.",
+      answer: !t
+        ? "Yes: each trade needs a minimum value of our cards, shown in your trade cart."
+        : t.minTradeValueCents > 0
+          ? `Yes: at least ${moneyShort(t.minTradeValueCents)} of our cards per trade, at their regular prices (shipping doesn't count toward it). You can add cards below that while you shop; you'll need to reach it to start your trade. At ${rate} trade credit, ${moneyShort(t.minTradeValueCents)} of our cards takes ${formatCents(requiredValueCents(t.minTradeValueCents, t.creditRatePercent, t.processingFeeCents))} of your cards at TCG low to cover completely.`
+          : `Not right now: a trade can be any amount of our cards. Your trade cart shows how much of your cards, at TCG low, it takes to cover them at ${rate} trade credit.`,
     },
     {
       question: "Do my cards have to cover everything I pick?",
@@ -116,7 +118,7 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
     {
       question: "What if my cards arrive in a different condition, or one is missing?",
       answer:
-        "We value cards as they arrive, so a card in worse shape than listed is worth less, and one that's missing, wrong or not genuine can't be taken. Your final offer lists every change and why, and you decide whether to accept it.",
+        "We check every card when it arrives. One in better shape than listed is worth more, and one in worse shape is worth less; a card that's missing, wrong or not genuine can't be taken. Your final offer lists every change and why, and you decide whether to accept it.",
     },
     {
       question: "What if I don't like the final offer?",
@@ -146,13 +148,12 @@ export default function TradeCardsPage() {
   useSEO({
     title: "Trade Your Magic Cards for Cards You Want | Geega Games",
     description:
-      "Trade your Magic: The Gathering cards for singles from Geega Games. Pick our cards, list yours, and get trade credit toward them. Once your trade is approved and confirmed, we reserve our cards for you.",
+      "Trade your Magic: The Gathering cards for singles from Geega Games. We price your cards at TCG low and you get trade credit toward the cards you pick; once your trade is approved and confirmed, we reserve them for you.",
     path: TRADE_CENTER_PATH,
     jsonLd: [breadcrumbJsonLd([{ name: "Trade cards", path: TRADE_CENTER_PATH }]), faqJsonLd(faq)],
   });
 
   const open = tradingOpen(terms);
-  const rate = terms?.creditRatePercent ?? null;
   const count = tradeCartCount(cart);
   const total = tradeCartTotalCents(cart);
   const belowMinimum = terms !== null && total < terms.minTradeValueCents;
@@ -176,186 +177,125 @@ export default function TradeCardsPage() {
     }
   }
 
-  const points = terms
-    ? [
-        `${terms.creditRatePercent}% of your cards' value as trade credit`,
-        `Cards worth ${formatCents(terms.minCardValueCents)} or more each`,
-        `Free tracked shipping on ${moneyShort(terms.freeShipThresholdCents)} or more of our cards`,
-        "Our cards reserved for you once you confirm",
-        "Decline the final offer with no penalty",
-      ]
-    : ["Trade credit toward our singles", "Our cards reserved for you once you confirm", "Decline the final offer with no penalty"];
-
   return (
-    <div className="gg-page gg-tc-page">
-      <section className="gg-collect-hero gg-tc-hero">
-        <h1>Trade Your Magic Cards for Cards You Actually Want</h1>
-        <p className="gg-collect-hero-sub">
-          Pick cards from our shop, list the cards you&rsquo;re done with, and put their value toward yours
-          {rate !== null ? `: ${rate}% of it as trade credit` : ""}. Once we approve your trade and you confirm it, the cards you picked
-          are reserved for you while yours are in the mail.
-        </p>
-        <HeroPoints points={points} />
-        {terms && !terms.enabled && (
-          <p className="gg-tc-banner">Trading online opens soon. Check back shortly, or email us about a trade.</p>
-        )}
-        {terms?.enabled && terms.paused && <p className="gg-tc-banner">{terms.pauseMessage}</p>}
-        <div className="gg-collect-hero-actions">
-          <Link to="/shop" className={count > 0 ? "gg-btn gg-btn-ghost" : "gg-btn"}>
-            {count > 0 ? "Pick more cards" : "Browse cards to trade for"}
-          </Link>
-          {count > 0 && (
-            <a href="#trade-cart" className="gg-btn">
-              Review your trade ({count})
-            </a>
-          )}
-        </div>
-      </section>
-
-      <section className="gg-collect-section" id="trade-cart">
-        <h2>Your trade cart</h2>
-        {count === 0 ? (
-          <div className="gg-tc-cart-empty">
-            <p>
-              Start with what you want: tap <strong>Add to trade</strong> on any card in our shop. Your picks wait here until
-              you start your trade.
-            </p>
-            <Link to="/shop" className="gg-btn gg-btn-ghost">
-              Shop singles
-            </Link>
-          </div>
-        ) : (
-          <div className="gg-tc-cart">
-            <TradeWantedList
-              rows={cart.map((c) => ({
-                key: c.inventoryItemId,
-                cardName: c.cardName,
-                setCode: c.setCode,
-                setName: c.setName,
-                collectorNumber: c.collectorNumber,
-                condition: c.condition,
-                finish: c.finish,
-                imageUrl: c.imageUrl,
-                quantity: c.quantity,
-                unitPriceCents: c.tradePriceCents,
-                maxQuantity: c.maxQuantity,
-                cardPath: c.cardPath,
-              }))}
-              onQuantity={(key, quantity) => tradeCart.setQuantity(key, quantity)}
-              onRemove={(key) => tradeCart.remove(key)}
-            />
-            <div className="gg-tc-cart__foot">
-              <p className="gg-tc-cart__total">
-                Our cards: <strong>{formatCents(total)}</strong>
-              </p>
-              {terms && <TradeShippingProgress wantedCents={total} terms={terms} />}
-              <p className="gg-tc-line__meta">
-                Trade prices are our regular prices (sale prices don&rsquo;t apply to trades). We check each card is still
-                available when you start.
-              </p>
-              {error && (
-                <p className="gg-alert gg-alert-error" role="alert">
-                  {error}
-                </p>
-              )}
-              {open ? (
-                <>
-                  {terms && (
-                    <p
-                      className={belowMinimum ? "gg-tc-minimum gg-tc-minimum--short" : "gg-tc-minimum gg-tc-minimum--met"}
-                      id="gg-tc-cart-minimum"
-                    >
-                      {minimumMessage(total, terms.minTradeValueCents)}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    className="gg-btn"
-                    disabled={starting || belowMinimum}
-                    aria-describedby={terms ? "gg-tc-cart-minimum" : undefined}
-                    onClick={() => void start()}
-                  >
-                    {starting ? "Starting…" : user ? "Start my trade" : "Sign in to start my trade"}
-                  </button>
-                  <p className="gg-tc-line__meta">
-                    Starting a trade doesn&rsquo;t reserve these yet: they stay on sale until we&rsquo;ve approved your trade and you
-                    confirm it.
-                  </p>
-                </>
-              ) : (
-                <p className="gg-tc-line__meta">{terms?.paused ? terms.pauseMessage : "You can start a trade once trading opens."}</p>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="gg-collect-section">
-        <h2>How it works</h2>
-        <ol className="gg-collect-steps">
-          <li>
-            <strong>Pick our cards.</strong> Add the cards you want from our shop to your trade cart
-            {terms
-              ? `: at least ${moneyShort(terms.minTradeValueCents)} of them. ${moneyShort(terms.freeShipThresholdCents)} or more ships free.`
-              : "."}
-          </li>
-          <li>
-            <strong>List your cards.</strong> Start your trade, then search for each card, paste a list or upload a CSV.
-            You&rsquo;ll see an estimate as you go. Nothing is reserved yet.
-          </li>
-          <li>
-            <strong>We review your trade.</strong> We approve the cards we can take, or ask you for a change, and email you either
-            way.
-          </li>
-          <li>
-            <strong>Confirm it{terms ? ` within ${confirmWindow(terms)}` : ""}.</strong> Sundays don&rsquo;t count. Confirming
-            reserves our cards for you
-            {terms?.depositsEnabled ? `, with a refundable deposit on trades of ${formatCents(terms.depositThresholdCents)} or more` : ""}.
-          </li>
-          <li>
-            <strong>Ship your cards{terms ? ` within ${plural(terms.shipDaysNew, "day")}` : ""}.</strong> Sundays don&rsquo;t count,
-            and it counts once the carrier scans your package. We inspect every card when it arrives.
-          </li>
-          <li>
-            <strong>Accept your final offer.</strong> Pay by card for any of our cards your credit doesn&rsquo;t cover, plus shipping
-            {terms ? ` (${moneyShort(terms.shipFeeCents)}, or free on ${moneyShort(terms.freeShipThresholdCents)} or more)` : ""}, or keep extra
-            credit for next time, and we ship your new cards with tracking. Or decline with no penalty and we mail yours back.
-          </li>
-        </ol>
-      </section>
-
-      <section className="gg-collect-section" id="values">
-        <h2>How we value your cards</h2>
-        <p className="gg-collect-lead">
-          Each card starts at its market reference price: its current price on Scryfall, which comes from TCGplayer, for that
-          exact printing and finish. Then condition counts:
-        </p>
-        {terms ? (
-          <ValueTable terms={terms} />
-        ) : (
-          <p className="gg-collect-lead gg-collect-lead--center" role="status">
-            Loading our current rates…
+    <div className="gg-page gg-tc-page gg-tc-cartpage">
+      <header className="gg-tc-cartpage__head">
+        <div>
+          <h1>Your trade cart</h1>
+          <p className="gg-tc-cartpage__lead">
+            Trade your Magic cards for cards from our shop. We price your cards at TCG low, and you get{" "}
+            {terms ? `${terms.creditRatePercent}%` : "a share"} of that as trade credit toward ours.
           </p>
+        </div>
+        {user && (
+          <Link to={MY_TRADES_PATH} className="gg-tc-cartpage__mine">
+            Your trades
+          </Link>
         )}
-        <ul className="gg-tc-rules">
-          {terms && (
-            <li>
-              Cards worth less than <strong>{formatCents(terms.minCardValueCents)}</strong> each, in their condition, can&rsquo;t be
-              traded.
-            </li>
-          )}
-          <li>Our cards count at their regular price. Sale and member prices don&rsquo;t apply to trades.</li>
-          {terms && terms.processingFeeCents > 0 && (
-            <li>A processing fee of {formatCents(terms.processingFeeCents)} comes off each trade&rsquo;s credit.</li>
-          )}
-          <li>A card with no current market price is valued by hand when we review your list.</li>
-          <li>Estimates are a starting point: we confirm values at review, and again when your cards arrive.</li>
-        </ul>
-      </section>
+      </header>
+      {terms && !terms.enabled && (
+        <p className="gg-tc-banner gg-tc-cartpage__banner">Trading online opens soon. Check back shortly, or email us about a trade.</p>
+      )}
+      {terms?.enabled && terms.paused && <p className="gg-tc-banner gg-tc-cartpage__banner">{terms.pauseMessage}</p>}
 
-      {terms && <ShippingSection terms={terms} />}
+      <div className={count > 0 ? "gg-tc-cartpage__grid" : "gg-tc-cartpage__grid gg-tc-cartpage__grid--empty"}>
+        <section className="gg-tc-cartpage__items" id="trade-cart" aria-labelledby="gg-tc-cart-title">
+          {count === 0 ? (
+            <div className="gg-tc-cartpage__empty">
+              <h2 id="gg-tc-cart-title">Your trade cart is empty</h2>
+              <p>
+                Find cards you want in our shop and tap <strong>Add to trade</strong>. They wait here until you start your trade.
+              </p>
+              <Link to="/shop" className="gg-btn">
+                Browse cards to trade for
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="gg-tc-cartpage__itemshead">
+                <h2 id="gg-tc-cart-title">
+                  Cards you want <span className="gg-tc-cartpage__count">({count})</span>
+                </h2>
+                <Link to="/shop" className="gg-tc-cartpage__more">
+                  Add more cards
+                </Link>
+              </div>
+              <TradeWantedList
+                rows={cart.map((c) => ({
+                  key: c.inventoryItemId,
+                  cardName: c.cardName,
+                  setCode: c.setCode,
+                  setName: c.setName,
+                  collectorNumber: c.collectorNumber,
+                  condition: c.condition,
+                  finish: c.finish,
+                  imageUrl: c.imageUrl,
+                  quantity: c.quantity,
+                  unitPriceCents: c.tradePriceCents,
+                  maxQuantity: c.maxQuantity,
+                  cardPath: c.cardPath,
+                }))}
+                onQuantity={(key, quantity) => tradeCart.setQuantity(key, quantity)}
+                onRemove={(key) => tradeCart.remove(key)}
+              />
+              <p className="gg-tc-line__meta gg-tc-cartpage__note">
+                Trade prices are our regular prices (sale prices don&rsquo;t apply to trades). We check each card is still available
+                when you start.
+              </p>
+            </>
+          )}
+        </section>
 
-      {terms?.depositsEnabled && <DepositSection terms={terms} />}
+        {count > 0 && (
+          <aside className="gg-tc-cartpage__summary" aria-labelledby="gg-tc-summary-title">
+            <h2 id="gg-tc-summary-title">Trade summary</h2>
+            {terms ? (
+              <TradeSummary terms={terms} count={count} totalCents={total} />
+            ) : (
+              <p className="gg-tc-line__meta" role="status">
+                Loading our current rates…
+              </p>
+            )}
+            {error && (
+              <p className="gg-alert gg-alert-error" role="alert">
+                {error}
+              </p>
+            )}
+            {open ? (
+              <>
+                {terms && (
+                  <p
+                    className={belowMinimum ? "gg-tc-minimum gg-tc-minimum--short" : "gg-tc-minimum gg-tc-minimum--met"}
+                    id="gg-tc-cart-minimum"
+                  >
+                    {minimumMessage(total, terms.minTradeValueCents)}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="gg-btn gg-tc-cartpage__start"
+                  disabled={starting || belowMinimum}
+                  aria-describedby={terms ? "gg-tc-cart-minimum" : undefined}
+                  onClick={() => void start()}
+                >
+                  {starting ? "Starting…" : user ? "Start my trade" : "Sign in to start my trade"}
+                </button>
+                <p className="gg-tc-line__meta">
+                  Starting a trade doesn&rsquo;t reserve these yet: they stay on sale until we&rsquo;ve approved your trade and you confirm
+                  it.
+                </p>
+              </>
+            ) : (
+              <p className="gg-tc-line__meta">{terms?.paused ? terms.pauseMessage : "You can start a trade once trading opens."}</p>
+            )}
+          </aside>
+        )}
+
+        <div className="gg-tc-cartpage__info">
+          <HowTradingWorks terms={terms} />
+          <GoodToKnow terms={terms} />
+        </div>
+      </div>
 
       <FaqSection items={faq} />
       <p className="gg-collect-contact">
@@ -365,143 +305,177 @@ export default function TradeCardsPage() {
   );
 }
 
-function ValueTable({ terms }: { terms: TradeTerms }) {
+/** The cart's totals, and the TCG low value of the customer's cards it takes to cover ours. */
+function TradeSummary({ terms, count, totalCents }: { terms: TradeTerms; count: number; totalCents: number }) {
+  const shippingCents = tradeShippingCents(totalCents, terms);
+  const neededCents = requiredValueCents(totalCents, terms.creditRatePercent, terms.processingFeeCents);
+  const freeFrom =
+    terms.freeShipFeeCents > 0
+      ? `${moneyShort(terms.freeShipFeeCents)} from ${moneyShort(terms.freeShipThresholdCents)}`
+      : `free from ${moneyShort(terms.freeShipThresholdCents)}`;
   return (
-    <div className="gg-tc-table-wrap">
+    <>
+      <dl className="gg-tc-sum">
+        <div>
+          <dt>Our cards ({count})</dt>
+          <dd>{formatCents(totalCents)}</dd>
+        </div>
+        <div>
+          <dt>
+            Shipping our cards to you
+            <span className="gg-tc-sum__hint">
+              {shippingCents === 0 ? "Tracked, on us" : `Tracked, ${freeFrom} · paid by card when your trade is final`}
+            </span>
+          </dt>
+          <dd>{shippingLabel(shippingCents, totalCents)}</dd>
+        </div>
+      </dl>
+      <div className="gg-tc-sum__need">
+        <p className="gg-tc-sum__needfig" aria-live="polite" aria-atomic="true">
+          <span className="gg-tc-sum__needlabel">To cover our cards, trade in </span>
+          <strong className="gg-tc-sum__needvalue">{formatCents(neededCents)}</strong>
+          <span className="gg-tc-sum__needsub"> of your cards at TCG low</span>
+        </p>
+        <p className="gg-tc-sum__needhint">
+          At {terms.creditRatePercent}% trade credit{terms.processingFeeCents > 0 ? `, after the ${formatCents(terms.processingFeeCents)} processing fee` : ""}.
+          Trade in less and pay the rest by card, or more and keep the extra as store credit.
+        </p>
+      </div>
+      <TradeShippingProgress compact hideFee wantedCents={totalCents} terms={terms} />
+    </>
+  );
+}
+
+/** How a trade goes, in six short steps, and how we set each card's condition. */
+function HowTradingWorks({ terms }: { terms: TradeTerms | null }) {
+  const rules = conditionAgeRules();
+  return (
+    <section className="gg-tc-how" aria-labelledby="gg-tc-how-title">
+      <h2 id="gg-tc-how-title">How trading works</h2>
+      <ol className="gg-tc-how__steps">
+        <li>
+          <strong>Pick our cards.</strong> Add cards from our shop to this cart.
+          {terms
+            ? terms.minTradeValueCents > 0
+              ? ` Trades start at ${moneyShort(terms.minTradeValueCents)} of our cards, and ${moneyShort(terms.freeShipThresholdCents)} or more ships free.`
+              : ` ${moneyShort(terms.freeShipThresholdCents)} or more of our cards ships free.`
+            : ""}
+        </li>
+        <li>
+          <strong>Send us your list.</strong> Start your trade, then search for the cards you&rsquo;re trading in or paste a list. We set
+          each card&rsquo;s condition from its age, and show you a rough estimate.
+        </li>
+        <li>
+          <strong>We review it at TCG low.</strong> We price each of your cards at its TCG low (the lowest price listed on TCGplayer) for
+          its condition, and email you when your trade is approved.
+        </li>
+        <li>
+          <strong>Confirm and ship.</strong> Confirm{terms ? ` within ${confirmWindow(terms)}` : ""} to reserve our cards
+          {terms?.depositsEnabled
+            ? ` (trades of ${formatCents(terms.depositThresholdCents)} or more take a refundable deposit)`
+            : ""}
+          , then ship yours with tracking{terms ? ` within ${plural(terms.shipDaysNew, "day")}` : ""}. Sundays don&rsquo;t count.
+        </li>
+        <li>
+          <strong>We check your cards.</strong> When they arrive we check each card&rsquo;s condition, so its value can go up or down.
+          You&rsquo;ll see every change and why.
+        </li>
+        <li>
+          <strong>Accept your final offer.</strong> {terms ? `${terms.creditRatePercent}%` : "A share"} of your cards&rsquo; final TCG low
+          is your credit toward ours. Pay any difference by card or keep leftover credit for next time, and we ship our cards to you. Or
+          decline with no penalty and we mail yours back.
+        </li>
+      </ol>
+      <div className="gg-tc-how__ages">
+        <h3>How we set condition</h3>
+        <table className="gg-tc-table gg-tc-agetable">
+          <caption>From when the card&rsquo;s printing came out. We check every card when it arrives.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Card&rsquo;s age</th>
+              <th scope="col">Listed as</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((r) => (
+              <tr key={r.code}>
+                <th scope="row">{r.ages}</th>
+                <td>{r.condition}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** The rules worth knowing before starting, short; the deposit's table opens on demand. */
+function GoodToKnow({ terms }: { terms: TradeTerms | null }) {
+  return (
+    <section className="gg-tc-know" aria-labelledby="gg-tc-know-title">
+      <h2 id="gg-tc-know-title">Good to know</h2>
+      <ul className="gg-tc-know__list">
+        {terms && (
+          <li>
+            Cards worth less than <strong>{formatCents(terms.minCardValueCents)}</strong> each, in their condition, can&rsquo;t be
+            traded.
+          </li>
+        )}
+        <li>Our cards count at their regular price. Sale and member prices don&rsquo;t apply to trades.</li>
+        <li>{ourShipping(terms)} Paid by card when your trade is final, never out of your trade credit.</li>
+        <li>You ship your cards to us separately, with tracking, at your cost. We&rsquo;ll show you how to pack them.</li>
+        <li>Shipping is never charged on a trade that&rsquo;s canceled or declined, and it&rsquo;s separate from any deposit.</li>
+        {terms && terms.processingFeeCents > 0 && (
+          <li>A processing fee of {formatCents(terms.processingFeeCents)} comes off each trade&rsquo;s credit.</li>
+        )}
+      </ul>
+      {terms?.depositsEnabled && <DepositDetails terms={terms} />}
+    </section>
+  );
+}
+
+/** The refundable deposit: when it's needed, how much, and exactly when it comes back. */
+function DepositDetails({ terms }: { terms: TradeTerms }) {
+  const threshold = terms.depositThresholdCents;
+  const bands = depositBands(terms);
+  return (
+    <details className="gg-tc-know__deposit">
+      <summary>The refundable deposit</summary>
+      <p>
+        Confirming a trade takes our cards off sale for you, so trades with {formatCents(threshold)} or more of our cards need a small
+        deposit to confirm. It comes back in full as soon as the carrier accepts your package by your shipping deadline.
+      </p>
       <table className="gg-tc-table gg-tc-valuetable">
-        <caption>
-          A card with a {formatCents(EXAMPLE_MARKET_CENTS)} market price, at {terms.creditRatePercent}% trade credit
-        </caption>
+        <caption>The deposit, by the value of our cards on your trade</caption>
         <thead>
           <tr>
-            <th scope="col">Condition</th>
-            <th scope="col">Counts at</th>
-            <th scope="col">Card value</th>
-            <th scope="col">Trade credit</th>
+            <th scope="col">Our cards</th>
+            <th scope="col">Deposit</th>
           </tr>
         </thead>
         <tbody>
-          {CARD_CONDITIONS.map((code) => {
-            const pct = terms.conditionPercents[code];
-            const value = Math.round((EXAMPLE_MARKET_CENTS * pct) / 100);
+          {bands.map((b) => {
+            const onlyIfAsked = b.toCents !== null && b.toCents <= threshold;
             return (
-              <tr key={code}>
-                <th scope="row">{CONDITION_NAMES[code]}</th>
-                <td>{pct}%</td>
-                <td>{formatCents(value)}</td>
+              <tr key={b.fromCents}>
+                <th scope="row">
+                  {b.toCents === null
+                    ? `${formatCents(b.fromCents)} or more`
+                    : b.fromCents === 0
+                      ? `Under ${formatCents(b.toCents)}`
+                      : `${formatCents(b.fromCents)} to ${formatCents(b.toCents - 1)}`}
+                </th>
                 <td>
-                  <strong>{formatCents(tradeCreditCents(value, terms.creditRatePercent))}</strong>
+                  {formatCents(b.depositCents)}
+                  {onlyIfAsked && <span className="gg-tc-valuetable__note"> only if we ask</span>}
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-/** The minimum trade and what shipping our cards costs, by how much of our cards is on the trade. */
-function ShippingSection({ terms }: { terms: TradeTerms }) {
-  const min = terms.minTradeValueCents;
-  const threshold = terms.freeShipThresholdCents;
-  const free = terms.freeShipFeeCents > 0 ? moneyShort(terms.freeShipFeeCents) : "FREE";
-  return (
-    <section className="gg-collect-section" id="shipping">
-      <h2>Minimum trade and shipping</h2>
-      <p className="gg-collect-lead">
-        Every trade needs at least {moneyShort(min)} of our cards. We ship them to you with tracking, and shipping is paid by card when your
-        trade is final, never out of your trade credit.
-      </p>
-      <div className="gg-tc-table-wrap">
-        <table className="gg-tc-table gg-tc-valuetable">
-          <caption>Shipping our cards to you, by the value of our cards on your trade</caption>
-          <thead>
-            <tr>
-              <th scope="col">Our cards</th>
-              <th scope="col">Shipping</th>
-            </tr>
-          </thead>
-          <tbody>
-            {min > 0 && (
-              <tr>
-                <th scope="row">Under {moneyShort(min)}</th>
-                <td>Add more to start a trade</td>
-              </tr>
-            )}
-            {threshold > min && (
-              <tr>
-                <th scope="row">
-                  {moneyShort(min)} to {moneyShort(threshold - 1)}
-                </th>
-                <td>{moneyShort(terms.shipFeeCents)}</td>
-              </tr>
-            )}
-            <tr>
-              <th scope="row">{moneyShort(threshold)} or more</th>
-              <td>
-                <strong>{free}</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <ul className="gg-tc-rules">
-        <li>
-          At {terms.creditRatePercent}% trade credit, covering {moneyShort(min)} of our cards completely takes{" "}
-          {formatCents(requiredValueCents(min, terms.creditRatePercent, terms.processingFeeCents))} of your cards. Short of that? Pay the
-          rest by card at the end.
-        </li>
-        <li>You ship your cards to us separately, at your cost, with tracking. We&rsquo;ll show you how to pack them.</li>
-        <li>Shipping is never charged on a trade that&rsquo;s canceled or declined, and it&rsquo;s separate from any deposit.</li>
-      </ul>
-    </section>
-  );
-}
-
-/** The refundable deposit: when it's needed, how much, and exactly when it comes back. */
-function DepositSection({ terms }: { terms: TradeTerms }) {
-  const threshold = terms.depositThresholdCents;
-  const bands = depositBands(terms);
-  return (
-    <section className="gg-collect-section" id="deposit">
-      <h2>The refundable deposit</h2>
-      <p className="gg-collect-lead">
-        Confirming a trade takes our cards off sale for you, so trades with {formatCents(threshold)} or more of our cards need a small
-        deposit to confirm. It comes back in full as soon as the carrier accepts your package by your shipping deadline.
-      </p>
-      <div className="gg-tc-table-wrap">
-        <table className="gg-tc-table gg-tc-valuetable">
-          <caption>The deposit, by the value of our cards on your trade</caption>
-          <thead>
-            <tr>
-              <th scope="col">Our cards</th>
-              <th scope="col">Deposit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bands.map((b) => {
-              const onlyIfAsked = b.toCents !== null && b.toCents <= threshold;
-              return (
-                <tr key={b.fromCents}>
-                  <th scope="row">
-                    {b.toCents === null
-                      ? `${formatCents(b.fromCents)} or more`
-                      : b.fromCents === 0
-                        ? `Under ${formatCents(b.toCents)}`
-                        : `${formatCents(b.fromCents)} to ${formatCents(b.toCents - 1)}`}
-                  </th>
-                  <td>
-                    {formatCents(b.depositCents)}
-                    {onlyIfAsked && <span className="gg-tc-valuetable__note"> only if we ask</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <ul className="gg-tc-rules">
+      <ul>
         <li>Refunded in full, to the card you paid with. The card processing fee is on us.</li>
         <li>Declining our final offer after your cards arrive, or canceling once the carrier has your package, never costs it.</li>
         <li>
@@ -514,6 +488,6 @@ function DepositSection({ terms }: { terms: TradeTerms }) {
         </li>
         <li>If a card sells while your deposit is going through, nothing is reserved and the deposit is refunded in full.</li>
       </ul>
-    </section>
+    </details>
   );
 }

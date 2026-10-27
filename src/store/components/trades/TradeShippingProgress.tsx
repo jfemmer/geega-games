@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatCents } from "../../lib/money";
 import { moneyShort, tradeProgress, type ShippingTerms } from "../../lib/tradeShipping";
 
 // How a selection of our cards stands against the trade minimum and free
@@ -7,12 +8,15 @@ import { moneyShort, tradeProgress, type ShippingTerms } from "../../lib/tradeSh
 // tracked shipping!". It's about shipping OUR cards to them (paid by card at
 // the end); shipping theirs to us is separate, and the full version says so.
 // Recalculates on every render, so it follows the cart or the trade as cards
-// are added, removed or change quantity.
+// are added, removed or change quantity. While the customer shops it can
+// also say how much of their cards, at TCG low, it takes to cover ours.
 
 export function TradeShippingProgress({
   wantedCents,
   terms,
   compact = false,
+  hideFee = false,
+  need,
   action,
 }: {
   /** Our cards, at their trade (retail) prices. */
@@ -20,6 +24,10 @@ export function TradeShippingProgress({
   terms: ShippingTerms & { minTradeValueCents: number };
   /** One line and the bar (card pages); the full version adds the scale and the fee. */
   compact?: boolean;
+  /** Compact: leave out the shipping fee (where it's shown beside the bar already, as in the trade summary). */
+  hideFee?: boolean;
+  /** Under the bar: the customer's cards, at TCG low, it takes to cover ours at the trade rate. */
+  need?: { valueCents: number; ratePercent: number };
   /** Shown beside the message (a link to the trade, on card pages). */
   action?: ReactNode;
 }) {
@@ -42,7 +50,7 @@ export function TradeShippingProgress({
           )}
           {p.message}
         </p>
-        {compact ? (
+        {compact && !hideFee ? (
           <span className="gg-tc-progress__fee-inline">
             Shipping: <strong>{fee}</strong>
           </span>
@@ -67,6 +75,12 @@ export function TradeShippingProgress({
           />
         )}
       </div>
+      {need && need.valueCents > 0 && (
+        <p className="gg-tc-progress__need">
+          Trade in <strong>{formatCents(need.valueCents)}</strong> of your cards at TCG low to cover ours ({need.ratePercent}% trade
+          credit)
+        </p>
+      )}
       {!compact && (
         <>
           <div className="gg-tc-progress__scale" aria-hidden="true">

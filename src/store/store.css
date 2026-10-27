@@ -6683,6 +6683,7 @@ html {
 }
 .gg-tc-page .gg-field select,
 .gg-tc-page .gg-field textarea,
+.gg-tc-page .gg-tc-line__qty select,
 .gg-tc-detail select,
 .gg-tc-detail textarea,
 .gg-tc-detail input[type="number"] {
@@ -6806,7 +6807,9 @@ html {
 .gg-tc-pick__name { margin: 0; font-weight: 700; font-size: 1.05rem; color: var(--gg-ink); }
 .gg-tc-pick__finish { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.6rem 0; padding: 0; border: none; }
 .gg-tc-pick__finish legend { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; padding: 0; }
-.gg-tc-pick__row { display: grid; grid-template-columns: 1fr 120px; gap: 0.75rem; }
+.gg-tc-pick__condition { margin: 0 0 0.6rem; line-height: 1.45; color: var(--gg-ink); }
+.gg-tc-pick__condition .gg-tc-line__meta { display: block; }
+.gg-tc-pick__qty { max-width: 120px; }
 .gg-tc-pick__estimate { margin: 0.75rem 0 0; padding: 0.55rem 0.75rem; border-radius: 8px; background: #f4eaff; color: #2a2133; }
 .gg-tc-pick__estimate--blocked { background: #fef2f2; }
 .gg-tc-pick__why { display: block; margin-top: 0.2rem; color: var(--gg-danger); font-weight: 600; }
@@ -6814,7 +6817,6 @@ html {
 @media (max-width: 560px) {
   .gg-tc-pick { grid-template-columns: 72px minmax(0, 1fr); gap: 0.75rem; }
   .gg-tc-pick__img { width: 72px; }
-  .gg-tc-pick__row { grid-template-columns: 1fr 90px; }
 }
 
 .gg-tc-import__title { margin: 0 0 0.25rem; font-size: 1rem; }
@@ -6889,7 +6891,7 @@ html {
   align-items: start;
 }
 .gg-tc-main { grid-area: main; display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
-.gg-tc-aside { grid-area: aside; position: sticky; top: 1rem; }
+.gg-tc-aside { grid-area: aside; position: sticky; top: calc(var(--gg-header-height, 0px) + 1rem); }
 .gg-tc-below { grid-area: below; display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
 @media (max-width: 960px) {
   .gg-tc-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "aside" "below"; }
@@ -7088,20 +7090,108 @@ html {
 .gg-tc-status--open { background: #f1e5ff; color: #4b1a78; }
 .gg-tc-status--closed { background: #f1f0f3; color: #5b5362; }
 
-.gg-tc-cart,
-.gg-tc-cart-empty {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 1.1rem 1.2rem;
+/* The trade cart (/trade-cards): our cards the customer picked, and beside
+   them the summary (how much of their cards, at TCG low, it takes to cover
+   ours, the minimum, shipping, starting the trade). How trading works sits
+   under the cards: open text, so the boxed parts are the ones to act on. */
+.gg-tc-cartpage__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1.5rem; }
+.gg-tc-cartpage__head h1 { margin: 0 0 0.35rem; color: var(--gg-ink); }
+.gg-tc-cartpage__lead { max-width: 62ch; margin: 0; line-height: 1.55; color: #4a4152; }
+.gg-tc-cartpage__mine { font-weight: 600; color: var(--gg-purple); white-space: nowrap; }
+.gg-tc-cartpage__mine:hover { color: var(--gg-purple-2); }
+.gg-tc-cartpage__banner { max-width: none; margin: 1rem 0 0; }
+.gg-tc-cartpage__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
+  grid-template-areas: "items summary" "info summary";
+  gap: 1.75rem;
+  align-items: start;
+  margin-top: 1.25rem;
+}
+.gg-tc-cartpage__grid--empty { grid-template-columns: minmax(0, 1fr); grid-template-areas: "items" "info"; }
+.gg-tc-cartpage__items {
+  grid-area: items;
+  min-width: 0;
+  padding: 0.95rem 1.2rem 0.3rem;
   border: 1px solid rgba(102, 51, 153, 0.18);
   border-radius: 14px;
   background: #fff;
 }
-.gg-tc-cart-empty { text-align: center; }
-.gg-tc-cart-empty p { margin: 0 0 0.85rem; line-height: 1.55; }
-.gg-tc-cart__foot { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid #ece4f5; }
-.gg-tc-cart__total { margin: 0; font-size: 1.05rem; }
-.gg-tc-rules { max-width: 680px; margin: 1rem auto 0; padding-left: 1.25rem; line-height: 1.6; color: #333; }
+.gg-tc-cartpage__itemshead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid #efe8f7;
+}
+.gg-tc-cartpage__itemshead h2 { margin: 0; font-size: 1.15rem; color: #3a1260; }
+.gg-tc-cartpage__count { font-weight: 500; color: #6d6575; }
+.gg-tc-cartpage__more { font-size: 0.9rem; font-weight: 600; color: var(--gg-purple); }
+.gg-tc-cartpage__more:hover { color: var(--gg-purple-2); }
+.gg-tc-cartpage__note { margin: 0 0 0.75rem; padding-top: 0.65rem; border-top: 1px solid #efe8f7; }
+.gg-tc-cartpage__empty { padding: 1.6rem 0.25rem 1.75rem; text-align: center; }
+.gg-tc-cartpage__empty h2 { margin: 0 0 0.5rem; font-size: 1.25rem; color: #3a1260; }
+.gg-tc-cartpage__empty p { max-width: 46ch; margin: 0 auto 1.1rem; line-height: 1.55; color: #4a4152; }
+.gg-tc-cartpage__empty .gg-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.gg-tc-cartpage__summary {
+  grid-area: summary;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+  border: 1px solid rgba(102, 51, 153, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbf8ff 100%);
+  box-shadow: 0 10px 26px rgba(54, 10, 94, 0.08);
+}
+.gg-tc-cartpage__summary h2 { margin: 0; font-size: 1.15rem; color: #3a1260; }
+.gg-tc-cartpage__summary > p { margin: 0; }
+.gg-tc-cartpage__summary .gg-tc-progress--compact { margin: 0; }
+.gg-tc-cartpage__start { width: 100%; min-height: 46px; font-size: 1.02rem; }
+.gg-tc-sum { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; }
+.gg-tc-sum div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.gg-tc-sum dt { display: flex; flex-direction: column; gap: 0.1rem; color: #3b3346; }
+.gg-tc-sum dd { margin: 0; font-weight: 700; color: var(--gg-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gg-tc-sum__hint { font-size: 0.75rem; line-height: 1.4; color: #6d6575; }
+.gg-tc-sum__need { padding: 0.85rem 1rem 0.9rem; border: 1px solid #e2d2fa; border-radius: 12px; background: #f6efff; }
+.gg-tc-sum__needfig { display: flex; flex-direction: column; margin: 0; color: #4b1a78; }
+.gg-tc-sum__needlabel,
+.gg-tc-sum__needsub { font-size: 0.88rem; font-weight: 600; }
+.gg-tc-sum__needvalue { margin: 0.1rem 0; font-size: 2rem; font-weight: 800; line-height: 1.15; color: #3a1260; font-variant-numeric: tabular-nums; }
+.gg-tc-sum__needhint { margin: 0.45rem 0 0; font-size: 0.78rem; line-height: 1.45; color: #5b5362; }
+.gg-tc-cartpage__info { grid-area: info; display: flex; flex-direction: column; gap: 2rem; min-width: 0; }
+.gg-tc-how h2,
+.gg-tc-know h2 { margin: 0 0 0.75rem; font-size: 1.25rem; color: var(--gg-purple); }
+.gg-tc-how__steps { display: flex; flex-direction: column; gap: 0.7rem; max-width: 70ch; margin: 0; padding-left: 1.5rem; line-height: 1.55; color: #3b3346; }
+.gg-tc-how__steps li { padding-left: 0.3rem; }
+.gg-tc-how__steps li::marker { font-weight: 800; color: var(--gg-purple-2); }
+.gg-tc-how__steps strong { color: var(--gg-ink); }
+.gg-tc-how__ages { max-width: 440px; margin-top: 1.4rem; }
+.gg-tc-how__ages h3 { margin: 0 0 0.3rem; font-size: 1rem; color: var(--gg-ink); }
+.gg-tc-know__list { max-width: 70ch; margin: 0; padding-left: 1.2rem; line-height: 1.55; color: #3b3346; }
+.gg-tc-know__list li + li { margin-top: 0.35rem; }
+.gg-tc-know__deposit { max-width: 70ch; margin-top: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--gg-line); border-radius: 10px; background: #fff; }
+.gg-tc-know__deposit summary { cursor: pointer; font-weight: 700; color: var(--gg-ink); }
+.gg-tc-know__deposit p { margin: 0.75rem 0; line-height: 1.55; color: #3b3346; }
+.gg-tc-know__deposit ul { margin: 0.75rem 0 0; padding-left: 1.2rem; line-height: 1.55; color: #3b3346; }
+@media (min-width: 901px) {
+  .gg-tc-cartpage__grid--empty .gg-tc-cartpage__info { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 2.5rem; }
+}
+/* Sticky only where the whole summary fits under the header. */
+@media (min-width: 901px) and (min-height: 760px) {
+  .gg-tc-cartpage__summary { position: sticky; top: calc(var(--gg-header-height, 0px) + 1rem); }
+}
+@media (max-width: 900px) {
+  .gg-tc-cartpage__grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "items" "summary" "info"; gap: 1.25rem; }
+  .gg-tc-cartpage__info { margin-top: 0.75rem; }
+}
+@media (max-width: 560px) {
+  .gg-tc-cartpage__items,
+  .gg-tc-cartpage__summary { padding-left: 0.9rem; padding-right: 0.9rem; }
+  .gg-tc-sum__needvalue { font-size: 1.75rem; }
+}
 
 .gg-tc-settled__back { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
 .gg-tc-settled__back h3 { margin: 0 0 .4rem; font-size: 1rem; }
@@ -7250,6 +7340,8 @@ html {
 .gg-tc-progress--compact .gg-tc-progress__head { margin-bottom: 0.45rem; }
 .gg-tc-progress--compact .gg-tc-progress__message { font-size: 0.92rem; }
 .gg-tc-progress--compact .gg-tc-progress__track { height: 8px; }
+.gg-tc-progress__need { margin: 0.5rem 0 0; font-size: 0.82rem; line-height: 1.4; color: #d9c8f2; }
+.gg-tc-progress__need strong { color: #fff; font-variant-numeric: tabular-nums; }
 .gg-tc-panel .gg-tc-progress { margin-top: 0.9rem; }
 @media (prefers-reduced-motion: reduce) {
   .gg-tc-progress__fill { transition: none; }

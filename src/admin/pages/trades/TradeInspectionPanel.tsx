@@ -22,10 +22,11 @@ import { OfferCardHead } from "./TradeCardBits";
 import type { TradePanelProps } from "./types";
 
 // Received / under inspection: for each card we approved, how many arrived,
-// whether it's real, the condition we see, how many we take and what each
-// is worth now (a new condition rescales the value by the trade's condition
-// percentages; staff can type over it). Then the final offer, worked out
-// from what's saved, optionally with cash for credit beyond the order.
+// whether it's real, the condition we see, how many we take and its TCG low
+// now (a new condition rescales the approved value by the trade's condition
+// percentages as a starting point; staff type the TCG low over it). Then the
+// final offer, worked out from what's saved, optionally with cash for
+// credit beyond the order.
 
 export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelProps) {
   const toast = useToast();
@@ -100,7 +101,8 @@ export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelP
       </div>
       <p className="gg-card-meta">
         Change only the cards that differ from what you approved and save. Then confirm the rest as approved. A different
-        condition rescales the value by this trade&rsquo;s condition percentages; you can type over it.
+        condition rescales the value by this trade&rsquo;s condition percentages as a starting point: enter the TCG low for the
+        condition you see.
       </p>
 
       <ul className="gg-trd-cards">
@@ -114,6 +116,7 @@ export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelP
                 card={c}
                 minCardValueCents={trade.minCardValueCents}
                 showPricing={false}
+                lookup
                 aside={
                   <div className="gg-trd-card__approved">
                     <span>
@@ -190,7 +193,7 @@ export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelP
                   </select>
                 </label>
                 <label className="gg-trd-field">
-                  <span>Value each</span>
+                  <span>TCG low each</span>
                   <span className="gg-trd-dollar">
                     <input
                       className="gg-input"

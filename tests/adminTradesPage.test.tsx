@@ -187,27 +187,47 @@ describe("the list", () => {
 });
 
 describe("review", () => {
-  it("decides every card, then saves the review and approves in one go", async () => {
+  it("prices every card at the TCG low staff type, then saves the review and approves in one go", async () => {
     const user = userEvent.setup();
     const dialog = await openTrade(REVIEW);
     expect(within(dialog).getByText("Approve or reject every card first (3 left).")).toBeInTheDocument();
     const approve = within(dialog).getByRole("button", { name: "Approve and email the customer" });
     expect(approve).toBeDisabled();
 
-    // The two with a market price at their estimates; the Mox needs a value by hand.
-    await user.click(within(dialog).getByRole("button", { name: "Approve the rest at their estimates" }));
+    // Each card links to TCGplayer to look up its TCG low; the market estimate is there for reference.
+    const sheoldred = within(dialog).getByText("Sheoldred, the Apocalypse").closest("li")!;
+    const lookup = within(sheoldred).getByRole("link", { name: /Look up TCG low/ });
+    expect(lookup).toHaveAttribute(
+      "href",
+      "https://www.tcgplayer.com/search/magic/product?productLineName=magic&q=Sheoldred%2C%20the%20Apocalypse&view=grid",
+    );
+    expect(lookup).toHaveAttribute("target", "_blank");
+    expect(within(sheoldred).getByText(/Market estimate \$80\.00 × 100% = \$80\.00 each/)).toBeInTheDocument();
+
+    // Approving a card leaves its value empty: staff type its TCG low, nothing comes from the estimate.
+    await user.click(within(within(dialog).getByRole("group", { name: "Decision for Sheoldred, the Apocalypse" })).getByRole("button", { name: "Approve" }));
+    expect(within(dialog).getByLabelText("TCG low each for Sheoldred, the Apocalypse")).toHaveValue("");
+
+    // Ragavan at its market estimate in one go; the Mox has no market price, so it's left to decide.
+    await user.click(within(dialog).getByRole("button", { name: "Approve the rest at market estimates" }));
     expect(within(dialog).getByText("Approve or reject every card first (1 left).")).toBeInTheDocument();
     await user.click(within(within(dialog).getByRole("group", { name: "Decision for Mox Diamond" })).getByRole("button", { name: "Approve" }));
-    await user.type(within(dialog).getByLabelText("Value each for Mox Diamond"), "380");
+    expect(within(dialog).getByText("Enter the TCG low for each card you approve (2 left).")).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+    await user.type(within(dialog).getByLabelText("TCG low each for Sheoldred, the Apocalypse"), "76.50");
+    expect(within(dialog).getByText("Enter the TCG low for each card you approve (1 left).")).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("TCG low each for Mox Diamond"), "380");
+    expect(within(dialog).queryByText(/Enter the TCG low for each card you approve/)).not.toBeInTheDocument();
     await user.selectOptions(within(dialog).getByLabelText("How many Ragavan, Nimble Pilferer to approve"), "1");
-    // $80 + $46.80 + $380 approved → $405.44 credit, more than our $88.99 of cards (which take $111.24
+    // $76.50 + $46.80 + $380 approved → $402.64 credit, more than our $88.99 of cards (which take $111.24
     // of theirs at 80%); shipping our cards, $3.99, is paid by card, not out of the credit.
     const preview = within(dialog).getByText("Approved value").closest("dl")!;
-    expect(within(preview).getByText("Approved value").nextElementSibling).toHaveTextContent("$506.80");
+    expect(within(preview).getByText("Approved value").nextElementSibling).toHaveTextContent("$503.30");
     expect(within(preview).getByText("Their cards needed to cover ours at 80%").nextElementSibling).toHaveTextContent("$111.24");
     expect(within(preview).getByText("Shipping our cards (paid by card, not credit)").nextElementSibling).toHaveTextContent("$3.99");
     expect(within(preview).getByText("They would pay by card").nextElementSibling).toHaveTextContent("$3.99");
-    expect(within(preview).getByText("Credit left over").nextElementSibling).toHaveTextContent("$316.45");
+    expect(within(preview).getByText("Credit left over").nextElementSibling).toHaveTextContent("$313.65");
+    expect(approve).toBeEnabled();
 
     // The customer gets the confirmation window (Sundays don't count); nothing is reserved yet; no deposit on $88.99.
     expect(within(dialog).getByText(/to confirm \(48 hours; Sundays don’t count\)\. Nothing is reserved until they confirm\./)).toBeInTheDocument();
@@ -222,7 +242,7 @@ describe("review", () => {
     await user.click(within(dialog).getByRole("button", { name: "Save the review and approve" }));
     await waitFor(() => expect(repo.approve).toHaveBeenCalled());
     expect(repo.review).toHaveBeenCalledWith(TRADE_ID, [
-      { id: "o1", reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 8000, reviewNote: null, internalNote: null },
+      { id: "o1", reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 7650, reviewNote: null, internalNote: null },
       { id: "o2", reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 4680, reviewNote: null, internalNote: null },
       { id: "o4", reviewStatus: "approved", approvedQuantity: 1, approvedUnitCents: 38000, reviewNote: null, internalNote: null },
     ]);
@@ -312,7 +332,8 @@ describe("receiving, inspection and the final offer", () => {
 
     const ragavan = within(dialog).getByText("Ragavan, Nimble Pilferer").closest("li")!;
     await user.selectOptions(within(ragavan).getByLabelText("Condition"), "MP");
-    expect(within(ragavan).getByLabelText("Value each")).toHaveValue("39.00"); // $46.80 at 75/90
+    expect(within(ragavan).getByLabelText("TCG low each")).toHaveValue("39.00"); // $46.80 at 75/90, to type over
+    expect(within(ragavan).getByRole("link", { name: /Look up TCG low/ })).toHaveAttribute("href", expect.stringContaining("q=Ragavan%2C%20Nimble%20Pilferer"));
     await user.selectOptions(within(ragavan).getByLabelText("Arrived"), "1");
     expect(within(ragavan).getByLabelText("Taking")).toHaveValue("1");
 
