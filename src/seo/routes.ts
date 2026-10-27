@@ -38,27 +38,30 @@ const SEO_REFRESH = "2026-09-26";
 const PARTNER_PROGRAM = "2026-10-11";
 // 2026-10-17: collection sorting — the service page and its shipping policy.
 const COLLECTION_SORTING = "2026-10-17";
+// 2026-10-27: the two-step "Get a free offer" form (sell pages), the visitor
+// statistics paragraph (privacy), and who runs Geega Games and Marvel (about).
+const OCT_27 = "2026-10-27";
 
 const STATIC_ROUTES: SeoRoute[] = [
   // 2026-10-05: the email-list signup replaced the launch notice.
   { path: "/", changefreq: "daily", priority: "1.0", lastmod: "2026-10-05" },
   { path: "/shop", changefreq: "daily", priority: "0.9" },
   { path: "/shop/sets", changefreq: "weekly", priority: "0.7" },
-  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: SEO_REFRESH },
-  { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: SEO_REFRESH },
+  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: OCT_27 },
+  { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: OCT_27 },
   { path: "/sell", changefreq: "monthly", priority: "0.7" },
   { path: SELL_HUB_PATH, changefreq: "monthly", priority: "0.8", lastmod: PARTNER_PROGRAM },
   { path: FOR_STORES_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: REFERRAL_PARTNERS_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: "/collection-sorting", changefreq: "monthly", priority: "0.7", lastmod: COLLECTION_SORTING },
   { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: SEO_REFRESH },
-  { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: SEO_REFRESH },
+  { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: OCT_27 },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
   // 2026-10-17: shipping for collection sorting (shipping in, return shipping in the quote).
   { path: "/shipping", changefreq: "monthly", priority: "0.4", lastmod: COLLECTION_SORTING },
   { path: "/returns", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
   { path: "/contact", changefreq: "monthly", priority: "0.3", lastmod: "2026-09-26" },
-  { path: "/privacy", changefreq: "yearly", priority: "0.1", lastmod: PARTNER_PROGRAM },
+  { path: "/privacy", changefreq: "yearly", priority: "0.1", lastmod: OCT_27 },
   { path: "/terms", changefreq: "yearly", priority: "0.1", lastmod: PARTNER_PROGRAM },
 ];
 
