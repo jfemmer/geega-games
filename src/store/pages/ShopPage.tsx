@@ -4,6 +4,7 @@ import { useSEO } from "../lib/useSEO";
 import {
   useCatalog,
   useFacets,
+  withoutFilters,
   DEFAULT_FILTERS,
   PAGE_SIZE,
   countActiveFilters,
@@ -12,7 +13,9 @@ import {
 } from "../lib/useCatalog";
 import ProductCard from "../components/ProductCard";
 import CatalogFiltersPanel from "../components/CatalogFiltersPanel";
+import { CardRequestPanel } from "../components/CardRequestPanel";
 import { TradeCartProgress } from "../components/trades/TradeCartProgress";
+import { useSearchTracking } from "../lib/searchTracking";
 const SORTS: { value: CatalogSort; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
   { value: "name_desc", label: "Name Z → A" },
@@ -39,7 +42,7 @@ export default function ShopPage() {
   const [page, setPage] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const facets = useFacets();
-  const { cards, total, loading, error } = useCatalog(filters, page);
+  const { cards, total, loading, error, settled } = useCatalog(filters, page);
 
   // Sync URL -> filters. Catches every source that can change ?q=/?sort=
   // AFTER this page has already mounted: the header search box, browser
@@ -97,6 +100,18 @@ export default function ShopPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const activeFilterCount = countActiveFilters(filters);
+
+  // What visitors search for, and how many cards each search found (admin
+  // Overview: searches that found nothing show what to stock).
+  useSearchTracking({
+    query: filters.query,
+    loading: !settled,
+    results: total,
+    filtered: activeFilterCount > 0,
+    deals: filters.dealsOnly,
+  });
+  // Nothing found for a search with no filters on: offer to tell them when it's in.
+  const offerRequest = settled && cards.length === 0 && filters.query.trim().length >= 2 && activeFilterCount === 0 && !filters.dealsOnly;
 
   const FiltersPanel = (
     <CatalogFiltersPanel facets={facets} filters={filters} setFilters={setFilters} />
@@ -190,11 +205,12 @@ export default function ShopPage() {
               {activeFilterCount > 0 && (
                 <button
                   className="gg-btn gg-btn-ghost"
-                  onClick={() => setFilters(DEFAULT_FILTERS)}
+                  onClick={() => setFilters(withoutFilters)}
                 >
                   Clear filters
                 </button>
               )}
+              {offerRequest && <CardRequestPanel key={filters.query.trim().toLowerCase()} query={filters.query} />}
             </div>
           ) : (
             <div className="gg-grid">

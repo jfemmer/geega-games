@@ -330,6 +330,53 @@ describe("storefront search", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers to email when a card nobody has in stock is in, for a search that found nothing", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith("/api/sell/scryfall-search")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                scryfallId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                oracleId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                cardName: "Black Lotus",
+                setCode: "lea",
+                setName: "Limited Edition Alpha",
+                collectorNumber: "232",
+                imageUrl: null,
+              },
+            ],
+            totalCards: 1,
+            hasMore: false,
+            page: 1,
+          }),
+        };
+      }
+      return { ok: true, status: 204, json: async () => null };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      goTo("/shop?q=black%20lotus");
+      render(<App />);
+      expect(await screen.findByText("No cards match your search.")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Can’t find “black lotus”?" })).toBeInTheDocument();
+      expect(await screen.findByRole("radio", { name: "Black Lotus" }, { timeout: 2000 })).toBeChecked();
+      expect(screen.getByRole("button", { name: "Email me when it's in" })).toBeInTheDocument();
+      expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith("/api/sell/scryfall-search?q=black+lotus"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("doesn't offer it while the shop is still searching, or when cards were found", async () => {
+    goTo("/shop?q=bolt");
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Lightning Bolt")).toBeInTheDocument());
+    expect(screen.queryByText(/Can’t find/)).not.toBeInTheDocument();
+  });
+
   it("searches by set code and collector number, case-insensitively", async () => {
     goTo("/shop");
     render(<App />);
@@ -342,5 +389,23 @@ describe("storefront search", () => {
       expect(screen.queryByText("Lightning Bolt")).not.toBeInTheDocument(),
     );
     expect(screen.getByText("Counterspell")).toBeInTheDocument();
+  });
+});
+
+describe("withoutFilters", () => {
+  it("clears the filters but keeps what was typed, the sort and the deals view", async () => {
+    const { DEFAULT_FILTERS, withoutFilters, countActiveFilters } = await import("../src/store/lib/useCatalog");
+    const filtered = {
+      ...DEFAULT_FILTERS,
+      query: "bolt",
+      sort: "price_asc" as const,
+      dealsOnly: true,
+      sets: ["LEA"],
+      rarities: ["common"],
+      minPriceCents: 100,
+    };
+    const cleared = withoutFilters(filtered);
+    expect(countActiveFilters(cleared)).toBe(0);
+    expect(cleared).toEqual({ ...DEFAULT_FILTERS, query: "bolt", sort: "price_asc", dealsOnly: true });
   });
 });

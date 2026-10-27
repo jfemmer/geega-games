@@ -1296,6 +1296,21 @@ export const mockAnalyticsRepository: AnalyticsRepository = {
             pages: 1,
           },
         ],
+        filteredVisits: Math.round(visitors * 0.3),
+        searches: [
+          { query: "sol ring", searches: 14, people: 9, results: 6, lastSearchedAt: new Date(Date.now() - 50 * 60_000).toISOString() },
+          { query: "sheoldred", searches: 9, people: 6, results: 0, lastSearchedAt: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+          { query: "lightning bolt", searches: 7, people: 5, results: 3, lastSearchedAt: new Date(Date.now() - 26 * 3_600_000).toISOString() },
+          { query: "the one ring", searches: 4, people: 4, results: 0, lastSearchedAt: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+        ],
+        missedSearches: [
+          { query: "sheoldred", searches: 9, people: 6, results: 0, lastSearchedAt: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+          { query: "the one ring", searches: 4, people: 4, results: 0, lastSearchedAt: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+        ],
+        campaigns: [
+          { source: "facebook", campaign: "picks-2026-10-24", value: 11 },
+          { source: "facebook", campaign: "sheoldred-the-apocalypse", value: 4 },
+        ],
       },
       300,
     );

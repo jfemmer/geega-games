@@ -14,6 +14,7 @@ import ShopPage from "./store/pages/ShopPage";
 import ShopSetsPage from "./store/pages/ShopSetsPage";
 import ShopSetPage from "./store/pages/ShopSetPage";
 import CardDetailPage from "./store/pages/CardDetailPage";
+import ShopPicksPage from "./store/pages/ShopPicksPage";
 import {
   LoginPage,
   SignupPage,
@@ -60,6 +61,7 @@ function Routes() {
   if (path === "/" || path === "") return <HomePage />;
   if (path === "/shop") return <ShopPage />;
   if (path === "/shop/sets") return <ShopSetsPage />;
+  if (path === "/shop/picks") return <ShopPicksPage />;
   const setMatch = matchRoute("/shop/set/:code", path);
   if (setMatch) return <ShopSetPage code={setMatch.code} />;
   const cardMatch = matchRoute("/shop/card/:slug", path);

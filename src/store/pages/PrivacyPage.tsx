@@ -2,7 +2,7 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
-const EFFECTIVE_DATE = "October 11, 2026";
+const EFFECTIVE_DATE = "October 27, 2026";
 
 export function PrivacyPage() {
   useSEO({
@@ -89,10 +89,15 @@ export function PrivacyPage() {
           as IP address, browser type, device information, pages visited, and timestamps, and may
           use cookies or similar technologies necessary for the Service to function (for example,
           keeping you signed in or remembering your cart). Our own visitor statistics record the
-          pages you view, your device type, the site that referred you, and your approximate
-          location (country, state/region and city, estimated from your IP address) without
-          storing your IP address or identifying you; we don&rsquo;t record them at all if your
-          browser sends a Do Not Track or Global Privacy Control signal.
+          pages you view, whether you interacted with each page (for example, tapped, scrolled or
+          typed — not what you did), what you search for in our shop and how many cards each
+          search found, the campaign tags of the link you arrived on (for example, that it came
+          from one of our social media posts), your device type, the site that referred you, and
+          your approximate location (country, state/region and city, estimated from your IP
+          address) without storing your IP address or identifying you. Searches that look like an
+          email address or phone number are never recorded. We keep these statistics for 13
+          months, and we don&rsquo;t record them at all if your browser sends a Do Not Track or
+          Global Privacy Control signal.
         </li>
       </ul>
 

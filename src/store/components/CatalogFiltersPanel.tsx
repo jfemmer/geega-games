@@ -3,10 +3,10 @@ import {
   COLOR_COMBOS,
   COLOR_GROUPS,
   COLOR_LETTER_GROUP,
-  DEFAULT_FILTERS,
   colorComboKey,
   colorComboValue,
   countActiveFilters,
+  withoutFilters,
   type CatalogFilters,
   type CatalogListFilterKey,
   type Facets,
@@ -161,7 +161,7 @@ export default function CatalogFiltersPanel({ facets, filters, setFilters }: Pro
           className="gg-btn gg-btn-ghost gg-btn-sm"
           onClick={() => {
             setCreatureSearch("");
-            setFilters(DEFAULT_FILTERS);
+            setFilters(withoutFilters);
           }}
         >
           Clear filters ({activeFilterCount})

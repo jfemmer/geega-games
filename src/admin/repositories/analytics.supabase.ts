@@ -62,6 +62,11 @@ export const supabaseAnalyticsRepository: AnalyticsRepository = {
       cities: r.cities ?? [],
       regions: r.regions ?? [],
       recentVisitors: r.recentVisitors ?? [],
+      // Absent until the 20261027050000 migration is applied.
+      filteredVisits: r.filteredVisits ?? 0,
+      searches: r.searches ?? [],
+      missedSearches: r.missedSearches ?? [],
+      campaigns: r.campaigns ?? [],
     };
   },
 

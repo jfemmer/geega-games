@@ -20,6 +20,8 @@ import { photoRequestsRepository } from "../repositories/photoRequests.supabase"
 import { useAsync } from "../hooks/useAsync";
 import { useCurrentAdmin } from "../hooks/useCurrentAdmin";
 import { useToast } from "../hooks/useToast";
+import { MAX_PICKS, facebookPostLink } from "../../store/lib/postLinks";
+import { slugifyCardName } from "../../store/lib/cardSlug";
 import {
   inventoryRepository,
   reservationRepository,
@@ -214,6 +216,34 @@ export function InventoryPage({
       rows.forEach((r) => next.add(r.id));
       return next;
     });
+  }
+
+  /**
+   * A link for a Facebook post about the selected cards: one card's own page,
+   * or the picks page showing exactly these cards, tagged so the Overview
+   * shows how many people each post brought in.
+   */
+  async function copyPostLink() {
+    const chosen = rows.filter((r) => selectedIds.has(r.id));
+    const link = facebookPostLink(chosen.map((r) => r.cardName));
+    if (!link) return;
+    const cards = new Set(chosen.map((r) => slugifyCardName(r.cardName))).size;
+    const notes = [
+      cards > MAX_PICKS ? `The link shows the first ${MAX_PICKS} cards.` : "",
+      selectedIds.size > chosen.length ? "Cards selected on other pages aren't included." : "",
+      chosen.some((r) => r.status !== "active" || r.quantity <= 0)
+        ? "Copies that are reserved, archived or out of stock won't show on the page."
+        : "",
+    ].filter(Boolean);
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success(
+        [`Link copied for ${Math.min(cards, MAX_PICKS)} card${cards === 1 ? "" : "s"}. Paste it into your Facebook post.`, ...notes].join(" "),
+        { duration: 6000 },
+      );
+    } catch {
+      window.prompt("Copy this link for your Facebook post:", link);
+    }
   }
 
   function exportCsv() {
@@ -517,6 +547,9 @@ export function InventoryPage({
           <div className="gg-bulkbar" role="region" aria-label="Bulk actions">
             <span className="gg-bulkbar__count">{selectedIds.size} selected</span>
             <div className="gg-bulkbar__actions">
+              <Button variant="ghost" size="sm" icon="share" onClick={() => void copyPostLink()}>
+                Copy Facebook post link
+              </Button>
               <Button variant="ghost" size="sm" icon="download" onClick={exportCsv}>
                 Export selected
               </Button>

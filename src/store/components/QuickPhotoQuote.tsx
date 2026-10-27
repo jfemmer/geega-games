@@ -2,15 +2,43 @@ import { useEffect, useRef, useState } from "react";
 import { CollectionPhotoUpload, MAX_PHOTO_BYTES } from "./sell/CollectionPhotoUpload";
 import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
 import { rememberClaim } from "../lib/guestClaims";
-import { emptyCollection, newLocalId, type SellContactInfo, type SellPhoto } from "../lib/sellTypes";
+import {
+  SELL_COLLECTION_SIZE_OPTIONS,
+  emptyCollection,
+  newLocalId,
+  type SellContactInfo,
+  type SellPhoto,
+} from "../lib/sellTypes";
 import { MAGIC_PARTNER_CONSENT_LABEL } from "../lib/partnerTypes";
 
-// One-screen "send photos, get an offer" form for Magic sellers — the way most
-// collection buyers quote now (seller research, 2026-09-25). It creates a
-// normal Sell Your Cards submission through /api/sell/submit (tagged
-// source = "quick_quote"), so it lands in the admin Buying Leads queue and
-// uses the same offer flow as the full /sell form. Sellers who want to list
-// cards one by one still use /sell.
+// "Get a free offer" for Magic sellers, in two short steps — the way most
+// collection buyers quote now (seller research, 2026-09-25):
+//   1. What you have: a few taps (what kind of cards, roughly how many, meet
+//      up or ship) and an optional note. No personal details yet.
+//   2. Where to send the offer: photos (optional, for a faster offer) and
+//      contact details.
+// It creates a normal Sell Your Cards submission through /api/sell/submit
+// (tagged source = "quick_quote", with the collection's types and size in
+// their own fields), so it lands in the admin Buying Leads queue and uses
+// the same offer flow as the full /sell form. Sellers who want to list cards
+// one by one still use /sell.
+
+/** "What do you have?": the Buying Leads collection types, in sellers' words. */
+const QUICK_QUOTE_TYPES: { value: string; label: string }[] = [
+  { value: "individual_singles", label: "A few valuable cards" },
+  { value: "binder_collection", label: "Binders or a collection" },
+  { value: "commander_decks", label: "Commander or other decks" },
+  { value: "bulk_cards", label: "Bulk (boxes of commons)" },
+  { value: "sealed_product", label: "Sealed product" },
+  { value: "mixed_collection", label: "A mix / not sure" },
+];
+
+const HANDOFFS: { value: SellContactInfo["transactionPreference"]; label: string }[] = [
+  { value: "local", label: "Meet up in person" },
+  { value: "ship", label: "Ship my cards" },
+  { value: "either", label: "Either works" },
+  { value: "not_sure", label: "Not sure yet" },
+];
 
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 
@@ -29,6 +57,9 @@ function isValidEmail(email: string): boolean {
 
 export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defaultHandoff?: Handoff }) {
   const [draftId] = useState(newLocalId);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [types, setTypes] = useState<string[]>([]);
+  const [size, setSize] = useState("");
   const [photos, setPhotos] = useState<SellPhoto[]>([]);
   const [description, setDescription] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -45,6 +76,32 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
   const [submitting, setSubmitting] = useState(false);
   const [referenceNumber, setReferenceNumber] = useState<string | null>(null);
   const doneRef = useRef<HTMLDivElement>(null);
+  const stepRef = useRef<HTMLHeadingElement>(null);
+  const movedStep = useRef(false);
+
+  // Moving between the steps puts focus (and a screen reader) on the new step.
+  useEffect(() => {
+    if (!movedStep.current) return;
+    stepRef.current?.focus();
+  }, [step]);
+
+  function goTo(next: 1 | 2) {
+    movedStep.current = true;
+    setError(null);
+    setStep(next);
+  }
+
+  function toggleType(value: string) {
+    setTypes((current) => (current.includes(value) ? current.filter((t) => t !== value) : [...current, value]));
+  }
+
+  function next(e: React.FormEvent) {
+    e.preventDefault();
+    if (types.length === 0 && !description.trim()) {
+      return setError("Tell us what kind of cards you have, or add a short note.");
+    }
+    goTo(2);
+  }
 
   // Free the photo previews' object URLs when the form goes away.
   const photosRef = useRef<SellPhoto[]>([]);
@@ -115,8 +172,8 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
     e.preventDefault();
     setError(null);
     const uploaded = photos.filter((p) => p.status === "uploaded" && p.uploadedPath);
-    if (uploaded.length === 0 && !description.trim()) {
-      return setError("Add a few photos or a short description of what you have.");
+    if (types.length === 0 && !description.trim() && uploaded.length === 0) {
+      return setError("Tell us what kind of cards you have, add a short note, or add a few photos.");
     }
     if (photos.some((p) => p.status === "uploading" || p.status === "pending")) {
       return setError("Your photos are still uploading — give it a moment and try again.");
@@ -145,7 +202,7 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
           zip,
           transactionPreference: handoff,
         },
-        collection: { ...emptyCollection(), notes: description },
+        collection: { ...emptyCollection(), collectionTypes: types, collectionSize: size, notes: description },
         cards: [],
         photos: uploaded.map((p) => ({ path: p.uploadedPath!, originalFilename: p.originalFilename })),
         agreedToTerms: agreed,
@@ -187,10 +244,101 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
     );
   }
 
+  // Step 2 recaps step 1: "Binders or a collection, 1,000–5,000 cards, plus your note".
+  const picks = [
+    ...QUICK_QUOTE_TYPES.filter((t) => types.includes(t.value)).map((t) => t.label),
+    SELL_COLLECTION_SIZE_OPTIONS.find((o) => o.value === size)?.label,
+    HANDOFFS.find((h) => h.value === handoff && h.value !== "not_sure")?.label,
+  ].filter(Boolean);
+  const note = description.trim();
+  const shortNote = note.length > 60 ? `${note.slice(0, 57).trimEnd()}…` : note;
+  const summary = picks.length > 0 ? `${picks.join(", ")}${note ? ", plus your note" : ""}` : `“${shortNote}”`;
+
+  if (step === 1) {
+    return (
+      <form className="gg-referral-form gg-qq" onSubmit={next} noValidate aria-labelledby="qq-step-title">
+        <p className="gg-qq__step">Step 1 of 2</p>
+        <h3 id="qq-step-title" className="gg-qq__title" ref={stepRef} tabIndex={-1}>
+          What are you selling?
+        </h3>
+
+        <fieldset className="gg-qq__group">
+          <legend>What do you have? Pick any that fit.</legend>
+          <div className="gg-qq__chips">
+            {QUICK_QUOTE_TYPES.map((t) => (
+              <label key={t.value} className={types.includes(t.value) ? "gg-qq__chip gg-qq__chip--on" : "gg-qq__chip"}>
+                <input type="checkbox" checked={types.includes(t.value)} onChange={() => toggleType(t.value)} />
+                {t.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="gg-qq__group">
+          <legend>About how many cards?</legend>
+          <div className="gg-qq__chips">
+            {SELL_COLLECTION_SIZE_OPTIONS.map((o) => (
+              <label key={o.value} className={size === o.value ? "gg-qq__chip gg-qq__chip--on" : "gg-qq__chip"}>
+                <input type="radio" name="qq-size" checked={size === o.value} onChange={() => setSize(o.value)} />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="gg-qq__group">
+          <legend>Meet up or ship?</legend>
+          <div className="gg-qq__chips">
+            {HANDOFFS.map((h) => (
+              <label key={h.value} className={handoff === h.value ? "gg-qq__chip gg-qq__chip--on" : "gg-qq__chip"}>
+                <input type="radio" name="qq-handoff" checked={handoff === h.value} onChange={() => setHandoff(h.value)} />
+                {h.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="gg-field">
+          <label htmlFor="qq-description">Anything we should know? (optional)</label>
+          <textarea
+            id="qq-description"
+            rows={3}
+            maxLength={4000}
+            placeholder="e.g. Two binders from the 2000s, a box of bulk and a few Commander decks."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        {error && (
+          <p className="gg-alert gg-alert-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className="gg-btn">
+          Next: where to send your offer
+        </button>
+        <p className="gg-referral-assure">Free, with no obligation to sell. No account needed.</p>
+      </form>
+    );
+  }
+
   return (
-    <form className="gg-referral-form" onSubmit={submit} noValidate>
+    <form className="gg-referral-form gg-qq" onSubmit={submit} noValidate aria-labelledby="qq-step-title">
+      <p className="gg-qq__step">Step 2 of 2</p>
+      <h3 id="qq-step-title" className="gg-qq__title" ref={stepRef} tabIndex={-1}>
+        Where should we send your offer?
+      </h3>
+      <p className="gg-qq__summary">
+        <span className="gg-qq__summary-text">{summary}</span>{" "}
+        <button type="button" className="gg-linklike gg-qq__edit" onClick={() => goTo(1)}>
+          Change
+        </button>
+      </p>
+
       <div className="gg-field">
-        <span className="gg-referral-label">Photos of your cards</span>
+        <span className="gg-referral-label">Photos of your cards (optional, for a faster offer)</span>
         <CollectionPhotoUpload
           photos={photos}
           onFilesSelected={addPhotos}
@@ -200,18 +348,6 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         <p className="gg-card-meta">
           Binder pages, the tops of boxes, and close-ups of anything you think is valuable all help.
         </p>
-      </div>
-
-      <div className="gg-field">
-        <label htmlFor="qq-description">Anything we should know? (optional if you added photos)</label>
-        <textarea
-          id="qq-description"
-          rows={3}
-          maxLength={4000}
-          placeholder="e.g. Two binders from the 2000s, a box of bulk and a few Commander decks."
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
       </div>
 
       <div className="gg-form-grid">
@@ -240,15 +376,6 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
             value={zip}
             onChange={(e) => setZip(e.target.value)}
           />
-        </div>
-        <div className="gg-field">
-          <label htmlFor="qq-handoff">Meet up or ship?</label>
-          <select id="qq-handoff" value={handoff} onChange={(e) => setHandoff(e.target.value as Handoff)}>
-            <option value="not_sure">Not sure yet</option>
-            <option value="local">Meet up in person</option>
-            <option value="ship">Ship my cards</option>
-            <option value="either">Either works</option>
-          </select>
         </div>
       </div>
 
@@ -305,9 +432,14 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         above.
       </p>
 
-      <button type="submit" className="gg-btn" disabled={submitting}>
-        {submitting ? "Sending…" : "Get my free offer"}
-      </button>
+      <div className="gg-qq__actions">
+        <button type="submit" className="gg-btn" disabled={submitting}>
+          {submitting ? "Sending…" : "Get my free offer"}
+        </button>
+        <button type="button" className="gg-linklike" onClick={() => goTo(1)} disabled={submitting}>
+          Back
+        </button>
+      </div>
     </form>
   );
 }

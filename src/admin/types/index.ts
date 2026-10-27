@@ -922,7 +922,10 @@ export interface TimeSeriesPoint {
 
 /** Storefront visitor stats for the Overview (admin_site_traffic RPC). */
 export interface SiteTraffic {
-  /** Sum of each day's unique visitors (the anonymous id rotates daily). */
+  /**
+   * Visits by people: one per anonymous daily id that interacted with a page
+   * or viewed more than one (machines are counted in filteredVisits).
+   */
   visitors: number;
   visitorsPrev: number;
   pageViews: number;
@@ -942,6 +945,31 @@ export interface SiteTraffic {
   regions: VisitorRegion[];
   /** Most recently active visitors in the last 2 days, newest first. */
   recentVisitors: RecentVisitor[];
+  /** Visits left out: Facebook's link checks, bots, page loads with no sign of a person. */
+  filteredVisits: number;
+  /** The most searched shop queries in the range. */
+  searches: SiteSearch[];
+  /** Searches whose latest try found nothing, with no filters on: what people want that isn't in stock. */
+  missedSearches: SiteSearch[];
+  /** Visits that arrived on a tagged link (utm_source / utm_campaign), e.g. a Facebook post. */
+  campaigns: SiteCampaign[];
+}
+
+export interface SiteSearch {
+  /** Lower-cased, as typed. */
+  query: string;
+  searches: number;
+  /** Different visitors who searched it. */
+  people: number;
+  /** Cards the latest search for it found. */
+  results: number;
+  lastSearchedAt: string;
+}
+
+export interface SiteCampaign {
+  source: string | null;
+  campaign: string | null;
+  value: number;
 }
 
 export interface VisitorRegion {

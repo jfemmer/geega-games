@@ -28,6 +28,7 @@ export const APP_SHELL_ROUTES = [
   "/collection-sorting/quote",
   "/trade",
   "/trade-cards",
+  "/shop/picks",
   "/kiosk",
   "/yard-sale",
   "/account",

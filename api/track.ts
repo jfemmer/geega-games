@@ -4,19 +4,29 @@ import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
 import { optionalEnv, ServerEnv } from "./_lib/env.js";
 import { readRawBody } from "./_lib/http.js";
 import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
+import { isMetaNetwork } from "./_lib/metaNetwork.js";
+import type { TablesInsert } from "../src/types/database.js";
 
-// POST /api/track — one storefront page view (src/store/lib/pageViews.ts).
+// POST /api/track — one storefront page view, or one shop search
+// (src/store/lib/pageViews.ts, src/store/lib/searchTracking.ts).
 //
-// Privacy by design (see migration 20260924070000):
+// Privacy by design (see migrations 20260924070000 and 20261027050000):
 //   * Stores no IP, no cookie, no user id. The visitor is an HMAC of
 //     (UTC day, IP, user agent) with a server-only key: stable for one day,
 //     then unlinkable, and not reversible without the key.
 //   * Stores the path WITHOUT its query string (which could carry emails or
-//     tokens), the referring site's hostname only, the visitor's approximate
-//     country / state / city (from Vercel's edge geo-IP headers — the IP
-//     itself is never stored) and a coarse device type.
-//   * Bots and /admin pages are dropped here; staff, Do Not Track and Global
-//     Privacy Control are dropped in the browser before anything is sent.
+//     tokens), the referring site's hostname only, the campaign tags of the
+//     link the visitor arrived on (utm_source / utm_medium / utm_campaign,
+//     cleaned to short slugs), whether they interacted with the page, the
+//     visitor's approximate country / state / city (from Vercel's edge
+//     geo-IP headers — the IP itself is never stored) and a coarse device.
+//   * A search stores the lower-cased query (80 characters at most) and how
+//     many cards it found; anything that looks like an email address or a
+//     phone number is dropped, here and in the browser.
+//   * Bots, Meta's own servers (link previews and checks from Facebook's
+//     network) and /admin pages are dropped here; staff, automated
+//     browsers, Do Not Track and Global Privacy Control are dropped in the
+//     browser before anything is sent.
 //
 // Always answers 204 (even when a view is ignored) so the endpoint reveals
 // nothing and a failure can never affect the page.
@@ -24,7 +34,7 @@ import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
 export const config = { api: { bodyParser: false } };
 
 const BOT_UA =
-  /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|embedly|quora link preview|whatsapp|telegram|discord|slack|headless|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|curl|wget|python|axios|node-fetch|go-http|java\//i;
+  /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|meta-external|embedly|quora link preview|whatsapp|telegram|discord|slack|headless|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|curl|wget|python|axios|node-fetch|go-http|java\//i;
 
 function deviceFrom(ua: string): "mobile" | "tablet" | "desktop" {
   if (/ipad|tablet|kindle|silk|playbook|(android(?!.*mobile))/i.test(ua)) return "tablet";
@@ -54,6 +64,34 @@ export function referrerHost(raw: unknown, ownHost: string | undefined): string 
   } catch {
     return null;
   }
+}
+
+/** A campaign tag as a short slug ("Fall Sale!" → "fall-sale"), or null. */
+export function cleanUtm(raw: unknown, max: number): string | null {
+  if (typeof raw !== "string") return null;
+  const slug = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._~-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, max)
+    .replace(/-+$/, "");
+  return slug || null;
+}
+
+/** Looks like someone typed an email address or a phone number. */
+export function looksPersonal(text: string): boolean {
+  return text.includes("@") || /\d[\d\s().-]{6,}\d/.test(text);
+}
+
+/** A shop search as stored: trimmed, lower-cased, single-spaced, 2–80 characters, nothing personal. */
+export function cleanSearchQuery(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const q = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 80).trim();
+  if (q.length < 2 || looksPersonal(q)) return null;
+  return q;
 }
 
 function header(req: VercelRequest, name: string): string | null {
@@ -86,6 +124,40 @@ function visitorHash(ip: string, ua: string): string {
   return createHmac("sha256", key).update(`${day}|${ip}|${ua}`).digest("hex").slice(0, 32);
 }
 
+interface TrackBody {
+  /** "s": a shop search; "e": a page view sent without interaction got one; a page view otherwise. */
+  t?: unknown;
+  p?: unknown;
+  r?: unknown;
+  /** The visitor scrolled, tapped, typed or moved the mouse on the page. */
+  e?: unknown;
+  /** Campaign tags of the landing page's link: source, medium, campaign. */
+  u?: { s?: unknown; m?: unknown; c?: unknown } | null;
+  q?: unknown;
+  n?: unknown;
+  f?: unknown;
+  d?: unknown;
+}
+
+type PageViewRow = TablesInsert<"site_page_views">;
+/** The columns added by the 20261027050000 database update. */
+type NewerPageViewColumns = Pick<PageViewRow, "engaged" | "utm_source" | "utm_medium" | "utm_campaign">;
+
+async function insertPageView(row: Omit<PageViewRow, keyof NewerPageViewColumns>, newer: NewerPageViewColumns) {
+  const admin = getSupabaseAdmin();
+  const { error } = await admin.from("site_page_views").insert({ ...row, ...newer });
+  if (!error) return;
+  // Until that database update runs, the newer columns don't exist: keep
+  // recording views the way it always did.
+  if (/engaged|utm_/.test(error.message ?? "")) {
+    const retry = await admin.from("site_page_views").insert(row);
+    if (!retry.error) return;
+    console.error("[track] insert failed", retry.error.message);
+    return;
+  }
+  console.error("[track] insert failed", error.message);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -98,32 +170,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!ua || BOT_UA.test(ua)) return res.status(204).end();
 
     const ip = getClientIp(req);
+    // Facebook's own servers checking a link: not a person.
+    if (isMetaNetwork(ip)) return res.status(204).end();
     // Generous for real browsing, but stops one client inflating the numbers.
     if (!checkRateLimit("track", ip, 60, 60_000).allowed) return res.status(204).end();
 
-    let body: { p?: unknown; r?: unknown };
+    let body: TrackBody;
     try {
       body = JSON.parse(await readRawBody(req, 2048));
     } catch {
+      return res.status(204).end();
+    }
+    if (!body || typeof body !== "object") return res.status(204).end();
+
+    if (body.t === "s") {
+      const query = cleanSearchQuery(body.q);
+      const results = typeof body.n === "number" && Number.isInteger(body.n) && body.n >= 0 && body.n <= 1_000_000 ? body.n : null;
+      if (!query || results === null) return res.status(204).end();
+      const { error } = await getSupabaseAdmin().from("site_searches").insert({
+        visitor_hash: visitorHash(ip, ua),
+        query,
+        results,
+        filtered: body.f === true,
+        deals: body.d === true,
+        device: deviceFrom(ua),
+      });
+      if (error) console.error("[track] search insert failed", error.message);
       return res.status(204).end();
     }
 
     const path = cleanPath(body.p);
     if (!path) return res.status(204).end();
 
+    if (body.t === "e") {
+      // A visitor who left a page without interacting came back and did:
+      // their view of it (same anonymous id, last two hours) is engaged.
+      const since = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+      const { error } = await getSupabaseAdmin()
+        .from("site_page_views")
+        .update({ engaged: true })
+        .eq("visitor_hash", visitorHash(ip, ua))
+        .eq("path", path)
+        .eq("engaged", false)
+        .gte("viewed_at", since);
+      if (error) console.error("[track] engagement update failed", error.message);
+      return res.status(204).end();
+    }
+
     const countryHeader = header(req, "x-vercel-ip-country");
     const country = countryHeader && /^[A-Z]{2}$/.test(countryHeader) ? countryHeader : null;
+    const utm = body.u && typeof body.u === "object" ? body.u : null;
 
-    const { error } = await getSupabaseAdmin().from("site_page_views").insert({
-      visitor_hash: visitorHash(ip, ua),
-      path,
-      referrer_host: referrerHost(body.r, req.headers.host),
-      country,
-      region: cleanRegion(header(req, "x-vercel-ip-country-region")),
-      city: cleanCity(header(req, "x-vercel-ip-city")),
-      device: deviceFrom(ua),
-    });
-    if (error) console.error("[track] insert failed", error.message);
+    await insertPageView(
+      {
+        visitor_hash: visitorHash(ip, ua),
+        path,
+        referrer_host: referrerHost(body.r, req.headers.host),
+        country,
+        region: cleanRegion(header(req, "x-vercel-ip-country-region")),
+        city: cleanCity(header(req, "x-vercel-ip-city")),
+        device: deviceFrom(ua),
+      },
+      {
+        // Older pages still open in a browser don't send it: unknown.
+        engaged: typeof body.e === "boolean" ? body.e : null,
+        utm_source: cleanUtm(utm?.s, 60),
+        utm_medium: cleanUtm(utm?.m, 60),
+        utm_campaign: cleanUtm(utm?.c, 80),
+      },
+    );
   } catch (err) {
     console.error("[track] failed", err);
   }

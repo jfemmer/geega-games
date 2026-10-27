@@ -188,8 +188,9 @@ export default function SellStLouisPage() {
       <section className="gg-collect-section" id="quick-quote">
         <h2>Get a free offer from a few photos</h2>
         <p className="gg-collect-lead">
-          Send a few photos and your contact details, and we&rsquo;ll reply with an offer or a few
-          questions — then we can meet up to finish the sale, or you can ship if that&rsquo;s easier.
+          Tell us what you have in a few taps, add photos if you like, and we&rsquo;ll reply with an
+          offer or a few questions — then we can meet up to finish the sale, or you can ship if
+          that&rsquo;s easier.
         </p>
         <div className="gg-referral-card">
           <QuickPhotoQuote defaultHandoff="local" />

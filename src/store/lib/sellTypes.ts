@@ -23,6 +23,8 @@ export interface SellPrinting {
   releasedAt: string | null;
   /** Today's market prices per finish, in cents (the Trade Center's estimates use these). */
   prices?: { usd: number | null; usdFoil: number | null; usdEtched: number | null } | null;
+  /** The card (every printing of it shares this), for stock alerts and wishlists. */
+  oracleId?: string | null;
 }
 
 export type SellCondition = "NM" | "LP" | "MP" | "HP" | "DMG" | null;

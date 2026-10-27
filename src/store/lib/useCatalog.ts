@@ -159,6 +159,11 @@ export const DEFAULT_FILTERS: CatalogFilters = {
   sort: "name_asc",
 };
 
+/** The same search, sort and deals view with every filter cleared ("Clear filters" keeps what was typed). */
+export function withoutFilters(f: CatalogFilters): CatalogFilters {
+  return { ...DEFAULT_FILTERS, query: f.query, sort: f.sort, dealsOnly: f.dealsOnly };
+}
+
 /** Multi-select filter keys rendered as checkbox groups. */
 export type CatalogListFilterKey =
   | "sets"
@@ -256,8 +261,13 @@ export function useCatalog(filters: CatalogFilters, page: number) {
 
   // Serialize filters for a stable effect dependency + debounce key.
   const key = useMemo(() => JSON.stringify({ filters, page }), [filters, page]);
+  // The key of the filters the cards on screen were loaded for: they're
+  // "settled" when it matches the current one (typing changes the filters
+  // 300 ms before the next request even starts).
+  const [resultsKey, setResultsKey] = useState<string | null>(null);
 
   const run = useCallback(async () => {
+    const runKey = JSON.stringify({ filters, page });
     if (!isSupabaseConfigured) {
       setError("The catalog isn’t configured yet. Please try again later.");
       setLoading(false);
@@ -297,6 +307,7 @@ export function useCatalog(filters: CatalogFilters, page: number) {
       const rows = (response.data ?? []) as unknown as CatalogSearchRow[];
       setCards(rows.map(mapCatalogRow));
       setTotal(rows.length ? (rows[0].total_count ?? 0) : 0);
+      setResultsKey(runKey);
     } catch (err) {
       if (requestId !== requestRef.current) return; // a newer request already landed
       setError(
@@ -317,7 +328,7 @@ export function useCatalog(filters: CatalogFilters, page: number) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return { cards, total, loading, error, refetch: run };
+  return { cards, total, loading, error, refetch: run, settled: !loading && !error && resultsKey === key };
 }
 
 export type FacetSet = { code: string; name: string };

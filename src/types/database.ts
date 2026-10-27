@@ -1406,10 +1406,15 @@ export type Database = {
           city: string | null
           country: string | null
           device: string
+          engaged: boolean | null
           id: number
+          is_bot: boolean
           path: string
           referrer_host: string | null
           region: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
           viewed_at: string
           visitor_hash: string
         }
@@ -1417,10 +1422,15 @@ export type Database = {
           city?: string | null
           country?: string | null
           device: string
+          engaged?: boolean | null
           id?: never
+          is_bot?: boolean
           path: string
           referrer_host?: string | null
           region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
           viewed_at?: string
           visitor_hash: string
         }
@@ -1428,11 +1438,49 @@ export type Database = {
           city?: string | null
           country?: string | null
           device?: string
+          engaged?: boolean | null
           id?: never
+          is_bot?: boolean
           path?: string
           referrer_host?: string | null
           region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
           viewed_at?: string
+          visitor_hash?: string
+        }
+        Relationships: []
+      }
+      site_searches: {
+        Row: {
+          deals: boolean
+          device: string
+          filtered: boolean
+          id: number
+          query: string
+          results: number
+          searched_at: string
+          visitor_hash: string
+        }
+        Insert: {
+          deals?: boolean
+          device: string
+          filtered?: boolean
+          id?: never
+          query: string
+          results: number
+          searched_at?: string
+          visitor_hash: string
+        }
+        Update: {
+          deals?: boolean
+          device?: string
+          filtered?: boolean
+          id?: never
+          query?: string
+          results?: number
+          searched_at?: string
           visitor_hash?: string
         }
         Relationships: []
@@ -4976,6 +5024,25 @@ export type Database = {
         Returns: {
           page_views: number
           visitors: number
+        }[]
+      }
+      site_visits: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          city: string | null
+          country: string | null
+          day: string
+          device: string | null
+          first_at: string
+          is_person: boolean
+          last_at: string
+          last_page: string | null
+          referrer_host: string | null
+          region: string | null
+          utm_campaign: string | null
+          utm_source: string | null
+          views: number
+          visitor_hash: string
         }[]
       }
       store_ordering_status: {

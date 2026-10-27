@@ -10,6 +10,9 @@ import { MEMBER_DISCOUNT_PERCENT, formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 import WishlistButton from "../components/WishlistButton";
+import ShareButton from "../components/ShareButton";
+import { cardDetailPath } from "../lib/cardSlug";
+import { PRODUCTION_ORIGIN } from "../../seo/site";
 import PhotoRequestForm from "../components/PhotoRequestForm";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL, photoRequestAllowed } from "../lib/photoRequestTypes";
 import { useAuth } from "../lib/AuthContext";
@@ -19,6 +22,7 @@ import { useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart } from "../lib/tradeCart";
 import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
+import type { CardDetail } from "../lib/cardDetail";
 
 // One indexable page per unique card (grouped by oracle_id across every
 // in-stock printing/condition — see public.get_card_detail), distinct from
@@ -28,42 +32,6 @@ import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCen
 // Each copy for sale also has its own address, ?listing=<id> (the structured
 // data and the product feed link to it): that copy is listed first,
 // highlighted, and its picture is the one shown.
-
-type CardListing = {
-  id: string;
-  scryfallId: string | null;
-  setCode: string | null;
-  setName: string | null;
-  collectorNumber: string | null;
-  rarity: string | null;
-  condition: string;
-  finish: string;
-  variantType: string | null;
-  imageUrl: string | null;
-  quantity: number;
-  priceCents: number | null;
-  isDeal: boolean;
-  originalPriceCents: number | null;
-  dealDiscountPercent: number | null;
-  dealSource: "manual" | "aged_inventory" | "flawed" | null;
-  dealNote: string | null;
-};
-
-type CardDetail = {
-  oracleId: string;
-  cardName: string;
-  listings: CardListing[];
-  inStockCount: number;
-  minPriceCents: number | null;
-  maxPriceCents: number | null;
-  typeLine?: string | null;
-  oracleText?: string | null;
-  manaCost?: string | null;
-  power?: string | null;
-  toughness?: string | null;
-  loyalty?: string | null;
-  flavorText?: string | null;
-};
 
 function priceSummary(detail: CardDetail): string {
   if (detail.listings.length === 0) return "Currently out of stock";
@@ -227,7 +195,10 @@ export default function CardDetailPage({ slug }: { slug: string }) {
         <div className="gg-card-detail__info">
           <div className="gg-card-detail__titlerow">
             <h1>{detail.cardName}</h1>
-            <WishlistButton oracleId={detail.oracleId} cardName={detail.cardName} />
+            <div className="gg-card-detail__titleactions">
+              <ShareButton title={detail.cardName} url={`${PRODUCTION_ORIGIN}${cardDetailPath(detail.cardName)}`} />
+              <WishlistButton oracleId={detail.oracleId} cardName={detail.cardName} />
+            </div>
           </div>
           {detail.typeLine && <p className="gg-card-detail__type">{detail.typeLine}</p>}
           {(detail.manaCost || detail.power || detail.toughness || detail.loyalty) && (

@@ -18,7 +18,7 @@ import {
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "../utils/labels";
 import { countryLabel, placeLabel, regionLabel } from "../utils/geoLabels";
 import { DataTable, type Column } from "../components/ui/DataTable";
-import type { DateRangeKey, NamedValue, RecentVisitor, SiteTraffic } from "../types";
+import type { DateRangeKey, NamedValue, RecentVisitor, SiteCampaign, SiteSearch, SiteTraffic } from "../types";
 
 const RANGE_TABS = [
   { key: "7d", label: "7 days" },
@@ -383,6 +383,111 @@ const RECENT_VISITOR_COLUMNS: Column<RecentVisitor>[] = [
   },
 ];
 
+const SEARCH_COLUMNS: Column<SiteSearch>[] = [
+  { key: "query", header: "Search", render: (s) => <strong>{s.query}</strong> },
+  { key: "times", header: "Times", align: "right", render: (s) => formatNumber(s.searches) },
+  { key: "people", header: "People", align: "right", secondary: true, render: (s) => formatNumber(s.people) },
+  { key: "when", header: "Last searched", secondary: true, render: (s) => timeAgo(s.lastSearchedAt) },
+];
+
+const TOP_SEARCH_COLUMNS: Column<SiteSearch>[] = [
+  { key: "query", header: "Search", render: (s) => <strong>{s.query}</strong> },
+  { key: "times", header: "Times", align: "right", render: (s) => formatNumber(s.searches) },
+  {
+    key: "found",
+    header: "Cards found",
+    align: "right",
+    render: (s) => (s.results === 0 ? <Badge tone="warning">None</Badge> : formatNumber(s.results)),
+  },
+];
+
+/** "picks-2026-10-24" → "Several cards, Oct 24"; "sheoldred-the-apocalypse" → "Sheoldred The Apocalypse". */
+function campaignLabel(c: SiteCampaign): string {
+  const campaign = c.campaign ?? "";
+  const picks = /^picks-(\d{4})-(\d{2})-(\d{2})$/.exec(campaign);
+  if (picks) {
+    const day = new Date(Number(picks[1]), Number(picks[2]) - 1, Number(picks[3]));
+    return `Several cards, ${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  }
+  if (!campaign) return "Untitled link";
+  return campaign
+    .split("-")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+const CAMPAIGN_COLUMNS: Column<SiteCampaign>[] = [
+  { key: "post", header: "Link", render: (c) => <strong>{campaignLabel(c)}</strong> },
+  {
+    key: "source",
+    header: "Posted on",
+    secondary: true,
+    render: (c) => (c.source ? c.source.charAt(0).toUpperCase() + c.source.slice(1) : "Unknown"),
+  },
+  { key: "visits", header: "Visits", align: "right", render: (c) => formatNumber(c.value) },
+];
+
+/** What visitors searched the shop for, and which searches found nothing. */
+function VisitorSearches({ traffic }: { traffic: SiteTraffic }) {
+  return (
+    <div className="gg-grid-2">
+      <SectionCard title="Searched for, not found" className="gg-visitor-insight">
+        <DataTable
+          columns={SEARCH_COLUMNS}
+          rows={traffic.missedSearches}
+          rowKey={(s) => s.query}
+          caption="Shop searches that found no cards"
+          emptyContent={
+            <EmptyState
+              icon="search"
+              title="No empty searches"
+              message="When a shop search finds nothing, it shows up here, so you know what people want that isn't in stock."
+            />
+          }
+        />
+        {traffic.missedSearches.length > 0 && (
+          <p className="gg-muted" style={{ marginTop: 12, fontSize: 13 }}>
+            Visitors who asked to hear when one of these comes in show up in Market Insights.
+          </p>
+        )}
+      </SectionCard>
+      <SectionCard title="Most searched" className="gg-visitor-insight">
+        <DataTable
+          columns={TOP_SEARCH_COLUMNS}
+          rows={traffic.searches}
+          rowKey={(s) => s.query}
+          caption="Most searched in the shop"
+          emptyContent={
+            <EmptyState icon="search" title="No searches yet" message="What visitors type into the shop search shows up here." />
+          }
+        />
+      </SectionCard>
+    </div>
+  );
+}
+
+/** Visits that arrived on a tagged link, such as a Facebook post link from Inventory. */
+function VisitsFromPosts({ traffic }: { traffic: SiteTraffic }) {
+  return (
+    <SectionCard title="Visits from your posts" className="gg-visitor-insight">
+      <DataTable
+        columns={CAMPAIGN_COLUMNS}
+        rows={traffic.campaigns}
+        rowKey={(c) => `${c.source ?? ""}|${c.campaign ?? ""}`}
+        caption="Visits that arrived on a post link"
+        emptyContent={
+          <EmptyState
+            icon="share"
+            title="No post links used yet"
+            message="In Inventory, select the cards in a post and choose Copy Facebook post link. Visits from that link show up here."
+          />
+        }
+      />
+    </SectionCard>
+  );
+}
+
 function VisitorLocations({ traffic }: { traffic: SiteTraffic }) {
   const noLocations = traffic.cities.length === 0 && traffic.regions.length === 0;
   return (
@@ -458,8 +563,16 @@ function WebsiteVisitors({
     <div className="gg-overview-heading">
       <h2>Website visitors</h2>
       <p className="gg-muted">
-        Anonymous and cookie-free. Your staff, bots and browsers that ask not to be
-        tracked aren&rsquo;t counted.
+        Anonymous and cookie-free. Only people count: your staff, bots (including Facebook
+        checking your links), browsers that ask not to be tracked, and page loads where nobody
+        scrolled, tapped or moved the mouse are left out.
+        {traffic && traffic.filteredVisits > 0 && (
+          <>
+            {" "}
+            {formatNumber(traffic.filteredVisits)} visit{traffic.filteredVisits === 1 ? " was" : "s were"} left out in this
+            period.
+          </>
+        )}
       </p>
     </div>
   );
@@ -573,6 +686,8 @@ function WebsiteVisitors({
               </div>
             </SectionCard>
           </div>
+          <VisitorSearches traffic={traffic} />
+          <VisitsFromPosts traffic={traffic} />
           <VisitorLocations traffic={traffic} />
         </>
       )}

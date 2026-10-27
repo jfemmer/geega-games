@@ -209,9 +209,9 @@ export default function SellCollectionPage() {
       <section className="gg-collect-section" id="quick-quote">
         <h2>Get a free offer from a few photos</h2>
         <p className="gg-collect-lead">
-          Snap a few photos — binder pages, box tops, anything that looks valuable — add your contact
-          details, and we&rsquo;ll reply with an offer or a few questions. No card-by-card list
-          needed.
+          Tell us what you have in a few taps, then add photos if you like — binder pages, box tops,
+          anything that looks valuable — and where to send your offer. We&rsquo;ll reply with an offer
+          or a few questions. No card-by-card list needed.
         </p>
         <div className="gg-referral-card">
           <QuickPhotoQuote />
