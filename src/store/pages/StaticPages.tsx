@@ -394,14 +394,24 @@ export function AboutPage() {
 
         <h2>Meet Marvel</h2>
         <div className="gg-about-marvel">
-          <img
-            src="/logo.png"
-            alt="Marvel, the dog in the Geega Games logo"
-            width={600}
-            height={480}
-            loading="lazy"
-            className="gg-about-marvel__img"
-          />
+          {/* Jacob's photo of Marvel (2026-10-27), cropped to 4:5, resized and
+              stripped of its metadata: public/marvel-*.webp and .jpg. */}
+          <picture className="gg-about-marvel__photo">
+            <source
+              type="image/webp"
+              srcSet="/marvel-480.webp 480w, /marvel-720.webp 720w, /marvel-960.webp 960w"
+              sizes="(max-width: 560px) 300px, 240px"
+            />
+            <img
+              src="/marvel-720.jpg"
+              alt="Marvel, a black-and-white dog with one blue eye, sitting in the grass and smiling up at the camera"
+              width={720}
+              height={900}
+              loading="lazy"
+              decoding="async"
+              className="gg-about-marvel__img"
+            />
+          </picture>
           <div>
             <p>The dog in our logo is Marvel, and Geega is her nickname.</p>
             <blockquote className="gg-about-marvel__quote">

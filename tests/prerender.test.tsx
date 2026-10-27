@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { renderPage } from "../src/prerender";
 import { seoRoutes } from "../src/seo/routes";
@@ -28,6 +29,13 @@ describe("build-time prerender", () => {
     expect(text).toContain("run by Jacob Femmer through Geega Games LLC");
     expect(text).toContain("Meet Marvel");
     expect(text).toContain("The dog in our logo is Marvel, and Geega is her nickname.");
+    // Jacob's photo of her, in every size the page asks for.
+    expect(html).toContain('src="/marvel-720.jpg"');
+    expect(html).toContain('alt="Marvel, a black-and-white dog with one blue eye');
+    for (const file of ["marvel-480.webp", "marvel-720.webp", "marvel-960.webp", "marvel-720.jpg"]) {
+      expect(existsSync(`public/${file}`), file).toBe(true);
+      expect(html).toContain(`/${file}`);
+    }
     expect(text).toContain("The similar name is a coincidence: Geega is the nickname of Marvel, the dog in our logo.");
     expect(text).toContain("Marvel is one of the sweetest dogs you’ll ever meet.");
     expect(text).toContain("I’ve modeled Geega Games after her.");

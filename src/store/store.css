@@ -7809,10 +7809,15 @@ html {
   gap: 1.25rem;
   margin: 0 0 1.25rem;
 }
-.gg-about-marvel__img {
+.gg-about-marvel__photo {
   flex: none;
-  width: 150px;
+  display: block;
+}
+.gg-about-marvel__img {
+  display: block;
+  width: 240px;
   height: auto;
+  border-radius: 12px;
 }
 .gg-about-marvel p {
   margin: 0 0 0.75rem;
@@ -7838,6 +7843,6 @@ html {
     align-items: flex-start;
   }
   .gg-about-marvel__img {
-    width: 120px;
+    width: min(100%, 300px);
   }
 }
