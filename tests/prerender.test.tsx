@@ -28,7 +28,8 @@ describe("build-time prerender", () => {
     expect(text).toContain("run by Jacob Femmer through Geega Games LLC");
     expect(text).toContain("Meet Marvel");
     expect(text).toContain("Marvel is one of the sweetest dogs you’ll ever meet.");
-    expect(text).toContain("We believe in the best customer service possible.");
+    expect(text).toContain("I’ve modeled Geega Games after her.");
+    expect(text).toContain("the best customer service we possibly can.");
     expect(seo?.description).toContain("run by Jacob Femmer");
     // No events right now (owner, 2026-10-27): nothing may claim them.
     expect(text).not.toMatch(/local events|booth|table at/i);

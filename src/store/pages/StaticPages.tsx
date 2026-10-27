@@ -333,7 +333,8 @@ export function ReturnsPage() {
 // business buys and sells is from the sell pages and the owner (2026-09-26:
 // meetups and mail; 2026-10-27: no events right now, so the page doesn't
 // mention them). The owner's name and what he says about Marvel, the dog in
-// the logo, are his own words (2026-10-27), quoted as he gave them.
+// the logo, are his (2026-10-27); he asked for the quote to be polished, so
+// it keeps his meaning in smoother words.
 const ABOUT_JSON_LD = [
   breadcrumbJsonLd([{ name: "About", path: "/about" }]),
   {
@@ -404,9 +405,11 @@ export function AboutPage() {
             <p>The dog in our logo is Marvel.</p>
             <blockquote className="gg-about-marvel__quote">
               <p>
-                &ldquo;Marvel is one of the sweetest dogs you&rsquo;ll ever meet. She can be
-                intimidating at first, but she&rsquo;s very sweet once you get to know her. I model
-                the business around this. We believe in the best customer service possible.&rdquo;
+                &ldquo;Marvel is one of the sweetest dogs you&rsquo;ll ever meet. She can look a
+                little intimidating at first, but once you get to know her, she&rsquo;s all heart.
+                I&rsquo;ve modeled Geega Games after her. Trusting a new shop with an order, or with
+                your collection, can feel intimidating too. So we work to make every deal friendly,
+                honest and easy, and to give you the best customer service we possibly can.&rdquo;
               </p>
               <footer>— {OWNER_NAME}</footer>
             </blockquote>
