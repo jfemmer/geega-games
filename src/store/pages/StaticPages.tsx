@@ -334,7 +334,8 @@ export function ReturnsPage() {
 // meetups and mail; 2026-10-27: no events right now, so the page doesn't
 // mention them). The owner's name and what he says about Marvel, the dog in
 // the logo, are his (2026-10-27); he asked for the quote to be polished, so
-// it keeps his meaning in smoother words.
+// it keeps his meaning in smoother words. Geega is Marvel's nickname (owner,
+// 2026-10-27), which the streamer section says too.
 const ABOUT_JSON_LD = [
   breadcrumbJsonLd([{ name: "About", path: "/about" }]),
   {
@@ -402,7 +403,7 @@ export function AboutPage() {
             className="gg-about-marvel__img"
           />
           <div>
-            <p>The dog in our logo is Marvel.</p>
+            <p>The dog in our logo is Marvel, and Geega is her nickname.</p>
             <blockquote className="gg-about-marvel__quote">
               <p>
                 &ldquo;Marvel is one of the sweetest dogs you&rsquo;ll ever meet. She can look a
@@ -443,7 +444,8 @@ export function AboutPage() {
         <p>
           Geega Games is <strong>not affiliated with, operated by, sponsored by or endorsed by any
           streamer, YouTuber, content creator or influencer</strong> — including anyone using the name
-          &ldquo;Geega&rdquo; or &ldquo;GEEGA.&rdquo; The similar name is a coincidence.
+          &ldquo;Geega&rdquo; or &ldquo;GEEGA.&rdquo; The similar name is a coincidence: Geega is the
+          nickname of Marvel, the dog in our logo.
         </p>
 
         <h2>Trademarks</h2>

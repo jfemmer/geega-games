@@ -27,6 +27,8 @@ describe("build-time prerender", () => {
     const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     expect(text).toContain("run by Jacob Femmer through Geega Games LLC");
     expect(text).toContain("Meet Marvel");
+    expect(text).toContain("The dog in our logo is Marvel, and Geega is her nickname.");
+    expect(text).toContain("The similar name is a coincidence: Geega is the nickname of Marvel, the dog in our logo.");
     expect(text).toContain("Marvel is one of the sweetest dogs you’ll ever meet.");
     expect(text).toContain("I’ve modeled Geega Games after her.");
     expect(text).toContain("the best customer service we possibly can.");
