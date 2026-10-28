@@ -23,6 +23,8 @@ export type CardListing = {
   dealDiscountPercent: number | null;
   dealSource: "manual" | "aged_inventory" | "flawed" | null;
   dealNote: string | null;
+  /** A consignor's copy: for sale only, never traded. */
+  saleOnly?: boolean;
 };
 
 export type CardDetail = {
@@ -67,5 +69,6 @@ export function listingTiles(detail: Pick<CardDetail, "oracleId" | "cardName" | 
       dealSource: l.dealSource,
       dealNote: l.dealNote,
       variantType: l.variantType || null,
+      saleOnly: l.saleOnly === true,
     }));
 }

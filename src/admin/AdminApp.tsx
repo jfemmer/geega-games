@@ -10,6 +10,7 @@ import { OrdersPage } from "./pages/OrdersPage";
 import { PosPage } from "./pages/PosPage";
 import { TradeEvaluatorPage } from "./pages/TradeEvaluatorPage";
 import { TradesPage } from "./pages/trades/TradesPage";
+import { ConsignmentsPage } from "./pages/consignments/ConsignmentsPage";
 import { PickupRequestsPage } from "./pages/PickupRequestsPage";
 import { ScanSessionsPage } from "./pages/scan/ScanSessionsPage";
 import { ScanReviewPage } from "./pages/scan/ScanReviewPage";
@@ -89,6 +90,8 @@ function AdminDashboard() {
         return <TradeEvaluatorPage />;
       case "trades":
         return <TradesPage query={query} onNavigate={navigate} />;
+      case "consignments":
+        return <ConsignmentsPage query={query} onNavigate={navigate} />;
       case "pickup":
         return <PickupRequestsPage onNavigate={navigate} />;
       case "scanning": {

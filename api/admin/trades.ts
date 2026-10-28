@@ -63,6 +63,8 @@ type InventoryForTrade = {
   price_cents: number | null;
   original_price_cents: number | null;
   is_deal: boolean | null;
+  /** business or consigned. Consigned copies are sale-only. */
+  ownership: string;
 };
 
 function cleanText(value: unknown, maxLength: number): string | null {
@@ -173,7 +175,7 @@ async function confirm(staff: StaffContext, body: Record<string, unknown>) {
     const { data, error } = await admin
       .from("inventory_items")
       .select(
-        "id, card_name, set_name, set_code, collector_number, condition, finish, variant_type, quantity, status, price_cents, original_price_cents, is_deal",
+        "id, card_name, set_name, set_code, collector_number, condition, finish, variant_type, quantity, status, price_cents, original_price_cents, is_deal, ownership",
       )
       .in("id", [...wanted.keys()]);
     if (error) throw new HttpError(500, "Could not load your cards from inventory.");
@@ -183,6 +185,9 @@ async function confirm(staff: StaffContext, body: Record<string, unknown>) {
   const yourCards = [...wanted].map(([id, { quantity, shownPriceCents }]) => {
     const item = inventory.find((row) => row.id === id);
     if (!item) throw new HttpError(409, "One of your cards isn't in inventory any more. Take it off the trade.");
+    if (item.ownership === "consigned") {
+      throw new HttpError(409, `${describe(item)} is a consigned card. Consigned cards are for sale only, not for trade. Take it off the trade.`);
+    }
     const priceCents = regularPriceCents({ priceCents: item.price_cents, originalPriceCents: item.original_price_cents, isDeal: item.is_deal });
     if (item.status !== "active" || priceCents === null || priceCents <= 0) {
       throw new HttpError(409, `${describe(item)} isn't for sale on the website right now. Take it off the trade.`);

@@ -922,11 +922,345 @@ export type Database = {
           },
         ]
       }
+      consignment_commission_schedules: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          id: string
+          source_note: string | null
+          tiers: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          id?: string
+          source_note?: string | null
+          tiers: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          source_note?: string | null
+          tiers?: Json
+        }
+        Relationships: []
+      }
+      consignment_fee_schedules: {
+        Row: {
+          channel: string
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          id: string
+          marketplace_above_threshold_bps: number | null
+          marketplace_base: string
+          marketplace_bps: number
+          marketplace_threshold_cents: number | null
+          per_order_cents: number
+          per_order_small_cents: number | null
+          per_order_small_max_cents: number | null
+          processing_base: string
+          processing_bps: number
+          processing_fixed_cents: number
+          source_note: string | null
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          id?: string
+          marketplace_above_threshold_bps?: number | null
+          marketplace_base?: string
+          marketplace_bps: number
+          marketplace_threshold_cents?: number | null
+          per_order_cents?: number
+          per_order_small_cents?: number | null
+          per_order_small_max_cents?: number | null
+          processing_base?: string
+          processing_bps?: number
+          processing_fixed_cents?: number
+          source_note?: string | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          marketplace_above_threshold_bps?: number | null
+          marketplace_base?: string
+          marketplace_bps?: number
+          marketplace_threshold_cents?: number | null
+          per_order_cents?: number
+          per_order_small_cents?: number | null
+          per_order_small_max_cents?: number | null
+          processing_base?: string
+          processing_bps?: number
+          processing_fixed_cents?: number
+          source_note?: string | null
+        }
+        Relationships: []
+      }
+      consignment_insurance_schedules: {
+        Row: {
+          brackets: Json
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          id: string
+          included_coverage_cents: number
+          max_insurable_cents: number
+          service: string
+          source_note: string | null
+          source_url: string | null
+          step_cents: number
+          step_premium_cents: number
+        }
+        Insert: {
+          brackets: Json
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          id?: string
+          included_coverage_cents: number
+          max_insurable_cents: number
+          service?: string
+          source_note?: string | null
+          source_url?: string | null
+          step_cents: number
+          step_premium_cents: number
+        }
+        Update: {
+          brackets?: Json
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          id?: string
+          included_coverage_cents?: number
+          max_insurable_cents?: number
+          service?: string
+          source_note?: string | null
+          source_url?: string | null
+          step_cents?: number
+          step_premium_cents?: number
+        }
+        Relationships: []
+      }
+      consignment_lots: {
+        Row: {
+          card_name: string
+          collector_number: string
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          consignment_id: string
+          created_at: string
+          created_by: string | null
+          finish: Database["public"]["Enums"]["card_finish"]
+          id: string
+          internal_notes: string | null
+          language: string
+          list_price_cents: number | null
+          min_price_cents: number | null
+          oracle_id: string | null
+          quantity_accepted: number
+          quantity_submitted: number | null
+          scryfall_id: string | null
+          set_code: string
+          set_name: string | null
+          status: string
+          updated_at: string
+          variant_type: string
+        }
+        Insert: {
+          card_name: string
+          collector_number: string
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          consignment_id: string
+          created_at?: string
+          created_by?: string | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          internal_notes?: string | null
+          language?: string
+          list_price_cents?: number | null
+          min_price_cents?: number | null
+          oracle_id?: string | null
+          quantity_accepted?: number
+          quantity_submitted?: number | null
+          scryfall_id?: string | null
+          set_code: string
+          set_name?: string | null
+          status?: string
+          updated_at?: string
+          variant_type?: string
+        }
+        Update: {
+          card_name?: string
+          collector_number?: string
+          condition?: Database["public"]["Enums"]["card_condition"] | null
+          consignment_id?: string
+          created_at?: string
+          created_by?: string | null
+          finish?: Database["public"]["Enums"]["card_finish"]
+          id?: string
+          internal_notes?: string | null
+          language?: string
+          list_price_cents?: number | null
+          min_price_cents?: number | null
+          oracle_id?: string | null
+          quantity_accepted?: number
+          quantity_submitted?: number | null
+          scryfall_id?: string | null
+          set_code?: string
+          set_name?: string | null
+          status?: string
+          updated_at?: string
+          variant_type?: string
+        }
+        Relationships: []
+      }
+      consignment_settings: {
+        Row: {
+          buyer_terms: Json
+          default_postage_cents: number
+          estimator_insurance_default: boolean
+          id: boolean
+          initial_term_days: number
+          inspection_days: number
+          min_card_value_cents: number
+          payout_methods: string[]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          buyer_terms?: Json
+          default_postage_cents?: number
+          estimator_insurance_default?: boolean
+          id?: boolean
+          initial_term_days?: number
+          inspection_days?: number
+          min_card_value_cents?: number
+          payout_methods?: string[]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          buyer_terms?: Json
+          default_postage_cents?: number
+          estimator_insurance_default?: boolean
+          id?: boolean
+          initial_term_days?: number
+          inspection_days?: number
+          min_card_value_cents?: number
+          payout_methods?: string[]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      consignments: {
+        Row: {
+          admin_notes: string | null
+          consignment_number: number
+          consignor_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          initial_term_days: number
+          signed_at: string | null
+          status: string
+          term_started_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          consignment_number?: number
+          consignor_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          initial_term_days?: number
+          signed_at?: string | null
+          status?: string
+          term_started_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          consignment_number?: number
+          consignor_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          initial_term_days?: number
+          signed_at?: string | null
+          status?: string
+          term_started_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      consignors: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          admin_notes: string | null
+          city: string | null
+          created_at: string
+          created_by: string | null
+          email: string
+          id: string
+          legal_name: string
+          phone: string | null
+          postal_code: string | null
+          state_code: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          admin_notes?: string | null
+          city?: string | null
+          created_at?: string
+          created_by?: string | null
+          email: string
+          id?: string
+          legal_name: string
+          phone?: string | null
+          postal_code?: string | null
+          state_code?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          admin_notes?: string | null
+          city?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          id?: string
+          legal_name?: string
+          phone?: string | null
+          postal_code?: string | null
+          state_code?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       inventory_items: {
         Row: {
           card_name: string
           collector_number: string
           colors: string[]
+          consignment_lot_id: string | null
           condition: Database["public"]["Enums"]["card_condition"]
           cost_cents: number | null
           created_at: string
@@ -945,6 +1279,7 @@ export type Database = {
           notes: string | null
           oracle_id: string | null
           original_price_cents: number | null
+          ownership: string
           price_cents: number | null
           quantity: number
           rarity: string | null
@@ -964,6 +1299,7 @@ export type Database = {
           card_name: string
           collector_number: string
           colors?: string[]
+          consignment_lot_id?: string | null
           condition: Database["public"]["Enums"]["card_condition"]
           cost_cents?: number | null
           created_at?: string
@@ -982,6 +1318,7 @@ export type Database = {
           notes?: string | null
           oracle_id?: string | null
           original_price_cents?: number | null
+          ownership?: string
           price_cents?: number | null
           quantity?: number
           rarity?: string | null
@@ -1001,6 +1338,7 @@ export type Database = {
           card_name?: string
           collector_number?: string
           colors?: string[]
+          consignment_lot_id?: string | null
           condition?: Database["public"]["Enums"]["card_condition"]
           cost_cents?: number | null
           created_at?: string
@@ -1019,6 +1357,7 @@ export type Database = {
           notes?: string | null
           oracle_id?: string | null
           original_price_cents?: number | null
+          ownership?: string
           price_cents?: number | null
           quantity?: number
           rarity?: string | null
@@ -4640,6 +4979,7 @@ export type Database = {
           price_cents: number | null
           quantity: number | null
           rarity: string | null
+          sale_only: boolean | null
           scryfall_id: string | null
           scryfall_price_cents: number | null
           set_code: string | null
@@ -4651,6 +4991,18 @@ export type Database = {
       }
     }
     Functions: {
+      consignment_commission_cents: {
+        Args: { p_final_price_cents: number; p_net_sale_cents: number; p_tiers: Json }
+        Returns: number
+      }
+      consignment_estimator_settings: {
+        Args: { p_at?: string }
+        Returns: Json
+      }
+      consignment_insurance_premium: {
+        Args: { p_package_value_cents: number; p_schedule_id: string }
+        Returns: Json
+      }
       admin_adjust_inventory_quantity: {
         Args: {
           p_actor?: string
@@ -5419,6 +5771,7 @@ export type Database = {
           scryfall_id: string
           set_code: string
           set_name: string
+          sale_only: boolean
           total_count: number
           type_line: string
           variant_type: string
@@ -5474,6 +5827,7 @@ export type Database = {
           scryfall_id: string
           set_code: string
           set_name: string
+          sale_only: boolean
           total_count: number
           type_line: string
           variant_type: string

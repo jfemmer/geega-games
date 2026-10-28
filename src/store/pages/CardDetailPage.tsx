@@ -316,6 +316,9 @@ export default function CardDetailPage({ slug }: { slug: string }) {
                   >
                     {addedId === l.id ? "Added ✓" : addingId === l.id ? "Adding…" : "Add to cart"}
                   </button>
+                  {canTrade && l.saleOnly && (
+                    <span className="gg-card-detail__saleonly">Consigned copy · sale only, not for trade</span>
+                  )}
                   {canTrade && tradePriceCents(l) != null && (
                     <span className="gg-card-detail__trade">
                       <button

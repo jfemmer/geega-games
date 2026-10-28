@@ -4085,3 +4085,127 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-trset__conditions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gg-trades__toolbar .gg-search, .gg-trades__toolbar .gg-field { flex: 1 1 100%; max-width: none; }
 }
+
+/* ---------------------------------------------------------------- Consignments settings */
+.gg-cs {
+  display: grid;
+  gap: 1rem;
+}
+.gg-cs-lead {
+  margin: 0;
+  color: var(--gg-text-soft);
+  font-size: 0.9rem;
+}
+.gg-cs-current {
+  display: grid;
+  gap: 0.5rem;
+}
+.gg-cs-current ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+.gg-cs-current p {
+  margin: 0;
+}
+.gg-cs-note {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--gg-text-faint);
+}
+.gg-cs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+.gg-cs-table th,
+.gg-cs-table td {
+  padding: 0.5rem 0.5rem 0.5rem 0;
+  border-bottom: 1px solid var(--gg-line);
+  text-align: left;
+  vertical-align: top;
+}
+.gg-cs-table thead th {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--gg-text-soft);
+}
+.gg-cs-table--narrow {
+  max-width: 420px;
+}
+.gg-cs-caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 0.4rem;
+}
+.gg-cs-cell {
+  width: 100%;
+  min-width: 70px;
+  max-width: 120px;
+}
+.gg-cs-upcoming {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.gg-cs-upcoming li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+.gg-cs-form {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--gg-line);
+}
+.gg-cs-form > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--gg-brand);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.gg-cs-form[open] {
+  display: grid;
+  gap: 0.75rem;
+}
+.gg-cs-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+.gg-cs-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-size: 0.9rem;
+}
+.gg-cs-methods {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+.gg-cs-methods legend {
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+@media (max-width: 640px) {
+  .gg-cs-table {
+    display: block;
+    overflow-x: auto;
+  }
+}

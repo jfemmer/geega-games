@@ -141,6 +141,8 @@ export type CatalogCard = {
   dealNote: string | null;
   /** "Artist Proof", "Special Edition", a custom label, or null for a standard copy. */
   variantType: string | null;
+  /** A consignor's copy: bought like any other, never traded. Absent = ours. */
+  saleOnly?: boolean;
 };
 
 export const PAGE_SIZE = 24;
@@ -208,6 +210,8 @@ export type CatalogSearchRow = {
   deal_source?: string | null;
   deal_note?: string | null;
   variant_type?: string | null;
+  /** True for a consigned copy (sale-only). Absent from yard_sale_deck_matches. */
+  sale_only?: boolean | null;
 };
 
 export function mapCatalogRow(row: CatalogSearchRow): CatalogCard {
@@ -240,6 +244,7 @@ export function mapCatalogRow(row: CatalogSearchRow): CatalogCard {
         : null,
     dealNote: row.deal_note ?? null,
     variantType: row.variant_type || null,
+    saleOnly: row.sale_only === true,
   };
 }
 
