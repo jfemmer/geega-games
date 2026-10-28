@@ -1,5 +1,6 @@
 import { adminFetch } from "../../repositories/apiClient";
 import type { ConsignmentChannel } from "../../../store/lib/consignmentMath";
+import type { CardCondition, CardFinish, ReceiveLineInput, ResolvedLine } from "../../../store/lib/consignmentReceiving";
 
 // Typed calls to /api/admin/consignments for the Consignments pages.
 
@@ -93,7 +94,103 @@ export interface ConsignmentDetail {
   agreements: AgreementRecord[];
   signatures: SignatureRecord[];
   elections: { channels: Partial<Record<ConsignmentChannel, boolean>>; additionalInsurance: boolean | null } | null;
+  batches: ReceivingBatch[];
+  lots: LotRecord[];
+  lotEvents: LotEvent[];
 }
+
+export type LotStatus = "submitted" | "received" | "under_inspection" | "accepted" | "rejected" | "listed" | "reserved_for_sale" | "sold" | "returned";
+
+export const LOT_STATUS_LABELS: Record<LotStatus, string> = {
+  submitted: "Submitted",
+  received: "Received",
+  under_inspection: "Being inspected",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  listed: "Listed",
+  reserved_for_sale: "Reserved for a sale",
+  sold: "Sold",
+  returned: "Returned",
+};
+
+export interface ReceivingBatch {
+  id: string;
+  batch_number: number;
+  received_at: string;
+  method: "mail" | "in_person";
+  carrier: string | null;
+  tracking_number: string | null;
+  notes: string | null;
+  created_by: string | null;
+}
+
+export interface LotRecord {
+  id: string;
+  batch_id: string | null;
+  scryfall_id: string | null;
+  card_name: string;
+  set_code: string;
+  set_name: string | null;
+  collector_number: string;
+  rarity: string | null;
+  image_url: string | null;
+  language: string;
+  finish: CardFinish;
+  declared_condition: CardCondition | null;
+  condition: CardCondition | null;
+  quantity_submitted: number | null;
+  quantity_accepted: number;
+  quantity_rejected: number;
+  market_price_cents: number | null;
+  list_price_cents: number | null;
+  min_price_cents: number | null;
+  rejection_reason: string | null;
+  internal_notes: string | null;
+  status: LotStatus;
+  inspected_at: string | null;
+  inspected_by: string | null;
+  decided_at: string | null;
+  decided_by: string | null;
+}
+
+export interface LotEvent {
+  id: string;
+  lot_id: string;
+  event: "received" | "inspection_started" | "accepted" | "rejected" | "reopened";
+  from_status: string | null;
+  to_status: string;
+  details: Record<string, unknown>;
+  actor: string | null;
+  created_at: string;
+}
+
+export interface ReceivePreview {
+  lines: ResolvedLine[];
+  ok: boolean;
+  copies: number;
+}
+
+export interface ReceiveShipment {
+  method: "mail" | "in_person";
+  carrier?: string;
+  trackingNumber?: string;
+  notes?: string;
+}
+
+export type InspectStep =
+  | { step: "start" }
+  | { step: "reopen" }
+  | { step: "reject"; reason: string }
+  | {
+      step: "accept";
+      quantityAccepted: number;
+      condition: CardCondition;
+      finish: CardFinish;
+      listPriceCents: number;
+      minPriceCents: number | null;
+      reason?: string;
+      allowBelowMinimum?: boolean;
+    };
 
 export interface AgreementVersion {
   id: string;
@@ -141,5 +238,9 @@ export const consignmentAdminApi = {
   saveDraft: (input: { id?: string; title: string; bodyMd: string; changeSummary?: string }) =>
     post<{ versions: AgreementVersion[] }>({ action: "saveDraft", ...input }).then((r) => r.versions),
   deleteDraft: (id: string) => post<{ versions: AgreementVersion[] }>({ action: "deleteDraft", id }).then((r) => r.versions),
+  previewReceive: (lines: ReceiveLineInput[]) => post<ReceivePreview>({ action: "previewReceive", lines }),
+  receiveCards: (consignmentId: string, lines: ReceiveLineInput[], shipment: ReceiveShipment) =>
+    post<{ batchId: string; lines: number }>({ action: "receiveCards", consignmentId, lines, ...shipment }),
+  inspectLot: (lotId: string, step: InspectStep) => post<{ status: LotStatus }>({ action: "inspectLot", lotId, ...step }),
   publish: (id: string) => post<{ versions: AgreementVersion[] }>({ action: "publishVersion", id, confirm: true }).then((r) => r.versions),
 };

@@ -159,6 +159,29 @@ export interface MyConsignment {
   initialTermDays: number;
   elections: { channels: Partial<Record<ConsignmentChannel, boolean>>; additionalInsurance: boolean | null };
   agreements: MyAgreement[];
+  /** What we received and how inspection went. Older responses may omit it. */
+  cards?: MyConsignedCard[];
+}
+
+export interface MyConsignedCard {
+  id: string;
+  cardName: string;
+  setCode: string;
+  setName: string | null;
+  collectorNumber: string;
+  finish: string;
+  imageUrl: string | null;
+  status: "submitted" | "received" | "under_inspection" | "accepted" | "rejected" | "listed" | "reserved_for_sale" | "sold" | "returned";
+  quantitySubmitted: number | null;
+  quantityAccepted: number;
+  quantityRejected: number;
+  declaredCondition: string | null;
+  condition: string | null;
+  /** Only once accepted. */
+  listPriceCents: number | null;
+  minPriceCents: number | null;
+  rejectionReason: string | null;
+  receivedAt: string | null;
 }
 
 export async function loadMyConsignments(): Promise<MyConsignment[]> {

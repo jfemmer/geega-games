@@ -17,6 +17,7 @@ import {
   staffPdfLink,
   voidAgreement,
 } from "../_lib/consignmentAdmin.js";
+import { inspectLot, previewReceive, receiveCards } from "../_lib/consignmentReceiving.js";
 
 type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Update"];
 
@@ -33,6 +34,10 @@ type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Upda
 //                                  from being published
 //   GET  ?view=pdf&signature=      a five-minute link to a signed PDF
 //   POST { action, ... }           see ACTIONS below
+//
+// Receiving (staff): previewReceive matches lines to exact printings without
+// saving; receiveCards saves a batch (refused if any line has a problem);
+// inspectLot { lotId, step: start|accept|reject|reopen, ... } grades a line.
 //
 // Staff can create consignments and send, cancel and resend agreements. Only
 // the owner (role admin) can change rates, settings and the agreement's
@@ -336,7 +341,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const body = await readJsonBody(req, 256 * 1024);
+    const body = await readJsonBody(req, 1024 * 1024);
     const action = String(body.action ?? "");
     if (OWNER_ACTIONS.has(action)) requireOwner(staff);
     switch (action) {
@@ -362,6 +367,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "voidAgreement":
         await voidAgreement(admin, staff, body);
         return sendJson(res, 200, { ok: true });
+      case "previewReceive":
+        return sendJson(res, 200, await previewReceive(admin, body));
+      case "receiveCards":
+        return sendJson(res, 200, await receiveCards(admin, staff, body));
+      case "inspectLot":
+        return sendJson(res, 200, await inspectLot(admin, staff, body));
       case "resendSignedCopy":
         return sendJson(res, 200, { copy: await resendSignedCopy(admin, staff, body) });
       case "saveDraft":

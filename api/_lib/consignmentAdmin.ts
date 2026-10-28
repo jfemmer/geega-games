@@ -99,7 +99,7 @@ export async function consignmentDetail(admin: Admin, id: string) {
   const { data: c, error } = await admin.from("consignments").select("*").eq("id", uuid(id, "a consignment")).maybeSingle();
   if (error) throw new HttpError(500, "Could not load that consignment.");
   if (!c) throw new HttpError(404, "That consignment isn't there.");
-  const [consignor, agreements, signatures, elections] = await Promise.all([
+  const [consignor, agreements, signatures, elections, batches, lots, events] = await Promise.all([
     admin.from("consignors").select("*").eq("id", c.consignor_id).single(),
     admin
       .from("consignment_agreements")
@@ -111,14 +111,22 @@ export async function consignmentDetail(admin: Admin, id: string) {
       .select("id, agreement_id, legal_name, typed_signature, signer_email, signed_at, ip, user_agent, channels, additional_insurance, acknowledgments, agreement_sha256, record_sha256, pdf_path, pdf_sha256, emailed_at")
       .eq("consignment_id", c.id),
     admin.rpc("consignment_current_elections", { p_consignment_id: c.id }),
+    admin.from("consignment_receiving_batches").select("*").eq("consignment_id", c.id).order("batch_number", { ascending: true }),
+    admin.from("consignment_lots").select("*").eq("consignment_id", c.id).order("created_at", { ascending: true }).limit(5000),
+    admin.from("consignment_lot_events").select("*").eq("consignment_id", c.id).order("created_at", { ascending: true }).limit(20000),
   ]);
-  if (consignor.error || agreements.error || signatures.error) throw new HttpError(500, "Could not load that consignment.");
+  if (consignor.error || agreements.error || signatures.error || batches.error || lots.error || events.error) {
+    throw new HttpError(500, "Could not load that consignment.");
+  }
   return {
     consignment: { ...c, label: consignmentLabel(c.consignment_number) },
     consignor: consignor.data,
     agreements: agreements.data ?? [],
     signatures: (signatures.data ?? []).map((s) => ({ ...s, hasPdf: Boolean(s.pdf_path), pdf_path: undefined })),
     elections: elections.data ?? null,
+    batches: batches.data ?? [],
+    lots: lots.data ?? [],
+    lotEvents: events.data ?? [],
   };
 }
 
