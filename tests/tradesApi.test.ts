@@ -202,6 +202,17 @@ describe("POST /api/admin/trades confirm", () => {
     expect(state.tables.trades).toEqual([]);
   });
 
+  it("refuses a consigned copy: consigned cards are for sale only, never traded", async () => {
+    state.tables.inventory_items = [
+      inventoryRow(SOL, { card_name: "Sol Ring", collector_number: "263", price_cents: 1000, ownership: "consigned" }),
+      inventoryRow(SIGNET, { ownership: "business" }),
+    ];
+    const res = await asStaff("POST", confirmBody());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toBe("Sol Ring (cmr NM) is a consigned card. Consigned cards are for sale only, not for trade. Take it off the trade.");
+    expect(state.tables.trades).toHaveLength(0);
+  });
+
   it("won't confirm at a price other than the one staff showed the customer", async () => {
     // The page showed the Sol Ring at its deal price, or a price from before it changed.
     const res = await asStaff(

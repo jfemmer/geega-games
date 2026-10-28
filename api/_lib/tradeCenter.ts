@@ -527,14 +527,15 @@ export async function loadCustomerBundle(admin: Admin, tradeId: string, userId: 
 /**
  * How many of each inventory line are free now (on hand, on sale, less every
  * active hold except this trade's own), for a trade whose cards aren't
- * reserved yet.
+ * reserved yet. Consigned copies are sale-only, so they're never free for a
+ * trade (mirrors trade_available()).
  */
 export async function loadAvailability(admin: Admin, tradeId: string, inventoryIds: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   const ids = [...new Set(inventoryIds)];
   if (ids.length === 0) return out;
   const [inv, holds] = await Promise.all([
-    admin.from("inventory_items").select("id, quantity, status, price_cents, original_price_cents, is_deal").in("id", ids),
+    admin.from("inventory_items").select("id, quantity, status, price_cents, original_price_cents, is_deal, ownership").in("id", ids),
     admin.from("inventory_reservations").select("inventory_item_id, quantity, trade_request_id").in("inventory_item_id", ids).eq("status", "active"),
   ]);
   if (inv.error || holds.error) {
@@ -548,7 +549,7 @@ export async function loadAvailability(admin: Admin, tradeId: string, inventoryI
   }
   for (const row of inv.data ?? []) {
     const price = row.is_deal && row.original_price_cents != null ? row.original_price_cents : row.price_cents;
-    const onSale = row.status === "active" && (price ?? 0) > 0;
+    const onSale = row.status === "active" && row.ownership !== "consigned" && (price ?? 0) > 0;
     out.set(row.id, onSale ? Math.max(row.quantity - (held.get(row.id) ?? 0), 0) : 0);
   }
   return out;

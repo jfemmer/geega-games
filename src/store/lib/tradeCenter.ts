@@ -722,8 +722,16 @@ export function valueForCreditCents(creditCents: number, ratePercent: number, fe
  * What one of our cards counts for in a trade: its regular price, so a
  * deal's price before the discount (sale and member pricing don't apply).
  * The database does the same when the card is added (trade_regular_price).
+ * A consigned copy (saleOnly) has no trade price: it's for sale only, and the
+ * database refuses it on every trade path (trade_available()).
  */
-export function tradePriceCents(listing: { priceCents: number | null; originalPriceCents: number | null; isDeal: boolean | null }): number | null {
+export function tradePriceCents(listing: {
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  isDeal: boolean | null;
+  saleOnly?: boolean;
+}): number | null {
+  if (listing.saleOnly) return null;
   if (listing.isDeal && listing.originalPriceCents != null) return listing.originalPriceCents;
   return listing.priceCents;
 }

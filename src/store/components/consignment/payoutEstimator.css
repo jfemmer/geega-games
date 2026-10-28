@@ -1,0 +1,259 @@
+/* Consignment Payout Estimator. Used in the storefront and the admin app, so
+ * every color falls back to the brand value when the app's own tokens
+ * (--gg-brand, --gg-line, ...) aren't defined. Phone-first: one column, with
+ * wider screens laying the inputs out side by side. */
+
+.gg-pe {
+  --pe-brand: var(--gg-brand, #7c00e6);
+  --pe-ink: var(--gg-text, #241d31);
+  --pe-soft: var(--gg-text-soft, #5c5468);
+  --pe-line: var(--gg-line, rgba(102, 51, 153, 0.16));
+  --pe-surface: var(--gg-surface, #ffffff);
+  --pe-tint: var(--gg-brand-tint, rgba(124, 0, 230, 0.06));
+  --pe-warn: var(--gg-warning, #b7791f);
+  display: grid;
+  gap: 1rem;
+  color: var(--pe-ink);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.gg-pe-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.gg-pe-disclaimer {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--pe-line);
+  border-left: 4px solid var(--pe-brand);
+  border-radius: 10px;
+  background: var(--pe-tint);
+  font-size: 0.88rem;
+}
+
+.gg-pe-inputs {
+  display: grid;
+  gap: 0.9rem;
+}
+@media (min-width: 720px) {
+  .gg-pe-inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.gg-pe-field {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.gg-pe-label {
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 0;
+}
+.gg-pe-hint {
+  font-size: 0.8rem;
+  color: var(--pe-soft);
+}
+
+.gg-pe-money {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--pe-line);
+  border-radius: 10px;
+  background: var(--pe-surface);
+}
+.gg-pe-money:focus-within {
+  border-color: var(--pe-brand);
+  box-shadow: 0 0 0 3px var(--pe-tint);
+}
+.gg-pe-money input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 16px; /* no zoom-on-focus on iOS */
+  color: inherit;
+}
+.gg-pe-money input[aria-invalid="true"] {
+  color: var(--gg-danger, #c0392b);
+}
+
+.gg-pe-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.gg-pe-segment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--pe-line);
+  border-radius: 999px;
+  background: var(--pe-surface);
+  cursor: pointer;
+  font-weight: 500;
+  user-select: none;
+}
+.gg-pe-segment input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.gg-pe-segment.is-on {
+  border-color: var(--pe-brand);
+  background: var(--pe-tint);
+  color: var(--pe-brand);
+  font-weight: 600;
+}
+.gg-pe-segment:focus-within {
+  outline: 2px solid var(--pe-brand);
+  outline-offset: 2px;
+}
+
+.gg-pe-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pe-brand);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.gg-pe-result {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.gg-pe-table,
+.gg-pe-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.gg-pe-table th,
+.gg-pe-table td,
+.gg-pe-compare th,
+.gg-pe-compare td {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--pe-line);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: top;
+}
+.gg-pe-table td,
+.gg-pe-compare td {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 0.75rem;
+}
+.gg-pe-compare thead th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--pe-soft);
+  text-align: right;
+  padding-left: 0.75rem;
+}
+.gg-pe-compare thead th:first-child {
+  text-align: left;
+}
+.gg-pe-subtotal th,
+.gg-pe-subtotal td {
+  font-weight: 700;
+}
+.gg-pe-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--pe-soft);
+}
+.gg-pe-muted {
+  color: var(--pe-soft);
+  font-size: 0.85rem;
+  white-space: normal;
+}
+
+.gg-pe-total {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: var(--pe-tint);
+  border: 1px solid var(--pe-line);
+}
+.gg-pe-total__label {
+  font-weight: 600;
+}
+.gg-pe-total__value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--pe-brand);
+  font-variant-numeric: tabular-nums;
+}
+.gg-pe-total__note {
+  font-size: 0.82rem;
+  color: var(--pe-soft);
+}
+
+.gg-pe-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--pe-line);
+  border-radius: 12px;
+  background: var(--pe-surface);
+}
+.gg-pe-card__title {
+  margin: 0;
+  font-size: 1rem;
+}
+.gg-pe-text {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--pe-soft);
+}
+.gg-pe-text strong {
+  color: var(--pe-ink);
+}
+.gg-pe-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.gg-pe-scroll .gg-pe-compare {
+  min-width: 420px;
+}
+
+.gg-pe-warn {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--pe-warn);
+  color: var(--pe-warn);
+  font-size: 0.85rem;
+}
+.gg-pe-empty {
+  margin: 0;
+  color: var(--pe-soft);
+}
+.gg-pe-fine {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--pe-soft);
+}

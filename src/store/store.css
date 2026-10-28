@@ -6668,6 +6668,11 @@ html {
   color: #6d6575;
 }
 .gg-card-detail__tradelink { color: var(--gg-purple); font-weight: 600; }
+.gg-card-detail__saleonly {
+  align-self: center;
+  font-size: 0.78rem;
+  color: #6d6575;
+}
 @media (max-width: 640px) {
   .gg-card-detail__listingbuy { flex-wrap: wrap; }
 }
