@@ -4,18 +4,39 @@ import { logAdminAction } from "../_lib/auditLog.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../_lib/http.js";
 import type { Database, Json } from "../../src/types/database.js";
+import {
+  consignmentDetail,
+  createConsignment,
+  deleteDraft,
+  inviteConsignor,
+  listConsignments,
+  listVersions,
+  publishVersion,
+  resendSignedCopy,
+  saveDraft,
+  staffPdfLink,
+  voidAgreement,
+} from "../_lib/consignmentAdmin.js";
 
 type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Update"];
 
-// Admin Consignments (Phase 1: settings).
+// Admin Consignments.
 //
-//   GET  ?view=settings   every fee, insurance and commission schedule (newest
-//                         first), the settings row, and what's in effect now
-//   POST { action: "addFeeSchedule" | "addInsuranceSchedule" |
-//          "addCommissionSchedule" | "deleteSchedule" | "updateSettings", ... }
+//   GET  ?view=settings            every fee, insurance and commission schedule
+//                                  (newest first), the settings row, and what's
+//                                  in effect now
+//   GET  ?view=list                consignments with their consignor and latest
+//                                  agreement
+//   GET  ?view=detail&id=          one consignment: consignor, agreements,
+//                                  signatures, elections in force
+//   GET  ?view=versions            agreement versions, with what blocks a draft
+//                                  from being published
+//   GET  ?view=pdf&signature=      a five-minute link to a signed PDF
+//   POST { action, ... }           see ACTIONS below
 //
-// Reading needs staff; changing anything needs the owner (role admin), since
-// these numbers go into new consignment agreements. Schedules are
+// Staff can create consignments and send, cancel and resend agreements. Only
+// the owner (role admin) can change rates, settings and the agreement's
+// text, since those go into new consignment agreements. Schedules are
 // effective-dated and can't be backdated, edited or removed once in effect
 // (the database enforces it: tg_consignment_schedule_lock), so a change never
 // alters a signed agreement or a past payout. Every change is audited.
@@ -34,7 +55,7 @@ type ScheduleKind = keyof typeof SCHEDULE_TABLES;
 type Admin = ReturnType<typeof getSupabaseAdmin>;
 
 function requireOwner(staff: StaffContext) {
-  if (staff.role !== "admin") throw new HttpError(403, "Only the owner can change consignment rates and terms.");
+  if (staff.role !== "admin") throw new HttpError(403, "Only the owner can change consignment rates, terms and the agreement.");
 }
 
 /** A whole number in [min, max], or throws with the field's label. */
@@ -280,6 +301,17 @@ async function updateSettings(admin: Admin, staff: StaffContext, body: Record<st
   return data;
 }
 
+const OWNER_ACTIONS = new Set([
+  "addFeeSchedule",
+  "addInsuranceSchedule",
+  "addCommissionSchedule",
+  "deleteSchedule",
+  "updateSettings",
+  "saveDraft",
+  "deleteDraft",
+  "publishVersion",
+]);
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!["GET", "POST"].includes(req.method ?? "")) return methodNotAllowed(res, ["GET", "POST"]);
   try {
@@ -288,32 +320,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === "GET") {
       const view = String(req.query.view ?? "settings");
-      if (view !== "settings") throw new HttpError(400, "Unknown view.");
-      return sendJson(res, 200, await loadSettings(admin));
+      switch (view) {
+        case "settings":
+          return sendJson(res, 200, await loadSettings(admin));
+        case "list":
+          return sendJson(res, 200, { consignments: await listConsignments(admin) });
+        case "detail":
+          return sendJson(res, 200, await consignmentDetail(admin, String(req.query.id ?? "")));
+        case "versions":
+          return sendJson(res, 200, { versions: await listVersions(admin) });
+        case "pdf":
+          return sendJson(res, 200, await staffPdfLink(admin, String(req.query.signature ?? "")));
+        default:
+          throw new HttpError(400, "Unknown view.");
+      }
     }
 
-    const body = await readJsonBody(req, 32 * 1024);
-    requireOwner(staff);
-    switch (body.action) {
+    const body = await readJsonBody(req, 256 * 1024);
+    const action = String(body.action ?? "");
+    if (OWNER_ACTIONS.has(action)) requireOwner(staff);
+    switch (action) {
       case "addFeeSchedule":
         await addFeeSchedule(admin, staff, body);
-        break;
+        return sendJson(res, 200, await loadSettings(admin));
       case "addInsuranceSchedule":
         await addInsuranceSchedule(admin, staff, body);
-        break;
+        return sendJson(res, 200, await loadSettings(admin));
       case "addCommissionSchedule":
         await addCommissionSchedule(admin, staff, body);
-        break;
+        return sendJson(res, 200, await loadSettings(admin));
       case "deleteSchedule":
         await deleteSchedule(admin, staff, body);
-        break;
+        return sendJson(res, 200, await loadSettings(admin));
       case "updateSettings":
         await updateSettings(admin, staff, body);
-        break;
+        return sendJson(res, 200, await loadSettings(admin));
+      case "createConsignment":
+        return sendJson(res, 200, { consignment: await createConsignment(admin, staff, body) });
+      case "sendInvitation":
+        return sendJson(res, 200, { invitation: await inviteConsignor(admin, staff, body) });
+      case "voidAgreement":
+        await voidAgreement(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "resendSignedCopy":
+        return sendJson(res, 200, { copy: await resendSignedCopy(admin, staff, body) });
+      case "saveDraft":
+        await saveDraft(admin, staff, body);
+        return sendJson(res, 200, { versions: await listVersions(admin) });
+      case "deleteDraft":
+        await deleteDraft(admin, staff, body);
+        return sendJson(res, 200, { versions: await listVersions(admin) });
+      case "publishVersion":
+        await publishVersion(admin, staff, body);
+        return sendJson(res, 200, { versions: await listVersions(admin) });
       default:
         throw new HttpError(400, "Unknown action.");
     }
-    return sendJson(res, 200, await loadSettings(admin));
   } catch (err) {
     if (err instanceof HttpError) return sendJson(res, err.status, { message: err.message });
     console.error("[admin/consignments] unexpected", err);

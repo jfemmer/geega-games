@@ -54,6 +54,7 @@ import TradeCardsPage from "./store/pages/TradeCardsPage";
 import { TRADE_CENTER_PATH } from "./store/lib/tradeCenter";
 import KioskPage from "./store/pages/KioskPage";
 import YardSalePage from "./store/pages/YardSalePage";
+import ConsignSignPage from "./store/pages/ConsignSignPage";
 
 function Routes() {
   const { path } = useRouter();
@@ -76,6 +77,7 @@ function Routes() {
   if (path === "/collection-sorting") return <CollectionSortingPage />;
   if (path === "/collection-sorting/quote") return <SortingQuotePage />;
   if (path === TRADE_PATH) return <TradeSummaryPage />;
+  if (path === "/consign/sign") return <ConsignSignPage />;
   if (path === TRADE_CENTER_PATH) return <TradeCardsPage />;
   if (path === "/sell") return <SellPage />;
   if (path === "/sell-my-collection") return <SellCollectionPage />;

@@ -7,164 +7,11 @@
 
 import { useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import {
-  CONSIGNMENT_CHANNELS,
-  type BuyerTerms,
-  type ChannelFeeSchedule,
-  type CommissionTier,
-  type ConsignmentChannel,
-  type EstimateSettings,
-  type FeeBase,
-  type InsuranceBracket,
-  type InsuranceSchedule,
-} from "./consignmentMath";
+import { parseEstimatorConfig, type EstimatorConfig } from "./consignmentConfig";
+import type { AgreementTerms, AcknowledgmentKey, ChannelAnswers } from "./consignmentAgreement";
+import type { ConsignmentChannel } from "./consignmentMath";
 
-export interface EstimatorConfig extends EstimateSettings {
-  asOf: string;
-  /** When each schedule took effect, for the "Rates as of" line. */
-  effectiveFrom: {
-    channels: Partial<Record<ConsignmentChannel, string>>;
-    insurance: string | null;
-    commission: string | null;
-  };
-  insuranceService: string;
-  insuranceSourceUrl: string | null;
-  estimatorInsuranceDefault: boolean;
-  inspectionDays: number;
-  initialTermDays: number;
-}
-
-type Json = Record<string, unknown>;
-
-const isObj = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
-const int = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) ? v : null);
-const intOrNull = (v: unknown): number | null | undefined => (v === null || v === undefined ? null : int(v) ?? undefined);
-const FEE_BASES: readonly FeeBase[] = ["item", "item_shipping", "item_shipping_tax"];
-const feeBase = (v: unknown): FeeBase | null => (FEE_BASES.includes(v as FeeBase) ? (v as FeeBase) : null);
-
-function parseChannel(channel: ConsignmentChannel, raw: unknown): ChannelFeeSchedule | null {
-  if (!isObj(raw)) return null;
-  const marketplaceBps = int(raw.marketplaceBps);
-  const threshold = intOrNull(raw.marketplaceThresholdCents);
-  const above = intOrNull(raw.marketplaceAboveThresholdBps);
-  const marketplaceBase = feeBase(raw.marketplaceBase);
-  const perOrderCents = int(raw.perOrderCents);
-  const small = intOrNull(raw.perOrderSmallCents);
-  const smallMax = intOrNull(raw.perOrderSmallMaxCents);
-  const processingBps = int(raw.processingBps);
-  const processingFixedCents = int(raw.processingFixedCents);
-  const processingBase = feeBase(raw.processingBase);
-  if (
-    marketplaceBps == null || threshold === undefined || above === undefined || !marketplaceBase || perOrderCents == null ||
-    small === undefined || smallMax === undefined || processingBps == null || processingFixedCents == null || !processingBase
-  ) {
-    return null;
-  }
-  return {
-    channel,
-    marketplaceBps,
-    marketplaceThresholdCents: threshold,
-    marketplaceAboveThresholdBps: above,
-    marketplaceBase,
-    perOrderCents,
-    perOrderSmallCents: small,
-    perOrderSmallMaxCents: smallMax,
-    processingBps,
-    processingFixedCents,
-    processingBase,
-  };
-}
-
-function parseInsurance(raw: unknown): InsuranceSchedule | null {
-  if (!isObj(raw) || !Array.isArray(raw.brackets)) return null;
-  const brackets: InsuranceBracket[] = [];
-  for (const b of raw.brackets) {
-    if (!isObj(b)) return null;
-    const maxValueCents = int(b.maxValueCents);
-    const premiumCents = int(b.premiumCents);
-    if (maxValueCents == null || premiumCents == null) return null;
-    brackets.push({ maxValueCents, premiumCents });
-  }
-  const includedCoverageCents = int(raw.includedCoverageCents);
-  const stepCents = int(raw.stepCents);
-  const stepPremiumCents = int(raw.stepPremiumCents);
-  const maxInsurableCents = int(raw.maxInsurableCents);
-  if (includedCoverageCents == null || stepCents == null || stepPremiumCents == null || maxInsurableCents == null) return null;
-  return { includedCoverageCents, brackets, stepCents, stepPremiumCents, maxInsurableCents };
-}
-
-function parseTiers(raw: unknown): CommissionTier[] | null {
-  if (!isObj(raw) || !Array.isArray(raw.tiers) || raw.tiers.length === 0) return null;
-  const tiers: CommissionTier[] = [];
-  for (const t of raw.tiers) {
-    if (!isObj(t)) return null;
-    const rateBps = int(t.rateBps);
-    const maxPriceCents = intOrNull(t.maxPriceCents);
-    if (rateBps == null || maxPriceCents === undefined) return null;
-    tiers.push({ maxPriceCents, rateBps });
-  }
-  return tiers;
-}
-
-function parseBuyerTerms(raw: unknown): Partial<Record<ConsignmentChannel, BuyerTerms>> {
-  const out: Partial<Record<ConsignmentChannel, BuyerTerms>> = {};
-  if (!isObj(raw)) return out;
-  for (const channel of CONSIGNMENT_CHANNELS) {
-    const t = raw[channel];
-    if (!isObj(t)) continue;
-    const shippingCents = int(t.shippingCents);
-    const freeShippingAtCents = intOrNull(t.freeShippingAtCents);
-    const salesTaxBps = int(t.salesTaxBps);
-    if (shippingCents == null || freeShippingAtCents === undefined || salesTaxBps == null) continue;
-    out[channel] = { shippingCents, freeShippingAtCents, salesTaxBps };
-  }
-  return out;
-}
-
-/**
- * The estimator's configuration from consignment_estimator_settings(), or
- * null when the commission tiers or insurance schedule are missing (without
- * them no estimate can be honest).
- */
-export function parseEstimatorConfig(raw: unknown): EstimatorConfig | null {
-  if (!isObj(raw)) return null;
-  const commissionTiers = parseTiers(raw.commission);
-  const insurance = parseInsurance(raw.insurance);
-  const settings = isObj(raw.settings) ? raw.settings : null;
-  const defaultPostageCents = settings ? int(settings.defaultPostageCents) : null;
-  if (!commissionTiers || !insurance || !settings || defaultPostageCents == null) return null;
-
-  const channels: Partial<Record<ConsignmentChannel, ChannelFeeSchedule>> = {};
-  const channelDates: Partial<Record<ConsignmentChannel, string>> = {};
-  const rawChannels = isObj(raw.channels) ? raw.channels : {};
-  for (const channel of CONSIGNMENT_CHANNELS) {
-    const parsed = parseChannel(channel, rawChannels[channel]);
-    if (!parsed) continue;
-    channels[channel] = parsed;
-    const effective = (rawChannels[channel] as Json).effectiveFrom;
-    if (typeof effective === "string") channelDates[channel] = effective;
-  }
-  const insuranceRaw = raw.insurance as Json;
-  const commissionRaw = raw.commission as Json;
-  return {
-    asOf: typeof raw.asOf === "string" ? raw.asOf : new Date().toISOString(),
-    commissionTiers,
-    channels,
-    insurance,
-    defaultPostageCents,
-    buyerTerms: parseBuyerTerms(settings.buyerTerms),
-    effectiveFrom: {
-      channels: channelDates,
-      insurance: typeof insuranceRaw.effectiveFrom === "string" ? insuranceRaw.effectiveFrom : null,
-      commission: typeof commissionRaw.effectiveFrom === "string" ? commissionRaw.effectiveFrom : null,
-    },
-    insuranceService: typeof insuranceRaw.service === "string" ? insuranceRaw.service : "USPS Ground Advantage",
-    insuranceSourceUrl: typeof insuranceRaw.sourceUrl === "string" ? insuranceRaw.sourceUrl : null,
-    estimatorInsuranceDefault: settings.estimatorInsuranceDefault === true,
-    inspectionDays: int(settings.inspectionDays) ?? 3,
-    initialTermDays: int(settings.initialTermDays) ?? 90,
-  };
-}
+export { parseEstimatorConfig, type EstimatorConfig } from "./consignmentConfig";
 
 export async function fetchEstimatorConfig(): Promise<EstimatorConfig | null> {
   if (!isSupabaseConfigured) return null;
@@ -201,4 +48,122 @@ export function useEstimatorConfig(reloadKey: unknown = 0): EstimatorConfigState
     };
   }, [reloadKey]);
   return state;
+}
+
+// ---------------------------------------------------------------- the consignor's side
+
+
+export const CONSIGN_SIGN_PATH = "/consign/sign";
+const CONSIGN_API = "/api/consignments";
+
+export class ConsignmentApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function bearer(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function call<T>(init: { method: "GET" | "POST"; query?: Record<string, string>; body?: unknown }): Promise<T> {
+  const token = await bearer();
+  const qs = init.query ? `?${new URLSearchParams(init.query).toString()}` : "";
+  let res: Response;
+  try {
+    res = await fetch(`${CONSIGN_API}${qs}`, {
+      method: init.method,
+      headers: {
+        Accept: "application/json",
+        ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "same-origin",
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+  } catch {
+    throw new ConsignmentApiError("We couldn't reach the server. Check your connection and try again.", 0);
+  }
+  const body = (await res.json().catch(() => null)) as (T & { ok?: boolean; message?: string }) | null;
+  if (!res.ok || !body || body.ok === false) {
+    throw new ConsignmentApiError(body?.message || "Something went wrong. Please try again.", res.status);
+  }
+  return body;
+}
+
+export type InviteView =
+  | { status: "signed"; consignmentLabel: string; signedAt: string; agreementId: string }
+  | {
+      status: "pending";
+      agreementId: string;
+      consignmentLabel: string;
+      consignorName: string;
+      versionNumber: number | null;
+      title: string;
+      renderedMd: string;
+      agreementSha256: string;
+      terms: AgreementTerms;
+      expiresAt: string;
+    };
+
+export function loadInvite(token: string): Promise<InviteView> {
+  return call<InviteView>({ method: "GET", query: { view: "invite", t: token } });
+}
+
+export interface SignInput {
+  t: string;
+  agreementSha256: string;
+  acknowledgments: Partial<Record<AcknowledgmentKey, boolean>>;
+  channels: ChannelAnswers;
+  additionalInsurance: boolean | null;
+  legalName: string;
+  typedSignature: string;
+}
+
+export function signAgreement(input: SignInput): Promise<{ ok: true; agreementId: string; pdfReady: boolean }> {
+  return call({ method: "POST", body: { action: "sign", ...input } });
+}
+
+/** Open the signed PDF (a short-lived link) in a new tab. */
+export async function signedAgreementUrl(agreementId: string): Promise<string> {
+  const { url } = await call<{ url: string }>({ method: "GET", query: { view: "pdf", agreement: agreementId } });
+  return url;
+}
+
+export interface MyAgreement {
+  id: string;
+  status: "pending" | "signed";
+  versionNumber: number;
+  invitedAt: string;
+  expiresAt: string;
+  signedAt: string | null;
+  agreementSha256: string;
+  hasPdf: boolean;
+  pdfSha256: string | null;
+  terms: AgreementTerms;
+}
+
+export interface MyConsignment {
+  id: string;
+  consignmentNumber: number;
+  status: "draft" | "awaiting_signature" | "signed" | "inventory_received" | "active" | "terminated" | "closed";
+  signedAt: string | null;
+  termStartedAt: string | null;
+  initialTermDays: number;
+  elections: { channels: Partial<Record<ConsignmentChannel, boolean>>; additionalInsurance: boolean | null };
+  agreements: MyAgreement[];
+}
+
+export async function loadMyConsignments(): Promise<MyConsignment[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase.rpc("my_consignments");
+  if (error) throw new ConsignmentApiError("Could not load your consignments.", 500);
+  return Array.isArray(data) ? (data as unknown as MyConsignment[]) : [];
 }

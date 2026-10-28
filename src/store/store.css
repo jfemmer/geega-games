@@ -7910,3 +7910,107 @@ html {
 .gg-tc-spot__name { margin: 0; font-weight: 700; color: var(--gg-ink); overflow-wrap: anywhere; }
 .gg-tc-spot__address { margin: 0.1rem 0 0; color: #3b3346; overflow-wrap: anywhere; }
 .gg-tc-spot__map { display: inline-flex; align-items: center; min-height: 44px; margin-top: 0.15rem; font-weight: 600; color: #663399; }
+
+/* ---------------------------------------------------------------- Consignment agreement signing */
+.gg-consign-page { max-width: 820px; }
+.gg-consign { display: grid; gap: 1.1rem; }
+.gg-consign__head h1 { margin: 0.2rem 0 0.4rem; }
+.gg-consign__eyebrow { margin: 0; font-size: 0.85rem; font-weight: 600; color: #6d6575; letter-spacing: 0.02em; }
+.gg-consign__card {
+  padding: 1rem 1.1rem;
+  border: 1px solid #e4dcec;
+  border-radius: 14px;
+  background: #fff;
+  display: grid;
+  gap: 0.75rem;
+}
+.gg-consign__step { margin: 0; font-size: 1.15rem; }
+.gg-consign__hint { margin: 0; color: #6d6575; font-size: 0.9rem; }
+.gg-consign__doc {
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.25rem 0.9rem 0.75rem;
+  border: 1px solid #ece4f5;
+  border-radius: 10px;
+  background: #fcfaff;
+}
+.gg-consign__doc:focus-visible { outline: 2px solid #663399; outline-offset: 2px; }
+.gg-consign__end { margin: 1rem 0 0.25rem; text-align: center; font-size: 0.8rem; color: #8a8195; }
+.gg-consign__channel { margin: 0; padding: 0.8rem 0 0; border: 0; border-top: 1px solid #f0eaf6; display: grid; gap: 0.45rem; }
+.gg-consign__channel legend { font-weight: 700; padding: 0; }
+.gg-consign__channel p { margin: 0; }
+.gg-consign__fees { font-size: 0.85rem; color: #6d6575; }
+.gg-consign__choices { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.gg-consign__choice,
+.gg-consign__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-height: 44px;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #ddd5e4;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  line-height: 1.45;
+}
+.gg-consign__choice { align-items: center; flex: 1 1 220px; }
+.gg-consign__choice.is-on,
+.gg-consign__option.is-on { border-color: #663399; background: #f6efff; }
+.gg-consign__choice input,
+.gg-consign__option input { flex: none; width: 1.1rem; height: 1.1rem; margin-top: 0.15rem; accent-color: #663399; }
+.gg-consign__option + .gg-consign__option { margin-top: 0.5rem; }
+.gg-consign__acks { display: grid; gap: 0.5rem; }
+.gg-tc-ack.is-locked { opacity: 0.55; cursor: not-allowed; }
+.gg-consign__sign { display: grid; gap: 0.75rem; }
+.gg-consign__sign .gg-field input { font-size: 16px; }
+.gg-consign__signature { font-family: "Brush Script MT", "Segoe Script", cursive; font-size: 1.35rem !important; }
+.gg-consign__summary { margin: 0; padding: 0.6rem 0.8rem; border-radius: 10px; background: #f6f3f8; font-size: 0.92rem; }
+.gg-consign__problems { margin: 0; padding-left: 2rem; }
+.gg-consign__submit { min-width: 260px; justify-self: start; }
+.gg-consign__fine { margin: 0; font-size: 0.82rem; color: #6d6575; }
+.gg-consign__auth { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.75rem; }
+@media (max-width: 560px) {
+  .gg-consign__card { padding: 0.9rem 0.8rem; }
+  .gg-consign__submit { width: 100%; min-width: 0; }
+  .gg-consign__doc { max-height: 55vh; padding: 0.25rem 0.65rem 0.6rem; }
+}
+
+/* The agreement text (signing page and admin preview). */
+.gg-agreement { font-size: 0.95rem; line-height: 1.6; color: #241d31; }
+.gg-agreement__h2 { margin: 1.1rem 0 0.4rem; font-size: 1.1rem; color: #4c2a85; }
+.gg-agreement__h3 { margin: 0.9rem 0 0.35rem; font-size: 1rem; }
+.gg-agreement p { margin: 0 0 0.6rem; }
+.gg-agreement ol,
+.gg-agreement ul { margin: 0 0 0.7rem; padding-left: 1.4rem; }
+.gg-agreement li { margin: 0.2rem 0; }
+.gg-agreement__table { overflow-x: auto; margin: 0 0 0.8rem; }
+.gg-agreement__table table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 0.88rem; }
+.gg-agreement__table th,
+.gg-agreement__table td { padding: 0.45rem 0.55rem; border: 1px solid #e4dcec; text-align: left; vertical-align: top; }
+.gg-agreement__table th { background: #f6f3f8; }
+
+/* Account > Consignments */
+.gg-myconsign-list { display: grid; gap: 1rem; }
+.gg-myconsign { display: grid; gap: 0.75rem; }
+.gg-myconsign__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.gg-myconsign__head h2 { margin: 0; }
+.gg-myconsign__status { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; background: #f0eaf6; color: #4c2a85; }
+.gg-myconsign__status--awaiting_signature { background: #fff4dc; color: #8a5a00; }
+.gg-myconsign__status--signed,
+.gg-myconsign__status--active { background: #e7f6ee; color: #1f6b43; }
+.gg-myconsign__facts { display: grid; gap: 0.45rem; margin: 0; }
+.gg-myconsign__facts div { display: grid; grid-template-columns: minmax(120px, 160px) 1fr; gap: 0.5rem; }
+.gg-myconsign__facts dt { font-weight: 600; color: #6d6575; }
+.gg-myconsign__facts dd { margin: 0; }
+.gg-myconsign__terms summary { cursor: pointer; font-weight: 600; min-height: 40px; display: flex; align-items: center; }
+.gg-myconsign__terms ul { margin: 0.25rem 0 0; padding-left: 1.2rem; font-size: 0.92rem; }
+.gg-myconsign__actions { display: grid; gap: 0.4rem; }
+.gg-myconsign__pdf { display: grid; gap: 0.3rem; justify-items: start; }
+.gg-myconsign__hash { margin: 0; font-size: 0.75rem; color: #8a8195; word-break: break-all; }
+.gg-myconsign__estimator { display: grid; gap: 0.75rem; justify-items: start; }
+.gg-myconsign__estimator .gg-pe { width: 100%; }
+@media (max-width: 560px) {
+  .gg-myconsign__facts div { grid-template-columns: 1fr; gap: 0.1rem; }
+}
