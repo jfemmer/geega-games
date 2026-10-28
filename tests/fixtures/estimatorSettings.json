@@ -1,0 +1,11 @@
+{
+  "asOf": "2026-10-28T16:00:00Z",
+  "channels": {
+    "website": { "effectiveFrom": "2026-10-01T05:00:00Z", "marketplaceBps": 0, "marketplaceThresholdCents": null, "marketplaceAboveThresholdBps": null, "marketplaceBase": "item", "perOrderCents": 0, "perOrderSmallCents": null, "perOrderSmallMaxCents": null, "processingBps": 290, "processingFixedCents": 30, "processingBase": "item_shipping_tax", "sourceNote": null },
+    "tcgplayer": { "effectiveFrom": "2026-10-01T05:00:00Z", "marketplaceBps": 1075, "marketplaceThresholdCents": null, "marketplaceAboveThresholdBps": null, "marketplaceBase": "item_shipping", "perOrderCents": 0, "perOrderSmallCents": null, "perOrderSmallMaxCents": null, "processingBps": 250, "processingFixedCents": 30, "processingBase": "item_shipping_tax", "sourceNote": null },
+    "ebay": { "effectiveFrom": "2026-10-01T05:00:00Z", "marketplaceBps": 1325, "marketplaceThresholdCents": 750000, "marketplaceAboveThresholdBps": 235, "marketplaceBase": "item_shipping_tax", "perOrderCents": 40, "perOrderSmallCents": 30, "perOrderSmallMaxCents": 1000, "processingBps": 0, "processingFixedCents": 0, "processingBase": "item_shipping_tax", "sourceNote": null }
+  },
+  "insurance": { "effectiveFrom": "2026-10-04T05:00:00Z", "service": "USPS Ground Advantage", "includedCoverageCents": 10000, "brackets": [{ "maxValueCents": 10000, "premiumCents": 0 }, { "maxValueCents": 20000, "premiumCents": 450 }], "stepCents": 10000, "stepPremiumCents": 150, "maxInsurableCents": 500000, "sourceUrl": null },
+  "commission": { "effectiveFrom": "2026-10-01T05:00:00Z", "tiers": [{ "maxPriceCents": 15000, "rateBps": 2000 }, { "maxPriceCents": null, "rateBps": 1000 }] },
+  "settings": { "defaultPostageCents": 500, "buyerTerms": {}, "estimatorInsuranceDefault": false, "minCardValueCents": 0, "initialTermDays": 90, "inspectionDays": 3, "payoutMethods": ["paypal", "check"] }
+}

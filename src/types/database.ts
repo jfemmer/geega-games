@@ -922,6 +922,249 @@ export type Database = {
           },
         ]
       }
+      consignment_agreement_versions: {
+        Row: {
+          body_md: string
+          body_sha256: string
+          change_summary: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          published_at: string | null
+          published_by: string | null
+          status: string
+          title: string
+          updated_at: string
+          version_number: number
+        }
+        Insert: {
+          body_md: string
+          body_sha256?: string
+          change_summary?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          version_number: number
+        }
+        Update: {
+          body_md?: string
+          body_sha256?: string
+          change_summary?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          version_number?: number
+        }
+        Relationships: []
+      }
+      consignment_agreements: {
+        Row: {
+          consignment_id: string
+          created_at: string
+          id: string
+          invite_expires_at: string
+          invite_token_hash: string
+          invited_at: string
+          invited_by: string | null
+          invited_email: string
+          last_emailed_at: string | null
+          rendered_md: string
+          rendered_sha256: string
+          signed_at: string | null
+          status: string
+          terms_snapshot: Json
+          version_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          consignment_id: string
+          created_at?: string
+          id?: string
+          invite_expires_at: string
+          invite_token_hash: string
+          invited_at?: string
+          invited_by?: string | null
+          invited_email: string
+          last_emailed_at?: string | null
+          rendered_md: string
+          rendered_sha256?: string
+          signed_at?: string | null
+          status?: string
+          terms_snapshot: Json
+          version_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          consignment_id?: string
+          created_at?: string
+          id?: string
+          invite_expires_at?: string
+          invite_token_hash?: string
+          invited_at?: string
+          invited_by?: string | null
+          invited_email?: string
+          last_emailed_at?: string | null
+          rendered_md?: string
+          rendered_sha256?: string
+          signed_at?: string | null
+          status?: string
+          terms_snapshot?: Json
+          version_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: []
+      }
+      consignment_channel_authorizations: {
+        Row: {
+          authorized: boolean
+          channel: string
+          consignment_id: string
+          id: string
+          note: string | null
+          recorded_at: string
+          recorded_by: string | null
+          signature_id: string | null
+          source: string
+        }
+        Insert: {
+          authorized: boolean
+          channel: string
+          consignment_id: string
+          id?: string
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          signature_id?: string | null
+          source: string
+        }
+        Update: {
+          authorized?: boolean
+          channel?: string
+          consignment_id?: string
+          id?: string
+          note?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          signature_id?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
+      consignment_insurance_elections: {
+        Row: {
+          additional_insurance: boolean
+          consignment_id: string
+          id: string
+          recorded_at: string
+          recorded_by: string | null
+          signature_id: string | null
+          source: string
+        }
+        Insert: {
+          additional_insurance: boolean
+          consignment_id: string
+          id?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          signature_id?: string | null
+          source: string
+        }
+        Update: {
+          additional_insurance?: boolean
+          consignment_id?: string
+          id?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          signature_id?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
+      consignment_signatures: {
+        Row: {
+          acknowledgments: Json
+          additional_insurance: boolean
+          agreement_id: string
+          agreement_sha256: string
+          channels: Json
+          consignment_id: string
+          consignor_id: string
+          emailed_at: string | null
+          id: string
+          ip: string | null
+          legal_name: string
+          pdf_generated_at: string | null
+          pdf_path: string | null
+          pdf_sha256: string | null
+          record_sha256: string
+          signed_at: string
+          signer_email: string
+          typed_signature: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          acknowledgments: Json
+          additional_insurance: boolean
+          agreement_id: string
+          agreement_sha256: string
+          channels: Json
+          consignment_id: string
+          consignor_id: string
+          emailed_at?: string | null
+          id?: string
+          ip?: string | null
+          legal_name: string
+          pdf_generated_at?: string | null
+          pdf_path?: string | null
+          pdf_sha256?: string | null
+          record_sha256: string
+          signed_at?: string
+          signer_email: string
+          typed_signature: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          acknowledgments?: Json
+          additional_insurance?: boolean
+          agreement_id?: string
+          agreement_sha256?: string
+          channels?: Json
+          consignment_id?: string
+          consignor_id?: string
+          emailed_at?: string | null
+          id?: string
+          ip?: string | null
+          legal_name?: string
+          pdf_generated_at?: string | null
+          pdf_path?: string | null
+          pdf_sha256?: string | null
+          record_sha256?: string
+          signed_at?: string
+          signer_email?: string
+          typed_signature?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       consignment_commission_schedules: {
         Row: {
           created_at: string
@@ -4991,6 +5234,47 @@ export type Database = {
       }
     }
     Functions: {
+      consignment_create_invitation: {
+        Args: {
+          p_actor: string
+          p_consignment_id: string
+          p_expires_at: string
+          p_invited_email: string
+          p_rendered_md: string
+          p_terms_snapshot: Json
+          p_token_hash: string
+          p_version_id: string
+        }
+        Returns: string
+      }
+      consignment_current_elections: {
+        Args: { p_consignment_id: string }
+        Returns: Json
+      }
+      consignment_publish_version: {
+        Args: { p_actor: string; p_version_id: string }
+        Returns: number
+      }
+      consignment_sign_agreement: {
+        Args: {
+          p_acknowledgments: Json
+          p_additional_insurance: boolean
+          p_agreement_id: string
+          p_agreement_sha256: string
+          p_channels: Json
+          p_ip: string
+          p_legal_name: string
+          p_signer_email: string
+          p_typed_signature: string
+          p_user_agent: string
+          p_user_id: string
+        }
+        Returns: string
+      }
+      my_consignments: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       consignment_commission_cents: {
         Args: { p_final_price_cents: number; p_net_sale_cents: number; p_tiers: Json }
         Returns: number
