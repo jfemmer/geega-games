@@ -325,6 +325,11 @@ export const TRADE_SETTINGS: TradeSettings = {
   localPickupArea: "the St. Louis area",
   localMeetDays: 7,
   localPickupDetails: "We'll message you to set a time and a public place to meet.",
+  localCreditRatePercent: 80,
+  localMinCardValueCents: 1500,
+  localMinTradeValueCents: 0,
+  localCashPayoutEnabled: true,
+  localCashRatePercent: 60,
   updatedAt: null,
 };
 
@@ -480,4 +485,8 @@ export const TRADE_TERMS: TradeTerms = {
   localPickupArea: "the St. Louis area",
   localMeetDays: 7,
   localPickupDetails: "We'll message you to set a time and a public place to meet.",
+  localCreditRatePercent: 80,
+  localMinCardValueCents: 1500,
+  localMinTradeValueCents: 0,
+  localCashPayoutEnabled: false,
 };

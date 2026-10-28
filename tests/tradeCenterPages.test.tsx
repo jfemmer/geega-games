@@ -1252,6 +1252,39 @@ describe("local pickup on the storefront", () => {
     expect(world.posts[0].body).toEqual({ action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }], handoffMethod: "local" });
   });
 
+  it("shows local pickup's own rate, per-card minimum and minimum trade once it's chosen", async () => {
+    const user = userEvent.setup();
+    world.terms = {
+      ...TRADE_TERMS,
+      localCreditRatePercent: 90,
+      localMinCardValueCents: 500,
+      localMinTradeValueCents: 10000,
+      localCashPayoutEnabled: true,
+    };
+    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    at("/trade-cards", <TradeCardsPage />);
+    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
+    await waitFor(() => expect(within(summary).getByRole("group", { name: "How do you want to trade?" })).toBeInTheDocument());
+    const lead = () => document.querySelector(".gg-tc-cartpage__lead")?.textContent ?? "";
+    const staples = () => document.querySelector(".gg-tc-staples")?.textContent ?? "";
+    // Shipping: shipping's terms.
+    expect(lead()).toContain("80% of that");
+    expect(staples()).toContain("$15+");
+    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeEnabled();
+
+    await user.click(within(summary).getByRole("radio", { name: /Local pickup/ }));
+    expect(lead()).toContain("90% of that");
+    expect(staples()).toContain("$5+");
+    expect(summary).toHaveTextContent("At 90% trade credit");
+    expect(summary).toHaveTextContent("or take cash for it, at a lower rate");
+    // $79.99 of our cards is under local pickup's $100 minimum.
+    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
+    expect(document.querySelector(".gg-tc-how__local")?.textContent).toContain(
+      "Local pickup trades run on their own terms: 90% trade credit, staples worth $5+ each at TCG low, and at least $100 of our cards.",
+    );
+    expect(screen.getByText(/Anything your 90% trade credit doesn't cover/)).toBeInTheDocument();
+  });
+
   it("doesn't offer local pickup while it's off", async () => {
     world.terms = { ...TRADE_TERMS, localPickupEnabled: false };
     window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));

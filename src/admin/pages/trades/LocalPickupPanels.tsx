@@ -500,7 +500,7 @@ export function LocalMeetupPanel({ trade, settings, owner, busy, run }: TradePan
         <label className="gg-check-inline gg-trd-cash">
           <input type="checkbox" checked={cash} onChange={(e) => setCash(e.target.checked)} />
           Pay the {formatCents(totals.excessCents)} left over as {formatCents(totals.cashOptionCents)} cash instead (at the{" "}
-          {settings.cashRatePercent}% cash rate). Record it paid once you&rsquo;ve handed it over.
+          {settings.localCashRatePercent}% local pickup cash rate). Record it paid once you&rsquo;ve handed it over.
         </label>
       )}
 

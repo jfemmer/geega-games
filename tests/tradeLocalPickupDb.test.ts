@@ -3,10 +3,12 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { STANDINS, UPSERT } from "./helpers/tradeDbStandins";
 
-// Local pickup trades (supabase/migrations/20261027230000_trade_local_pickup.sql)
-// in PGlite, on top of the Trade Center migration: starting one, sending it
-// without listing their cards, approving it with no review or deposit,
-// confirming, the meetup hold running out, and finishing it at the meetup.
+// Local pickup trades (supabase/migrations/20261027230000_trade_local_pickup.sql,
+// and their own terms, 20261028010000_trade_local_terms.sql) in PGlite, on top
+// of the Trade Center migration: starting one, sending it without listing
+// their cards, approving it with no review or deposit, confirming, the
+// meetup hold running out, finishing it at the meetup, and local pickup's
+// own rate, minimums and cash payouts.
 // tests/tradeCenterDb.test.ts runs every shipped-trade test with this
 // update in place too.
 
@@ -14,6 +16,7 @@ const MIGRATIONS = [
   "../supabase/migrations/20261025200000_trade_center.sql",
   "../supabase/migrations/20261026233000_trade_function_search_path.sql",
   "../supabase/migrations/20261027230000_trade_local_pickup.sql",
+  "../supabase/migrations/20261028010000_trade_local_terms.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -104,6 +107,62 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
 
   afterAll(async () => {
     await db?.close();
+  });
+
+  it("starts local pickup's own terms as copies of the shipped ones", async () => {
+    const s = await one(`select * from public.trade_settings`);
+    expect(s.local_credit_rate_percent).toBe(s.credit_rate_percent);
+    expect(s.local_min_card_value_cents).toBe(s.min_card_value_cents);
+    expect(s.local_min_trade_value_cents).toBe(s.min_trade_value_cents);
+    expect(s.local_cash_payout_enabled).toBe(s.cash_payout_enabled);
+    expect(s.local_cash_rate_percent).toBe(s.cash_rate_percent);
+    // Running the migration again leaves changed values alone.
+    await db.exec(`update public.trade_settings set local_credit_rate_percent = 77`);
+    await db.exec(MIGRATIONS[3]);
+    expect((await one(`select local_credit_rate_percent from public.trade_settings`)).local_credit_rate_percent).toBe(77);
+    expect((await errorOf(`update public.trade_settings set local_credit_rate_percent = 0`))?.code).toBe("23514");
+    expect((await errorOf(`update public.trade_settings set local_min_trade_value_cents = -1`))?.code).toBe("23514");
+    await db.exec(`update public.trade_settings set local_credit_rate_percent = credit_rate_percent`);
+  });
+
+  it("gives local trades their own rate and minimums, and shipped trades theirs", async () => {
+    // Shipped: 80% and $15 a card, $75 to start. Local: 90% and $5 a card, $40 to start.
+    await db.exec(`update public.trade_settings set credit_rate_percent = 80, min_card_value_cents = 1500, min_trade_value_cents = 7500,
+      local_credit_rate_percent = 90, local_min_card_value_cents = 500, local_min_trade_value_cents = 4000`);
+    // $40 of our cards: enough for local pickup, not for shipping.
+    expect((await errorOf(`select public.trade_start($1, $2::jsonb, 'X', 'x@x.com', 'ship')`, [users.ned, items([bolt, 1])]))?.message).toMatch(/\$75\.00 minimum/);
+    const id = await start(users.ned, [[bolt, 1]], "local");
+    let t = await tradeRow(id);
+    expect(t.credit_rate_percent).toBe(90);
+    expect(t.min_card_value_cents).toBe(500);
+
+    // Switching to shipping takes on the shipped terms.
+    await db.query(`select public.trade_set_handoff($1, $2, 'ship')`, [id, users.ned]);
+    t = await tradeRow(id);
+    expect(t.credit_rate_percent).toBe(80);
+    expect(t.min_card_value_cents).toBe(1500);
+    const switched = await one(`select detail from public.trade_events where trade_request_id = $1 and event = 'handoff_changed'`, [id]);
+    expect(switched.detail).toMatchObject({ from: "local", to: "ship", credit_rate_percent: 80, min_card_value_cents: 1500 });
+
+    // And back: local terms again, and it can be sent.
+    await db.query(`select public.trade_set_handoff($1, $2, 'local')`, [id, users.ned]);
+    t = await tradeRow(id);
+    expect(t.credit_rate_percent).toBe(90);
+    expect(t.min_card_value_cents).toBe(500);
+    await db.query(`select public.trade_submit($1, $2, null)`, [id, users.ned]);
+    expect((await tradeRow(id)).status).toBe("pending_review");
+
+    // A local trade under the local minimum can't be sent either.
+    await db.exec(`update public.trade_settings set local_min_trade_value_cents = 5000`);
+    const small = await start(users.max, [[ring, 2]], "local");
+    await db.query(`update public.trade_request_items set quantity = 1 where trade_request_id = $1`, [small]);
+    await db.query(`select public.trade_recount_wanted($1)`, [small]);
+    expect((await errorOf(`select public.trade_submit($1, $2, null)`, [small, users.max]))?.message).toMatch(/\$50\.00 minimum/);
+
+    for (const [trade, statuses] of [[id, "pending_review"], [small, "awaiting_trade_list"]] as const) {
+      await db.query(`select * from public.trade_close($1, 'canceled', array[$2], null, null, 'customer', null, 'x')`, [trade, statuses]);
+    }
+    await db.exec(`update public.trade_settings set local_credit_rate_percent = 80, local_min_card_value_cents = 1500, local_min_trade_value_cents = 7500`);
   });
 
   it("adds the settings, with local pickup on for 7 days", async () => {
@@ -255,7 +314,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
 
   it("keeps credit left over as store credit, and can pay it in cash", async () => {
     // $40 of our cards, $100 of theirs: $80 credit, $40 left over.
-    await db.exec(`update public.trade_settings set min_trade_value_cents = 0`);
+    await db.exec(`update public.trade_settings set local_min_trade_value_cents = 0`);
     const a = await start(users.max, [[bolt, 1]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [a, users.max]);
     await approve(a);
@@ -267,18 +326,24 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     expect((await one(`select public.store_credit_balance($1) as b`, [users.max])).b).toBe(4000);
     expect((await one(`select payment_provider from public.orders where id = $1`, [ta.order_id])).payment_provider).toBe("store_credit");
 
-    // With cash payouts on: the same $40 at the cash rate (50% / 80%) is $25.
+    // Cash payouts for local pickup are their own setting: on for shipped trades isn't enough.
     await db.exec(`update public.trade_settings set cash_payout_enabled = true, cash_rate_percent = 50`);
     const b = await start(users.ned, [[bolt, 1]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [b, users.ned]);
     await approve(b);
     await confirm(b, users.ned);
+    expect(
+      (await errorOf(`select public.trade_complete_local($1, $2::jsonb, 0, null, null, true, null, 'jacob')`, [b, JSON.stringify([taken({ unit_cents: 10000 })])]))
+        ?.message,
+    ).toMatch(/local pickup are turned off/);
+    // With them on: the same $40 at the local cash rate (50% / 80%) is $25.
+    await db.exec(`update public.trade_settings set cash_payout_enabled = false, local_cash_payout_enabled = true, local_cash_rate_percent = 50`);
     await complete(b, [taken({ unit_cents: 10000 })], 0, null, true);
     const tb = await tradeRow(b);
     expect(tb.excess_handling).toBe("cash");
     expect(tb.cash_payout_cents).toBe(2500);
     expect((await one(`select public.store_credit_balance($1) as b`, [users.ned])).b).toBe(0);
-    await db.exec(`update public.trade_settings set cash_payout_enabled = false, min_trade_value_cents = 7500`);
+    await db.exec(`update public.trade_settings set local_cash_payout_enabled = false, local_min_trade_value_cents = 7500`);
   });
 
   it("buys our cards outright when they bring nothing we take", async () => {

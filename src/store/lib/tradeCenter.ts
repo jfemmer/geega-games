@@ -576,6 +576,41 @@ export interface TradeTerms {
   localMeetDays: number;
   /** How meetups work, for customers choosing local pickup. */
   localPickupDetails: string;
+  /** Local pickup's own terms (shipped trades use creditRatePercent and the rest). */
+  localCreditRatePercent: number;
+  localMinCardValueCents: number;
+  localMinTradeValueCents: number;
+  localCashPayoutEnabled: boolean;
+}
+
+/** The terms that differ between shipped and local pickup trades. */
+export type HandoffTerms = Pick<TradeTerms, "creditRatePercent" | "minCardValueCents" | "minTradeValueCents" | "cashPayoutEnabled">;
+
+/**
+ * The terms a trade made `method`'s way runs on: local pickup has its own
+ * trade credit rate, per-card minimum, minimum trade and cash payouts; the
+ * rest is shared. (A trade keeps the rate and per-card minimum it started
+ * with, as trade.creditRatePercent and trade.minCardValueCents.)
+ */
+export function termsForHandoff<T extends TradeTerms>(terms: T, method: TradeHandoffMethod): T {
+  if (method !== "local") return terms;
+  return {
+    ...terms,
+    creditRatePercent: terms.localCreditRatePercent,
+    minCardValueCents: terms.localMinCardValueCents,
+    minTradeValueCents: terms.localMinTradeValueCents,
+    cashPayoutEnabled: terms.localCashPayoutEnabled,
+  };
+}
+
+/** Local pickup's terms differ from shipping's in any way customers would notice. */
+export function localTermsDiffer(terms: TradeTerms): boolean {
+  return (
+    terms.localCreditRatePercent !== terms.creditRatePercent ||
+    terms.localMinCardValueCents !== terms.minCardValueCents ||
+    terms.localMinTradeValueCents !== terms.minTradeValueCents ||
+    terms.localCashPayoutEnabled !== terms.cashPayoutEnabled
+  );
 }
 
 /** Trading is open to new trades. */
@@ -1322,6 +1357,11 @@ export interface TradeSettings {
   localPickupArea: string;
   localMeetDays: number;
   localPickupDetails: string;
+  localCreditRatePercent: number;
+  localMinCardValueCents: number;
+  localMinTradeValueCents: number;
+  localCashPayoutEnabled: boolean;
+  localCashRatePercent: number;
   updatedAt: string | null;
 }
 

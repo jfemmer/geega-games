@@ -38,7 +38,9 @@ export type NumberKey =
   | "maxOfferedLines"
   | "cashRatePercent"
   | "overstockThreshold"
-  | "localMeetDays";
+  | "localMeetDays"
+  | "localCreditRatePercent"
+  | "localCashRatePercent";
 
 export type MoneyKey =
   | "minCardValueCents"
@@ -56,7 +58,9 @@ export type MoneyKey =
   | "shipFeeCents"
   | "freeShipThresholdCents"
   | "freeShipFeeCents"
-  | "shipCostEstimateCents";
+  | "shipCostEstimateCents"
+  | "localMinCardValueCents"
+  | "localMinTradeValueCents";
 
 export interface SettingsForm {
   enabled: boolean;
@@ -83,6 +87,7 @@ export interface SettingsForm {
   localPickupEnabled: boolean;
   localPickupArea: string;
   localPickupDetails: string;
+  localCashPayoutEnabled: boolean;
 }
 
 const R = TRADE_SETTING_RANGES;
@@ -113,6 +118,8 @@ export const NUMBER_RANGES: Record<NumberKey, readonly [number, number]> = {
   cashRatePercent: R.cashRatePercent,
   overstockThreshold: R.overstockThreshold,
   localMeetDays: R.localMeetDays,
+  localCreditRatePercent: R.creditRatePercent,
+  localCashRatePercent: R.cashRatePercent,
 };
 
 export const NUMBER_KEYS = Object.keys(NUMBER_RANGES) as NumberKey[];
@@ -142,6 +149,8 @@ export const NUMBER_LABELS: Record<NumberKey, string> = {
   cashRatePercent: "Cash rate",
   overstockThreshold: "Overstock limit",
   localMeetDays: "Days to hold our cards for a meetup",
+  localCreditRatePercent: "Local pickup: store credit rate",
+  localCashRatePercent: "Local pickup: cash rate",
 };
 
 /** Dollar settings, with the range (in cents) each allows and its label for messages. */
@@ -161,6 +170,8 @@ const MONEY_RULES: Record<Exclude<MoneyKey, "maxTradeValueCents">, { range: read
   freeShipThresholdCents: { range: R.freeShipThresholdCents, label: "Free shipping from" },
   freeShipFeeCents: { range: R.shipFeeCents, label: "Shipping from the threshold up" },
   shipCostEstimateCents: { range: R.shipCostEstimateCents, label: "What shipping costs us" },
+  localMinCardValueCents: { range: R.minCardValueCents, label: "Local pickup: minimum card value" },
+  localMinTradeValueCents: { range: R.minTradeValueCents, label: "Local pickup: minimum trade" },
 };
 
 const MONEY_KEYS = Object.keys(MONEY_RULES) as Exclude<MoneyKey, "maxTradeValueCents">[];
@@ -204,6 +215,7 @@ export function formOf(s: TradeSettings): SettingsForm {
     localPickupEnabled: s.localPickupEnabled,
     localPickupArea: s.localPickupArea,
     localPickupDetails: s.localPickupDetails,
+    localCashPayoutEnabled: s.localCashPayoutEnabled,
   };
 }
 
@@ -278,6 +290,7 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
     const [min, max] = R.maxTradeValueCents;
     if (maxTrade === null || maxTrade < min || maxTrade > max) return { problem: `Largest trade: enter an amount up to ${formatUsd(max)}, or leave it blank.` };
     if (maxTrade < money.minTradeValueCents) return { problem: "The largest trade can't be smaller than the minimum." };
+    if (maxTrade < money.localMinTradeValueCents) return { problem: "The largest trade can't be smaller than the local pickup minimum." };
   }
   if (money.freeShipFeeCents > money.shipFeeCents) {
     return { problem: "Shipping from the free-shipping threshold up can't cost more than below it." };
@@ -337,5 +350,6 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
     localPickupEnabled: form.localPickupEnabled,
     localPickupArea: form.localPickupArea.trim(),
     localPickupDetails: form.localPickupDetails.replace(/\r\n/g, "\n").trim(),
+    localCashPayoutEnabled: form.localCashPayoutEnabled,
   };
 }

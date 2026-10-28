@@ -367,7 +367,12 @@ function TradingStatus({ settings, onOpenSettings }: { settings: TradeSettings; 
       <Icon name="checkCircle" size={18} />
       <div>
         <strong>Trading is open:</strong> {settings.creditRatePercent}% store credit on cards worth{" "}
-        {formatUsd(settings.minCardValueCents)} or more. {settingsLink}
+        {formatUsd(settings.minCardValueCents)} or more
+        {settings.localPickupEnabled &&
+        (settings.localCreditRatePercent !== settings.creditRatePercent || settings.localMinCardValueCents !== settings.minCardValueCents)
+          ? ` (local pickup: ${settings.localCreditRatePercent}% on ${formatUsd(settings.localMinCardValueCents)} or more)`
+          : ""}
+        . {settingsLink}
       </div>
     </div>
   );

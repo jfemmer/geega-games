@@ -11,7 +11,16 @@ import { TradeShippingProgress } from "../components/trades/TradeShippingProgres
 import { HandoffChoice, LocalCartSummary } from "../components/trades/LocalPickup";
 import { tradeActions, useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart, tradeCartCount, tradeCartTotalCents, useTradeCart } from "../lib/tradeCart";
-import { MY_TRADES_PATH, TRADE_CENTER_PATH, myTradePath, tradingOpen, type TradeHandoffMethod, type TradeTerms } from "../lib/tradeCenter";
+import {
+  MY_TRADES_PATH,
+  TRADE_CENTER_PATH,
+  localTermsDiffer,
+  myTradePath,
+  termsForHandoff,
+  tradingOpen,
+  type TradeHandoffMethod,
+  type TradeTerms,
+} from "../lib/tradeCenter";
 import { depositBands } from "../lib/tradeRules";
 import { minimumMessage, moneyShort, requiredValueCents, shippingLabel, tradeShippingCents } from "../lib/tradeShipping";
 import { conditionAgeRules, conditionAgeSummary } from "../lib/tradeConditions";
@@ -29,7 +38,10 @@ import { breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 // knowing, the deposit, and the FAQ. Every number comes from the Trade
 // Center settings staff control, so the page can't promise anything the
 // trade itself won't do. When local pickup is on, the customer can choose to
-// trade in person instead: no card list, no shipping, settled when we meet.
+// trade in person instead: no card list, no shipping, settled when we meet,
+// on local pickup's own terms (its credit rate, per-card minimum, minimum
+// trade and cash payouts can differ from shipping's): the cart shows the
+// terms for the way the customer has chosen.
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -53,6 +65,12 @@ function ourShipping(t: TradeTerms | null): string {
   if (!t) return "Our cards ship to you tracked, free on bigger trades.";
   const free = t.freeShipFeeCents > 0 ? moneyShort(t.freeShipFeeCents) : "free";
   return `Our cards ship to you tracked: ${moneyShort(t.shipFeeCents)}, or ${free} on ${moneyShort(t.freeShipThresholdCents)} or more of our cards.`;
+}
+
+/** "Local pickup trades: 85% trade credit, staples worth $5+ each at TCG low, and at least $40 of our cards." */
+function localTermsSentence(t: TradeTerms): string {
+  const minimum = t.localMinTradeValueCents > 0 ? `, and at least ${moneyShort(t.localMinTradeValueCents)} of our cards` : ", and no minimum trade";
+  return `Local pickup trades run on their own terms: ${t.localCreditRatePercent}% trade credit, staples worth ${moneyShort(t.localMinCardValueCents)}+ each at TCG low${minimum}.`;
 }
 
 function faqItems(t: TradeTerms | null): { question: string; answer: string }[] {
@@ -90,7 +108,9 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
       question: "What if my cards are worth more than the cards I picked?",
       answer: t?.cashPayoutEnabled
         ? "Credit left over stays in your account as store credit for your next order. Sometimes we can offer cash for it instead, at a lower rate; we'll say so in your final offer if we can."
-        : "Credit left over stays in your account as store credit for your next order. It isn't paid out in cash.",
+        : t?.localPickupEnabled && t.localCashPayoutEnabled
+          ? "Credit left over stays in your account as store credit for your next order. On a local pickup trade we can sometimes pay it in cash instead, at a lower rate, when we meet."
+          : "Credit left over stays in your account as store credit for your next order. It isn't paid out in cash.",
     },
     {
       question: "When are the cards I picked reserved for me?",
@@ -134,7 +154,7 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
       ? [
           {
             question: "Can I trade in person?",
-            answer: `Yes, in ${t.localPickupArea}: choose local pickup when you start your trade. You don't list your cards; we approve the trade, you confirm it, and we hold our cards for you for ${plural(t.localMeetDays, "day")} (Sundays don't count) while we set a time and a public place to meet. Bring your cards and we'll value each one at its TCG low for the condition we see, together. Anything your ${rate} trade credit doesn't cover is paid then, in cash or by card. There's no deposit and no shipping.`,
+            answer: `Yes, in ${t.localPickupArea}: choose local pickup when you start your trade. You don't list your cards; we approve the trade, you confirm it, and we hold our cards for you for ${plural(t.localMeetDays, "day")} (Sundays don't count) while we set a time and a public place to meet. Bring your cards and we'll value each one at its TCG low for the condition we see, together. Anything your ${t.localCreditRatePercent}% trade credit doesn't cover is paid then, in cash or by card. There's no deposit and no shipping.${localTermsDiffer(t) ? ` ${localTermsSentence(t)}` : ""}`,
           },
         ]
       : []),
@@ -166,9 +186,11 @@ export default function TradeCardsPage() {
   const open = tradingOpen(terms);
   const count = tradeCartCount(cart);
   const total = tradeCartTotalCents(cart);
-  const belowMinimum = terms !== null && total < terms.minTradeValueCents;
   // Local pickup only while it's offered; a choice made before it was turned off falls back to shipping.
   const method: TradeHandoffMethod = handoff === "local" && terms?.localPickupEnabled ? "local" : "ship";
+  // The terms for the way they've chosen (local pickup can have its own rate and minimums).
+  const active = terms ? termsForHandoff(terms, method) : null;
+  const belowMinimum = active !== null && total < active.minTradeValueCents;
 
   async function start() {
     if (belowMinimum) return;
@@ -199,13 +221,13 @@ export default function TradeCardsPage() {
           <h1>Your trade cart</h1>
           <p className="gg-tc-cartpage__lead">
             Trade your Magic cards for cards from our shop. We price your cards at TCG low, and you get{" "}
-            {terms ? `${terms.creditRatePercent}%` : "a share"} of that as trade credit toward ours.
+            {active ? `${active.creditRatePercent}%` : "a share"} of that as trade credit toward ours.
           </p>
           <p className="gg-tc-staples">
             <strong>We&rsquo;re looking for staples:</strong>{" "}
-            {terms ? (
+            {active ? (
               <>
-                cards worth <strong>{moneyShort(terms.minCardValueCents)}+</strong> each at TCG low, in their condition. No bulk, please.
+                cards worth <strong>{moneyShort(active.minCardValueCents)}+</strong> each at TCG low, in their condition. No bulk, please.
               </>
             ) : (
               "cards with a solid TCG low, not bulk."
@@ -275,11 +297,11 @@ export default function TradeCardsPage() {
           <aside className="gg-tc-cartpage__summary" aria-labelledby="gg-tc-summary-title">
             <h2 id="gg-tc-summary-title">Trade summary</h2>
             {terms?.localPickupEnabled && <HandoffChoice value={method} terms={terms} disabled={starting} onChange={setHandoff} />}
-            {terms ? (
+            {active ? (
               method === "local" ? (
-                <LocalCartSummary terms={terms} count={count} totalCents={total} />
+                <LocalCartSummary terms={active} count={count} totalCents={total} />
               ) : (
-                <TradeSummary terms={terms} count={count} totalCents={total} />
+                <TradeSummary terms={active} count={count} totalCents={total} />
               )
             ) : (
               <p className="gg-tc-line__meta" role="status">
@@ -293,19 +315,19 @@ export default function TradeCardsPage() {
             )}
             {open ? (
               <>
-                {terms && (
+                {active && (
                   <p
                     className={belowMinimum ? "gg-tc-minimum gg-tc-minimum--short" : "gg-tc-minimum gg-tc-minimum--met"}
                     id="gg-tc-cart-minimum"
                   >
-                    {minimumMessage(total, terms.minTradeValueCents)}
+                    {minimumMessage(total, active.minTradeValueCents)}
                   </p>
                 )}
                 <button
                   type="button"
                   className="gg-btn gg-tc-cartpage__start"
                   disabled={starting || belowMinimum}
-                  aria-describedby={terms ? "gg-tc-cart-minimum" : undefined}
+                  aria-describedby={active ? "gg-tc-cart-minimum" : undefined}
                   onClick={() => void start()}
                 >
                   {starting ? "Starting…" : user ? "Start my trade" : "Sign in to start my trade"}
@@ -421,7 +443,7 @@ function HowTradingWorks({ terms }: { terms: TradeTerms | null }) {
         <p className="gg-tc-how__local">
           <strong>Near {terms.localPickupArea}?</strong> Choose local pickup and skip the mail: send your trade without listing your cards,
           confirm it, and we&rsquo;ll meet to look over your cards together and settle the trade on the spot. Nothing to pay up front and
-          nothing to ship.
+          nothing to ship.{localTermsDiffer(terms) ? ` ${localTermsSentence(terms)}` : ""}
         </p>
       )}
       <div className="gg-tc-how__ages">

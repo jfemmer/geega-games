@@ -8,7 +8,7 @@ import { formatDateTime } from "../../utils/format";
 import { tradeCenterRepository, type TradeSettingsResult } from "../../repositories/tradeCenter.supabase";
 import { SHIP_FROM } from "../../../store/lib/shipFrom";
 import { US_REGIONS } from "../../../store/lib/usAddress";
-import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, type TradeSettings } from "../../../store/lib/tradeCenter";
+import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, formatUsd, type TradeSettings } from "../../../store/lib/tradeCenter";
 import { addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
 import {
   NUMBER_LABELS,
@@ -212,7 +212,10 @@ function SettingsEditor({
         </div>
       </Group>
 
-      <Group title="Credit and card values" intro="What the Trade Cards page advertises, and how each card is valued.">
+      <Group
+        title="Credit and card values"
+        intro="What the Trade Cards page advertises, and how each card is valued. The credit rate, minimum card value and cash payouts here are for shipped trades: local pickup has its own, below."
+      >
         <div className="gg-form-grid">
           {numberField("creditRatePercent", "%", "Store credit per $1 of card value. Advertised on the Trade Cards page.")}
           {moneyField("minCardValueCents", "Minimum card value", "Per card, at its market price in the customer's condition. Cards under it can't be added.")}
@@ -245,7 +248,7 @@ function SettingsEditor({
 
       <Group
         title="Minimum trade and shipping our cards"
-        intro="Customers can add our cards below the minimum, but can't start or send a trade until they reach it. Shipping our cards is paid by card with the final payment, never out of trade credit, and never charged on a trade that doesn't finish. Each trade keeps the shipping rates it started with."
+        intro="Customers can add our cards below the minimum, but can't start or send a trade until they reach it (local pickup has its own minimum, below). Shipping our cards is paid by card with the final payment, never out of trade credit, and never charged on a trade that doesn't finish. Each trade keeps the shipping rates it started with."
       >
         <div className="gg-form-grid">
           {moneyField("minTradeValueCents", "Minimum trade, our cards", "At their trade (regular) prices. Shipping doesn't count toward it.")}
@@ -510,6 +513,39 @@ function SettingsEditor({
           onChange={(e) => set({ localPickupDetails: e.target.value })}
           hint="Shown when customers choose local pickup, and in the email once their cards are reserved."
         />
+        <p className="gg-trset__label">Local pickup terms</p>
+        <p className="gg-card-meta">
+          Local trades can run on different terms from shipped ones (no shipping costs, and you see every card in person). Condition
+          percentages, the processing fee and the trade limits are shared. A trade keeps the credit rate and card minimum it started with;
+          switching between shipping and local pickup before sending it takes on that way&rsquo;s terms.
+        </p>
+        <div className="gg-form-grid">
+          {numberField("localCreditRatePercent", "%", `Store credit per $1 of card value on a local trade. Shipped trades: ${saved.creditRatePercent}%.`)}
+          {moneyField(
+            "localMinCardValueCents",
+            "Minimum card value, local pickup",
+            `Per card, at TCG low: the staples customers are asked to bring. Shipped trades: ${formatUsd(saved.minCardValueCents)}.`,
+          )}
+          {moneyField(
+            "localMinTradeValueCents",
+            "Minimum trade, local pickup",
+            `Our cards, at their trade (regular) prices. Shipped trades: ${formatUsd(saved.minTradeValueCents)}.`,
+          )}
+        </div>
+        <label className="gg-check-inline">
+          <input
+            type="checkbox"
+            checked={form.localCashPayoutEnabled}
+            disabled={disabled}
+            onChange={(e) => set({ localCashPayoutEnabled: e.target.checked })}
+          />
+          Let staff pay cash for credit left over at a meetup (at the local cash rate)
+        </label>
+        {form.localCashPayoutEnabled && (
+          <div className="gg-form-grid">
+            {numberField("localCashRatePercent", "%", "Cash per $1 of card value, instead of the local credit rate.")}
+          </div>
+        )}
       </Group>
 
       <Group title="Reminders and alerts">

@@ -268,6 +268,11 @@ function settingsRow(over: Record<string, unknown> = {}) {
     local_pickup_area: "the St. Louis area",
     local_meet_days: 7,
     local_pickup_details: "We'll message you to set a time and a public place to meet.",
+    local_credit_rate_percent: 80,
+    local_min_card_value_cents: 1500,
+    local_min_trade_value_cents: 0,
+    local_cash_payout_enabled: false,
+    local_cash_rate_percent: 50,
     ship_to_name: "Geega Games",
     ship_to_line1: "100 Test Ave",
     ship_to_line2: null,
@@ -2796,6 +2801,26 @@ describe("local pickup trades", () => {
     expect((await ann.post({ action: "setHandoff", tradeId: t.id, handoffMethod: "ship" })).statusCode).toBe(409);
   });
 
+  it("checks a saved card list against shipping's per-card minimum when a local draft switches to shipping", async () => {
+    const t = localTrade({ user_id: ANN, status: "awaiting_trade_list", min_card_value_cents: 500 });
+    state.tables.trade_offer_cards.push(offerRow(t.id));
+    // Like the database: the trade takes on shipping's terms ($100 a card here).
+    rpc("trade_set_handoff", (args) => {
+      const row = find(args.p_trade_id);
+      row.handoff_method = args.p_handoff_method as string;
+      row.min_card_value_cents = args.p_handoff_method === "ship" ? 10000 : 500;
+      return { data: null, error: null };
+    });
+    expect((await ann.post({ action: "setHandoff", tradeId: t.id, handoffMethod: "ship" })).statusCode).toBe(200);
+    const saved = rpcArgs("trade_save_offer")[0].p_cards as Record<string, unknown>[];
+    expect(saved[0]).toMatchObject({ card_name: "Sheoldred, the Apocalypse", eligibility: "below_minimum" });
+
+    // Switching to local pickup prices nothing: their cards are valued when we meet.
+    rpcCalls = [];
+    expect((await ann.post({ action: "setHandoff", tradeId: t.id, handoffMethod: "local" })).statusCode).toBe(200);
+    expect(rpcArgs("trade_save_offer")).toEqual([]);
+  });
+
   it("sends a local trade without pricing their cards, with its own emails", async () => {
     const t = localTrade({ user_id: ANN });
     const res = await ann.post({ action: "submit", tradeId: t.id, note: "Free Saturdays" });
@@ -2987,5 +3012,41 @@ describe("local pickup trades", () => {
     expect(saved.statusCode).toBe(200);
     expect(settings()).toMatchObject({ local_pickup_enabled: false, local_meet_days: 5, local_pickup_area: "Ballwin" });
     expect((await owner.post({ action: "saveSettings", settings: { ...view, localMeetDays: 31 } })).statusCode).toBe(400);
+  });
+
+  it("saves local pickup's own terms apart from shipping's, and keeps them when a page leaves them out", async () => {
+    const view = (await owner.get({ view: "settings" })).body.settings as Record<string, unknown>;
+    expect(view).toMatchObject({ localCreditRatePercent: 80, localMinCardValueCents: 1500, localMinTradeValueCents: 0, localCashPayoutEnabled: false, localCashRatePercent: 50 });
+    const res = await owner.post({
+      action: "saveSettings",
+      settings: { ...view, localCreditRatePercent: 90, localMinCardValueCents: 500, localMinTradeValueCents: 4000, localCashPayoutEnabled: true, localCashRatePercent: 60 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(settings()).toMatchObject({
+      credit_rate_percent: 80,
+      min_card_value_cents: 1500,
+      min_trade_value_cents: 0,
+      cash_payout_enabled: false,
+      local_credit_rate_percent: 90,
+      local_min_card_value_cents: 500,
+      local_min_trade_value_cents: 4000,
+      local_cash_payout_enabled: true,
+      local_cash_rate_percent: 60,
+    });
+    // The storefront sees local pickup's terms, never the cash rate.
+    const terms = (await as(null).get({})).body.terms as Record<string, unknown>;
+    expect(terms).toMatchObject({ creditRatePercent: 80, localCreditRatePercent: 90, localMinCardValueCents: 500, localMinTradeValueCents: 4000, localCashPayoutEnabled: true });
+    expect(terms).not.toHaveProperty("localCashRatePercent");
+
+    // A page from before these settings keeps them as saved.
+    const { localCreditRatePercent: _a, localMinCardValueCents: _b, localMinTradeValueCents: _c, localCashPayoutEnabled: _d, localCashRatePercent: _e, ...older } = (
+      await owner.get({ view: "settings" })
+    ).body.settings as Record<string, unknown>;
+    expect((await owner.post({ action: "saveSettings", settings: older })).statusCode).toBe(200);
+    expect(settings()).toMatchObject({ local_credit_rate_percent: 90, local_min_trade_value_cents: 4000, local_cash_payout_enabled: true });
+
+    // Out of range, or a largest trade under the local minimum, is refused.
+    expect((await owner.post({ action: "saveSettings", settings: { ...view, localCreditRatePercent: 0 } })).statusCode).toBe(400);
+    expect((await owner.post({ action: "saveSettings", settings: { ...view, localMinTradeValueCents: 5000, maxTradeValueCents: 4000 } })).statusCode).toBe(400);
   });
 });

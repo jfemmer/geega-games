@@ -94,7 +94,8 @@ export function LocalCartSummary({ terms, count, totalCents }: { terms: TradeTer
         <p className="gg-tc-sum__needhint">
           At {terms.creditRatePercent}% trade credit
           {terms.processingFeeCents > 0 ? `, after the ${formatCents(terms.processingFeeCents)} processing fee` : ""}. We value your
-          cards together when we meet. Bring less and pay the rest then, in cash or by card, or more and keep the extra as store credit.
+          cards together when we meet. Bring less and pay the rest then, in cash or by card, or more and keep the extra as store credit
+          {terms.cashPayoutEnabled ? " (or take cash for it, at a lower rate)" : ""}.
         </p>
       </div>
     </>

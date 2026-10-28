@@ -318,6 +318,28 @@ describe("history and badges", () => {
 });
 
 describe("the settings form", () => {
+  it("keeps local pickup's own terms apart from shipping's", () => {
+    const local = { ...SETTINGS, localCreditRatePercent: 90, localMinCardValueCents: 500, localMinTradeValueCents: 4000, localCashPayoutEnabled: false, localCashRatePercent: 55 };
+    const form = formOf(local);
+    expect(form.numbers.localCreditRatePercent).toBe("90");
+    expect(form.money.localMinCardValueCents).toBe("5.00");
+    expect(settingsInputOf(form)).toMatchObject({
+      creditRatePercent: 80,
+      minCardValueCents: 1500,
+      localCreditRatePercent: 90,
+      localMinCardValueCents: 500,
+      localMinTradeValueCents: 4000,
+      localCashPayoutEnabled: false,
+      localCashRatePercent: 55,
+    });
+    expect(settingsInputOf({ ...form, numbers: { ...form.numbers, localCreditRatePercent: "101" } })).toEqual({
+      problem: "Local pickup: store credit rate: enter a whole number from 1 to 100.",
+    });
+    expect(settingsInputOf({ ...form, money: { ...form.money, maxTradeValueCents: "30" } })).toEqual({
+      problem: "The largest trade can't be smaller than the local pickup minimum.",
+    });
+  });
+
   it("round-trips the saved settings", () => {
     const input = settingsInputOf(formOf(SETTINGS));
     expect(input).toMatchObject({
@@ -428,7 +450,8 @@ describe("the meetup (local pickup)", () => {
   it("adds up the cards taken, the credit, what they pay and what's left over, as the database does", async () => {
     const { meetupTotals } = await import("../src/admin/pages/trades/tradeMath");
     const trade = { wantedTotalCents: 8000, creditRatePercent: 80, processingFeeCents: 0 };
-    const off = { cashPayoutEnabled: false, cashRatePercent: 50 };
+    // Local pickup's own cash payout setting: the shipped one doesn't count here.
+    const off = { localCashPayoutEnabled: false, localCashRatePercent: 50 };
     expect(meetupTotals(trade, [{ quantity: 1, unitCents: 5000 }, { quantity: 2, unitCents: 1000 }], off)).toEqual({
       valueCents: 7000,
       creditCents: 5600,
@@ -438,8 +461,9 @@ describe("the meetup (local pickup)", () => {
     });
     // Nothing taken: they buy our cards outright.
     expect(meetupTotals(trade, [], off)).toMatchObject({ valueCents: 0, creditCents: 0, dueCents: 8000 });
-    // More than covers ours: the rest is store credit, or cash at the cash rate when that's on.
-    expect(meetupTotals(trade, [{ quantity: 1, unitCents: 15000 }], { cashPayoutEnabled: true, cashRatePercent: 50 })).toEqual({
+    // More than covers ours: the rest is store credit, or cash at the local cash rate when that's on.
+    expect(meetupTotals(trade, [{ quantity: 1, unitCents: 15000 }], off).cashOptionCents).toBe(0);
+    expect(meetupTotals(trade, [{ quantity: 1, unitCents: 15000 }], { localCashPayoutEnabled: true, localCashRatePercent: 50 })).toEqual({
       valueCents: 15000,
       creditCents: 12000,
       dueCents: 0,

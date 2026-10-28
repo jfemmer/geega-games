@@ -18,6 +18,7 @@ import {
   cardLine,
   copiesToReturn,
   formatDeadline,
+  termsForHandoff,
   timeLeft,
   tradeLabel,
   tradeShippingTerms,
@@ -275,7 +276,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
   const step = tradeStepIndexFor(status, method);
   const steps = tradeStepsFor(method);
   const shippingTerms = tradeShippingTerms(trade);
-  const minTradeValueCents = terms?.minTradeValueCents ?? 0;
+  // The minimum for the way they're trading (local pickup can have its own).
+  const minTradeValueCents = terms ? termsForHandoff(terms, method).minTradeValueCents : 0;
   const belowMinimum = trade.wantedTotalCents < minTradeValueCents;
   const lastWord = [...trade.messages].reverse().find((m) => m.authorType === "staff" || m.authorType === "system");
   const listDue = trade.listDueAt ? Date.parse(trade.listDueAt) : null;

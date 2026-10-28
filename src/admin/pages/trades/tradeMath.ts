@@ -417,11 +417,15 @@ export function pendingAdjustment(t: StaffTrade): { at: string; message: string 
 // Local pickup: the meetup, from the cards staff are taking
 // ---------------------------------------------------------------------------
 
-/** What the meetup adds up to, as the database works it out (trade_complete_local). */
+/**
+ * What the meetup adds up to, as the database works it out
+ * (trade_complete_local): the trade's own rate and fee, and local pickup's
+ * cash payout setting and rate.
+ */
 export function meetupTotals(
   trade: Pick<StaffTrade, "wantedTotalCents" | "creditRatePercent" | "processingFeeCents">,
   rows: { quantity: number; unitCents: number }[],
-  settings: Pick<TradeSettings, "cashPayoutEnabled" | "cashRatePercent">,
+  settings: Pick<TradeSettings, "localCashPayoutEnabled" | "localCashRatePercent">,
 ) {
   const valueCents = rows.reduce((sum, r) => sum + r.quantity * r.unitCents, 0);
   const creditCents = tradeCreditCents(valueCents, trade.creditRatePercent, trade.processingFeeCents);
@@ -433,6 +437,8 @@ export function meetupTotals(
     dueCents,
     excessCents,
     cashOptionCents:
-      settings.cashPayoutEnabled && excessCents > 0 ? cashForExcessCents(excessCents, trade.creditRatePercent, settings.cashRatePercent) : 0,
+      settings.localCashPayoutEnabled && excessCents > 0
+        ? cashForExcessCents(excessCents, trade.creditRatePercent, settings.localCashRatePercent)
+        : 0,
   };
 }

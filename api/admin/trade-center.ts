@@ -1453,6 +1453,20 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
   const localDetails = o.localPickupDetails === undefined ? before.local_pickup_details : cleanText(o.localPickupDetails, 2000);
   if (!localArea) throw new HttpError(400, "Say where local pickup is offered (for example, the St. Louis area).");
   if (localEnabled && !localDetails) throw new HttpError(400, "Add how local pickup meetups work, for customers.");
+  // Local pickup's own terms (a page that leaves them out keeps them as saved).
+  const localNum = (key: string, column: keyof TradeSettingsRow, range: Range, label: string): number =>
+    o[key] === undefined ? (before[column] as number) : num(o, key, range, label);
+  const localMinTrade = localNum("localMinTradeValueCents", "local_min_trade_value_cents", r.minTradeValueCents, "Local pickup minimum trade");
+  if (maxTrade !== null && maxTrade < localMinTrade) {
+    throw new HttpError(400, "The largest trade can't be smaller than the local pickup minimum.");
+  }
+  const localTerms = {
+    local_credit_rate_percent: localNum("localCreditRatePercent", "local_credit_rate_percent", r.creditRatePercent, "Local pickup trade credit rate"),
+    local_min_card_value_cents: localNum("localMinCardValueCents", "local_min_card_value_cents", r.minCardValueCents, "Local pickup minimum card value"),
+    local_min_trade_value_cents: localMinTrade,
+    local_cash_payout_enabled: typeof o.localCashPayoutEnabled === "boolean" ? o.localCashPayoutEnabled : before.local_cash_payout_enabled,
+    local_cash_rate_percent: localNum("localCashRatePercent", "local_cash_rate_percent", r.cashRatePercent, "Local pickup cash rate"),
+  };
   if (!returns) throw new HttpError(400, "Add the return policy customers see.");
   if (!terms) throw new HttpError(400, "Add the deposit and cancellation terms customers agree to.");
 
@@ -1525,6 +1539,7 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
     local_meet_days:
       o.localMeetDays === undefined ? before.local_meet_days : num(o, "localMeetDays", r.localMeetDays, "Days to hold our cards for a meetup"),
     local_pickup_details: localDetails ?? "",
+    ...localTerms,
     updated_at: new Date().toISOString(),
     updated_by: staff.userId,
   };

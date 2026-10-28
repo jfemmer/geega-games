@@ -4293,10 +4293,15 @@ export type Database = {
           free_ship_fee_cents: number
           free_ship_threshold_cents: number
           id: boolean
+          local_cash_payout_enabled: boolean
+          local_cash_rate_percent: number
+          local_credit_rate_percent: number
           local_meet_days: number
           local_pickup_area: string
           local_pickup_details: string
           local_pickup_enabled: boolean
+          local_min_card_value_cents: number
+          local_min_trade_value_cents: number
           loyalty_tier1_trades: number
           loyalty_tier2_trades: number
           max_active_trades: number
@@ -4369,10 +4374,15 @@ export type Database = {
           free_ship_fee_cents?: number
           free_ship_threshold_cents?: number
           id?: boolean
+          local_cash_payout_enabled?: boolean
+          local_cash_rate_percent?: number
+          local_credit_rate_percent?: number
           local_meet_days?: number
           local_pickup_area?: string
           local_pickup_details?: string
           local_pickup_enabled?: boolean
+          local_min_card_value_cents?: number
+          local_min_trade_value_cents?: number
           loyalty_tier1_trades?: number
           loyalty_tier2_trades?: number
           max_active_trades?: number
@@ -4445,10 +4455,15 @@ export type Database = {
           free_ship_fee_cents?: number
           free_ship_threshold_cents?: number
           id?: boolean
+          local_cash_payout_enabled?: boolean
+          local_cash_rate_percent?: number
+          local_credit_rate_percent?: number
           local_meet_days?: number
           local_pickup_area?: string
           local_pickup_details?: string
           local_pickup_enabled?: boolean
+          local_min_card_value_cents?: number
+          local_min_trade_value_cents?: number
           loyalty_tier1_trades?: number
           loyalty_tier2_trades?: number
           max_active_trades?: number

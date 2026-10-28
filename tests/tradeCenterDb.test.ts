@@ -17,6 +17,7 @@ const FOLLOW_UPS = [
   readFileSync(new URL("../supabase/migrations/20261026233000_trade_function_search_path.sql", import.meta.url), "utf8"),
   // Local pickup: every shipped-trade test here runs with it in place.
   readFileSync(new URL("../supabase/migrations/20261027230000_trade_local_pickup.sql", import.meta.url), "utf8"),
+  readFileSync(new URL("../supabase/migrations/20261028010000_trade_local_terms.sql", import.meta.url), "utf8"),
 ];
 
 /** A row: whatever the query selected. */

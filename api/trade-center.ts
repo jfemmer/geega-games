@@ -184,6 +184,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           p_handoff_method: body.handoffMethod,
         });
         if (error) throw tradeDbError(error, "We couldn't change how you'll trade. Try again.");
+        // Shipping and local pickup can have different per-card minimums: a
+        // card list saved earlier is checked against the new one now, so the
+        // flags on it are right (sending it checks again either way).
+        if (body.handoffMethod === "ship" && handoffOf(bundle.trade) !== "ship" && bundle.offers.length > 0) {
+          try {
+            const switched = await loadCustomerBundle(admin, tradeId, customer.userId);
+            const priced = await priceOffers(admin, offerInputsFromRows(switched.offers), switched.trade, settings);
+            const saved = await admin.rpc("trade_save_offer", {
+              p_trade_id: tradeId,
+              p_user_id: customer.userId,
+              p_cards: priced as unknown as Json,
+            });
+            if (saved.error) console.error("[trade-center] repricing after a switch to shipping failed", saved.error.message);
+          } catch (err) {
+            console.error("[trade-center] repricing after a switch to shipping failed", err instanceof Error ? err.message : err);
+          }
+        }
         break;
       }
 
