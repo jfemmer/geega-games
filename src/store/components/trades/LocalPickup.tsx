@@ -157,7 +157,8 @@ export function LocalYourCards({ trade }: { trade: CustomerTrade }) {
         low for the condition we see, and {trade.creditRatePercent}% of that is your trade credit toward our cards.
       </p>
       <p className="gg-tc-line__meta">
-        Cards worth less than {formatCents(trade.minCardValueCents)} each can&rsquo;t be traded. Want us to know what&rsquo;s coming? Add a note
+        We&rsquo;re looking for staples: cards worth {formatCents(trade.minCardValueCents)} or more each at TCG low. Please leave bulk
+        at home. Want us to know what&rsquo;s coming? Add a note
         when you send your trade, or message us below.
       </p>
     </section>

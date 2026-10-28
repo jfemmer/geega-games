@@ -610,8 +610,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
               {editable && (
                 <p className="gg-tc-line__meta">
                   We set each card&rsquo;s condition from its age ({conditionAgeSummary()}). We price your cards at TCG low when we
-                  review your list, and check their condition when they arrive, so values can go up or down. Cards worth less than{" "}
-                  {formatCents(trade.minCardValueCents)} each can&rsquo;t be traded.
+                  review your list, and check their condition when they arrive, so values can go up or down. We&rsquo;re looking for
+                  staples: cards worth less than {formatCents(trade.minCardValueCents)} each at TCG low can&rsquo;t be traded.
                 </p>
               )}
               <OfferCardsEditor trade={trade} terms={terms} editable={editable} saving={busy === "offer"} onSave={saveOffer} />

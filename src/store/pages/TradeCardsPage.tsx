@@ -57,7 +57,6 @@ function ourShipping(t: TradeTerms | null): string {
 
 function faqItems(t: TradeTerms | null): { question: string; answer: string }[] {
   const rate = t ? `${t.creditRatePercent}%` : "a set share";
-  const min = t ? formatCents(t.minCardValueCents) : "a set amount";
   const confirmHours = t ? plural(t.confirmationHours, "hour") : "a set time";
   const shipDays = t ? plural(t.shipDaysNew, "day") : "a few days";
   const deposits = t?.depositsEnabled ?? false;
@@ -65,7 +64,7 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
   return [
     {
       question: "What cards can I trade in?",
-      answer: `Magic: The Gathering singles worth at least ${min} each in their condition. We match every card to its exact printing and finish, so search for yours or paste a list when you build your trade.`,
+      answer: `Staples: Magic: The Gathering singles worth ${t ? `${moneyShort(t.minCardValueCents)}+` : "a set amount or more"} each at TCG low, in their condition. We're not taking bulk. We match every card to its exact printing and finish, so search for yours or paste a list when you build your trade.`,
     },
     {
       question: "How is my trade credit worked out?",
@@ -201,6 +200,16 @@ export default function TradeCardsPage() {
           <p className="gg-tc-cartpage__lead">
             Trade your Magic cards for cards from our shop. We price your cards at TCG low, and you get{" "}
             {terms ? `${terms.creditRatePercent}%` : "a share"} of that as trade credit toward ours.
+          </p>
+          <p className="gg-tc-staples">
+            <strong>We&rsquo;re looking for staples:</strong>{" "}
+            {terms ? (
+              <>
+                cards worth <strong>{moneyShort(terms.minCardValueCents)}+</strong> each at TCG low, in their condition. No bulk, please.
+              </>
+            ) : (
+              "cards with a solid TCG low, not bulk."
+            )}
           </p>
         </div>
         {user && (
@@ -383,8 +392,9 @@ function HowTradingWorks({ terms }: { terms: TradeTerms | null }) {
             : ""}
         </li>
         <li>
-          <strong>Send us your list.</strong> Start your trade, then search for the cards you&rsquo;re trading in or paste a list. We set
-          each card&rsquo;s condition from its age, and show you a rough estimate.
+          <strong>Send us your list.</strong> Start your trade, then search for the cards you&rsquo;re trading in or paste a list: staples
+          worth {terms ? `${moneyShort(terms.minCardValueCents)}+` : "a set amount or more"} each at TCG low. We set each card&rsquo;s
+          condition from its age, and show you a rough estimate.
         </li>
         <li>
           <strong>We review it at TCG low.</strong> We price each of your cards at its TCG low (the lowest price listed on TCGplayer) for
@@ -446,8 +456,8 @@ function GoodToKnow({ terms }: { terms: TradeTerms | null }) {
       <ul className="gg-tc-know__list">
         {terms && (
           <li>
-            Cards worth less than <strong>{formatCents(terms.minCardValueCents)}</strong> each, in their condition, can&rsquo;t be
-            traded.
+            We&rsquo;re looking for staples: cards worth less than <strong>{moneyShort(terms.minCardValueCents)}</strong> each at TCG
+            low, in their condition, can&rsquo;t be traded.
           </li>
         )}
         <li>Our cards count at their regular price. Sale and member prices don&rsquo;t apply to trades.</li>

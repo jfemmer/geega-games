@@ -7097,6 +7097,17 @@ html {
 .gg-tc-cartpage__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1.5rem; }
 .gg-tc-cartpage__head h1 { margin: 0 0 0.35rem; color: var(--gg-ink); }
 .gg-tc-cartpage__lead { max-width: 62ch; margin: 0; line-height: 1.55; color: #4a4152; }
+.gg-tc-staples {
+  max-width: 62ch;
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.85rem;
+  border-left: 4px solid #663399;
+  border-radius: 8px;
+  background: #faf6ff;
+  line-height: 1.5;
+  color: #3b3346;
+}
+.gg-tc-staples strong { color: #3a1260; }
 .gg-tc-cartpage__mine { font-weight: 600; color: var(--gg-purple); white-space: nowrap; }
 .gg-tc-cartpage__mine:hover { color: var(--gg-purple-2); }
 .gg-tc-cartpage__banner { max-width: none; margin: 1rem 0 0; }

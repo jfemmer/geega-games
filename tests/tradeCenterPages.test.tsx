@@ -221,7 +221,7 @@ describe("the Trade Cards page (1)", () => {
     const steps = within(how).getAllByRole("listitem").map((li) => li.textContent);
     expect(steps).toEqual([
       "Pick our cards. Add cards from our shop to this cart. $200 or more of our cards ships free.",
-      "Send us your list. Start your trade, then search for the cards you’re trading in or paste a list. We set each card’s condition from its age, and show you a rough estimate.",
+      "Send us your list. Start your trade, then search for the cards you’re trading in or paste a list: staples worth $15+ each at TCG low. We set each card’s condition from its age, and show you a rough estimate.",
       "We review it at TCG low. We price each of your cards at its TCG low (the lowest price listed on TCGplayer) for its condition, and email you when your trade is approved.",
       "Confirm and ship. Confirm within 2 days to reserve our cards (trades of $300.00 or more take a refundable deposit), then ship yours with tracking within 3 days. Sundays don’t count.",
       "We check your cards. When they arrive we check each card’s condition, so its value can go up or down. You’ll see every change and why.",
@@ -343,7 +343,11 @@ describe("the Trade Cards page (1)", () => {
     const how = await openCart();
     expect(how).toHaveTextContent("Trades start at $75 of our cards, and $200 or more ships free.");
     const know = screen.getByRole("region", { name: "Good to know" });
-    expect(know).toHaveTextContent("Cards worth less than $15.00 each, in their condition, can’t be traded.");
+    expect(know).toHaveTextContent("We’re looking for staples: cards worth less than $15 each at TCG low, in their condition, can’t be traded.");
+    // Said up top too, where customers start.
+    expect(screen.getByText(/We’re looking for staples:/, { selector: "strong" }).closest("p")).toHaveTextContent(
+      "We’re looking for staples: cards worth $15+ each at TCG low, in their condition. No bulk, please.",
+    );
     expect(know).toHaveTextContent("Our cards ship to you tracked: $3.99, or free on $200 or more of our cards. Paid by card when your trade is final, never out of your trade credit.");
     expect(know).toHaveTextContent("Shipping is never charged on a trade that’s canceled or declined, and it’s separate from any deposit.");
     expect(know).toHaveTextContent("A processing fee of $2.00 comes off each trade’s credit.");
