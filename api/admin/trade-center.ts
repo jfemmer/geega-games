@@ -1453,6 +1453,9 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
   const localDetails = o.localPickupDetails === undefined ? before.local_pickup_details : cleanText(o.localPickupDetails, 2000);
   if (!localArea) throw new HttpError(400, "Say where local pickup is offered (for example, the St. Louis area).");
   if (localEnabled && !localDetails) throw new HttpError(400, "Add how local pickup meetups work, for customers.");
+  // The meeting spot: optional (blank clears it); a page that leaves it out keeps it as saved.
+  const spotName = o.localMeetSpotName === undefined ? before.local_meet_spot_name : cleanText(o.localMeetSpotName, 120);
+  const spotAddress = o.localMeetSpotAddress === undefined ? before.local_meet_spot_address : cleanText(o.localMeetSpotAddress, 200);
   // Local pickup's own terms (a page that leaves them out keeps them as saved).
   const localNum = (key: string, column: keyof TradeSettingsRow, range: Range, label: string): number =>
     o[key] === undefined ? (before[column] as number) : num(o, key, range, label);
@@ -1540,6 +1543,8 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
       o.localMeetDays === undefined ? before.local_meet_days : num(o, "localMeetDays", r.localMeetDays, "Days to hold our cards for a meetup"),
     local_pickup_details: localDetails ?? "",
     ...localTerms,
+    local_meet_spot_name: spotName ?? null,
+    local_meet_spot_address: spotAddress ?? null,
     updated_at: new Date().toISOString(),
     updated_by: staff.userId,
   };

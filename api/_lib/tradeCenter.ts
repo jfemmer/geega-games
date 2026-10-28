@@ -254,6 +254,8 @@ export function termsOf(s: TradeSettingsRow): TradeTerms {
     localPickupArea: s.local_pickup_area,
     localMeetDays: s.local_meet_days,
     localPickupDetails: s.local_pickup_details,
+    localMeetSpotName: s.local_meet_spot_name ?? null,
+    localMeetSpotAddress: s.local_meet_spot_address ?? null,
     localCreditRatePercent: s.local_credit_rate_percent,
     localMinCardValueCents: s.local_min_card_value_cents,
     localMinTradeValueCents: s.local_min_trade_value_cents,
@@ -318,6 +320,8 @@ export function settingsView(s: TradeSettingsRow): TradeSettings {
     localPickupArea: s.local_pickup_area,
     localMeetDays: s.local_meet_days,
     localPickupDetails: s.local_pickup_details,
+    localMeetSpotName: s.local_meet_spot_name ?? null,
+    localMeetSpotAddress: s.local_meet_spot_address ?? null,
     localCreditRatePercent: s.local_credit_rate_percent,
     localMinCardValueCents: s.local_min_card_value_cents,
     localMinTradeValueCents: s.local_min_trade_value_cents,
@@ -351,14 +355,23 @@ export function handoffOf(t: Pick<TradeRow, "handoff_method">): TradeHandoffMeth
   return isHandoffMethod(t.handoff_method) ? t.handoff_method : "ship";
 }
 
+/** Local pickup's meeting spot on one line ("Ballwin Public Library, 1 Main St"), or null when none is saved. */
+export function meetSpotText(s: Pick<TradeSettingsRow, "local_meet_spot_name" | "local_meet_spot_address">): string | null {
+  const parts = [s.local_meet_spot_name, s.local_meet_spot_address].map((v) => v?.trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 /**
  * What a customer agrees to when they confirm a local pickup trade (kept
  * with the trade, trade_consents, like the deposit terms of a shipped one).
  */
 export function localPickupTerms(s: TradeSettingsRow): string {
   const days = s.local_meet_days === 1 ? "1 day" : `${s.local_meet_days} days`;
+  const spot = meetSpotText(s);
   return [
-    `Confirming takes our cards off sale and holds them for you for ${days} (Sundays don't count) while we arrange a time and place to meet in ${s.local_pickup_area}.`,
+    spot
+      ? `Confirming takes our cards off sale and holds them for you for ${days} (Sundays don't count) while we arrange a time to meet at our meeting spot: ${spot}.`
+      : `Confirming takes our cards off sale and holds them for you for ${days} (Sundays don't count) while we arrange a time and place to meet in ${s.local_pickup_area}.`,
     `Bring the cards you're trading in. We'll look them over together, value each one at its TCG low for the condition we see, and settle the trade on the spot: any of our cards your trade credit doesn't cover is paid then, in cash or by card, and credit left over is kept as store credit${
       s.local_cash_payout_enabled ? " (or, if you'd rather, paid in cash at a lower rate)" : ""
     }.`,

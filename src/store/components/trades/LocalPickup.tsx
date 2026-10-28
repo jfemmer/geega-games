@@ -9,10 +9,13 @@ import {
   LOCAL_PAYMENT_LABELS,
   cardLine,
   formatDeadline,
+  meetSpotMapUrl,
+  meetSpotOf,
   timeLeft,
   tradeLabel,
   valueForCreditCents,
   type CustomerTrade,
+  type MeetSpot,
   type TradeHandoffMethod,
   type TradeTerms,
 } from "../../lib/tradeCenter";
@@ -25,6 +28,20 @@ import { TradeAskForTime } from "./TradeAskForTime";
 // Everything a shipped trade does by mail happens when we meet instead, so
 // these stand in for the shipping, inspection and payment panels.
 
+/** Local pickup's meeting spot: its name, address and directions. */
+export function MeetSpotCard({ spot, title = "Meeting spot" }: { spot: MeetSpot; title?: string }) {
+  return (
+    <div className="gg-tc-spot">
+      <h3 className="gg-tc-spot__title">{title}</h3>
+      {spot.name && <p className="gg-tc-spot__name">{spot.name}</p>}
+      {spot.address && <p className="gg-tc-spot__address">{spot.address}</p>}
+      <a className="gg-tc-spot__map" href={meetSpotMapUrl(spot)} target="_blank" rel="noopener noreferrer">
+        Get directions<span className="visually-hidden"> (opens Google Maps)</span>
+      </a>
+    </div>
+  );
+}
+
 /** Ship or meet: the choice on the trade cart and on a draft trade. */
 export function HandoffChoice({
   value,
@@ -35,10 +52,12 @@ export function HandoffChoice({
 }: {
   value: TradeHandoffMethod;
   onChange: (next: TradeHandoffMethod) => void;
-  terms: Pick<TradeTerms, "localPickupArea">;
+  terms: Pick<TradeTerms, "localPickupArea" | "localMeetSpotName" | "localMeetSpotAddress">;
   disabled?: boolean;
   name?: string;
 }) {
+  const spot = meetSpotOf(terms);
+  const where = spot ? `Meet us at ${spot.name ?? spot.address}.` : `Meet us in ${terms.localPickupArea}.`;
   return (
     <fieldset className="gg-tc-handoff" disabled={disabled}>
       <legend>How do you want to trade?</legend>
@@ -54,7 +73,7 @@ export function HandoffChoice({
         <span>
           <strong>Local pickup</strong>
           <span className="gg-tc-handoff__sub">
-            Meet us in {terms.localPickupArea}. No need to list your cards: bring them and we&rsquo;ll settle the trade in person.
+            {where} No need to list your cards: bring them and we&rsquo;ll settle the trade in person.
           </span>
         </span>
       </label>
@@ -70,6 +89,7 @@ function coverCents(wantedCents: number, ratePercent: number, feeCents: number):
 /** The trade cart's summary for local pickup: our cards, no shipping, and what to bring. */
 export function LocalCartSummary({ terms, count, totalCents }: { terms: TradeTerms; count: number; totalCents: number }) {
   const needed = coverCents(totalCents, terms.creditRatePercent, terms.processingFeeCents);
+  const spot = meetSpotOf(terms);
   return (
     <>
       <dl className="gg-tc-sum">
@@ -98,6 +118,7 @@ export function LocalCartSummary({ terms, count, totalCents }: { terms: TradeTer
           {terms.cashPayoutEnabled ? " (or take cash for it, at a lower rate)" : ""}.
         </p>
       </div>
+      {spot && <MeetSpotCard spot={spot} title="Where we meet" />}
     </>
   );
 }
@@ -182,12 +203,14 @@ function MeetupDetails({ trade, fallback }: { trade: CustomerTrade; fallback: st
 /** Confirming an approved local trade: never a deposit; our cards are held until the meetup deadline. */
 export function LocalConfirmPanel({
   trade,
+  terms,
   busy,
   askBusy,
   onConfirm,
   onAskForTime,
 }: {
   trade: CustomerTrade;
+  terms: TradeTerms | null;
   busy: boolean;
   askBusy: boolean;
   onConfirm: (termsVersion: number) => Promise<unknown>;
@@ -203,6 +226,7 @@ export function LocalConfirmPanel({
   const count = wanted.reduce((n, w) => n + w.quantity, 0);
   const short = wanted.filter((w) => w.available !== null && w.available < w.quantity);
   const paragraphs = c.termsText.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const spot = meetSpotOf(terms);
 
   return (
     <section className="gg-tc-panel gg-tc-confirm" aria-labelledby="gg-tc-confirm-title">
@@ -275,6 +299,7 @@ export function LocalConfirmPanel({
           <strong>Approved on this condition:</strong> {trade.approvalConditions}
         </p>
       )}
+      {spot && <MeetSpotCard spot={spot} title="Where we meet" />}
       <MeetupDetails trade={trade} fallback={null} />
       {short.length > 0 && (
         <p className="gg-alert gg-alert-warn">
@@ -327,6 +352,7 @@ export function LocalMeetupPanel({
   const now = useNow();
   const until = trade.shipBy ? Date.parse(trade.shipBy) : null;
   const past = until !== null && now > until;
+  const spot = meetSpotOf(terms);
   return (
     <section className="gg-tc-panel gg-tc-meetup" aria-labelledby="gg-tc-meetup-title">
       <h2 id="gg-tc-meetup-title">Let&rsquo;s meet up</h2>
@@ -341,11 +367,14 @@ export function LocalMeetupPanel({
           )}
         </p>
       )}
+      {spot && <MeetSpotCard spot={spot} />}
       <MeetupDetails
         trade={trade}
         fallback={
-          terms?.localPickupDetails ??
-          "We'll message you below to set a time and a public place to meet. Reply with times that work for you."
+          spot
+            ? "We'll message you below to set a time to meet here. Reply with times that work for you."
+            : (terms?.localPickupDetails ??
+              "We'll message you below to set a time and a public place to meet. Reply with times that work for you.")
         }
       />
       <h3>Bring</h3>

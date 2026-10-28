@@ -277,7 +277,7 @@ function LocalTradeBody(props: TradePanelProps & { onOpenOrder: (orderId: string
       <MoneySection {...props} />
 
       {status === "pending_review" && <LocalReviewPanel {...props} />}
-      {meetupOpen && status !== "pending_review" && <MeetupDetailsSection trade={trade} busy={busy} run={run} />}
+      {meetupOpen && status !== "pending_review" && <MeetupDetailsSection trade={trade} settings={props.settings} busy={busy} run={run} />}
       {(status === "awaiting_confirmation" || status === "awaiting_deposit") && <ConfirmationPanel {...props} />}
       {status === "awaiting_shipment" && (
         <>

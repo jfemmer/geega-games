@@ -576,6 +576,9 @@ export interface TradeTerms {
   localMeetDays: number;
   /** How meetups work, for customers choosing local pickup. */
   localPickupDetails: string;
+  /** Local pickup's meeting spot: its name and street address (null when none is saved). */
+  localMeetSpotName: string | null;
+  localMeetSpotAddress: string | null;
   /** Local pickup's own terms (shipped trades use creditRatePercent and the rest). */
   localCreditRatePercent: number;
   localMinCardValueCents: number;
@@ -611,6 +614,29 @@ export function localTermsDiffer(terms: TradeTerms): boolean {
     terms.localMinTradeValueCents !== terms.minTradeValueCents ||
     terms.localCashPayoutEnabled !== terms.cashPayoutEnabled
   );
+}
+
+/** Local pickup's saved meeting spot. */
+export interface MeetSpot {
+  name: string | null;
+  address: string | null;
+}
+
+/** The saved meeting spot, or null when there isn't one. */
+export function meetSpotOf(terms: Pick<TradeTerms, "localMeetSpotName" | "localMeetSpotAddress"> | null | undefined): MeetSpot | null {
+  const name = terms?.localMeetSpotName?.trim() || null;
+  const address = terms?.localMeetSpotAddress?.trim() || null;
+  return name || address ? { name, address } : null;
+}
+
+/** "Ballwin Public Library, 1 Main St, Ballwin, MO": the spot on one line. */
+export function meetSpotLine(spot: MeetSpot): string {
+  return [spot.name, spot.address].filter(Boolean).join(", ");
+}
+
+/** Directions to the spot in Google Maps (works on phones and computers, opening the Maps app where there is one). */
+export function meetSpotMapUrl(spot: MeetSpot): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meetSpotLine(spot))}`;
 }
 
 /** Trading is open to new trades. */
@@ -1357,6 +1383,8 @@ export interface TradeSettings {
   localPickupArea: string;
   localMeetDays: number;
   localPickupDetails: string;
+  localMeetSpotName: string | null;
+  localMeetSpotAddress: string | null;
   localCreditRatePercent: number;
   localMinCardValueCents: number;
   localMinTradeValueCents: number;

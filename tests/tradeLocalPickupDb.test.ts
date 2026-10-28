@@ -8,7 +8,8 @@ import { STANDINS, UPSERT } from "./helpers/tradeDbStandins";
 // of the Trade Center migration: starting one, sending it without listing
 // their cards, approving it with no review or deposit, confirming, the
 // meetup hold running out, finishing it at the meetup, and local pickup's
-// own rate, minimums and cash payouts.
+// own rate, minimums and cash payouts, and its meeting spot
+// (20261028030000_trade_meet_spot.sql).
 // tests/tradeCenterDb.test.ts runs every shipped-trade test with this
 // update in place too.
 
@@ -17,6 +18,7 @@ const MIGRATIONS = [
   "../supabase/migrations/20261026233000_trade_function_search_path.sql",
   "../supabase/migrations/20261027230000_trade_local_pickup.sql",
   "../supabase/migrations/20261028010000_trade_local_terms.sql",
+  "../supabase/migrations/20261028030000_trade_meet_spot.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -163,6 +165,15 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
       await db.query(`select * from public.trade_close($1, 'canceled', array[$2], null, null, 'customer', null, 'x')`, [trade, statuses]);
     }
     await db.exec(`update public.trade_settings set local_credit_rate_percent = 80, local_min_card_value_cents = 1500, local_min_trade_value_cents = 7500`);
+  });
+
+  it("adds an optional meeting spot", async () => {
+    const s = await one(`select local_meet_spot_name, local_meet_spot_address from public.trade_settings`);
+    expect(s).toEqual({ local_meet_spot_name: null, local_meet_spot_address: null });
+    await db.exec(`update public.trade_settings set local_meet_spot_name = 'Ballwin Library', local_meet_spot_address = '1600 Clarkson Rd'`);
+    expect((await errorOf(`update public.trade_settings set local_meet_spot_name = '  '`))?.code).toBe("23514");
+    expect((await errorOf(`update public.trade_settings set local_meet_spot_address = repeat('x', 201)`))?.code).toBe("23514");
+    await db.exec(`update public.trade_settings set local_meet_spot_name = null, local_meet_spot_address = null`);
   });
 
   it("adds the settings, with local pickup on for 7 days", async () => {

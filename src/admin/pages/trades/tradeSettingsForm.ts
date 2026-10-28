@@ -88,6 +88,9 @@ export interface SettingsForm {
   localPickupArea: string;
   localPickupDetails: string;
   localCashPayoutEnabled: boolean;
+  /** The meeting spot: blank for none. */
+  localMeetSpotName: string;
+  localMeetSpotAddress: string;
 }
 
 const R = TRADE_SETTING_RANGES;
@@ -216,6 +219,8 @@ export function formOf(s: TradeSettings): SettingsForm {
     localPickupArea: s.localPickupArea,
     localPickupDetails: s.localPickupDetails,
     localCashPayoutEnabled: s.localCashPayoutEnabled,
+    localMeetSpotName: s.localMeetSpotName ?? "",
+    localMeetSpotAddress: s.localMeetSpotAddress ?? "",
   };
 }
 
@@ -323,6 +328,8 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
   if (!form.localPickupArea.trim()) return { problem: "Local pickup: say where it's offered (for example, the St. Louis area)." };
   if (form.localPickupArea.trim().length > 120) return { problem: "Local pickup: keep where it's offered to 120 characters." };
   if (form.localPickupEnabled && !form.localPickupDetails.trim()) return { problem: "Local pickup: add how meetups work, for customers." };
+  if (form.localMeetSpotName.trim().length > 120) return { problem: "Meeting spot: keep its name to 120 characters." };
+  if (form.localMeetSpotAddress.trim().length > 200) return { problem: "Meeting spot: keep its address to 200 characters." };
 
   const list = (text: string, split: RegExp) => [...new Set(text.split(split).map((v) => v.trim()).filter(Boolean))];
   return {
@@ -351,5 +358,7 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
     localPickupArea: form.localPickupArea.trim(),
     localPickupDetails: form.localPickupDetails.replace(/\r\n/g, "\n").trim(),
     localCashPayoutEnabled: form.localCashPayoutEnabled,
+    localMeetSpotName: form.localMeetSpotName.trim() || null,
+    localMeetSpotAddress: form.localMeetSpotAddress.trim() || null,
   };
 }

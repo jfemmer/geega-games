@@ -12,7 +12,7 @@ import {
   sortingEmailText as noticeEmailText,
   type SortingEmailData as NoticeEmailData,
 } from "./emails/SortingEmails.js";
-import { adminTradePath, handoffOf, shipToAddress, type TradeBundle, type TradeOfferRow, type TradeSettingsRow } from "./tradeCenter.js";
+import { adminTradePath, handoffOf, meetSpotText, shipToAddress, type TradeBundle, type TradeOfferRow, type TradeSettingsRow } from "./tradeCenter.js";
 import {
   cardLine,
   LOCAL_PAYMENT_LABELS,
@@ -868,6 +868,9 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
   const view = { href: url, label: "View your trade" };
   const area = settings.local_pickup_area;
   const credit = `${t.credit_rate_percent}%`;
+  // Where we meet, when a spot is saved (the trade's meetup details can say otherwise).
+  const spot = meetSpotText(settings);
+  const spotRows = spot ? [{ label: "Meeting spot", value: spot }] : [];
 
   switch (email.kind) {
     case "submitted":
@@ -896,7 +899,7 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
           "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
         ],
         note: [meetupNote(b), t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null].filter(Boolean).join("\n\n") || null,
-        rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }],
+        rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }, ...spotRows],
         button: { href: url, label: "Confirm your trade" },
       });
     }
@@ -910,10 +913,13 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
           `${greet} trade ${label} is confirmed. Our cards are reserved for you and off the shelf${meetBy ? ` until ${meetBy}` : ""}.`,
           t.meetup_details
             ? "Here's where and when we'll meet. Need a different time? Reply on your trade page."
-            : "We'll message you on your trade page to set a time and a public place to meet. Reply there with times that work for you.",
+            : spot
+              ? `We'll message you on your trade page to set a time to meet at our meeting spot, ${spot}. Reply there with times that work for you.`
+              : "We'll message you on your trade page to set a time and a public place to meet. Reply there with times that work for you.",
           `Bring the cards you're trading in. We'll value each one at its TCG low for the condition we see, and ${credit} of that is your credit toward our cards. Anything it doesn't cover is paid when we meet, in cash or by card; credit left over stays in your account.`,
         ],
         note: meetupNote(b) ?? settings.local_pickup_details,
+        rows: spotRows,
         button: { href: url, label: "Message us about the meetup" },
       });
     }

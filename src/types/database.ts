@@ -4297,6 +4297,8 @@ export type Database = {
           local_cash_rate_percent: number
           local_credit_rate_percent: number
           local_meet_days: number
+          local_meet_spot_address: string | null
+          local_meet_spot_name: string | null
           local_pickup_area: string
           local_pickup_details: string
           local_pickup_enabled: boolean
@@ -4378,6 +4380,8 @@ export type Database = {
           local_cash_rate_percent?: number
           local_credit_rate_percent?: number
           local_meet_days?: number
+          local_meet_spot_address?: string | null
+          local_meet_spot_name?: string | null
           local_pickup_area?: string
           local_pickup_details?: string
           local_pickup_enabled?: boolean
@@ -4459,6 +4463,8 @@ export type Database = {
           local_cash_rate_percent?: number
           local_credit_rate_percent?: number
           local_meet_days?: number
+          local_meet_spot_address?: string | null
+          local_meet_spot_name?: string | null
           local_pickup_area?: string
           local_pickup_details?: string
           local_pickup_enabled?: boolean

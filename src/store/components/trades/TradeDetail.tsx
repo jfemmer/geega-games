@@ -441,6 +441,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
           {CONFIRMING.has(status) && local && (
             <LocalConfirmPanel
               trade={trade}
+              terms={terms}
               busy={busy === "confirm"}
               askBusy={busy === "ask"}
               onConfirm={confirmTrade}

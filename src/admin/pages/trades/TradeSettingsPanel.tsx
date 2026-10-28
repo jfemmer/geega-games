@@ -8,7 +8,7 @@ import { formatDateTime } from "../../utils/format";
 import { tradeCenterRepository, type TradeSettingsResult } from "../../repositories/tradeCenter.supabase";
 import { SHIP_FROM } from "../../../store/lib/shipFrom";
 import { US_REGIONS } from "../../../store/lib/usAddress";
-import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, formatUsd, type TradeSettings } from "../../../store/lib/tradeCenter";
+import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, formatUsd, meetSpotMapUrl, type TradeSettings } from "../../../store/lib/tradeCenter";
 import { addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
 import {
   NUMBER_LABELS,
@@ -513,6 +513,42 @@ function SettingsEditor({
           onChange={(e) => set({ localPickupDetails: e.target.value })}
           hint="Shown when customers choose local pickup, and in the email once their cards are reserved."
         />
+        <p className="gg-trset__label">Meeting spot</p>
+        <p className="gg-card-meta">
+          Where local trades meet. Customers see it, with a map link, when they choose local pickup, when they confirm, and in their
+          emails. Write when to meet (or a different place for one trade) in that trade&rsquo;s meetup details. Leave both blank to
+          arrange a place on each trade instead.
+        </p>
+        <div className="gg-form-grid">
+          <TextField
+            label="Spot name"
+            maxLength={120}
+            value={form.localMeetSpotName}
+            disabled={disabled}
+            onChange={(e) => set({ localMeetSpotName: e.target.value })}
+            hint="As customers read it, for example “Ballwin Public Library, front entrance.”"
+          />
+          <TextField
+            label="Address"
+            maxLength={200}
+            autoComplete="off"
+            value={form.localMeetSpotAddress}
+            disabled={disabled}
+            onChange={(e) => set({ localMeetSpotAddress: e.target.value })}
+            hint="Street, city and state, for the map link."
+          />
+        </div>
+        {(form.localMeetSpotName.trim() || form.localMeetSpotAddress.trim()) && (
+          <p className="gg-card-meta">
+            <a
+              href={meetSpotMapUrl({ name: form.localMeetSpotName.trim() || null, address: form.localMeetSpotAddress.trim() || null })}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Check it on the map
+            </a>
+          </p>
+        )}
         <p className="gg-trset__label">Local pickup terms</p>
         <p className="gg-card-meta">
           Local trades can run on different terms from shipped ones (no shipping costs, and you see every card in person). Condition

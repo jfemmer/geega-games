@@ -15,6 +15,8 @@ import {
   MY_TRADES_PATH,
   TRADE_CENTER_PATH,
   localTermsDiffer,
+  meetSpotLine,
+  meetSpotOf,
   myTradePath,
   termsForHandoff,
   tradingOpen,
@@ -79,6 +81,7 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
   const shipDays = t ? plural(t.shipDaysNew, "day") : "a few days";
   const deposits = t?.depositsEnabled ?? false;
   const threshold = t ? formatCents(t.depositThresholdCents) : "";
+  const spot = meetSpotOf(t);
   return [
     {
       question: "What cards can I trade in?",
@@ -154,7 +157,7 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
       ? [
           {
             question: "Can I trade in person?",
-            answer: `Yes, in ${t.localPickupArea}: choose local pickup when you start your trade. You don't list your cards; we approve the trade, you confirm it, and we hold our cards for you for ${plural(t.localMeetDays, "day")} (Sundays don't count) while we set a time and a public place to meet. Bring your cards and we'll value each one at its TCG low for the condition we see, together. Anything your ${t.localCreditRatePercent}% trade credit doesn't cover is paid then, in cash or by card. There's no deposit and no shipping.${localTermsDiffer(t) ? ` ${localTermsSentence(t)}` : ""}`,
+            answer: `Yes, in ${t.localPickupArea}: choose local pickup when you start your trade. You don't list your cards; we approve the trade, you confirm it, and we hold our cards for you for ${plural(t.localMeetDays, "day")} (Sundays don't count) while we set a time to meet${spot ? ` at our meeting spot, ${meetSpotLine(spot)}` : " in a public place"}. Bring your cards and we'll value each one at its TCG low for the condition we see, together. Anything your ${t.localCreditRatePercent}% trade credit doesn't cover is paid then, in cash or by card. There's no deposit and no shipping.${localTermsDiffer(t) ? ` ${localTermsSentence(t)}` : ""}`,
           },
         ]
       : []),

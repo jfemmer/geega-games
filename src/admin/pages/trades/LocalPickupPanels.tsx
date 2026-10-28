@@ -16,9 +16,13 @@ import {
   LOCAL_PAYMENT_LABELS,
   TRADE_LIMITS,
   formatDeadline,
+  meetSpotLine,
+  meetSpotMapUrl,
+  meetSpotOf,
   printingLabel,
   valueForCreditCents,
   type CardConditionCode,
+  type MeetSpot,
   type StaffTrade,
 } from "../../../store/lib/tradeCenter";
 import { centsInput, confirmByPreview, meetupTotals, quantityOptions } from "./tradeMath";
@@ -35,12 +39,25 @@ import type { TradePanelProps } from "./types";
 
 type Outcome = "approve" | "revise" | "reject";
 
+/** The saved meeting spot, with a map link (staff check it before writing the meetup). */
+function SpotLine({ spot }: { spot: MeetSpot }) {
+  return (
+    <p className="gg-card-meta">
+      <strong>Meeting spot:</strong> {meetSpotLine(spot)} ·{" "}
+      <a href={meetSpotMapUrl(spot)} target="_blank" rel="noopener noreferrer">
+        Map
+      </a>
+    </p>
+  );
+}
+
 /** Pending review: approve (with where to meet), ask for changes, or reject. */
 export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps) {
   const toast = useToast();
   const now = useNow();
   const [outcome, setOutcome] = useState<Outcome>("approve");
   const [meetup, setMeetup] = useState(trade.meetupDetails ?? "");
+  const spot = meetSpotOf(settings);
   const [conditions, setConditions] = useState("");
   const [revision, setRevision] = useState("");
   const [reason, setReason] = useState("");
@@ -112,13 +129,18 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
               confirm. Confirming holds our cards for {settings.localMeetDays} day{settings.localMeetDays === 1 ? "" : "s"} (Sundays
               don&rsquo;t count) for the meetup. No deposit.
             </p>
+            {spot && <SpotLine spot={spot} />}
             <TextArea
-              label="Where and when to meet (optional)"
+              label={spot ? "When to meet (optional)" : "Where and when to meet (optional)"}
               rows={2}
               maxLength={2000}
               value={meetup}
               onChange={(e) => setMeetup(e.target.value)}
-              hint="Sent with the approval. Not sure yet? Leave it blank and set it up with them in the messages."
+              hint={
+                spot
+                  ? "Sent with the approval, under the meeting spot they already see. Meeting somewhere else this time? Say so here. Not sure yet? Leave it blank and set it up in the messages."
+                  : "Sent with the approval. Not sure yet? Leave it blank and set it up with them in the messages."
+              }
             />
             <TextArea
               label="Conditions (optional)"
@@ -182,8 +204,9 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
 }
 
 /** Where and when to meet: shown to the customer, emailed when it changes once the trade is approved. */
-export function MeetupDetailsSection({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" | "run">) {
+export function MeetupDetailsSection({ trade, settings, busy, run }: Pick<TradePanelProps, "trade" | "settings" | "busy" | "run">) {
   const [editing, setEditing] = useState(false);
+  const spot = meetSpotOf(settings);
   const [text, setText] = useState(trade.meetupDetails ?? "");
   return (
     <section className="gg-trd__section" aria-labelledby="gg-trd-meetup-title">
@@ -191,14 +214,15 @@ export function MeetupDetailsSection({ trade, busy, run }: Pick<TradePanelProps,
         <h3 id="gg-trd-meetup-title">Meetup</h3>
         {!editing && (
           <Button size="sm" variant="secondary" icon="edit" disabled={busy !== null} onClick={() => setEditing(true)}>
-            {trade.meetupDetails ? "Change" : "Set where and when"}
+            {trade.meetupDetails ? "Change" : spot ? "Set when" : "Set where and when"}
           </Button>
         )}
       </div>
+      {spot && <SpotLine spot={spot} />}
       {editing ? (
         <div className="gg-trd-form">
           <TextArea
-            label="Where and when to meet"
+            label={spot ? "When to meet (and anything different this time)" : "Where and when to meet"}
             rows={3}
             maxLength={2000}
             value={text}
@@ -234,7 +258,11 @@ export function MeetupDetailsSection({ trade, busy, run }: Pick<TradePanelProps,
       ) : trade.meetupDetails ? (
         <p className="gg-trd-meetup">{trade.meetupDetails}</p>
       ) : (
-        <p className="gg-card-meta">Not set yet. Agree on a time and a public place in the messages, then save it here.</p>
+        <p className="gg-card-meta">
+          {spot
+            ? "Not set yet. Agree on a time at the meeting spot in the messages, then save it here."
+            : "Not set yet. Agree on a time and a public place in the messages, then save it here."}
+        </p>
       )}
     </section>
   );

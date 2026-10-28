@@ -1285,6 +1285,24 @@ describe("local pickup on the storefront", () => {
     expect(screen.getByText(/Anything your 90% trade credit doesn't cover/)).toBeInTheDocument();
   });
 
+  it("shows the meeting spot, with directions, when local pickup is chosen", async () => {
+    const user = userEvent.setup();
+    world.terms = { ...TRADE_TERMS, localMeetSpotName: "Ballwin Library", localMeetSpotAddress: "1600 Clarkson Rd, Ballwin, MO" };
+    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    at("/trade-cards", <TradeCardsPage />);
+    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
+    await waitFor(() => expect(within(summary).getByRole("radio", { name: /Local pickup/ })).toBeInTheDocument());
+    expect(summary).toHaveTextContent("Meet us at Ballwin Library.");
+    expect(within(summary).queryByRole("link", { name: /Get directions/ })).toBeNull();
+    await user.click(within(summary).getByRole("radio", { name: /Local pickup/ }));
+    expect(summary).toHaveTextContent("Where we meetBallwin Library1600 Clarkson Rd, Ballwin, MO");
+    expect(within(summary).getByRole("link", { name: /Get directions/ })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/search/?api=1&query=Ballwin%20Library%2C%201600%20Clarkson%20Rd%2C%20Ballwin%2C%20MO",
+    );
+    expect(screen.getByText(/at our meeting spot, Ballwin Library, 1600 Clarkson Rd, Ballwin, MO/)).toBeInTheDocument();
+  });
+
   it("doesn't offer local pickup while it's off", async () => {
     world.terms = { ...TRADE_TERMS, localPickupEnabled: false };
     window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));

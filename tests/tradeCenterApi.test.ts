@@ -268,6 +268,8 @@ function settingsRow(over: Record<string, unknown> = {}) {
     local_pickup_area: "the St. Louis area",
     local_meet_days: 7,
     local_pickup_details: "We'll message you to set a time and a public place to meet.",
+    local_meet_spot_name: null as string | null,
+    local_meet_spot_address: null as string | null,
     local_credit_rate_percent: 80,
     local_min_card_value_cents: 1500,
     local_min_trade_value_cents: 0,
@@ -2831,6 +2833,32 @@ describe("local pickup trades", () => {
     expect(customer?.text).toMatch(/local pickup/);
     expect(customer?.text).not.toMatch(/mail anything/);
     expect(sent.find((e) => e.emailType === "trade_staff_submitted")?.subject).toMatch(/local pickup trade is waiting/);
+  });
+
+  it("names the meeting spot in what the customer agrees to and in their emails, once one is saved", async () => {
+    confirmStandIn();
+    Object.assign(settings(), { local_meet_spot_name: "Ballwin Library", local_meet_spot_address: "1600 Clarkson Rd, Ballwin, MO" });
+    const t = localTrade({ user_id: ANN, status: "awaiting_confirmation", confirm_by: iso(Date.now() + 40 * HOUR), approved_at: iso(Date.now() - HOUR) });
+    const view = (await ann.get({ id: t.id })).body.trade as { confirmation: Record<string, unknown> };
+    expect(view.confirmation.termsText).toContain("meet at our meeting spot: Ballwin Library, 1600 Clarkson Rd, Ballwin, MO.");
+    expect((await ann.post({ action: "confirm", tradeId: t.id, acknowledged: true, termsVersion: 1 })).statusCode).toBe(200);
+    const reserved = sent.find((e) => e.emailType === "trade_reserved");
+    expect(reserved?.text).toContain("Ballwin Library, 1600 Clarkson Rd, Ballwin, MO");
+  });
+
+  it("saves the meeting spot, clears it when blank, and keeps it when a page leaves it out", async () => {
+    const view = (await owner.get({ view: "settings" })).body.settings as Record<string, unknown>;
+    expect(view).toMatchObject({ localMeetSpotName: null, localMeetSpotAddress: null });
+    const save = (over: Record<string, unknown>) => owner.post({ action: "saveSettings", settings: { ...view, ...over } });
+    expect((await save({ localMeetSpotName: "  Ballwin Library ", localMeetSpotAddress: "1600 Clarkson Rd, Ballwin, MO" })).statusCode).toBe(200);
+    expect(settings()).toMatchObject({ local_meet_spot_name: "Ballwin Library", local_meet_spot_address: "1600 Clarkson Rd, Ballwin, MO" });
+    const terms = (await as(null).get({})).body.terms as Record<string, unknown>;
+    expect(terms).toMatchObject({ localMeetSpotName: "Ballwin Library", localMeetSpotAddress: "1600 Clarkson Rd, Ballwin, MO" });
+    const { localMeetSpotName: _n, localMeetSpotAddress: _a, ...older } = view;
+    expect((await owner.post({ action: "saveSettings", settings: older })).statusCode).toBe(200);
+    expect(settings().local_meet_spot_name).toBe("Ballwin Library");
+    expect((await save({ localMeetSpotName: " ", localMeetSpotAddress: "" })).statusCode).toBe(200);
+    expect(settings()).toMatchObject({ local_meet_spot_name: null, local_meet_spot_address: null });
   });
 
   it("confirms with no deposit and the local pickup terms, holding our cards for the meetup", async () => {
