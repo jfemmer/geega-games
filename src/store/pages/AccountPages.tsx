@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MyConsignments } from "../components/consignment/MyConsignments";
 import { supabase } from "../../supabase";
 import { useAuth } from "../lib/AuthContext";
 import { useCart } from "../lib/CartContext";
@@ -62,6 +63,7 @@ const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/account/sell-submissions", label: "Sell submissions" },
   { to: "/account/sorting", label: "Sorting requests" },
   { to: "/account/trades", label: "Trades" },
+  { to: "/account/consignments", label: "Consignments" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/credit", label: "Store credit" },
   { to: "/account/refer", label: "Refer a seller" },
@@ -2052,6 +2054,10 @@ export function AccountPage() {
     title = "Trades";
     subtitle = "Your trades: their cards, deadlines and messages.";
     body = <MyTrades />;
+  } else if (path === "/account/consignments") {
+    title = "Consignments";
+    subtitle = "Cards we're selling for you: your agreement, choices and estimates.";
+    body = <MyConsignments />;
   } else if (tradeMatch) {
     title = "Trade";
     body = <TradeDetail tradeId={tradeMatch.id} />;

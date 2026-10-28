@@ -114,6 +114,12 @@ class Query implements PromiseLike<Result> {
     this.filters.push((row) => row[column] !== value);
     return this;
   }
+  /** Case-insensitive match; % and _ are wildcards, as in PostgREST. */
+  ilike(column: string, pattern: string) {
+    const re = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, "i");
+    this.filters.push((row) => row[column] != null && re.test(String(row[column])));
+    return this;
+  }
   is(column: string, value: unknown) {
     this.filters.push((row) => (row[column] ?? null) === value);
     return this;
@@ -386,6 +392,7 @@ export function createFakeSupabase(state: FakeState) {
     },
     storage: {
       from: () => ({
+        createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://signed.example/${path}` }, error: null }),
         createSignedUrls: async (paths: string[]) => ({
           data: paths.map((path) => ({ path, signedUrl: `https://signed.example/${path}` })),
           error: null,
