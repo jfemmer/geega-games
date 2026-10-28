@@ -9,6 +9,7 @@ import { FaqSection } from "../components/SellLandingSections";
 import { TradeWantedList } from "../components/trades/TradeWantedList";
 import { TradeShippingProgress } from "../components/trades/TradeShippingProgress";
 import { HandoffChoice, LocalCartSummary } from "../components/trades/LocalPickup";
+import { HowTradingWorks } from "../components/trades/HowTradingWorks";
 import { tradeActions, useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart, tradeCartCount, tradeCartTotalCents, useTradeCart } from "../lib/tradeCart";
 import {
@@ -25,7 +26,7 @@ import {
 } from "../lib/tradeCenter";
 import { depositBands } from "../lib/tradeRules";
 import { minimumMessage, moneyShort, requiredValueCents, shippingLabel, tradeShippingCents } from "../lib/tradeShipping";
-import { conditionAgeRules, conditionAgeSummary } from "../lib/tradeConditions";
+import { conditionAgeSummary } from "../lib/tradeConditions";
 import { addQualifyingDays, storeDateKey, storeInstant, weekdayOfKey } from "../lib/tradeDeadlines";
 import { breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 
@@ -55,11 +56,6 @@ function plural(n: number, word: string): string {
 function shipExampleDay(days: number): string {
   const friday = storeInstant(2026, 10, 30, 14); // Friday, October 30, 2026, 2:00 PM in St. Louis
   return WEEKDAYS[weekdayOfKey(storeDateKey(addQualifyingDays(friday, days)))];
-}
-
-function confirmWindow(t: TradeTerms | null): string {
-  if (!t) return "a set time";
-  return t.confirmationHours % 24 === 0 ? plural(t.confirmationHours / 24, "day") : plural(t.confirmationHours, "hour");
 }
 
 /** "Our cards ship to you tracked: $3.99, or free on $200 or more of our cards." */
@@ -347,7 +343,8 @@ export default function TradeCardsPage() {
         )}
 
         <div className="gg-tc-cartpage__info">
-          <HowTradingWorks terms={terms} />
+          {/* Opens on the way they've chosen in the summary (remounts when that changes). */}
+          <HowTradingWorks key={method} terms={terms} initial={method} />
           <GoodToKnow terms={terms} />
         </div>
       </div>
@@ -398,78 +395,6 @@ function TradeSummary({ terms, count, totalCents }: { terms: TradeTerms; count: 
       </div>
       <TradeShippingProgress compact hideFee wantedCents={totalCents} terms={terms} />
     </>
-  );
-}
-
-/** How a trade goes, in six short steps, and how we set each card's condition. */
-function HowTradingWorks({ terms }: { terms: TradeTerms | null }) {
-  const rules = conditionAgeRules();
-  return (
-    <section className="gg-tc-how" aria-labelledby="gg-tc-how-title">
-      <h2 id="gg-tc-how-title">How trading works</h2>
-      <ol className="gg-tc-how__steps">
-        <li>
-          <strong>Pick our cards.</strong> Add cards from our shop to this cart.
-          {terms
-            ? terms.minTradeValueCents > 0
-              ? ` Trades start at ${moneyShort(terms.minTradeValueCents)} of our cards, and ${moneyShort(terms.freeShipThresholdCents)} or more ships free.`
-              : ` ${moneyShort(terms.freeShipThresholdCents)} or more of our cards ships free.`
-            : ""}
-        </li>
-        <li>
-          <strong>Send us your list.</strong> Start your trade, then search for the cards you&rsquo;re trading in or paste a list: staples
-          worth {terms ? `${moneyShort(terms.minCardValueCents)}+` : "a set amount or more"} each at TCG low. We set each card&rsquo;s
-          condition from its age, and show you a rough estimate.
-        </li>
-        <li>
-          <strong>We review it at TCG low.</strong> We price each of your cards at its TCG low (the lowest price listed on TCGplayer) for
-          its condition, and email you when your trade is approved.
-        </li>
-        <li>
-          <strong>Confirm and ship.</strong> Confirm{terms ? ` within ${confirmWindow(terms)}` : ""} to reserve our cards
-          {terms?.depositsEnabled
-            ? ` (trades of ${formatCents(terms.depositThresholdCents)} or more take a refundable deposit)`
-            : ""}
-          , then ship yours with tracking{terms ? ` within ${plural(terms.shipDaysNew, "day")}` : ""}. Sundays don&rsquo;t count.
-        </li>
-        <li>
-          <strong>We check your cards.</strong> When they arrive we check each card&rsquo;s condition, so its value can go up or down.
-          You&rsquo;ll see every change and why.
-        </li>
-        <li>
-          <strong>Accept your final offer.</strong> {terms ? `${terms.creditRatePercent}%` : "A share"} of your cards&rsquo; final TCG low
-          is your credit toward ours. Pay any difference by card or keep leftover credit for next time, and we ship our cards to you. Or
-          decline with no penalty and we mail yours back.
-        </li>
-      </ol>
-      {terms?.localPickupEnabled && (
-        <p className="gg-tc-how__local">
-          <strong>Near {terms.localPickupArea}?</strong> Choose local pickup and skip the mail: send your trade without listing your cards,
-          confirm it, and we&rsquo;ll meet to look over your cards together and settle the trade on the spot. Nothing to pay up front and
-          nothing to ship.{localTermsDiffer(terms) ? ` ${localTermsSentence(terms)}` : ""}
-        </p>
-      )}
-      <div className="gg-tc-how__ages">
-        <h3>How we set condition</h3>
-        <table className="gg-tc-table gg-tc-agetable">
-          <caption>From when the card&rsquo;s printing came out. We check every card when it arrives.</caption>
-          <thead>
-            <tr>
-              <th scope="col">Card&rsquo;s age</th>
-              <th scope="col">Listed as</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rules.map((r) => (
-              <tr key={r.code}>
-                <th scope="row">{r.ages}</th>
-                <td>{r.condition}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
   );
 }
 

@@ -175,7 +175,7 @@ describe("the Trade Cards page (1)", () => {
     at("/trade-cards", <TradeCardsPage />);
     await screen.findByRole("heading", { level: 1, name: "Your trade cart" });
     const how = await screen.findByRole("region", { name: "How trading works" });
-    await waitFor(() => expect(how).toHaveTextContent("80% of your cards’ final TCG low"));
+    await waitFor(() => expect(how).toHaveTextContent("You receive 80% of your cards’ final TCG low"));
     return how;
   }
 
@@ -207,6 +207,31 @@ describe("the Trade Cards page (1)", () => {
     expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "null")).toEqual([]);
   });
 
+  it("explains trading by mail and in person, in tabs", async () => {
+    const user = userEvent.setup();
+    const how = await openCart();
+    expect(how).toHaveTextContent("Trade by mail, or in person in the St. Louis area.");
+    const ship = within(how).getByRole("tab", { name: "Ship your cards" });
+    const local = within(how).getByRole("tab", { name: "Local pickup" });
+    expect(ship).toHaveAttribute("aria-selected", "true");
+    await user.click(local);
+    const panel = within(how).getByRole("tabpanel", { name: "Local pickup" });
+    expect(within(panel).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Choose our cards. Add singles from our shop to your trade cart. There’s no shipping.",
+      "Select local pickup. Choose Local pickup in your trade summary and submit your trade. You don’t need to list your cards in advance, though you’re welcome to add a note about what you plan to bring.",
+      "We review your trade. We check that our cards are available and email you as soon as your trade is approved.",
+      "Confirm your trade. Confirm within 2 days, and we’ll hold our cards for you for 7 days while we schedule a time to meet in the St. Louis area. Sundays don’t count, and no deposit is required.",
+      "Meet and settle. Bring your cards: staples valued at $15 or more each at TCG low. We review each card together, price it at its TCG low for its condition, and you receive 80% as trade credit. Pay any remaining balance in cash or by card, or keep leftover credit for a future order. You leave with our cards the same day.",
+    ]);
+    // Cards are graded together in person: no age table for local pickup.
+    expect(within(how).queryByRole("table")).toBeNull();
+    // Arrow keys move between the tabs.
+    await user.keyboard("{ArrowLeft}");
+    expect(ship).toHaveFocus();
+    expect(ship).toHaveAttribute("aria-selected", "true");
+    expect(within(how).getByRole("table", { name: /Based on when/ })).toBeInTheDocument();
+  });
+
   it("starts empty, with the way to the shop and how trading works", async () => {
     const how = await openCart();
     expect(screen.getByRole("heading", { level: 2, name: "Your trade cart is empty" })).toBeInTheDocument();
@@ -220,15 +245,15 @@ describe("the Trade Cards page (1)", () => {
     const how = await openCart();
     const steps = within(how).getAllByRole("listitem").map((li) => li.textContent);
     expect(steps).toEqual([
-      "Pick our cards. Add cards from our shop to this cart. $200 or more of our cards ships free.",
-      "Send us your list. Start your trade, then search for the cards you’re trading in or paste a list: staples worth $15+ each at TCG low. We set each card’s condition from its age, and show you a rough estimate.",
-      "We review it at TCG low. We price each of your cards at its TCG low (the lowest price listed on TCGplayer) for its condition, and email you when your trade is approved.",
-      "Confirm and ship. Confirm within 2 days to reserve our cards (trades of $300.00 or more take a refundable deposit), then ship yours with tracking within 3 days. Sundays don’t count.",
-      "We check your cards. When they arrive we check each card’s condition, so its value can go up or down. You’ll see every change and why.",
-      "Accept your final offer. 80% of your cards’ final TCG low is your credit toward ours. Pay any difference by card or keep leftover credit for next time, and we ship our cards to you. Or decline with no penalty and we mail yours back.",
+      "Choose our cards. Add singles from our shop to your trade cart. Shipping is free on $200 or more of our cards.",
+      "Submit your trade list. Start your trade, then add the cards you’re trading in by searching for each one or pasting a list. We accept staples valued at $15 or more each at TCG low. Each card’s condition is assigned from its printing’s age, and you’ll see an estimated value as you go.",
+      "We review your trade. We price each card at its TCG low (the lowest listed price on TCGplayer) for its condition, and email you as soon as your trade is approved.",
+      "Confirm and ship. Confirm within 2 days to reserve our cards; trades of $300 or more require a refundable deposit. Then ship your cards with tracking within 3 days. Sundays don’t count toward either deadline.",
+      "We inspect your cards. When your cards arrive, we verify each one’s condition. A card’s value may go up or down, and every change is itemized with the reason.",
+      "Accept your final offer. You receive 80% of your cards’ final TCG low as trade credit. Pay any remaining balance by card or keep leftover credit for a future order, and we ship our cards to you. If you decline, we return your cards with no penalty.",
     ]);
     // How a card's age sets the condition it's listed at.
-    const ages = within(how).getByRole("table", { name: /From when the card’s printing came out/ });
+    const ages = within(how).getByRole("table", { name: /Based on when the card’s printing was released/ });
     expect(within(ages).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
       "Under 3 years oldNear Mint",
       "3 to 10 years oldLightly Played",
@@ -341,7 +366,7 @@ describe("the Trade Cards page (1)", () => {
     world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500, processingFeeCents: 200 };
     window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
     const how = await openCart();
-    expect(how).toHaveTextContent("Trades start at $75 of our cards, and $200 or more ships free.");
+    expect(how).toHaveTextContent("Trades start at $75 of our cards. Shipping is free on $200 or more of our cards.");
     const know = screen.getByRole("region", { name: "Good to know" });
     expect(know).toHaveTextContent("We’re looking for staples: cards worth less than $15 each at TCG low, in their condition, can’t be traded.");
     // Said up top too, where customers start.
@@ -1279,9 +1304,14 @@ describe("local pickup on the storefront", () => {
     expect(summary).toHaveTextContent("or take cash for it, at a lower rate");
     // $79.99 of our cards is under local pickup's $100 minimum.
     expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
-    expect(document.querySelector(".gg-tc-how__local")?.textContent).toContain(
-      "Local pickup trades run on their own terms: 90% trade credit, staples worth $5+ each at TCG low, and at least $100 of our cards.",
-    );
+    // How trading works follows the choice, with local pickup's own numbers.
+    const how = screen.getByRole("region", { name: "How trading works" });
+    expect(within(how).getByRole("tab", { name: "Local pickup" })).toHaveAttribute("aria-selected", "true");
+    const panel = within(how).getByRole("tabpanel");
+    expect(panel).toHaveTextContent("Local trades start at $100 of our cards. There’s no shipping.");
+    expect(panel).toHaveTextContent("staples valued at $5 or more each at TCG low");
+    expect(panel).toHaveTextContent("you receive 90% as trade credit");
+    expect(panel).toHaveTextContent("(or take it in cash, at a lower rate)");
     expect(screen.getByText(/Anything your 90% trade credit doesn't cover/)).toBeInTheDocument();
   });
 
