@@ -3991,6 +3991,11 @@ export type Database = {
           free_ship_fee_cents: number
           free_ship_threshold_cents: number
           id: string
+          handoff_method: string
+          local_paid_cents: number | null
+          local_payment_method: string | null
+          meetup_details: string | null
+          met_at: string | null
           inbound_acceptance_source: string | null
           inbound_accepted_at: string | null
           inbound_carrier: string | null
@@ -4091,6 +4096,11 @@ export type Database = {
           free_ship_fee_cents?: number
           free_ship_threshold_cents?: number
           id?: string
+          handoff_method?: string
+          local_paid_cents?: number | null
+          local_payment_method?: string | null
+          meetup_details?: string | null
+          met_at?: string | null
           inbound_acceptance_source?: string | null
           inbound_accepted_at?: string | null
           inbound_carrier?: string | null
@@ -4191,6 +4201,11 @@ export type Database = {
           free_ship_fee_cents?: number
           free_ship_threshold_cents?: number
           id?: string
+          handoff_method?: string
+          local_paid_cents?: number | null
+          local_payment_method?: string | null
+          meetup_details?: string | null
+          met_at?: string | null
           inbound_acceptance_source?: string | null
           inbound_accepted_at?: string | null
           inbound_carrier?: string | null
@@ -4278,6 +4293,10 @@ export type Database = {
           free_ship_fee_cents: number
           free_ship_threshold_cents: number
           id: boolean
+          local_meet_days: number
+          local_pickup_area: string
+          local_pickup_details: string
+          local_pickup_enabled: boolean
           loyalty_tier1_trades: number
           loyalty_tier2_trades: number
           max_active_trades: number
@@ -4350,6 +4369,10 @@ export type Database = {
           free_ship_fee_cents?: number
           free_ship_threshold_cents?: number
           id?: boolean
+          local_meet_days?: number
+          local_pickup_area?: string
+          local_pickup_details?: string
+          local_pickup_enabled?: boolean
           loyalty_tier1_trades?: number
           loyalty_tier2_trades?: number
           max_active_trades?: number
@@ -4422,6 +4445,10 @@ export type Database = {
           free_ship_fee_cents?: number
           free_ship_threshold_cents?: number
           id?: boolean
+          local_meet_days?: number
+          local_pickup_area?: string
+          local_pickup_details?: string
+          local_pickup_enabled?: boolean
           loyalty_tier1_trades?: number
           loyalty_tier2_trades?: number
           max_active_trades?: number
@@ -5896,8 +5923,30 @@ export type Database = {
         Args: {
           p_customer_email: string | null
           p_customer_name: string | null
+          p_handoff_method?: string
           p_items: Json
           p_user_id: string
+        }
+        Returns: string
+      }
+      trade_set_handoff: {
+        Args: { p_handoff_method: string; p_trade_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      trade_set_meetup: {
+        Args: { p_actor_id: string | null; p_actor_label: string | null; p_details: string | null; p_trade_id: string }
+        Returns: undefined
+      }
+      trade_complete_local: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_cards: Json
+          p_cash_for_excess: boolean
+          p_paid_cents: number
+          p_payment_method: string | null
+          p_payment_note: string | null
+          p_trade_id: string
         }
         Returns: string
       }

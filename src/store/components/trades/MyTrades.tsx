@@ -5,17 +5,18 @@ import { loadMyTrades } from "../../lib/tradeCenterApi";
 import {
   DEPOSIT_STATUS_LABELS,
   TRADE_CENTER_PATH,
-  TRADE_STATUS_LABELS,
   formatDeadline,
   isOpenTrade,
   myTradePath,
   tradeLabel,
+  tradeStatusLabel,
   type CustomerTradeSummary,
 } from "../../lib/tradeCenter";
 
 // Account → Trades: the customer's trades, open ones first, each with where
 // it stands, the deadline that matters right now, and the deposit when
-// there is one.
+// there is one. Local pickup trades say so, and have a meetup instead of a
+// shipping deadline.
 
 function deadline(t: CustomerTradeSummary): string | null {
   switch (t.status) {
@@ -28,6 +29,7 @@ function deadline(t: CustomerTradeSummary): string | null {
     case "awaiting_deposit":
       return t.confirmBy ? `Pay the deposit by ${formatDeadline(t.confirmBy)}` : null;
     case "awaiting_shipment":
+      if (t.handoffMethod === "local") return t.shipBy ? `Meet up by ${formatDeadline(t.shipBy)}` : "Let's meet up";
       return t.shipBy ? `Ship your cards by ${formatDeadline(t.shipBy)}` : null;
     case "tracking_submitted":
       return "Waiting for the carrier's first scan";
@@ -100,12 +102,13 @@ export default function MyTrades() {
               <strong>{tradeLabel(t.tradeNumber)}</strong>{" "}
               <span className="gg-card-meta">{new Date(t.createdAt).toLocaleDateString()}</span>
               <span className="gg-card-meta">
-                {t.wantedCount} of our card{t.wantedCount === 1 ? "" : "s"} ({formatCents(t.wantedTotalCents)}) · {t.offeredCount} of yours
+                {t.wantedCount} of our card{t.wantedCount === 1 ? "" : "s"} ({formatCents(t.wantedTotalCents)}) ·{" "}
+                {t.handoffMethod === "local" ? "local pickup" : `${t.offeredCount} of yours`}
               </span>
               {due && <span className="gg-tc-tradeRow__due">{due}</span>}
               {deposit && <span className="gg-card-meta">{deposit}</span>}
             </span>
-            <span className={`gg-tc-status gg-tc-status--${isOpenTrade(t.status) ? "open" : "closed"}`}>{TRADE_STATUS_LABELS[t.status]}</span>
+            <span className={`gg-tc-status gg-tc-status--${isOpenTrade(t.status) ? "open" : "closed"}`}>{tradeStatusLabel(t.status, t.handoffMethod)}</span>
           </Link>
         );
       })}

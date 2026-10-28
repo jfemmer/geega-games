@@ -8,6 +8,7 @@ import { tradeCenterRepository } from "../../repositories/tradeCenter.supabase";
 import { carrierLabel, trackingUrlFor } from "../../../store/lib/tracking";
 import {
   CONDITION_NAMES,
+  LOCAL_PAYMENT_LABELS,
   TRADE_CARRIERS,
   cleanTrackingNumber,
   copiesToReturn,
@@ -50,11 +51,16 @@ function Settlement({
   // Credit covers our cards only; shipping is always part of the card payment.
   const usedCents = Math.min(trade.creditIssuedCents ?? money.creditCents, money.wantedCents);
   const shippingPaid = Math.min(money.shippingCents, money.dueCents);
-  const paidBy = trade.paymentReference?.startsWith("manual: ")
-    ? `Recorded by hand: ${trade.paymentReference.slice("manual: ".length)}`
-    : trade.paymentReference?.startsWith("pi_")
-      ? "Card (Stripe)"
-      : null;
+  const local = trade.handoffMethod === "local";
+  const paidBy = local
+    ? trade.localPaymentMethod && trade.localPaymentMethod !== "none"
+      ? `${LOCAL_PAYMENT_LABELS[trade.localPaymentMethod]}, at the meetup`
+      : null
+    : trade.paymentReference?.startsWith("manual: ")
+      ? `Recorded by hand: ${trade.paymentReference.slice("manual: ".length)}`
+      : trade.paymentReference?.startsWith("pi_")
+        ? "Card (Stripe)"
+        : null;
 
   return (
     <section className="gg-trd__section" aria-labelledby="gg-trd-settled-title">
@@ -79,18 +85,26 @@ function Settlement({
           <div>
             <dt>
               Paid{paidBy ? ` (${paidBy})` : ""}
-              <span className="gg-card-meta">
-                {" "}
-                {formatCents(money.dueCents - shippingPaid)} for our cards, {formatCents(shippingPaid)} shipping
-              </span>
+              {!local && (
+                <span className="gg-card-meta">
+                  {" "}
+                  {formatCents(money.dueCents - shippingPaid)} for our cards, {formatCents(shippingPaid)} shipping
+                </span>
+              )}
             </dt>
             <dd>{formatCents(money.dueCents)}</dd>
           </div>
         )}
-        {money.dueCents === 0 && (
+        {money.dueCents === 0 && !local && (
           <div>
             <dt>Shipping our cards</dt>
             <dd>{money.shippingCents === 0 ? "Free" : formatCents(money.shippingCents)}</dd>
+          </div>
+        )}
+        {local && (
+          <div>
+            <dt>Our cards</dt>
+            <dd>Picked up at the meetup</dd>
           </div>
         )}
         {money.cashCents > 0 ? (

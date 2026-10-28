@@ -4,6 +4,7 @@ import {
   TRADE_CENTER_API,
   type CustomerTrade,
   type CustomerTradeSummary,
+  type TradeHandoffMethod,
   type TradeOfferInput,
   type TradeShipToInput,
   type TradeTerms,
@@ -161,7 +162,9 @@ export interface TradeTrackingInput {
 }
 
 export const tradeActions = {
-  start: (items: TradeWantedInput[]) => act("start", { items }),
+  start: (items: TradeWantedInput[], handoffMethod: TradeHandoffMethod = "ship") => act("start", { items, handoffMethod }),
+  /** Switch a draft between shipping and local pickup. */
+  setHandoff: (tradeId: string, handoffMethod: TradeHandoffMethod) => act("setHandoff", { tradeId, handoffMethod }),
   setWanted: (tradeId: string, items: TradeWantedInput[]) => act("setWanted", { tradeId, items }),
   saveOffer: (tradeId: string, cards: TradeOfferInput[]) => act("saveOffer", { tradeId, cards }),
   submit: (tradeId: string, note: string | null) => act("submit", { tradeId, note }),

@@ -126,7 +126,7 @@ const EVENT_LABELS: Record<string, string> = {
   final_accepted: "Customer accepted the final offer",
   paid: "Payment received",
   finalized: "Trade finished; order created",
-  completed: "Order shipped; trade complete",
+  completed: "Trade complete (our cards shipped, or handed over in person)",
   rejected: "Rejected",
   offer_expired: "Closed: not sent or confirmed in time",
   canceled: "Canceled by the customer",
@@ -142,6 +142,9 @@ const EVENT_LABELS: Record<string, string> = {
   postage_recorded: "Postage for our cards recorded",
   reminder_sent: "Reminder emailed to the customer",
   staff_alerted: "Staff alerted",
+  handoff_changed: "Customer changed how they'll trade",
+  meetup_set: "Meetup details saved",
+  met_up: "Met up: their cards recorded and the trade settled in person",
 };
 
 const REMINDER_KINDS: Record<string, string> = {
@@ -289,6 +292,18 @@ export function eventDetail(e: StaffTradeEvent): string | null {
     }
     case "card_imported":
       return typeof d.quantity === "number" ? `${d.quantity} cop${d.quantity === 1 ? "y" : "ies"}` : null;
+    case "handoff_changed":
+      return d.to === "local" ? "to local pickup" : d.to === "ship" ? "to shipping" : null;
+    case "meetup_set":
+      return text(d.details);
+    case "met_up":
+      return join(
+        typeof d.cards === "number" ? `${d.cards} card${d.cards === 1 ? "" : "s"} taken` : null,
+        cents(d.final_value_cents) ? `worth ${cents(d.final_value_cents)}` : null,
+        cents(d.final_credit_cents) ? `credit ${cents(d.final_credit_cents)}` : null,
+        typeof d.paid_cents === "number" && d.paid_cents > 0 ? `paid ${cents(d.paid_cents)} (${text(d.payment_method) ?? "in person"})` : "nothing to pay",
+        text(d.payment_note),
+      );
     case "cards_reviewed":
     case "cards_inspected":
       return typeof d.cards === "number" ? `${d.cards} card${d.cards === 1 ? "" : "s"}` : null;

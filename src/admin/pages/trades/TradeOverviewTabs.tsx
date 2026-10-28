@@ -21,6 +21,7 @@ import {
   CONDITION_NAMES,
   DEPOSIT_STATUS_ADMIN_LABELS,
   TRADE_STATUS_ADMIN_LABELS,
+  tradeStatusAdminLabel,
   formatDeadline,
   tradeLabel,
   type DepositStatus,
@@ -89,7 +90,7 @@ export function DepositsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =>
       key: "status",
       header: "Trade",
       secondary: true,
-      render: (t) => <Badge tone={TRADE_STATUS_TONE[t.status]}>{TRADE_STATUS_ADMIN_LABELS[t.status]}</Badge>,
+      render: (t) => <Badge tone={TRADE_STATUS_TONE[t.status]}>{tradeStatusAdminLabel(t.status, t.handoffMethod)}</Badge>,
     },
     {
       key: "updated",
@@ -325,7 +326,15 @@ export function ReservedTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =>
       secondary: true,
       render: (l) => (
         <span className="gg-card-meta">
-          {l.shippedAt ? "Shipped: reserved until settled" : l.shipBy ? `Ship by ${formatDeadline(l.shipBy)}` : TRADE_STATUS_ADMIN_LABELS[l.status]}
+          {l.handoffMethod === "local"
+            ? l.shipBy
+              ? `Local pickup: meet by ${formatDeadline(l.shipBy)}`
+              : "Local pickup"
+            : l.shippedAt
+              ? "Shipped: reserved until settled"
+              : l.shipBy
+                ? `Ship by ${formatDeadline(l.shipBy)}`
+                : TRADE_STATUS_ADMIN_LABELS[l.status]}
         </span>
       ),
     },

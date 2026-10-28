@@ -322,12 +322,24 @@ export function TrackingPanel({
   trackingCarrier,
   trackingNumber,
 }: {
-  shippingMethod: string;
+  /** null: an in-person order (a local pickup trade, handed over when we met): nothing ships. */
+  shippingMethod: string | null;
   status: OrderStatus;
   trackingCarrier: string | null;
   trackingNumber: string | null;
 }) {
   const shipped = status === "shipped" || status === "delivered";
+
+  if (!shippingMethod) {
+    return (
+      <div className="gg-track">
+        <strong>Picked up in person</strong>
+        <p className="gg-card-meta" style={{ marginTop: "0.4rem" }}>
+          {shipped ? "You picked these cards up in person, so there's nothing to track." : "These cards are handed over in person."}
+        </p>
+      </div>
+    );
+  }
 
   if (shippingMethod === "pwe") {
     return (
@@ -404,7 +416,7 @@ type DashOrder = {
   created_at: string;
   status: OrderStatus;
   total_cents: number;
-  shipping_method: string;
+  shipping_method: string | null;
   tracking_carrier: string | null;
   tracking_number: string | null;
 };
@@ -782,12 +794,14 @@ type OrderRow = {
   status: OrderStatus;
   payment_status: PaymentStatus;
   total_cents: number;
-  shipping_method: string;
+  shipping_method: string | null;
   tracking_number: string | null;
 };
 
 function shipmentStatusText(o: OrderRow): string {
   if (isHaltedStatus(o.status)) return ORDER_STATUS_LABELS[o.status];
+  // An in-person order (a local pickup trade): nothing ships.
+  if (!o.shipping_method) return "Picked up in person";
   if (o.shipping_method === "pwe") {
     return o.status === "shipped" || o.status === "delivered"
       ? "Shipped (PWE, untracked)"
@@ -1104,7 +1118,8 @@ type OrderDetail = {
   store_credit_used_cents: number;
   total_cents: number;
   amount_due_cents: number;
-  shipping_method: string;
+  /** null: an in-person order (a local pickup trade). */
+  shipping_method: string | null;
   tracking_carrier: string | null;
   tracking_number: string | null;
   paid_at: string | null;
@@ -1207,24 +1222,30 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
         <StatusBadge status={order.status} kind="order" />
         <StatusBadge status={order.payment_status} kind="payment" />
         <span className="gg-badge">
-          {order.shipping_method === "pwe" ? "Plain White Envelope" : "Tracked shipping"}
+          {!order.shipping_method
+            ? "Picked up in person"
+            : order.shipping_method === "pwe"
+              ? "Plain White Envelope"
+              : "Tracked shipping"}
         </span>
       </div>
 
-      <OrderProgress
-        status={order.status}
-        timestamps={{
-          pending_payment: order.created_at,
-          paid: order.paid_at,
-          packing: order.packed_at,
-          ready_to_ship: order.ready_at,
-          shipped: order.shipped_at,
-          delivered: order.delivered_at,
-        }}
-      />
+      {order.shipping_method && (
+        <OrderProgress
+          status={order.status}
+          timestamps={{
+            pending_payment: order.created_at,
+            paid: order.paid_at,
+            packing: order.packed_at,
+            ready_to_ship: order.ready_at,
+            shipped: order.shipped_at,
+            delivered: order.delivered_at,
+          }}
+        />
+      )}
 
       <h3 className="gg-detail__h3" style={{ marginTop: 0 }}>
-        Track My Order
+        {order.shipping_method ? "Track My Order" : "Pickup"}
       </h3>
       <div style={{ marginBottom: "1.25rem" }}>
         <TrackingPanel
@@ -1265,7 +1286,11 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
         {(order.discount_cents ?? 0) > 0 && (
           <Row label="Member discount" value={-(order.discount_cents ?? 0)} />
         )}
-        <Row label="Shipping" value={order.shipping_cents} text={orderShippingText(order)} />
+        <Row
+          label="Shipping"
+          value={order.shipping_cents}
+          text={order.shipping_method ? orderShippingText(order) : "None (picked up)"}
+        />
         {order.store_credit_used_cents > 0 && (
           <Row label="Store credit" value={-order.store_credit_used_cents} />
         )}

@@ -16,10 +16,11 @@ import {
   STAFF_CANCELABLE_STATUSES,
   STAFF_REJECTABLE_STATUSES,
   STAFF_WANTED_STATUSES,
-  TRADE_STATUS_ADMIN_LABELS,
   formatDeadline,
   timeLeft,
   tradeLabel,
+  tradeStatusAdminLabel,
+  valueForCreditCents,
   type StaffTrade,
   type StaffTradeOfferCard,
   type TradeSettings,
@@ -36,7 +37,8 @@ import { TradeReviewPanel } from "./TradeReviewPanel";
 import { TradeInspectionPanel } from "./TradeInspectionPanel";
 import { MailBack, TradeWrapUpPanel } from "./TradeWrapUpPanel";
 import { TradeDepositPanel, TradeDisputesPanel } from "./TradeDepositPanel";
-import { PackagingLine, TradeExpiredPanel, TradeShipmentPanel } from "./TradeShipmentPanel";
+import { PackagingLine, ReleaseReservation, TradeExpiredPanel, TradeShipmentPanel } from "./TradeShipmentPanel";
+import { LocalMeetupPanel, LocalReviewPanel, LocalSettledNote, MeetupDetailsSection } from "./LocalPickupPanels";
 import { TradeHistory, TradeMessagesPanel } from "./TradeConversation";
 import type { TradePanelProps } from "./types";
 
@@ -45,7 +47,9 @@ import type { TradePanelProps } from "./types";
 // (and more time), what it adds up to, the deposit and proof of shipping,
 // the step that's waiting (review, confirmation, the shipment, inspection
 // and the final offer, payment, wrapping up, or an expired reservation), our
-// cards on it, messages, history, and rejecting or canceling it.
+// cards on it, messages, history, and rejecting or canceling it. A local
+// pickup trade (LocalPickupPanels.tsx) is approved without a card review,
+// has a meetup instead of a shipment, and is finished at the meetup.
 
 /** What staff do next, by status. */
 const STAFF_NEXT: Record<TradeStatus, string> = {
@@ -72,6 +76,17 @@ const STAFF_NEXT: Record<TradeStatus, string> = {
   canceled_by_store: "You canceled this trade. Any deposit is refunded in full.",
 };
 
+/** What staff do next on a local pickup trade, where it differs. */
+const LOCAL_STAFF_NEXT: Partial<Record<TradeStatus, string>> = {
+  awaiting_trade_list: "The customer is still picking our cards. Nothing is reserved. Their cards are valued when you meet.",
+  pending_review: "Local pickup: approve it (no card review, no deposit), ask for changes, or reject it.",
+  awaiting_confirmation: "Approved. Waiting for the customer to confirm. Nothing is reserved yet.",
+  awaiting_shipment: "Our cards are held for the meetup. Agree on a time and place in the messages, then record their cards below when you meet.",
+  completed: "Complete: traded in person. Add the cards you took to inventory.",
+  canceled: "Canceled by the customer. Our cards went back on sale.",
+  expired: "The hold ended before you met. Our cards went back on sale.",
+};
+
 /** The deadline that's running, by status, and the kind of extension that moves it. */
 function runningDeadline(trade: StaffTrade): { label: string; at: string | null; original: string | null; kind: "list" | "confirmation" | "shipping" | "payment" } | null {
   switch (trade.status) {
@@ -84,7 +99,12 @@ function runningDeadline(trade: StaffTrade): { label: string; at: string | null;
       return { label: "Confirm by", at: trade.confirmBy, original: trade.confirmByOriginal, kind: "confirmation" };
     case "awaiting_shipment":
     case "tracking_submitted":
-      return { label: "Ship by", at: trade.shipBy, original: trade.shipByOriginal, kind: "shipping" };
+      return {
+        label: trade.handoffMethod === "local" ? "Hold ends" : "Ship by",
+        at: trade.shipBy,
+        original: trade.shipByOriginal,
+        kind: "shipping",
+      };
     case "awaiting_payment":
       return { label: "Payment due", at: trade.paymentDueAt, original: null, kind: "payment" };
     default:
@@ -176,7 +196,9 @@ function OpenTradeDrawer({ tradeId, onClose, onChanged, onOpenOrder }: DrawerPro
       title={trade ? `Trade ${tradeLabel(trade.tradeNumber).replace("-", "\u2011")}` : "Trade"}
       variant="drawer"
       size="lg"
-      headerExtra={trade ? <Badge tone={TRADE_STATUS_TONE[trade.status]}>{TRADE_STATUS_ADMIN_LABELS[trade.status]}</Badge> : null}
+      headerExtra={
+        trade ? <Badge tone={TRADE_STATUS_TONE[trade.status]}>{tradeStatusAdminLabel(trade.status, trade.handoffMethod)}</Badge> : null
+      }
     >
       {loaded ? (
         <TradeBody
@@ -211,6 +233,8 @@ function TradeBody(props: TradePanelProps & { onOpenOrder: (orderId: string) => 
   const showReview = status === "pending_review";
   const showInspection = status === "received" || status === "under_inspection";
 
+  if (trade.handoffMethod === "local") return <LocalTradeBody {...props} />;
+
   return (
     <div className="gg-trd">
       <CustomerSection trade={trade} />
@@ -240,6 +264,42 @@ function TradeBody(props: TradePanelProps & { onOpenOrder: (orderId: string) => 
   );
 }
 
+/** A local pickup trade: approve, arrange the meetup, finish it there. Nothing ships, nothing is inspected by mail. */
+function LocalTradeBody(props: TradePanelProps & { onOpenOrder: (orderId: string) => void }) {
+  const { trade, busy, run, onOpenOrder } = props;
+  const status = trade.status;
+  const finished = status === "approved_for_fulfillment" || status === "completed";
+  const meetupOpen = status === "pending_review" || status === "awaiting_confirmation" || status === "awaiting_shipment";
+  return (
+    <div className="gg-trd">
+      <CustomerSection trade={trade} />
+      <StandingSection {...props} />
+      <MoneySection {...props} />
+
+      {status === "pending_review" && <LocalReviewPanel {...props} />}
+      {meetupOpen && status !== "pending_review" && <MeetupDetailsSection trade={trade} busy={busy} run={run} />}
+      {(status === "awaiting_confirmation" || status === "awaiting_deposit") && <ConfirmationPanel {...props} />}
+      {status === "awaiting_shipment" && (
+        <>
+          <LocalMeetupPanel {...props} />
+          <section className="gg-trd__section">
+            <ReleaseReservation trade={trade} busy={busy} run={run} />
+          </section>
+        </>
+      )}
+      {finished && <TradeWrapUpPanel {...props} onOpenOrder={onOpenOrder} />}
+      {status === "expired" && <TradeExpiredPanel {...props} />}
+
+      {(finished || trade.offered.length > 0) && status !== "awaiting_shipment" && <TheirCards trade={trade} />}
+      <OurCards trade={trade} busy={busy} run={run} />
+      <TradeMessagesPanel trade={trade} busy={busy} run={run} />
+      <TradeHistory trade={trade} />
+      {STAFF_REJECTABLE_STATUSES.includes(status) && status !== "pending_review" && <RejectSection {...props} />}
+      {STAFF_CANCELABLE_STATUSES.includes(status) && <CancelByStoreSection {...props} />}
+    </div>
+  );
+}
+
 function CustomerSection({ trade }: { trade: StaffTrade }) {
   const subject = encodeURIComponent(`Your Geega Games trade ${tradeLabel(trade.tradeNumber)}`);
   const r = trade.customerRecord;
@@ -250,6 +310,12 @@ function CustomerSection({ trade }: { trade: StaffTrade }) {
       <h3>Customer</h3>
       <p>
         <strong>{trade.customerName || "Customer"}</strong>
+        {trade.handoffMethod === "local" && (
+          <>
+            {" "}
+            <Badge tone="purple">Local pickup</Badge>
+          </>
+        )}
       </p>
       {trade.customerEmail && (
         <div className="gg-leaddetail__contactlinks">
@@ -304,7 +370,7 @@ function StandingSection({ trade, owner, busy, run, settings }: TradePanelProps)
     <section className="gg-trd__section gg-trd-standing">
       <p className="gg-trd-standing__next">
         <Icon name={needsYou ? "alert" : "info"} size={16} />
-        {STAFF_NEXT[status]}
+        {(trade.handoffMethod === "local" ? LOCAL_STAFF_NEXT[status] : undefined) ?? STAFF_NEXT[status]}
       </p>
       {trade.reviewFlag && (
         <div className="gg-inline-note gg-inline-note--warning" role="status">
@@ -472,9 +538,18 @@ function ConfirmationPanel({ trade, busy, run }: TradePanelProps) {
     <section className="gg-trd__section gg-trd-step" aria-labelledby="gg-trd-confirm-title">
       <h3 id="gg-trd-confirm-title">Waiting for the customer to confirm</h3>
       <p className="gg-card-meta">
-        Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see the cards, both deadlines and the deposit terms, tick
-        the box and confirm{trade.deposit.cents > 0 ? `, paying the ${formatCents(trade.deposit.cents)} deposit` : ""}. Our cards stay on
-        sale until then.
+        {trade.handoffMethod === "local" ? (
+          <>
+            Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see our cards and how long we&rsquo;ll hold them,
+            tick the box and confirm (no deposit). Our cards stay on sale until then.
+          </>
+        ) : (
+          <>
+            Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see the cards, both deadlines and the deposit
+            terms, tick the box and confirm{trade.deposit.cents > 0 ? `, paying the ${formatCents(trade.deposit.cents)} deposit` : ""}. Our
+            cards stay on sale until then.
+          </>
+        )}
       </p>
       {short.length > 0 && (
         <p className="gg-trd-blocker" role="note">
@@ -528,7 +603,74 @@ function ConfirmationPanel({ trade, busy, run }: TradePanelProps) {
  * what shipping cost against what was charged, the theoretical change in
  * inventory value, and our cards' shipment.
  */
-function MoneySection({ trade, settings, busy, run }: TradePanelProps) {
+function MoneySection(props: TradePanelProps) {
+  if (props.trade.handoffMethod === "local") return <LocalMoneySection {...props} />;
+  return <ShippedMoneySection {...props} />;
+}
+
+/** A local pickup trade's money: our cards, what of theirs covers them, and (once finished) how it settled in person. */
+function LocalMoneySection({ trade, settings, busy, run }: TradePanelProps) {
+  const m = tradeMoney(trade);
+  const finished = trade.status === "approved_for_fulfillment" || trade.status === "completed";
+  const ourCount = trade.wanted.filter((w) => w.status !== "released").reduce((n, w) => n + w.quantity, 0);
+  const bring = valueForCreditCents(trade.wantedTotalCents, trade.creditRatePercent, trade.processingFeeCents);
+  return (
+    <section className="gg-trd__section">
+      <h3>What it adds up to</h3>
+      <dl className="gg-trd-money">
+        <div>
+          <dt>
+            Our cards ({ourCount} card{ourCount === 1 ? "" : "s"}, retail)
+          </dt>
+          <dd>{formatCents(m.wantedCents)}</dd>
+        </div>
+        {finished ? (
+          <>
+            <div>
+              <dt>Their cards (TCG low, at the meetup)</dt>
+              <dd>{formatCents(trade.finalValueCents ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>
+                Trade credit at {trade.creditRatePercent}%{trade.processingFeeCents ? `, less ${formatCents(trade.processingFeeCents)} fee` : ""}
+              </dt>
+              <dd>{formatCents(m.creditCents)}</dd>
+            </div>
+            <div className="gg-trd-money__total">
+              <dt>{m.dueCents > 0 ? "Paid in person" : "Nothing to pay"}</dt>
+              <dd>{formatCents(m.dueCents)}</dd>
+            </div>
+            {m.excessCents > 0 && (
+              <div>
+                <dt>{m.cashCents > 0 ? "Credit left over, paid as cash" : "Credit left over (store credit)"}</dt>
+                <dd>{formatCents(m.cashCents > 0 ? m.cashCents : m.excessCents)}</dd>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div>
+              <dt>Their cards</dt>
+              <dd>Valued at the meetup</dd>
+            </div>
+            <div>
+              <dt>Their cards that cover ours at {trade.creditRatePercent}%</dt>
+              <dd>{formatCents(bring)}</dd>
+            </div>
+            <div>
+              <dt>Shipping and deposit</dt>
+              <dd>None</dd>
+            </div>
+          </>
+        )}
+      </dl>
+      {finished && <LocalSettledNote trade={trade} />}
+      {finished && <TradeEconomicsBlock trade={trade} settings={settings} busy={busy} run={run} />}
+    </section>
+  );
+}
+
+function ShippedMoneySection({ trade, settings, busy, run }: TradePanelProps) {
   const m = tradeMoney(trade);
   const ourCount = trade.wanted.filter((w) => w.status !== "released").reduce((n, w) => n + w.quantity, 0);
   const stage = m.valueStage === "final" ? "final" : m.valueStage === "approved" ? "approved" : "estimated";
@@ -628,12 +770,19 @@ function TradeEconomicsBlock({ trade, settings, busy, run }: Pick<TradePanelProp
       shippingCents: trade.shippingCents,
       orderPostageCents: trade.orderPostageCents,
       outboundPostageCents: trade.outboundPostageCents,
+      localPickup: trade.handoffMethod === "local",
     },
     settings.shipCostEstimateCents,
   );
   if (!e) return null;
   const source =
-    e.shippingCostSource === "label" ? "label bought here" : e.shippingCostSource === "recorded" ? "recorded" : "estimate, from Settings";
+    e.shippingCostSource === "none"
+      ? "picked up in person"
+      : e.shippingCostSource === "label"
+        ? "label bought here"
+        : e.shippingCostSource === "recorded"
+          ? "recorded"
+          : "estimate, from Settings";
 
   async function save(clear: boolean) {
     const raw = postage.trim();
@@ -662,7 +811,7 @@ function TradeEconomicsBlock({ trade, settings, busy, run }: Pick<TradePanelProp
           <dt>
             Actual shipping cost <span className="gg-card-meta">({source})</span>
           </dt>
-          <dd>{e.shippingCostSource === "estimate" ? "Not recorded" : formatCents(e.shippingCostCents)}</dd>
+          <dd>{e.shippingCostSource === "estimate" ? "Not recorded" : e.shippingCostSource === "none" ? "None" : formatCents(e.shippingCostCents)}</dd>
         </div>
         <div>
           <dt>Net shipping expense</dt>
@@ -682,6 +831,7 @@ function TradeEconomicsBlock({ trade, settings, busy, run }: Pick<TradePanelProp
         isn&rsquo;t profit: it doesn&rsquo;t account for what our cards cost us, fees or cash flow.
       </p>
       {e.shippingCostSource !== "label" &&
+        e.shippingCostSource !== "none" &&
         (editing ? (
           <div className="gg-trd-form gg-trd-postage">
             <label className="gg-trd-field">

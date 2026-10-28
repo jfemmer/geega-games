@@ -3952,6 +3952,14 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   gap: 10px;
   align-items: end;
 }
+/* Local pickup, at the meetup: condition, taking, TCG low each, counts for. */
+.gg-trd-meet {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(64px, 0.7fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  gap: 10px;
+  align-items: end;
+}
+.gg-trd-meetup { margin: 0; padding: 10px 12px; border-left: 3px solid var(--gg-brand); border-radius: var(--gg-radius-sm); background: var(--gg-surface-2); white-space: pre-line; line-height: 1.5; }
 .gg-trd-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 0.78rem; font-weight: 600; color: var(--gg-text-soft); }
 .gg-trd-field .gg-input { padding: 7px 8px; font-size: 0.86rem; }
 .gg-trd-field .gg-trd-dollar { display: flex; }
@@ -4070,6 +4078,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-trd-card__approved { align-items: flex-start; }
   .gg-trd-card__notelist { padding-left: 0; }
   .gg-trd-inspect { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gg-trd-meet { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gg-trd-card__total { margin-left: 0; }
   .gg-trd-seg__btn { padding: 8px 14px; min-height: 40px; }
   .gg-trd-msg, .gg-trd-msg--staff, .gg-trd-msg--system { margin-left: 0; margin-right: 0; }

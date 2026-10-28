@@ -8,9 +8,10 @@ import { SUPPORT_EMAIL } from "./StaticPages";
 import { FaqSection } from "../components/SellLandingSections";
 import { TradeWantedList } from "../components/trades/TradeWantedList";
 import { TradeShippingProgress } from "../components/trades/TradeShippingProgress";
+import { HandoffChoice, LocalCartSummary } from "../components/trades/LocalPickup";
 import { tradeActions, useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart, tradeCartCount, tradeCartTotalCents, useTradeCart } from "../lib/tradeCart";
-import { MY_TRADES_PATH, TRADE_CENTER_PATH, myTradePath, tradingOpen, type TradeTerms } from "../lib/tradeCenter";
+import { MY_TRADES_PATH, TRADE_CENTER_PATH, myTradePath, tradingOpen, type TradeHandoffMethod, type TradeTerms } from "../lib/tradeCenter";
 import { depositBands } from "../lib/tradeRules";
 import { minimumMessage, moneyShort, requiredValueCents, shippingLabel, tradeShippingCents } from "../lib/tradeShipping";
 import { conditionAgeRules, conditionAgeSummary } from "../lib/tradeConditions";
@@ -27,7 +28,8 @@ import { breadcrumbJsonLd, faqJsonLd } from "../../seo/site";
 // when the cards arrive, so values can go up or down), the rules worth
 // knowing, the deposit, and the FAQ. Every number comes from the Trade
 // Center settings staff control, so the page can't promise anything the
-// trade itself won't do.
+// trade itself won't do. When local pickup is on, the customer can choose to
+// trade in person instead: no card list, no shipping, settled when we meet.
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -129,6 +131,14 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
       answer:
         "Yes. Before you confirm, it costs nothing. After you confirm, our cards are reserved for you, so canceling before you ship counts against future trades, and a deposit on the trade may be kept under our cancellation policy (we review every case). Once the carrier has your package you can still cancel with no penalty, and we'll mail your cards back.",
     },
+    ...(t?.localPickupEnabled
+      ? [
+          {
+            question: "Can I trade in person?",
+            answer: `Yes, in ${t.localPickupArea}: choose local pickup when you start your trade. You don't list your cards; we approve the trade, you confirm it, and we hold our cards for you for ${plural(t.localMeetDays, "day")} (Sundays don't count) while we set a time and a public place to meet. Bring your cards and we'll value each one at its TCG low for the condition we see, together. Anything your ${rate} trade credit doesn't cover is paid then, in cash or by card. There's no deposit and no shipping.`,
+          },
+        ]
+      : []),
     {
       question: "Do I need an account?",
       answer: "Yes. Trades live in your account, where you'll see every card, price, message and deadline.",
@@ -143,6 +153,7 @@ export default function TradeCardsPage() {
   const { navigate } = useRouter();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<TradeHandoffMethod>("ship");
   const faq = faqItems(terms);
 
   useSEO({
@@ -157,6 +168,8 @@ export default function TradeCardsPage() {
   const count = tradeCartCount(cart);
   const total = tradeCartTotalCents(cart);
   const belowMinimum = terms !== null && total < terms.minTradeValueCents;
+  // Local pickup only while it's offered; a choice made before it was turned off falls back to shipping.
+  const method: TradeHandoffMethod = handoff === "local" && terms?.localPickupEnabled ? "local" : "ship";
 
   async function start() {
     if (belowMinimum) return;
@@ -167,7 +180,10 @@ export default function TradeCardsPage() {
     setStarting(true);
     setError(null);
     try {
-      const res = await tradeActions.start(cart.map((c) => ({ inventoryItemId: c.inventoryItemId, quantity: c.quantity })));
+      const res = await tradeActions.start(
+        cart.map((c) => ({ inventoryItemId: c.inventoryItemId, quantity: c.quantity })),
+        method,
+      );
       tradeCart.clear();
       navigate(myTradePath(res.trade.id));
     } catch (err) {
@@ -249,8 +265,13 @@ export default function TradeCardsPage() {
         {count > 0 && (
           <aside className="gg-tc-cartpage__summary" aria-labelledby="gg-tc-summary-title">
             <h2 id="gg-tc-summary-title">Trade summary</h2>
+            {terms?.localPickupEnabled && <HandoffChoice value={method} terms={terms} disabled={starting} onChange={setHandoff} />}
             {terms ? (
-              <TradeSummary terms={terms} count={count} totalCents={total} />
+              method === "local" ? (
+                <LocalCartSummary terms={terms} count={count} totalCents={total} />
+              ) : (
+                <TradeSummary terms={terms} count={count} totalCents={total} />
+              )
             ) : (
               <p className="gg-tc-line__meta" role="status">
                 Loading our current rates…
@@ -282,7 +303,7 @@ export default function TradeCardsPage() {
                 </button>
                 <p className="gg-tc-line__meta">
                   Starting a trade doesn&rsquo;t reserve these yet: they stay on sale until we&rsquo;ve approved your trade and you confirm
-                  it.
+                  it.{method === "local" ? " Then we hold them while we set up a time to meet." : ""}
                 </p>
               </>
             ) : (
@@ -386,6 +407,13 @@ function HowTradingWorks({ terms }: { terms: TradeTerms | null }) {
           decline with no penalty and we mail yours back.
         </li>
       </ol>
+      {terms?.localPickupEnabled && (
+        <p className="gg-tc-how__local">
+          <strong>Near {terms.localPickupArea}?</strong> Choose local pickup and skip the mail: send your trade without listing your cards,
+          confirm it, and we&rsquo;ll meet to look over your cards together and settle the trade on the spot. Nothing to pay up front and
+          nothing to ship.
+        </p>
+      )}
       <div className="gg-tc-how__ages">
         <h3>How we set condition</h3>
         <table className="gg-tc-table gg-tc-agetable">

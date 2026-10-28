@@ -10,6 +10,7 @@
 //   shipping-adjusted   = gross difference − net shipping
 //
 // e.g. $250 in, $200 out: $50 gross; $6 postage, $0 charged: $44 adjusted.
+// A local pickup trade ships nothing: its net shipping is $0.
 //
 // Pure module: no React, browser, Node or Supabase imports. Money is whole cents.
 
@@ -24,9 +25,11 @@ export interface TradeEconomicsInput {
   orderPostageCents: number | null;
   /** Postage staff recorded on the trade. */
   outboundPostageCents: number | null;
+  /** Local pickup: our cards were handed over in person, so nothing shipped. */
+  localPickup?: boolean;
 }
 
-export type ShippingCostSource = "label" | "recorded" | "estimate";
+export type ShippingCostSource = "label" | "recorded" | "estimate" | "none";
 
 export interface TradeEconomics {
   incomingMarketCents: number;
@@ -34,7 +37,7 @@ export interface TradeEconomics {
   grossDifferenceCents: number;
   shippingChargedCents: number;
   shippingCostCents: number;
-  /** label: bought through EasyPost; recorded: staff entered it; estimate: the setting. */
+  /** label: bought through EasyPost; recorded: staff entered it; estimate: the setting; none: handed over in person. */
   shippingCostSource: ShippingCostSource;
   /** Positive when shipping cost us more than we charged. */
   netShippingCents: number;
@@ -44,9 +47,14 @@ export interface TradeEconomics {
 /** A trade's numbers, or null before its final value is known. */
 export function tradeEconomics(t: TradeEconomicsInput, estimateCents: number): TradeEconomics | null {
   if (t.finalValueCents == null) return null;
-  const shippingCostSource: ShippingCostSource =
-    t.orderPostageCents != null ? "label" : t.outboundPostageCents != null ? "recorded" : "estimate";
-  const shippingCostCents = t.orderPostageCents ?? t.outboundPostageCents ?? estimateCents;
+  const shippingCostSource: ShippingCostSource = t.localPickup
+    ? "none"
+    : t.orderPostageCents != null
+      ? "label"
+      : t.outboundPostageCents != null
+        ? "recorded"
+        : "estimate";
+  const shippingCostCents = t.localPickup ? 0 : (t.orderPostageCents ?? t.outboundPostageCents ?? estimateCents);
   const shippingChargedCents = t.shippingCents ?? 0;
   const grossDifferenceCents = t.finalValueCents - t.wantedTotalCents;
   const netShippingCents = shippingCostCents - shippingChargedCents;

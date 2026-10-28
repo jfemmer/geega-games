@@ -12,9 +12,10 @@ import {
   sortingEmailText as noticeEmailText,
   type SortingEmailData as NoticeEmailData,
 } from "./emails/SortingEmails.js";
-import { adminTradePath, shipToAddress, type TradeBundle, type TradeOfferRow, type TradeSettingsRow } from "./tradeCenter.js";
+import { adminTradePath, handoffOf, shipToAddress, type TradeBundle, type TradeOfferRow, type TradeSettingsRow } from "./tradeCenter.js";
 import {
   cardLine,
+  LOCAL_PAYMENT_LABELS,
   formatDeadline,
   formatUsd,
   myTradePath,
@@ -203,6 +204,7 @@ export type TradeCustomerEmail =
   | { kind: "reinstated" }
   | { kind: "dispute_received" }
   | { kind: "message"; messageId: string; body: string }
+  | { kind: "meetup_set" }
   | { kind: "reminder"; reminder: "list_due" | "revision_due" | "confirm_by" | "ship_by" | "payment_due" };
 
 /** Emails the customer about their trade. Never throws. */
@@ -257,6 +259,10 @@ function offerCardsOf(b: TradeBundle): TradeOfferCard[] {
 }
 
 async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: TradeCustomerEmail): Promise<Result> {
+  if (handoffOf(b.trade) === "local") {
+    const local = await buildAndSendLocal(b, settings, email);
+    if (local !== undefined) return local;
+  }
   const t = b.trade;
   const label = tradeLabel(t.trade_number);
   const url = tradeUrl(t.id);
@@ -787,6 +793,10 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         button: { href: url, label: "Reply on your trade page" },
       });
 
+    case "meetup_set":
+      // Only local pickup trades have a meetup (buildAndSendLocal).
+      return { status: "skipped", reason: "not-local" };
+
     case "reminder": {
       const r = email.reminder;
       if (r === "list_due" || r === "revision_due") {
@@ -837,6 +847,205 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         button: { href: url, label: `Pay ${money(t.amount_due_cents)}` },
       });
     }
+  }
+}
+
+/** Where to meet, when staff have written it. */
+function meetupNote(b: TradeBundle): string | null {
+  return b.trade.meetup_details ? `Where and when to meet: ${b.trade.meetup_details}` : null;
+}
+
+/**
+ * A local pickup trade's emails, where they differ from a shipped one's:
+ * nothing to list, mail or track, and the trade settles when we meet.
+ * undefined: the shipped trade's email reads right as it is.
+ */
+async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, email: TradeCustomerEmail): Promise<Result | undefined> {
+  const t = b.trade;
+  const label = tradeLabel(t.trade_number);
+  const url = tradeUrl(t.id);
+  const greet = hi(t.customer_name);
+  const view = { href: url, label: "View your trade" };
+  const area = settings.local_pickup_area;
+  const credit = `${t.credit_rate_percent}%`;
+
+  switch (email.kind) {
+    case "submitted":
+      return sendCustomer(b, settings, "trade_submitted", `trade-submitted-${t.id}-${t.submitted_at}`, `Trade ${label}: we got your trade`, {
+        previewText: "We're reviewing your local pickup trade and will email you when we've decided.",
+        heading: "We got your trade",
+        paragraphs: [
+          `${greet} thanks! We're reviewing trade ${label}, a local pickup in ${area}, and will email you as soon as we've decided.`,
+          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, you'll confirm your trade to reserve them until we meet.",
+          `Bring the cards you're trading in when we meet: we'll value each one at its TCG low for the condition we see, and ${credit} of that is your trade credit toward our cards.`,
+        ],
+        rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }],
+        button: view,
+      });
+
+    case "approved": {
+      const confirmBy = t.confirm_by ? formatDeadline(t.confirm_by) : null;
+      return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: confirm by ${confirmBy ?? "soon"}`, {
+        previewText: confirmBy ? `Confirm your trade by ${confirmBy} to reserve our cards until we meet.` : "Confirm your trade to reserve our cards.",
+        heading: "Your trade is approved",
+        paragraphs: [
+          `${greet} good news: we've approved trade ${label}, a local pickup in ${area}.`,
+          confirmBy
+            ? `Confirm it by ${confirmBy} (${hoursPhrase(settings.confirmation_hours)}, not counting Sundays). Confirming holds our cards for you for ${daysPhrase(settings.local_meet_days)} while we meet. There's no deposit.`
+            : "Confirm it on your trade page to hold our cards until we meet.",
+          "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
+        ],
+        note: [meetupNote(b), t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null].filter(Boolean).join("\n\n") || null,
+        rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }],
+        button: { href: url, label: "Confirm your trade" },
+      });
+    }
+
+    case "reserved": {
+      const meetBy = t.ship_by ? formatDeadline(t.ship_by) : null;
+      return sendCustomer(b, settings, "trade_reserved", `trade-reserved-${t.id}-${t.reserved_at}`, `Trade ${label}: our cards are reserved. Let's meet up`, {
+        previewText: meetBy ? `Our cards are held for you until ${meetBy}.` : "Our cards are held for you until we meet.",
+        heading: "Our cards are reserved for you",
+        paragraphs: [
+          `${greet} trade ${label} is confirmed. Our cards are reserved for you and off the shelf${meetBy ? ` until ${meetBy}` : ""}.`,
+          t.meetup_details
+            ? "Here's where and when we'll meet. Need a different time? Reply on your trade page."
+            : "We'll message you on your trade page to set a time and a public place to meet. Reply there with times that work for you.",
+          `Bring the cards you're trading in. We'll value each one at its TCG low for the condition we see, and ${credit} of that is your credit toward our cards. Anything it doesn't cover is paid when we meet, in cash or by card; credit left over stays in your account.`,
+        ],
+        note: meetupNote(b) ?? settings.local_pickup_details,
+        button: { href: url, label: "Message us about the meetup" },
+      });
+    }
+
+    case "meetup_set":
+      if (!t.meetup_details) return { status: "skipped", reason: "no-meetup" };
+      return sendCustomer(
+        b,
+        settings,
+        "trade_meetup_set",
+        `trade-meetup-${t.id}-${crypto.createHash("sha256").update(t.meetup_details).digest("hex").slice(0, 12)}`,
+        `Trade ${label}: where and when we'll meet`,
+        {
+          previewText: t.meetup_details.slice(0, 120),
+          heading: "Where and when we'll meet",
+          paragraphs: [`${greet} here are the meetup details for trade ${label}:`],
+          note: t.meetup_details,
+          closing: [
+            "Bring the cards you're trading in. Need a different time or place? Reply on your trade page.",
+            ...(t.status === "awaiting_confirmation" && t.confirm_by
+              ? [`Remember to confirm your trade by ${formatDeadline(t.confirm_by)} so we hold our cards for you.`]
+              : []),
+          ],
+          button: { href: url, label: "Reply on your trade page" },
+        },
+      );
+
+    case "completed": {
+      const value = t.final_value_cents ?? 0;
+      const issued = t.credit_issued_cents ?? 0;
+      const spent = Math.min(t.final_credit_cents ?? 0, t.wanted_total_cents);
+      const paid = t.local_paid_cents ?? t.amount_due_cents ?? 0;
+      const excess = t.excess_cents ?? 0;
+      const cash = t.excess_handling === "cash" ? (t.cash_payout_cents ?? 0) : 0;
+      const method = t.local_payment_method && t.local_payment_method !== "none" ? LOCAL_PAYMENT_LABELS[t.local_payment_method as keyof typeof LOCAL_PAYMENT_LABELS] : null;
+      const taken = b.offers.filter((c) => (c.final_quantity ?? 0) > 0);
+      return sendCustomer(b, settings, "trade_completed", `trade-completed-${t.id}`, `Trade ${label} is complete`, {
+        previewText: "Thanks for trading with us! Here's how your trade settled.",
+        heading: "Trade complete",
+        paragraphs: [`${greet} thanks for meeting up and trading with Geega Games! Here's how trade ${label} settled.`],
+        rows: [
+          { label: "Our cards (you picked them up)", value: money(t.wanted_total_cents) },
+          { label: "Your cards we took", value: money(value) },
+          { label: `Trade credit at ${credit}`, value: money(issued) },
+          { label: "Used on our cards", value: money(Math.max(spent, 0)) },
+          ...(paid > 0 ? [{ label: `Paid when we met${method ? ` (${method.toLowerCase()})` : ""}`, value: money(paid) }] : []),
+          ...(cash > 0
+            ? [{ label: "Cash for the credit left over", value: money(cash) }]
+            : excess > 0
+              ? [{ label: "Store credit left for you", value: money(excess) }]
+              : []),
+        ],
+        lists:
+          taken.length > 0
+            ? [
+                {
+                  title: "Your cards we took",
+                  items: taken
+                    .slice(0, MAX_EMAIL_CARDS)
+                    .map((c) => `${c.final_quantity} × ${offerName(c)}: ${money((c.final_quantity ?? 0) * (c.final_unit_cents ?? 0))}`),
+                },
+              ]
+            : [],
+        closing: [
+          ...(excess > 0 && cash === 0 ? ["Your store credit is in your account, ready for your next order."] : []),
+          "We'd love to trade with you again.",
+        ],
+        button: view,
+      });
+    }
+
+    case "expired":
+      return sendCustomer(b, settings, "trade_reservation_expired", `trade-expired-${t.id}-${t.closed_at}`, `Trade ${label}: the hold on our cards ended`, {
+        previewText: "Our cards went back on sale. Message us if you'd still like to trade.",
+        heading: "The hold on our cards ended",
+        paragraphs: [
+          `${greet} we didn't meet for trade ${label} before the hold ended${t.ship_by ? ` (${formatDeadline(t.ship_by)})` : ""}, so our cards went back on sale.`,
+          "Nothing was charged, and it doesn't count against you. If you'd still like to trade, message us on your trade page or start a new trade.",
+        ],
+        button: view,
+      });
+
+    case "canceled":
+      return sendCustomer(b, settings, "trade_canceled", `trade-canceled-${t.id}`, `Trade ${label} is canceled`, {
+        previewText: "Your trade is canceled.",
+        heading: "Your trade is canceled",
+        paragraphs: [
+          `${greet} as you asked, we've canceled trade ${label}.`,
+          t.reserved_at ? "Our cards went back on sale. Nothing was charged." : "Nothing of ours was reserved, and nothing was charged.",
+        ],
+        button: view,
+      });
+
+    case "extended":
+      if (email.deadline !== "shipping") return undefined;
+      return sendCustomer(b, settings, "trade_extended", `trade-extended-${t.id}-shipping-${t.ship_by}`, `Trade ${label}: more time to meet`, {
+        previewText: t.ship_by ? `We'll hold our cards until ${formatDeadline(t.ship_by)}.` : "We gave you more time.",
+        heading: "We gave you more time",
+        paragraphs: [`${greet} we'll hold our cards for trade ${label} until ${t.ship_by ? formatDeadline(t.ship_by) : "later"} so we can meet.`],
+        button: view,
+      });
+
+    case "reinstated":
+      return sendCustomer(b, settings, "trade_reinstated", `trade-reinstated-${t.id}-${t.updated_at}`, `Trade ${label} is back on`, {
+        previewText: "Our cards are reserved for you again.",
+        heading: "Your trade is back on",
+        paragraphs: [
+          `${greet} we've reinstated trade ${label}: our cards are reserved for you again${t.ship_by ? ` until ${formatDeadline(t.ship_by)}` : ""}.`,
+          "We'll message you on your trade page to set up where and when to meet.",
+        ],
+        note: meetupNote(b),
+        button: view,
+      });
+
+    case "reminder":
+      if (email.reminder !== "ship_by") return undefined;
+      if (!t.ship_by) return { status: "skipped", reason: "no-deadline" };
+      return sendCustomer(b, settings, "trade_reminder_ship_by", `trade-reminder-ship-${t.id}-${t.ship_by}`, `Trade ${label}: our hold ends ${formatDeadline(t.ship_by)}`, {
+        previewText: "Haven't met up yet? Message us to set a time.",
+        heading: "Let's meet up soon",
+        paragraphs: [
+          `${greet} we're holding our cards for trade ${label} until ${formatDeadline(t.ship_by)}.`,
+          t.meetup_details
+            ? "See you at the meetup below. Need a different time? Message us on your trade page."
+            : "Haven't set a time yet? Message us on your trade page with times that work for you.",
+        ],
+        note: meetupNote(b),
+        button: { href: url, label: "Message us" },
+      });
+
+    default:
+      return undefined;
   }
 }
 
@@ -896,6 +1105,16 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
       case "resubmitted":
         key = `trade:${event.kind}:${t.id}:${t.submitted_at}`;
         title = `${event.kind === "submitted" ? "Trade to review" : "Trade changes to review"} · ${label}`;
+        if (handoffOf(t) === "local") {
+          body = `${who} · local pickup · ${money(t.wanted_total_cents)} of our cards`;
+          heading =
+            event.kind === "submitted" ? "A local pickup trade is waiting for review" : "A local pickup trade was sent back with changes";
+          rows.push(
+            { label: "How", value: "Local pickup: their cards are valued when you meet" },
+            ...(t.customer_note ? [{ label: "Their note", value: t.customer_note }] : []),
+          );
+          break;
+        }
         body = `${who} · ${cards} card${cards === 1 ? "" : "s"} · est. ${money(t.estimated_value_cents)}`;
         heading = event.kind === "submitted" ? "A trade is waiting for review" : "A trade was sent back with changes";
         rows.push(
@@ -906,6 +1125,15 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
       case "reserved":
         key = `trade:reserved:${t.id}:${t.reserved_at}`;
         title = `Trade confirmed · ${label}`;
+        if (handoffOf(t) === "local") {
+          body = `${who} · local pickup · cards held until ${t.ship_by ? formatDeadline(t.ship_by) : "?"}: arrange the meetup`;
+          heading = "A customer confirmed a local pickup trade: arrange the meetup";
+          rows.push(
+            { label: "Hold ends", value: t.ship_by ? formatDeadline(t.ship_by) : "" },
+            { label: "Meetup", value: t.meetup_details ?? "Not set yet: message them on the trade" },
+          );
+          break;
+        }
         body = `${who} · cards reserved${t.deposit_status === "paid" ? ` · ${money(deposit)} deposit paid` : ""} · ship by ${t.ship_by ? formatDeadline(t.ship_by) : "?"}`;
         heading = "A customer confirmed their trade: our cards are reserved";
         rows.push(

@@ -203,7 +203,7 @@ describe("the Trade Cards page (1)", () => {
 
     await user.click(within(summary).getByRole("button", { name: "Start my trade" }));
     await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-trade"));
-    expect(world.posts).toEqual([{ body: { action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }] }, auth: "Bearer member-token" }]);
+    expect(world.posts).toEqual([{ body: { action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }], handoffMethod: "ship" }, auth: "Bearer member-token" }]);
     expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "null")).toEqual([]);
   });
 
@@ -1221,5 +1221,141 @@ describe("My Trades", () => {
   it("invites a first trade when there are none", async () => {
     at("/account/trades", <MyTrades />);
     expect(await screen.findByText("You haven’t started a trade yet.")).toBeInTheDocument();
+  });
+});
+
+describe("local pickup on the storefront", () => {
+  const LOCAL_TERMS = TRADE_TERMS;
+
+  it("offers local pickup on the trade cart: no shipping, what to bring, and starts a local trade", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    world.respond = () => ({ status: 200, json: { ok: true, terms: LOCAL_TERMS, trade: customerTrade({ id: "new-local", handoffMethod: "local" }) } });
+    at("/trade-cards", <TradeCardsPage />);
+    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
+    await waitFor(() => expect(within(summary).getByRole("group", { name: "How do you want to trade?" })).toBeInTheDocument());
+    expect(within(summary).getByRole("radio", { name: /Ship my cards/ })).toBeChecked();
+    await user.click(within(summary).getByRole("radio", { name: /Local pickup/ }));
+    expect(summary).toHaveTextContent("Meet us in the St. Louis area");
+    expect(summary).toHaveTextContent("ShippingYou pick our cards up when we meetNone");
+    expect(within(summary).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, bring about $99.99 of your cards at TCG low");
+    expect(summary).toHaveTextContent("Then we hold them while we set up a time to meet.");
+    // The FAQ answers it too.
+    expect(screen.getByText("Can I trade in person?")).toBeInTheDocument();
+
+    await user.click(within(summary).getByRole("button", { name: "Start my trade" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-local"));
+    expect(world.posts[0].body).toEqual({ action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }], handoffMethod: "local" });
+  });
+
+  it("doesn't offer local pickup while it's off", async () => {
+    world.terms = { ...TRADE_TERMS, localPickupEnabled: false };
+    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    at("/trade-cards", <TradeCardsPage />);
+    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
+    await waitFor(() => expect(summary).toHaveTextContent("Our cards (1)$79.99"));
+    expect(within(summary).queryByRole("group", { name: "How do you want to trade?" })).toBeNull();
+    expect(screen.queryByText("Can I trade in person?")).toBeNull();
+  });
+
+  it("sends a local draft without listing their cards, and can switch it to shipping", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({ status: "awaiting_trade_list", handoffMethod: "local", listDueAt: "2099-01-01T05:59:59Z", estimatedValueCents: 0, offered: [] });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const send = await screen.findByRole("button", { name: "Send for review" });
+    expect(send).toBeEnabled();
+    expect(screen.getByRole("heading", { level: 2, name: "Draft: send it for review" })).toBeInTheDocument();
+    expect(screen.getByText(/Bring them when we meet/)).toBeInTheDocument();
+    expect(screen.queryByText("Add the cards you're trading in.")).toBeNull();
+    const steps = screen.getByRole("list", { name: "Trade progress" });
+    expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Our cards", "Review", "Confirm", "Meet up", "Done"]);
+    const balance = screen.getByRole("region", { name: "Your trade" });
+    expect(balance).toHaveTextContent("Local pickup");
+    expect(balance).toHaveTextContent("Your cards to bring");
+
+    await user.type(screen.getByLabelText(/Note for us \(optional\): when you're free/), "Weekends");
+    await user.click(send);
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "submit", tradeId: TRADE_ID, note: "Weekends" });
+
+    await user.click(screen.getByRole("radio", { name: /Ship my cards/ }));
+    await waitFor(() => expect(world.posts).toHaveLength(2));
+    expect(world.posts[1].body).toEqual({ action: "setHandoff", tradeId: TRADE_ID, handoffMethod: "ship" });
+  });
+
+  it("confirms a local trade: no deposit, how long we hold our cards, and agreeing to meet", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      handoffMethod: "local",
+      confirmBy: "2099-01-01T05:59:59.000Z",
+      meetupDetails: "Saturday 2 PM at the Ballwin library",
+      confirmation: confirmation({ confirmBy: "2099-01-01T05:59:59.000Z", local: true, shipDays: 7, termsText: "Confirming holds our cards for 7 days.\n\nThere's no deposit." }),
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    expect(panel).toHaveTextContent("No shipping and no deposit");
+    expect(panel).toHaveTextContent("We hold our cards until");
+    expect(panel).toHaveTextContent("Saturday 2 PM at the Ballwin library");
+    expect(panel).toHaveTextContent("Confirming holds our cards for 7 days.");
+    const go = within(panel).getByRole("button", { name: "Confirm Trade" });
+    expect(go).toBeDisabled();
+    await user.click(within(panel).getByRole("checkbox", { name: /I’ll meet you to trade by/ }));
+    await user.click(go);
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({ action: "confirm", tradeId: TRADE_ID, acknowledged: true, termsVersion: 1 });
+  });
+
+  it("shows the meetup once our cards are reserved, with nothing to ship", async () => {
+    world.trade = customerTrade({
+      status: "awaiting_shipment",
+      handoffMethod: "local",
+      shipBy: "2099-01-01T05:59:59.000Z",
+      meetupDetails: "Saturday 2 PM at the Ballwin library",
+      shipment: shipment(),
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Let’s meet up" })).closest("section")!;
+    expect(panel).toHaveTextContent("Our cards are held for you until");
+    expect(panel).toHaveTextContent("Saturday 2 PM at the Ballwin library");
+    expect(panel).toHaveTextContent("The cards you’re trading in");
+    expect(screen.getByRole("heading", { level: 2, name: "Reserved: let's meet up" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Tracking number/i)).toBeNull();
+    expect(screen.getByText("Reserved for you until we meet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel this trade" })).toBeInTheDocument();
+  });
+
+  it("shows how a local trade settled in person", async () => {
+    world.trade = customerTrade({
+      status: "completed",
+      handoffMethod: "local",
+      wantedTotalCents: 8899,
+      finalValueCents: 5000,
+      finalCreditCents: 4000,
+      creditIssuedCents: 4000,
+      amountDueCents: 4899,
+      localPaidCents: 4899,
+      localPaymentMethod: "cash",
+      excessCents: 0,
+      metAt: "2026-10-31T19:00:00.000Z",
+      offered: [customerCard({ id: "o1", quantity: 1, finalQuantity: 1, finalUnitCents: 5000, verifiedCondition: "LP", inspected: true })],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const settled = (await screen.findByRole("heading", { name: "How your trade settled" })).closest("section")!;
+    expect(settled).toHaveTextContent("You took our cards with you.");
+    expect(settled).toHaveTextContent("Your cards we took$50.00");
+    expect(settled).toHaveTextContent("Paid when we met (cash)$48.99");
+    expect(settled).toHaveTextContent("1 × Sheoldred, the Apocalypse");
+    expect(settled).not.toHaveTextContent("Shipping");
+    expect(screen.getByText("Yours: you picked them up when we met.")).toBeInTheDocument();
+  });
+
+  it("marks local trades in My Trades, with the meetup deadline", async () => {
+    world.trades = [customerSummary({ id: "t-l", status: "awaiting_shipment", handoffMethod: "local", shipBy: "2099-01-01T05:59:59Z" })];
+    at("/account/trades", <MyTrades />);
+    const [link] = await screen.findAllByRole("link", { name: /TR-/ });
+    expect(link).toHaveTextContent("Reserved: let's meet up");
+    expect(link).toHaveTextContent("Meet up by");
+    expect(link).toHaveTextContent("· local pickup");
   });
 });

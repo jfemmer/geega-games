@@ -65,6 +65,8 @@ const repo = vi.hoisted(() => ({
   markCashPaid: vi.fn(),
   setPostage: vi.fn(),
   message: vi.fn(),
+  setMeetup: vi.fn(),
+  completeLocal: vi.fn(),
 }));
 vi.mock("../src/admin/repositories/tradeCenter.supabase", () => ({ tradeCenterRepository: repo }));
 
@@ -1134,5 +1136,97 @@ describe("settings", () => {
     expect(screen.getByLabelText("Store credit rate (%)")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Pause new trades now" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
+  });
+});
+
+describe("local pickup trades", () => {
+  const LOCAL = { handoffMethod: "local" as const, estimatedValueCents: 0, offered: [] };
+
+  it("approves without a card review or deposit, with where to meet", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({ ...LOCAL, status: "pending_review", customerNote: "Weekends work" });
+    repo.approve.mockResolvedValue(answer(staffTrade({ ...LOCAL, status: "awaiting_confirmation" })));
+    const dialog = await openTrade(trade);
+    expect(within(dialog).getByText("Local pickup")).toBeInTheDocument();
+    const panel = within(dialog).getByRole("heading", { name: "Review this local pickup trade" }).closest("section")!;
+    expect(panel).toHaveTextContent("about $111.24 at TCG low covers ours at 80%");
+    expect(within(dialog).queryByRole("combobox", { name: "Deposit" })).toBeNull();
+    await user.type(within(panel).getByLabelText("Where and when to meet (optional)"), "Sat 2 PM, Ballwin library");
+    await user.click(within(panel).getByRole("button", { name: "Approve and email the customer" }));
+    await waitFor(() => expect(repo.approve).toHaveBeenCalledWith(TRADE_ID, { conditions: "", meetupDetails: "Sat 2 PM, Ballwin library" }));
+  });
+
+  it("finishes at the meetup: the cards taken, what they paid, and the trade complete", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      ...LOCAL,
+      status: "awaiting_shipment",
+      shipBy: "2099-01-01T05:59:59.000Z",
+      meetupDetails: "Sat 2 PM, Ballwin library",
+      wanted: [wantedItem({ status: "reserved" })],
+      // Listed before they switched to local pickup: a starting point.
+      offered: [staffCard({ id: "o1", quantity: 1, reportedCondition: "NM", estimatedUnitCents: 8000, referencePriceCents: 8000 })],
+    });
+    repo.completeLocal.mockResolvedValue(answer(staffTrade({ ...LOCAL, status: "completed" })));
+    const dialog = await openTrade(trade);
+    expect(within(dialog).getByText("Hold ends:")).toBeInTheDocument();
+    expect(within(dialog).getByText("Sat 2 PM, Ballwin library")).toBeInTheDocument();
+    const panel = within(dialog).getByRole("heading", { name: "At the meetup" }).closest("section")!;
+    // $80.00 of theirs: $64.00 credit against $88.99 of ours, so they pay $24.99.
+    expect(panel).toHaveTextContent("They pay you now$24.99");
+    const finish = within(panel).getByRole("button", { name: "Finish the trade" });
+    expect(finish).toBeDisabled();
+
+    await user.selectOptions(within(panel).getByLabelText("Condition"), "LP");
+    const price = within(panel).getByLabelText("TCG low each for Sheoldred, the Apocalypse");
+    await user.clear(price);
+    await user.type(price, "75.00");
+    expect(panel).toHaveTextContent("They pay you now$28.99");
+    await user.click(within(panel).getByRole("button", { name: "Cash" }));
+    await user.click(within(panel).getByRole("checkbox", { name: /The customer agreed to these values, paid, and we swapped cards/ }));
+    await user.click(finish);
+    await waitFor(() =>
+      expect(repo.completeLocal).toHaveBeenCalledWith(TRADE_ID, {
+        cards: [
+          expect.objectContaining({ cardName: "Sheoldred, the Apocalypse", condition: "LP", quantity: 1, unitCents: 7500, finish: "nonfoil" }),
+        ],
+        paidCents: 2899,
+        paymentMethod: "cash",
+        paymentNote: "",
+        cashForExcess: false,
+      }),
+    );
+  });
+
+  it("updates the meetup and releases a hold without counting it against them by default", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({ ...LOCAL, status: "awaiting_shipment", shipBy: "2099-01-01T05:59:59.000Z", wanted: [wantedItem({ status: "reserved" })] });
+    repo.setMeetup.mockResolvedValue(answer(trade));
+    repo.expireNow.mockResolvedValue(answer(staffTrade({ ...LOCAL, status: "expired" })));
+    const dialog = await openTrade(trade);
+    await user.click(within(dialog).getByRole("button", { name: "Set where and when" }));
+    await user.type(within(dialog).getByLabelText("Where and when to meet"), "Sunday noon, the cafe");
+    await user.click(within(dialog).getByRole("button", { name: "Save the meetup" }));
+    await waitFor(() => expect(repo.setMeetup).toHaveBeenCalledWith(TRADE_ID, "Sunday noon, the cafe"));
+
+    await user.click(within(dialog).getByRole("button", { name: "Release the reservation…" }));
+    expect(within(dialog).getByRole("checkbox", { name: /didn.t show up/ })).not.toBeChecked();
+    await user.type(within(dialog).getByLabelText(/Why \(the customer is emailed this\)/), "Couldn't find a time");
+    await user.click(within(dialog).getByRole("button", { name: "Release our cards" }));
+    await waitFor(() => expect(repo.expireNow).toHaveBeenCalledWith(TRADE_ID, { reason: "Couldn't find a time", countAgainst: false }));
+  });
+
+  it("marks local trades in the list", async () => {
+    repo.list.mockResolvedValue({
+      trades: [tradeSummary({ handoffMethod: "local", status: "awaiting_shipment", shipBy: "2099-01-01T05:59:59.000Z" })],
+      counts: { waiting: 1, local: 1 },
+      settings: TRADE_SETTINGS,
+      owner: true,
+    });
+    renderPage();
+    const row = (await screen.findAllByText("TR-1001"))[0].closest("tr")!;
+    expect(row).toHaveTextContent("Local");
+    expect(row).toHaveTextContent("Reserved: meet up");
+    expect(row).toHaveTextContent("at the meetup");
   });
 });

@@ -9,7 +9,6 @@ import { normalizeScryfallCard } from "../../src/admin/services/scryfall.js";
 import { checkUsAddress, SHIP_TO_COUNTRY } from "../../src/store/lib/usAddress.js";
 import {
   CARD_CONDITIONS,
-  CUSTOMER_TIMELINE_LABELS,
   RESERVED_STATUSES,
   TRADE_LIMITS,
   conditionPercent,
@@ -17,8 +16,10 @@ import {
   estimatedUnitCents,
   isConditionCode,
   isDepositStatus,
+  isHandoffMethod,
   isTradeFinish,
   isTradeStatus,
+  timelineLabel,
   type CardConditionCode,
   type ConditionPercents,
   type CustomerTrade,
@@ -35,6 +36,7 @@ import {
   type TradeEligibility,
   type TradeExtensionView,
   type TradeFinish,
+  type TradeHandoffMethod,
   type TradeMessage,
   type TradeOfferCard,
   type TradeOfferInput,
@@ -248,6 +250,10 @@ export function termsOf(s: TradeSettingsRow): TradeTerms {
     ...depositSettingsOf(s),
     depositTerms: s.deposit_terms,
     depositTermsVersion: s.deposit_terms_version,
+    localPickupEnabled: s.local_pickup_enabled,
+    localPickupArea: s.local_pickup_area,
+    localMeetDays: s.local_meet_days,
+    localPickupDetails: s.local_pickup_details,
   };
 }
 
@@ -304,6 +310,10 @@ export function settingsView(s: TradeSettingsRow): TradeSettings {
     shipTo: shipToAddress(s),
     packingInstructions: s.packing_instructions,
     returnPolicy: s.return_policy,
+    localPickupEnabled: s.local_pickup_enabled,
+    localPickupArea: s.local_pickup_area,
+    localMeetDays: s.local_meet_days,
+    localPickupDetails: s.local_pickup_details,
     updatedAt: s.updated_at ?? null,
   };
 }
@@ -320,6 +330,29 @@ export function confirmDeadline(nowMs: number, s: TradeSettingsRow): string {
 /** The shipping deadline for a reservation at `nowMs`: `shipDays` qualifying days. */
 export function shipDeadline(nowMs: number, shipDays: number, s: TradeSettingsRow): string {
   return new Date(addQualifyingDays(nowMs, shipDays, s.excluded_dates)).toISOString();
+}
+
+/** When a local pickup trade confirmed at `nowMs` stops holding our cards: local_meet_days qualifying days. */
+export function meetDeadline(nowMs: number, s: TradeSettingsRow): string {
+  return shipDeadline(nowMs, s.local_meet_days, s);
+}
+
+/** A trade's handoff: by mail unless it says local pickup. */
+export function handoffOf(t: Pick<TradeRow, "handoff_method">): TradeHandoffMethod {
+  return isHandoffMethod(t.handoff_method) ? t.handoff_method : "ship";
+}
+
+/**
+ * What a customer agrees to when they confirm a local pickup trade (kept
+ * with the trade, trade_consents, like the deposit terms of a shipped one).
+ */
+export function localPickupTerms(s: TradeSettingsRow): string {
+  const days = s.local_meet_days === 1 ? "1 day" : `${s.local_meet_days} days`;
+  return [
+    `Confirming takes our cards off sale and holds them for you for ${days} (Sundays don't count) while we arrange a time and place to meet in ${s.local_pickup_area}.`,
+    "Bring the cards you're trading in. We'll look them over together, value each one at its TCG low for the condition we see, and settle the trade on the spot: any of our cards your trade credit doesn't cover is paid then, in cash or by card, and credit left over is kept as store credit.",
+    "If you can't make it, message us or cancel your trade so we can put our cards back on sale. There's no deposit and no charge for canceling.",
+  ].join("\n\n");
 }
 
 /** A customer's record (trade_customer_stats); an empty one if it can't be read. */
@@ -538,6 +571,10 @@ function acceptanceSourceOf(value: string | null): "carrier" | "staff" | "receiv
   return value === "carrier" || value === "staff" || value === "received" ? value : null;
 }
 
+function localPaymentOf(value: string | null): CustomerTrade["localPaymentMethod"] {
+  return value === "none" || value === "cash" || value === "card" || value === "other" ? value : null;
+}
+
 function returnStatusOf(value: string): "none" | "pending" | "returned" {
   return value === "pending" || value === "returned" ? value : "none";
 }
@@ -659,7 +696,7 @@ function disputeView(row: TradeDisputeRow, urls?: Map<string, string>): TradeDis
   };
 }
 
-/** Where the customer mails their cards: shown once our cards are reserved, until they've shipped. */
+/** Where the customer mails their cards: shown once our cards are reserved, until they've shipped (never for local pickup). */
 const MAIL_TO_STATUSES: ReadonlySet<TradeStatus> = new Set(["awaiting_shipment", "tracking_submitted", "in_transit"]);
 
 export interface ViewExtras {
@@ -683,12 +720,18 @@ function outgoingOf(order: TradeOrderShipping | null | undefined): TradeOutgoing
 function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSettingsRow | null, extras: ViewExtras) {
   const { trade: t, items, messages } = bundle;
   const status = statusOf(t.status);
-  const showMailTo = settings !== null && MAIL_TO_STATUSES.has(status);
+  const handoffMethod = handoffOf(t);
+  const showMailTo = settings !== null && handoffMethod === "ship" && MAIL_TO_STATUSES.has(status);
   const carrierTracked = (extras.autoTracked ?? false) && t.inbound_carrier !== null && t.inbound_carrier !== "Other";
   return {
     id: t.id,
     tradeNumber: t.trade_number,
     status,
+    handoffMethod,
+    meetupDetails: t.meetup_details,
+    metAt: t.met_at,
+    localPaymentMethod: localPaymentOf(t.local_payment_method),
+    localPaidCents: t.local_paid_cents,
     createdAt: t.created_at,
     updatedAt: t.updated_at,
     creditRatePercent: t.credit_rate_percent,
@@ -777,6 +820,8 @@ function customerOfferView(row: TradeOfferRow, status: string): TradeOfferCard {
 
 /** When a customer can send proof of shipping, and until when. */
 export function proofWindow(t: TradeRow, settings: TradeSettingsRow, disputes: TradeDisputeRow[], now: number) {
+  // Nothing is shipped on a local pickup trade, so there's nothing to prove.
+  if (handoffOf(t) === "local") return { canSendProof: false, proofDueAt: null as string | null };
   const open = disputes.some((d) => d.status === "open");
   if (open) return { canSendProof: false, proofDueAt: null as string | null };
   if (t.status === "awaiting_shipment" || t.status === "tracking_submitted") return { canSendProof: true, proofDueAt: null };
@@ -806,9 +851,10 @@ export function customerTradeView(
       refundedAt: t.deposit_refunded_at,
     },
     offered: offers.map((row) => customerOfferView(row, t.status)),
-    timeline: events
-      .filter((e) => CUSTOMER_TIMELINE_LABELS[e.event] !== undefined)
-      .map((e) => ({ event: e.event, label: CUSTOMER_TIMELINE_LABELS[e.event], createdAt: e.created_at })),
+    timeline: events.flatMap((e) => {
+      const label = timelineLabel(e.event, handoffOf(t));
+      return label === undefined ? [] : [{ event: e.event, label, createdAt: e.created_at }];
+    }),
     confirmation: extras.confirmation ?? null,
     disputes: disputes.map((d) => disputeView(d)),
     canSendProof: proof.canSendProof,
@@ -941,6 +987,7 @@ export function customerSummaryView(t: TradeRow, wantedCount: number, offeredCou
     id: t.id,
     tradeNumber: t.trade_number,
     status: statusOf(t.status),
+    handoffMethod: handoffOf(t),
     createdAt: t.created_at,
     updatedAt: t.updated_at,
     wantedTotalCents: t.wanted_total_cents,
@@ -960,6 +1007,7 @@ export function staffSummaryView(t: TradeRow): StaffTradeSummary {
     id: t.id,
     tradeNumber: t.trade_number,
     status: statusOf(t.status),
+    handoffMethod: handoffOf(t),
     customerName: t.customer_name,
     customerEmail: t.customer_email,
     createdAt: t.created_at,

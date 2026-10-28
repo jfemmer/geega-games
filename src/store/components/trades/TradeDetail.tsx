@@ -15,17 +15,18 @@ import {
   RESERVED_STATUSES,
   TRADE_CENTER_PATH,
   TRADE_LIMITS,
-  TRADE_STATUS_LABELS,
-  TRADE_STATUS_NEXT,
-  TRADE_STEPS,
   cardLine,
   copiesToReturn,
   formatDeadline,
   timeLeft,
   tradeLabel,
   tradeShippingTerms,
-  tradeStepIndex,
+  tradeStatusLabel,
+  tradeStatusNext,
+  tradeStepIndexFor,
+  tradeStepsFor,
   type CustomerTrade,
+  type TradeHandoffMethod,
   type TradeOfferInput,
   type TradeStatus,
   type TradeWantedInput,
@@ -45,6 +46,7 @@ import { TradeProofForm } from "./TradeProofForm";
 import { TradeFinalOffer } from "./TradeFinalOffer";
 import { TradePaymentPanel } from "./TradePaymentPanel";
 import { TradeMessages, TradeTimeline } from "./TradeMessages";
+import { HandoffChoice, LocalBalance, LocalConfirmPanel, LocalMeetupPanel, LocalSettled, LocalYourCards } from "./LocalPickup";
 
 // Account → Trades → one trade: everything about it in one place, changing
 // with where it stands. While the customer builds their list: our cards
@@ -57,7 +59,9 @@ import { TradeMessages, TradeTimeline } from "./TradeMessages";
 // answer, the payment (any of our cards the credit doesn't cover, and
 // shipping them), how it all settled and our cards on their way; or, for a
 // trade that stopped, why, and what happens to the deposit and any cards
-// that reached us. Messages and history all the way through.
+// that reached us. Messages and history all the way through. A local pickup
+// trade (LocalPickup.tsx) has none of the mail: no card list to send, no
+// deposit, a meetup instead of shipping, and it settles in person.
 
 const ESTIMATED: ReadonlySet<TradeStatus> = new Set(["awaiting_trade_list", "revision_requested", "pending_review"]);
 const APPROVED: ReadonlySet<TradeStatus> = new Set([
@@ -203,7 +207,12 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       const res = await tradeActions.confirm(tradeId, termsVersion);
       show(res.trade);
       if (res.notice) setFlash({ tone: "warn", text: res.notice });
-      else if (res.trade.status === "awaiting_shipment") {
+      else if (res.trade.status === "awaiting_shipment" && res.trade.handoffMethod === "local") {
+        setFlash({
+          tone: "ok",
+          text: `Confirmed! Our cards are held for you${res.trade.shipBy ? ` until ${formatDeadline(res.trade.shipBy)}` : ""}. We'll message you here to set up the meetup.`,
+        });
+      } else if (res.trade.status === "awaiting_shipment") {
         setFlash({
           tone: "ok",
           text: `Confirmed! Our cards are reserved for you${res.trade.shipBy ? `: ship by ${formatDeadline(res.trade.shipBy)}` : ""}.`,
@@ -247,6 +256,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
   if (!trade) return <p className="gg-tc-line__meta">Loading your trade…</p>;
 
   const status = trade.status;
+  const method = trade.handoffMethod;
+  const local = method === "local";
   const editable = CUSTOMER_EDITABLE_STATUSES.includes(status);
   const closed = CLOSED_TRADE_STATUSES.has(status);
   const finished = status === "approved_for_fulfillment" || status === "completed";
@@ -261,7 +272,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
   const valueLabel = ESTIMATED.has(status) ? "estimated" : APPROVED.has(status) ? "approved" : "final";
   const value =
     valueLabel === "estimated" ? trade.estimatedValueCents : valueLabel === "approved" ? (trade.approvedValueCents ?? 0) : (trade.finalValueCents ?? 0);
-  const step = tradeStepIndex(status);
+  const step = tradeStepIndexFor(status, method);
+  const steps = tradeStepsFor(method);
   const shippingTerms = tradeShippingTerms(trade);
   const minTradeValueCents = terms?.minTradeValueCents ?? 0;
   const belowMinimum = trade.wantedTotalCents < minTradeValueCents;
@@ -288,10 +300,18 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
 
   const setWanted = (items: TradeWantedInput[], done?: string) => run("wanted", () => tradeActions.setWanted(tradeId, items), done);
   const saveOffer = (cards: TradeOfferInput[]) => run("offer", () => tradeActions.saveOffer(tradeId, cards));
+  const setHandoff = (next: TradeHandoffMethod) =>
+    run(
+      "handoff",
+      () => tradeActions.setHandoff(tradeId, next),
+      next === "local" ? "Local pickup it is. Bring your cards when we meet." : "You'll ship your cards. Add them below.",
+    );
+  const canChooseHandoff = editable && (local || Boolean(terms?.localPickupEnabled));
 
   const submitProblems = [
-    ...(trade.offered.length === 0 ? ["Add the cards you're trading in."] : []),
-    ...(blocked.length > 0 ? [`Take off the ${blocked.length === 1 ? "card" : `${blocked.length} cards`} we can't accept.`] : []),
+    // Local pickup: their cards are valued when we meet.
+    ...(!local && trade.offered.length === 0 ? ["Add the cards you're trading in."] : []),
+    ...(!local && blocked.length > 0 ? [`Take off the ${blocked.length === 1 ? "card" : `${blocked.length} cards`} we can't accept.`] : []),
     ...(onTrade.length === 0 ? ["Add at least one of our cards."] : []),
     ...(onTrade.length > 0 && belowMinimum ? [minimumMessage(trade.wantedTotalCents, minTradeValueCents)] : []),
     ...(shortLines.length > 0
@@ -303,21 +323,63 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
     ? "These stay on sale until you confirm your approved trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
     : status === "pending_review" || CONFIRMING.has(status)
       ? `Not reserved yet: they stay on sale until you confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""}.`
-      : status === "awaiting_shipment" || status === "tracking_submitted"
-        ? "Reserved for you while you ship your cards."
-        : reserved
-          ? "Reserved for you until your trade is settled."
-          : finished
-            ? "On your order."
-            : null;
+      : local && status === "awaiting_shipment"
+        ? "Reserved for you until we meet."
+        : status === "awaiting_shipment" || status === "tracking_submitted"
+          ? "Reserved for you while you ship your cards."
+          : reserved
+            ? "Reserved for you until your trade is settled."
+            : finished
+              ? local
+                ? "Yours: you picked them up when we met."
+                : "On your order."
+              : null;
+
+  const submitForm = editable ? (
+    <form
+      className="gg-tc-submit"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void run("submit", () => tradeActions.submit(tradeId, note.trim() || null), "Sent! We'll email you when we've reviewed your trade.");
+      }}
+    >
+      {canChooseHandoff && terms && (
+        <HandoffChoice value={method} terms={terms} disabled={busy !== null} onChange={(next) => void setHandoff(next)} />
+      )}
+      <label className="gg-field">
+        <span>{local ? "Note for us (optional): when you're free, or the cards you're bringing" : "Note for us (optional)"}</span>
+        <textarea rows={2} maxLength={TRADE_LIMITS.maxTradeNote} value={note} onChange={(e) => setNote(e.target.value)} />
+      </label>
+      {submitProblems.length > 0 && (
+        <ul className="gg-tc-submit__todo">
+          {submitProblems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+      <button type="submit" className="gg-btn gg-tc-submit__btn" disabled={busy !== null || submitProblems.length > 0}>
+        {busy === "submit" ? "Sending…" : status === "revision_requested" ? "Send my changes" : "Send for review"}
+      </button>
+      <p className="gg-tc-line__meta">
+        {local ? (
+          <>Once we approve your trade you&rsquo;ll confirm it, and then we&rsquo;ll set up where and when to meet.</>
+        ) : (
+          <>
+            Don&rsquo;t mail anything yet. Once we approve your trade you&rsquo;ll confirm it, and then we&rsquo;ll tell you where to send your
+            cards.
+          </>
+        )}
+      </p>
+    </form>
+  ) : null;
 
   return (
     <div className="gg-tc-detail">
       <header className="gg-tc-head">
         <div>
           <p className="gg-tc-head__id">Trade {tradeLabel(trade.tradeNumber)}</p>
-          <h2 className="gg-tc-head__status">{TRADE_STATUS_LABELS[status]}</h2>
-          <p className="gg-tc-head__next">{TRADE_STATUS_NEXT[status]}</p>
+          <h2 className="gg-tc-head__status">{tradeStatusLabel(status, method)}</h2>
+          <p className="gg-tc-head__next">{tradeStatusNext(status, method)}</p>
           {editable && listDue !== null && (
             <p className={now > listDue ? "gg-tc-deadline gg-tc-deadline--past" : "gg-tc-deadline"}>
               {now > listDue ? (
@@ -333,7 +395,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
         </div>
         {step >= 0 && (
           <ol className="gg-tc-steps" aria-label="Trade progress">
-            {TRADE_STEPS.map((s, i) => (
+            {steps.map((s, i) => (
               <li
                 key={s.key}
                 className={i < step ? "gg-tc-steps__done" : i === step ? "gg-tc-steps__now" : undefined}
@@ -374,7 +436,26 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
 
       <div className="gg-tc-grid">
         <div className="gg-tc-main">
-          {CONFIRMING.has(status) && (
+          {CONFIRMING.has(status) && local && (
+            <LocalConfirmPanel
+              trade={trade}
+              busy={busy === "confirm"}
+              askBusy={busy === "ask"}
+              onConfirm={confirmTrade}
+              onAskForTime={(text) => run("ask", () => tradeActions.askForTime(tradeId, text), "Sent. We'll reply in your messages.")}
+            />
+          )}
+
+          {local && status === "awaiting_shipment" && (
+            <LocalMeetupPanel
+              trade={trade}
+              terms={terms}
+              askBusy={busy === "ask"}
+              onAskForTime={(text) => run("ask", () => tradeActions.askForTime(tradeId, text), "Sent. We'll reply in your messages.")}
+            />
+          )}
+
+          {CONFIRMING.has(status) && !local && (
             <TradeConfirmPanel
               trade={trade}
               busy={busy === "confirm" || busy === "deposit"}
@@ -385,7 +466,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
             />
           )}
 
-          {SHIPPING.has(status) && (
+          {SHIPPING.has(status) && !local && (
             <TradeShippingPanel
               trade={trade}
               terms={terms}
@@ -465,7 +546,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
             </>
           )}
 
-          {finished && <Settled trade={trade} />}
+          {finished && (local ? <LocalSettled trade={trade} /> : <Settled trade={trade} />)}
 
           <section className="gg-tc-panel" aria-labelledby="gg-tc-ours-title">
             <h2 id="gg-tc-ours-title">Our cards</h2>
@@ -521,68 +602,49 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
             )}
           </section>
 
-          <section className="gg-tc-panel" aria-labelledby="gg-tc-theirs-title">
-            <h2 id="gg-tc-theirs-title">Your cards</h2>
-            {editable && (
-              <p className="gg-tc-line__meta">
-                We set each card&rsquo;s condition from its age ({conditionAgeSummary()}). We price your cards at TCG low when we
-                review your list, and check their condition when they arrive, so values can go up or down. Cards worth less than{" "}
-                {formatCents(trade.minCardValueCents)} each can&rsquo;t be traded.
-              </p>
-            )}
-            <OfferCardsEditor trade={trade} terms={terms} editable={editable} saving={busy === "offer"} onSave={saveOffer} />
-          </section>
+          {local ? (
+            !closed && <LocalYourCards trade={trade} />
+          ) : (
+            <section className="gg-tc-panel" aria-labelledby="gg-tc-theirs-title">
+              <h2 id="gg-tc-theirs-title">Your cards</h2>
+              {editable && (
+                <p className="gg-tc-line__meta">
+                  We set each card&rsquo;s condition from its age ({conditionAgeSummary()}). We price your cards at TCG low when we
+                  review your list, and check their condition when they arrive, so values can go up or down. Cards worth less than{" "}
+                  {formatCents(trade.minCardValueCents)} each can&rsquo;t be traded.
+                </p>
+              )}
+              <OfferCardsEditor trade={trade} terms={terms} editable={editable} saving={busy === "offer"} onSave={saveOffer} />
+            </section>
+          )}
         </div>
 
         {!finished && !closed && (
           <aside className="gg-tc-aside">
-            <TradeBalance
-              wantedCents={trade.wantedTotalCents}
-              offeredValueCents={value}
-              valueLabel={valueLabel}
-              ratePercent={trade.creditRatePercent}
-              feeCents={trade.processingFeeCents}
-              shipping={shippingTerms}
-              shippingCents={trade.shippingCents ?? undefined}
-              canAddCards={editable}
-              deposit={<DepositLine trade={trade} />}
-              footnote={
-                valueLabel === "estimated"
-                  ? "Estimates use today's market prices. We price each card at TCG low when we review your list, and check its condition when your cards arrive."
-                  : valueLabel === "approved"
-                    ? "Approved at TCG low. When your cards arrive we check their condition, and values can go up or down."
-                    : null
-              }
-            >
-              {editable && (
-                <form
-                  className="gg-tc-submit"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void run("submit", () => tradeActions.submit(tradeId, note.trim() || null), "Sent! We'll email you when we've reviewed your trade.");
-                  }}
-                >
-                  <label className="gg-field">
-                    <span>Note for us (optional)</span>
-                    <textarea rows={2} maxLength={TRADE_LIMITS.maxTradeNote} value={note} onChange={(e) => setNote(e.target.value)} />
-                  </label>
-                  {submitProblems.length > 0 && (
-                    <ul className="gg-tc-submit__todo">
-                      {submitProblems.map((p) => (
-                        <li key={p}>{p}</li>
-                      ))}
-                    </ul>
-                  )}
-                  <button type="submit" className="gg-btn gg-tc-submit__btn" disabled={busy !== null || submitProblems.length > 0}>
-                    {busy === "submit" ? "Sending…" : status === "revision_requested" ? "Send my changes" : "Send for review"}
-                  </button>
-                  <p className="gg-tc-line__meta">
-                    Don&rsquo;t mail anything yet. Once we approve your trade you&rsquo;ll confirm it, and then we&rsquo;ll tell you where to send
-                    your cards.
-                  </p>
-                </form>
-              )}
-            </TradeBalance>
+            {local ? (
+              <LocalBalance trade={trade}>{submitForm}</LocalBalance>
+            ) : (
+              <TradeBalance
+                wantedCents={trade.wantedTotalCents}
+                offeredValueCents={value}
+                valueLabel={valueLabel}
+                ratePercent={trade.creditRatePercent}
+                feeCents={trade.processingFeeCents}
+                shipping={shippingTerms}
+                shippingCents={trade.shippingCents ?? undefined}
+                canAddCards={editable}
+                deposit={<DepositLine trade={trade} />}
+                footnote={
+                  valueLabel === "estimated"
+                    ? "Estimates use today's market prices. We price each card at TCG low when we review your list, and check its condition when your cards arrive."
+                    : valueLabel === "approved"
+                      ? "Approved at TCG low. When your cards arrive we check their condition, and values can go up or down."
+                      : null
+                }
+              >
+                {submitForm}
+              </TradeBalance>
+            )}
           </aside>
         )}
 
@@ -662,13 +724,18 @@ function ClosedPanel({
       break;
     case "offer_expired":
       heading = "This trade closed";
-      body = `${EXPIRED_STAGE_TEXT[trade.expiredStage ?? ""] ?? TRADE_STATUS_NEXT.offer_expired} Nothing was reserved or charged for it.`;
+      body = `${EXPIRED_STAGE_TEXT[trade.expiredStage ?? ""] ?? tradeStatusNext("offer_expired")} Nothing was reserved or charged for it.`;
       break;
     case "canceled":
       heading = "You canceled this trade";
       body = trade.closeReason ? `Your reason: ${trade.closeReason}` : "Our cards went back on sale.";
       break;
     case "expired":
+      if (trade.handoffMethod === "local") {
+        heading = "The hold on our cards ended";
+        body = `We didn't meet before the hold ended${trade.shipBy ? ` (${formatDeadline(trade.shipBy)})` : ""}, so our cards went back on sale. Nothing was charged, and it doesn't count against you.`;
+        break;
+      }
       heading = "Your reservation expired";
       body =
         trade.expiredStage === "scan"
@@ -688,14 +755,14 @@ function ClosedPanel({
       body = `${trade.closeReason ? `${trade.closeReason} ` : ""}Any deposit you paid is refunded in full.`;
       break;
     default:
-      heading = TRADE_STATUS_LABELS[status];
-      body = TRADE_STATUS_NEXT[status];
+      heading = tradeStatusLabel(status, trade.handoffMethod);
+      body = tradeStatusNext(status, trade.handoffMethod);
   }
   return (
     <div className="gg-tc-panel gg-tc-closed">
       <h2>{heading}</h2>
       <p>{body}</p>
-      {status === "expired" && (
+      {status === "expired" && trade.handoffMethod !== "local" && (
         <>
           <p className="gg-tc-line__meta">If your package reaches us anyway, we&rsquo;ll be in touch about it.</p>
           <TradeProofForm trade={trade} busy={busy === "proof"} onSend={onProof} />
@@ -745,6 +812,9 @@ function CancelTrade({
   let explanation: string;
   if (canWithdraw) {
     explanation = `There's no penalty for canceling once the carrier has your package: we'll mail your cards back${depositBack ? ", and your deposit is refunded in full" : ""}.`;
+  } else if (status === "awaiting_shipment" && trade.handoffMethod === "local") {
+    explanation =
+      "Our cards go back on sale. There's no charge for canceling. Just need a different time? Send us a message instead, and we'll find one that works.";
   } else if (status === "awaiting_shipment") {
     explanation = depositAtRisk
       ? `Our cards are reserved for you. Canceling now, before you ship, means your ${formatCents(d.paidCents ?? d.cents)} deposit may be kept under the cancellation terms you agreed to; a person reviews every case first. It also counts against future trades.`

@@ -121,7 +121,8 @@ export function tradeMoney(t: StaffTrade): TradeMoney {
   const valueStage = t.finalValueCents != null ? "final" : t.approvedValueCents != null ? "approved" : "estimated";
   const valueCents = t.finalValueCents ?? t.approvedValueCents ?? t.estimatedValueCents;
   const creditCents = t.finalCreditCents ?? tradeCreditCents(valueCents, t.creditRatePercent, t.processingFeeCents);
-  const shippingCents = t.shippingCents ?? tradeShippingCents(t.wantedTotalCents, tradeShippingTerms(t));
+  // Local pickup: our cards are handed over in person, so nothing ships.
+  const shippingCents = t.handoffMethod === "local" ? 0 : (t.shippingCents ?? tradeShippingCents(t.wantedTotalCents, tradeShippingTerms(t)));
   const cardBalanceCents = Math.max(t.wantedTotalCents - creditCents, 0);
   return {
     wantedCents: t.wantedTotalCents,
@@ -410,4 +411,28 @@ export function pendingAdjustment(t: StaffTrade): { at: string; message: string 
   const messageId = typeof last.detail.message_id === "string" ? last.detail.message_id : null;
   const message = messageId ? (t.messages.find((m) => m.id === messageId)?.body ?? null) : null;
   return { at: last.createdAt, message };
+}
+
+// ---------------------------------------------------------------------------
+// Local pickup: the meetup, from the cards staff are taking
+// ---------------------------------------------------------------------------
+
+/** What the meetup adds up to, as the database works it out (trade_complete_local). */
+export function meetupTotals(
+  trade: Pick<StaffTrade, "wantedTotalCents" | "creditRatePercent" | "processingFeeCents">,
+  rows: { quantity: number; unitCents: number }[],
+  settings: Pick<TradeSettings, "cashPayoutEnabled" | "cashRatePercent">,
+) {
+  const valueCents = rows.reduce((sum, r) => sum + r.quantity * r.unitCents, 0);
+  const creditCents = tradeCreditCents(valueCents, trade.creditRatePercent, trade.processingFeeCents);
+  const dueCents = Math.max(trade.wantedTotalCents - creditCents, 0);
+  const excessCents = Math.max(creditCents - trade.wantedTotalCents, 0);
+  return {
+    valueCents,
+    creditCents,
+    dueCents,
+    excessCents,
+    cashOptionCents:
+      settings.cashPayoutEnabled && excessCents > 0 ? cashForExcessCents(excessCents, trade.creditRatePercent, settings.cashRatePercent) : 0,
+  };
 }

@@ -9,7 +9,7 @@ export function TradeAskForTime({
   busy,
   onAsk,
 }: {
-  what: "confirm" | "ship";
+  what: "confirm" | "ship" | "meet";
   busy: boolean;
   onAsk: (note: string) => Promise<boolean>;
 }) {
@@ -19,7 +19,7 @@ export function TradeAskForTime({
   if (!open) {
     return (
       <p className="gg-tc-line__meta">
-        Need more time {what === "confirm" ? "to decide" : "to ship"}?{" "}
+        Need more time {what === "confirm" ? "to decide" : what === "meet" ? "to meet up" : "to ship"}?{" "}
         <button type="button" className="gg-linkbtn" onClick={() => setOpen(true)}>
           Ask us
         </button>

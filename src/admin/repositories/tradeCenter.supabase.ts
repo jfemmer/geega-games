@@ -6,6 +6,7 @@ import {
   type StaffTrade,
   type StaffTradeSummary,
   type TradeCarrier,
+  type TradeHandoffMethod,
   type TradeSettings,
   type TradeStatus,
   type TradeWantedInput,
@@ -19,7 +20,7 @@ import type { EconomicsTotals, TradeEconomics } from "../../store/lib/tradeEcono
 // the trade as it now stands, so the drawer never shows a stale total.
 
 /** The list's filters, or one status. None is named after a status: their counts share one object. */
-export type TradeListFilter = "waiting" | "open" | "all" | "deposits" | "reserved" | "abandoned" | "finished" | TradeStatus;
+export type TradeListFilter = "waiting" | "open" | "all" | "deposits" | "reserved" | "abandoned" | "local" | "finished" | TradeStatus;
 
 /** One of our cards held for a trade right now (Reserved tab). */
 export interface ReservedLine {
@@ -33,6 +34,8 @@ export interface ReservedLine {
   /** When the carrier accepted their package (null: not yet). */
   shippedAt: string | null;
   depositStatus: DepositStatus;
+  /** Local pickup: shipBy is when the hold for the meetup ends. */
+  handoffMethod: TradeHandoffMethod;
   inventoryItemId: string | null;
   cardName: string;
   setCode: string | null;
@@ -145,6 +148,25 @@ export interface InspectCardInput {
   inspectionInternalNote?: string | null;
 }
 
+/** One of the customer's cards staff took at a meetup (local pickup), with what each copy is worth. */
+export interface LocalCardInput {
+  scryfallId: string | null;
+  cardName: string;
+  setCode: string | null;
+  setName: string | null;
+  collectorNumber: string | null;
+  finish: string;
+  imageUrl: string | null;
+  condition: CardConditionCode;
+  quantity: number;
+  /** Each copy, at its TCG low for the condition. */
+  unitCents: number;
+  /** Scryfall's price for the finish, for reference. */
+  referencePriceCents: number | null;
+  /** Staff only. */
+  note: string | null;
+}
+
 /** trade_settings as the Settings tab saves it (the terms version is the server's). */
 export interface TradeSettingsInput extends Omit<TradeSettings, "updatedAt" | "shipTo" | "depositTermsVersion"> {
   shipTo: {
@@ -220,9 +242,34 @@ export const tradeCenterRepository = {
     return post({ action: "requestRevision", tradeId, message });
   },
 
-  /** The customer then has the confirmation window to confirm; the deposit follows the settings unless overridden. */
-  approve(tradeId: string, input: { conditions: string; depositOverride?: DepositOverride }) {
-    return post({ action: "approve", tradeId, conditions: input.conditions, ...(input.depositOverride ? { depositOverride: input.depositOverride } : {}) });
+  /**
+   * The customer then has the confirmation window to confirm; the deposit follows the settings unless overridden.
+   * Local pickup: never a deposit; meetupDetails (optional) goes out with the approval.
+   */
+  approve(tradeId: string, input: { conditions: string; depositOverride?: DepositOverride; meetupDetails?: string }) {
+    return post({
+      action: "approve",
+      tradeId,
+      conditions: input.conditions,
+      ...(input.depositOverride ? { depositOverride: input.depositOverride } : {}),
+      ...(input.meetupDetails !== undefined ? { meetupDetails: input.meetupDetails } : {}),
+    });
+  },
+
+  /** Local pickup: where and when to meet (emailed to the customer once the trade is approved). */
+  setMeetup(tradeId: string, details: string) {
+    return post({ action: "setMeetup", tradeId, details });
+  },
+
+  /**
+   * Local pickup, at the meetup: the cards we took and what they paid in
+   * person (exactly what the credit doesn't cover). Finishes the trade.
+   */
+  completeLocal(
+    tradeId: string,
+    input: { cards: LocalCardInput[]; paidCents: number; paymentMethod: "cash" | "card" | "other" | null; paymentNote: string; cashForExcess: boolean },
+  ) {
+    return post({ action: "completeLocal", tradeId, ...input });
   },
 
   /** Before the trade is confirmed (nothing held, nothing paid). */

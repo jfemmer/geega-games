@@ -221,11 +221,16 @@ function VerifyShipment({ trade, busy, run }: Pick<TradePanelProps, "trade" | "b
   );
 }
 
-/** Release a reservation that wasn't shipped, without waiting for the deadline job. */
-function ReleaseReservation({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" | "run">) {
+/**
+ * Release a reservation that wasn't shipped (or, for local pickup, a meetup
+ * that isn't happening), without waiting for the deadline job.
+ */
+export function ReleaseReservation({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" | "run">) {
+  const local = trade.handoffMethod === "local";
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [countAgainst, setCountAgainst] = useState(true);
+  // A meetup falls through for all sorts of reasons: only a real no-show should count.
+  const [countAgainst, setCountAgainst] = useState(!local);
   if (!open) {
     return (
       <div className="gg-drawer-actions__buttons">
@@ -243,11 +248,15 @@ function ReleaseReservation({ trade, busy, run }: Pick<TradePanelProps, "trade" 
         maxLength={2000}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        hint="Our cards go back on sale now. A paid deposit goes to review; it's never kept automatically."
+        hint={
+          local
+            ? "Our cards go back on sale now and the trade closes."
+            : "Our cards go back on sale now. A paid deposit goes to review; it's never kept automatically."
+        }
       />
       <label className="gg-check-inline">
         <input type="checkbox" checked={countAgainst} onChange={(e) => setCountAgainst(e.target.checked)} />
-        Count it against the customer (they didn&rsquo;t ship)
+        {local ? "Count it against the customer (they didn\u2019t show up)" : "Count it against the customer (they didn\u2019t ship)"}
       </label>
       <div className="gg-drawer-actions__buttons">
         <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={busy !== null}>
@@ -269,8 +278,9 @@ function ReleaseReservation({ trade, busy, run }: Pick<TradePanelProps, "trade" 
 
 /** An expired reservation: a package that arrived anyway, and reinstating it. */
 export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProps) {
+  const local = trade.handoffMethod === "local";
   const [mode, setMode] = useState<"awaiting_shipment" | "in_transit" | "received">(trade.receivedAt ? "received" : "awaiting_shipment");
-  const [days, setDays] = useState(String(trade.privileges?.shipDays ?? settings.shipDaysNew));
+  const [days, setDays] = useState(String(local ? settings.localMeetDays : (trade.privileges?.shipDays ?? settings.shipDaysNew)));
   const [at, setAt] = useState(() => localInput(trade.shipment.acceptedAt ? Date.parse(trade.shipment.acceptedAt) : Date.now()));
   const [clearFault, setClearFault] = useState(true);
   const dayCount = Number(days);
@@ -279,15 +289,19 @@ export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProp
 
   return (
     <section className="gg-trd__section gg-trd-step" aria-labelledby="gg-trd-expired-title">
-      <h3 id="gg-trd-expired-title">Expired reservation</h3>
+      <h3 id="gg-trd-expired-title">{local ? "The hold ended" : "Expired reservation"}</h3>
       <p>
-        {trade.expiredStage === "scan" ? "Tracking was added but the carrier never scanned it in time." : "No tracking number by the deadline."}{" "}
+        {local
+          ? "The meetup didn't happen before the hold on our cards ended."
+          : trade.expiredStage === "scan"
+            ? "Tracking was added but the carrier never scanned it in time."
+            : "No tracking number by the deadline."}{" "}
         {trade.closedAt ? <span className="gg-card-meta">Released {formatDateTime(trade.closedAt)}.</span> : null}
       </p>
       {trade.canSendProof && trade.proofDueAt && (
         <p className="gg-card-meta">The customer can send proof of shipping until {formatDeadline(trade.proofDueAt)}.</p>
       )}
-      {trade.returnStatus === "none" && !trade.receivedAt && (
+      {!local && trade.returnStatus === "none" && !trade.receivedAt && (
         <div className="gg-drawer-actions__buttons">
           <Button
             size="sm"
@@ -304,21 +318,23 @@ export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProp
 
       <div className="gg-trd-form">
         <p className="gg-trd__subhead">Reinstate the reservation</p>
-        <SelectField label="Reinstate as" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-          <option value="awaiting_shipment">Waiting for their shipment (a new deadline)</option>
-          <option value="in_transit">Shipped (the carrier accepted it)</option>
-          <option value="received">Received (the package is here)</option>
-        </SelectField>
+        {!local && (
+          <SelectField label="Reinstate as" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+            <option value="awaiting_shipment">Waiting for their shipment (a new deadline)</option>
+            <option value="in_transit">Shipped (the carrier accepted it)</option>
+            <option value="received">Received (the package is here)</option>
+          </SelectField>
+        )}
         {mode === "awaiting_shipment" && (
           <TextField
-            label="Days to ship from now"
+            label={local ? "Days to hold our cards for the meetup" : "Days to ship from now"}
             inputMode="numeric"
             value={days}
             onChange={(e) => setDays(e.target.value)}
             hint={daysOk ? `New deadline: ${formatDeadline(new Date(shipByPreview(dayCount, settings)).toISOString())}. Sundays don't count.` : "1 to 30 days."}
           />
         )}
-        {mode === "in_transit" && (
+        {!local && mode === "in_transit" && (
           <TextField label="The carrier accepted it at" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} hint="Your computer's time zone." />
         )}
         <label className="gg-check-inline">
@@ -338,7 +354,7 @@ export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProp
             size="sm"
             variant="primary"
             loading={busy === "reinstate"}
-            disabled={busy !== null || (mode === "awaiting_shipment" && !daysOk) || (mode === "in_transit" && atIso === null)}
+            disabled={busy !== null || (local && mode !== "awaiting_shipment") || (mode === "awaiting_shipment" && !daysOk) || (mode === "in_transit" && atIso === null)}
             onClick={() =>
               void run(
                 "reinstate",

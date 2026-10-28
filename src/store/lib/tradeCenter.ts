@@ -80,6 +80,23 @@ export function isTradeStatus(value: unknown): value is TradeStatus {
   return typeof value === "string" && (TRADE_STATUSES as readonly string[]).includes(value);
 }
 
+// ---------------------------------------------------------------------------
+// How the cards change hands: by mail, or in person (local pickup)
+// ---------------------------------------------------------------------------
+
+export const TRADE_HANDOFF_METHODS = ["ship", "local"] as const;
+/** ship: the customer mails their cards and we ship ours. local: we meet in person. */
+export type TradeHandoffMethod = (typeof TRADE_HANDOFF_METHODS)[number];
+
+export function isHandoffMethod(value: unknown): value is TradeHandoffMethod {
+  return value === "ship" || value === "local";
+}
+
+export const HANDOFF_LABELS: Record<TradeHandoffMethod, string> = {
+  ship: "Ship",
+  local: "Local pickup",
+};
+
 /** As customers read them (My Trades, emails). */
 export const TRADE_STATUS_LABELS: Record<TradeStatus, string> = {
   awaiting_trade_list: "Draft: add your cards",
@@ -155,6 +172,51 @@ export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
   declined_after_inspection: "You declined the final offer, with no penalty. We'll mail your cards back.",
   canceled_by_store: "We canceled this trade. Any deposit is refunded in full.",
 };
+
+/** A local pickup trade, where it reads differently from a shipped one (customers). */
+const LOCAL_STATUS_LABELS: Partial<Record<TradeStatus, string>> = {
+  awaiting_trade_list: "Draft: send it for review",
+  awaiting_shipment: "Reserved: let's meet up",
+  completed: "Trade completed",
+  canceled: "Canceled",
+  expired: "Hold ended",
+};
+
+const LOCAL_STATUS_NEXT: Partial<Record<TradeStatus, string>> = {
+  awaiting_trade_list:
+    "Pick our cards and send your trade for review. You don't need to list your cards: bring them when we meet. Our cards aren't reserved yet.",
+  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards aren't reserved yet.",
+  revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
+  awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards until we meet.",
+  awaiting_shipment:
+    "Our cards are reserved for you. We'll message you to set a time and place to meet: bring the cards you're trading in, and we'll settle the trade there.",
+  completed: "We met up and traded. Thanks for trading with us!",
+  canceled: "This trade was canceled. Our cards went back on sale.",
+  expired: "We didn't meet before the hold ended, so our cards went back on sale. Message us, or start a new trade.",
+};
+
+/** As staff read them, where a local pickup trade differs. */
+const LOCAL_STATUS_ADMIN_LABELS: Partial<Record<TradeStatus, string>> = {
+  awaiting_shipment: "Reserved: meet up",
+  completed: "Completed (in person)",
+  canceled: "Canceled",
+  expired: "Hold ended",
+};
+
+/** A status as customers read it, for this kind of trade. */
+export function tradeStatusLabel(status: TradeStatus, method: TradeHandoffMethod = "ship"): string {
+  return (method === "local" ? LOCAL_STATUS_LABELS[status] : undefined) ?? TRADE_STATUS_LABELS[status];
+}
+
+/** What happens next, in the customer's words, for this kind of trade. */
+export function tradeStatusNext(status: TradeStatus, method: TradeHandoffMethod = "ship"): string {
+  return (method === "local" ? LOCAL_STATUS_NEXT[status] : undefined) ?? TRADE_STATUS_NEXT[status];
+}
+
+/** A status as staff read it, for this kind of trade. */
+export function tradeStatusAdminLabel(status: TradeStatus, method: TradeHandoffMethod = "ship"): string {
+  return (method === "local" ? LOCAL_STATUS_ADMIN_LABELS[status] : undefined) ?? TRADE_STATUS_ADMIN_LABELS[status];
+}
 
 /** Closed for good: nothing more happens to the trade itself. */
 export const CLOSED_TRADE_STATUSES: ReadonlySet<TradeStatus> = new Set([
@@ -242,6 +304,41 @@ export const TRADE_STEPS = [
   { key: "done", label: "Done" },
 ] as const;
 
+/** The progress bar on a local pickup trade: no shipping, no inspection by mail. */
+export const LOCAL_TRADE_STEPS = [
+  { key: "list", label: "Our cards" },
+  { key: "review", label: "Review" },
+  { key: "confirm", label: "Confirm" },
+  { key: "meet", label: "Meet up" },
+  { key: "done", label: "Done" },
+] as const;
+
+export function tradeStepsFor(method: TradeHandoffMethod): readonly { key: string; label: string }[] {
+  return method === "local" ? LOCAL_TRADE_STEPS : TRADE_STEPS;
+}
+
+/** Which step of tradeStepsFor(method) a status is on; -1 for a trade that stopped. */
+export function tradeStepIndexFor(status: TradeStatus, method: TradeHandoffMethod): number {
+  if (method !== "local") return tradeStepIndex(status);
+  switch (status) {
+    case "awaiting_trade_list":
+    case "revision_requested":
+      return 0;
+    case "pending_review":
+      return 1;
+    case "awaiting_confirmation":
+    case "awaiting_deposit":
+      return 2;
+    case "awaiting_shipment":
+      return 3;
+    case "approved_for_fulfillment":
+    case "completed":
+      return 4;
+    default:
+      return -1;
+  }
+}
+
 /** Which TRADE_STEPS step a status is on; -1 for a trade that stopped. */
 export function tradeStepIndex(status: TradeStatus): number {
   switch (status) {
@@ -313,7 +410,28 @@ export const CUSTOMER_TIMELINE_LABELS: Readonly<Record<string, string>> = {
   declined_after_inspection: "You declined the final offer",
   canceled_by_store: "We canceled the trade",
   returned: "Your cards were mailed back",
+  handoff_changed: "You changed how you'll trade",
+  meetup_set: "We updated where and when to meet",
+  met_up: "We met up and traded",
 };
+
+/** History entries that read differently on a local pickup trade. */
+const LOCAL_TIMELINE_LABELS: Readonly<Record<string, string>> = {
+  submitted: "You sent your trade for review",
+  approved: "Approved: waiting for your confirmation",
+  reserved: "Our cards were reserved for you until we meet",
+  deadline_extended: "We gave you more time to meet",
+  finalized: "Trade complete",
+  completed: "You picked up our cards",
+  expired: "The hold on our cards ended",
+  canceled: "Trade canceled",
+};
+
+/** A history entry as its customer reads it, or undefined for one they don't see. */
+export function timelineLabel(event: string, method: TradeHandoffMethod = "ship"): string | undefined {
+  if (method === "local" && LOCAL_TIMELINE_LABELS[event] !== undefined) return LOCAL_TIMELINE_LABELS[event];
+  return CUSTOMER_TIMELINE_LABELS[event];
+}
 
 // ---------------------------------------------------------------------------
 // The deposit
@@ -450,6 +568,14 @@ export interface TradeTerms {
   /** The deposit and cancellation terms customers agree to. */
   depositTerms: string;
   depositTermsVersion: number;
+  /** Customers can choose local pickup: trade in person, no shipping. */
+  localPickupEnabled: boolean;
+  /** Where local pickup is offered ("the St. Louis area"). */
+  localPickupArea: string;
+  /** Qualifying days our cards are held for the meetup once a local trade is confirmed. */
+  localMeetDays: number;
+  /** How meetups work, for customers choosing local pickup. */
+  localPickupDetails: string;
 }
 
 /** Trading is open to new trades. */
@@ -887,6 +1013,12 @@ export interface TradeConfirmation {
   shipByIfConfirmedNow: string;
   /** Paying the deposit online works right now. */
   canPayOnline: boolean;
+  /**
+   * Local pickup: there's no shipping and never a deposit. shipDays and
+   * shipByIfConfirmedNow are then the days our cards are held for the
+   * meetup, and when that hold would end if they confirmed now.
+   */
+  local: boolean;
 }
 
 /** Proof of shipping the customer sent. */
@@ -904,6 +1036,15 @@ export interface CustomerTrade {
   id: string;
   tradeNumber: number;
   status: TradeStatus;
+  /** By mail, or in person (local pickup). */
+  handoffMethod: TradeHandoffMethod;
+  /** Local pickup: where and when to meet, as we wrote it. */
+  meetupDetails: string | null;
+  /** Local pickup: when we finished the trade at the meetup. */
+  metAt: string | null;
+  /** Local pickup: how they paid the difference in person. */
+  localPaymentMethod: "none" | "cash" | "card" | "other" | null;
+  localPaidCents: number | null;
   createdAt: string;
   updatedAt: string;
   creditRatePercent: number;
@@ -971,6 +1112,7 @@ export interface CustomerTradeSummary {
   id: string;
   tradeNumber: number;
   status: TradeStatus;
+  handoffMethod: TradeHandoffMethod;
   createdAt: string;
   updatedAt: string;
   wantedTotalCents: number;
@@ -1089,6 +1231,7 @@ export interface StaffTradeSummary {
   id: string;
   tradeNumber: number;
   status: TradeStatus;
+  handoffMethod: TradeHandoffMethod;
   customerName: string | null;
   customerEmail: string | null;
   createdAt: string;
@@ -1175,6 +1318,10 @@ export interface TradeSettings {
   shipTo: TradeAddress | null;
   packingInstructions: string;
   returnPolicy: string;
+  localPickupEnabled: boolean;
+  localPickupArea: string;
+  localMeetDays: number;
+  localPickupDetails: string;
   updatedAt: string | null;
 }
 
@@ -1211,7 +1358,16 @@ export const TRADE_SETTING_RANGES = {
   shipFeeCents: [0, 10_000],
   freeShipThresholdCents: [1, 100_000_000],
   shipCostEstimateCents: [0, 10_000],
+  localMeetDays: [1, 30],
 } as const;
+
+/** How a local pickup trade's difference was paid in person, as staff and customers read it. */
+export const LOCAL_PAYMENT_LABELS: Record<"none" | "cash" | "card" | "other", string> = {
+  none: "Nothing to pay",
+  cash: "Cash",
+  card: "Card",
+  other: "Other",
+};
 
 // ---------------------------------------------------------------------------
 // Formatting (here so the emails and the pages say the same thing)

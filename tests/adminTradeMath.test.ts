@@ -423,3 +423,30 @@ describe("the settings form", () => {
     expect(settingsInputOf({ ...form, depositTerms: "  " })).toEqual({ problem: "Add the deposit and cancellation terms customers agree to." });
   });
 });
+
+describe("the meetup (local pickup)", () => {
+  it("adds up the cards taken, the credit, what they pay and what's left over, as the database does", async () => {
+    const { meetupTotals } = await import("../src/admin/pages/trades/tradeMath");
+    const trade = { wantedTotalCents: 8000, creditRatePercent: 80, processingFeeCents: 0 };
+    const off = { cashPayoutEnabled: false, cashRatePercent: 50 };
+    expect(meetupTotals(trade, [{ quantity: 1, unitCents: 5000 }, { quantity: 2, unitCents: 1000 }], off)).toEqual({
+      valueCents: 7000,
+      creditCents: 5600,
+      dueCents: 2400,
+      excessCents: 0,
+      cashOptionCents: 0,
+    });
+    // Nothing taken: they buy our cards outright.
+    expect(meetupTotals(trade, [], off)).toMatchObject({ valueCents: 0, creditCents: 0, dueCents: 8000 });
+    // More than covers ours: the rest is store credit, or cash at the cash rate when that's on.
+    expect(meetupTotals(trade, [{ quantity: 1, unitCents: 15000 }], { cashPayoutEnabled: true, cashRatePercent: 50 })).toEqual({
+      valueCents: 15000,
+      creditCents: 12000,
+      dueCents: 0,
+      excessCents: 4000,
+      cashOptionCents: 2500,
+    });
+    // The processing fee comes off the credit.
+    expect(meetupTotals({ ...trade, processingFeeCents: 300 }, [{ quantity: 1, unitCents: 5000 }], off).creditCents).toBe(3700);
+  });
+});

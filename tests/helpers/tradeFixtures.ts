@@ -138,6 +138,11 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     id: TRADE_ID,
     tradeNumber: 1001,
     status: "pending_review",
+    handoffMethod: "ship",
+    meetupDetails: null,
+    metAt: null,
+    localPaymentMethod: null,
+    localPaidCents: null,
     createdAt: "2026-10-20T12:00:00Z",
     updatedAt: "2026-10-20T12:00:00Z",
     creditRatePercent: 80,
@@ -229,6 +234,7 @@ export function tradeSummary(over: Partial<StaffTradeSummary> = {}): StaffTradeS
     id: TRADE_ID,
     tradeNumber: 1001,
     status: "pending_review",
+    handoffMethod: "ship",
     customerName: "Ann Lee",
     customerEmail: "ann@example.com",
     createdAt: "2026-10-20T12:00:00Z",
@@ -315,6 +321,10 @@ export const TRADE_SETTINGS: TradeSettings = {
   shipTo: { name: "Geega Games", line1: "100 Test Ave", line2: null, city: "Ballwin", state: "MO", postalCode: "63011" },
   packingInstructions: "Sleeve them.",
   returnPolicy: "We mail them back.",
+  localPickupEnabled: true,
+  localPickupArea: "the St. Louis area",
+  localMeetDays: 7,
+  localPickupDetails: "We'll message you to set a time and a public place to meet.",
   updatedAt: null,
 };
 
@@ -373,6 +383,7 @@ export function customerSummary(over: Partial<CustomerTradeSummary> = {}): Custo
     id: TRADE_ID,
     tradeNumber: 1001,
     status: "awaiting_trade_list",
+    handoffMethod: "ship",
     createdAt: "2026-10-20T12:00:00Z",
     updatedAt: "2026-10-20T12:00:00Z",
     wantedTotalCents: 8899,
@@ -399,6 +410,7 @@ export function confirmation(over: Partial<TradeConfirmation> = {}): TradeConfir
     shipDays: 3,
     shipByIfConfirmedNow: "2026-10-29T19:00:00.000Z",
     canPayOnline: true,
+    local: false,
     ...over,
   };
 }
@@ -464,4 +476,8 @@ export const TRADE_TERMS: TradeTerms = {
   depositBand4Cents: 3000,
   depositTerms: DEPOSIT_TERMS,
   depositTermsVersion: 1,
+  localPickupEnabled: true,
+  localPickupArea: "the St. Louis area",
+  localMeetDays: 7,
+  localPickupDetails: "We'll message you to set a time and a public place to meet.",
 };

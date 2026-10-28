@@ -474,10 +474,48 @@ function SettingsEditor({
         />
       </Group>
 
+      <Group
+        title="Local pickup"
+        intro="Customers near you can trade in person: they pick our cards and send the trade without listing theirs. You approve it (no card review, never a deposit), they confirm, and our cards are held while you arrange a meetup in the trade's messages. At the meetup you record the cards you take and any difference they pay, which finishes the trade."
+      >
+        <label className="gg-check-inline gg-trset__switch">
+          <input
+            type="checkbox"
+            checked={form.localPickupEnabled}
+            disabled={disabled}
+            onChange={(e) => set({ localPickupEnabled: e.target.checked })}
+          />
+          <span>
+            <strong>Offer local pickup</strong>
+            <span className="gg-card-meta"> Off: new trades ship. Local trades already started carry on.</span>
+          </span>
+        </label>
+        <div className="gg-form-grid">
+          <TextField
+            label="Where it's offered"
+            maxLength={120}
+            value={form.localPickupArea}
+            disabled={disabled}
+            onChange={(e) => set({ localPickupArea: e.target.value })}
+            hint="As customers read it: “Local pickup in the St. Louis area.”"
+          />
+          {numberField("localMeetDays", "days", "After the customer confirms. Sundays and the days below don't count. You can always give more time on the trade.")}
+        </div>
+        <TextArea
+          label="How meetups work"
+          rows={3}
+          maxLength={2000}
+          value={form.localPickupDetails}
+          disabled={disabled}
+          onChange={(e) => set({ localPickupDetails: e.target.value })}
+          hint="Shown when customers choose local pickup, and in the email once their cards are reserved."
+        />
+      </Group>
+
       <Group title="Reminders and alerts">
         <div className="gg-form-grid">
           {numberField("confirmReminderHours", "hours", "0 for no reminder.")}
-          {numberField("shipReminderHours", "hours", "0 for no reminder.")}
+          {numberField("shipReminderHours", "hours", "Also reminds local pickup customers before their hold ends. 0 for no reminder.")}
           {numberField("maxTransitDays", "days")}
           {numberField("stallAlertDays", "days")}
         </div>

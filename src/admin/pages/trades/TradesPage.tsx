@@ -18,6 +18,7 @@ import {
   TRADE_STATUSES,
   TRADE_STATUS_ADMIN_LABELS,
   formatDeadline,
+  tradeStatusAdminLabel,
   formatUsd,
   isDepositStatus,
   isTradeStatus,
@@ -32,8 +33,8 @@ import { TradeSettingsPanel } from "./TradeSettingsPanel";
 import { CustomersTab, DepositsTab, EconomicsTab, ReservedTab } from "./TradeOverviewTabs";
 
 // Admin → Trades: online trades from the storefront's Trade Cards page.
-// Trades tab: the list (waiting on you, open, reserved, abandoned,
-// completed, all, or one status or deposit status; search by TR number,
+// Trades tab: the list (waiting on you, open, reserved, abandoned, local
+// pickup, completed, all, or one status or deposit status; search by TR number,
 // name or email) and each trade in a drawer (TradeDrawer) with everything
 // staff do to it. Deposits, Reserved, Customers and Economics: overviews.
 // Settings: rates, minimums, shipping, limits, deadlines, deposits,
@@ -49,6 +50,7 @@ const MAIN_FILTERS: { key: TradeListFilter; label: string }[] = [
   { key: "open", label: "Open" },
   { key: "reserved", label: "Reserved" },
   { key: "abandoned", label: "Abandoned" },
+  { key: "local", label: "Local pickup" },
   // Approved for fulfillment or completed ("completed" alone is a status).
   { key: "finished", label: "Completed" },
   { key: "all", label: "All" },
@@ -63,9 +65,10 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
-/** Their cards' value as it stands: estimated, approved or final. */
-function theirValue(t: StaffTradeSummary): { cents: number; stage: string } {
+/** Their cards' value as it stands: estimated, approved or final (a local pickup trade's: at the meetup). */
+function theirValue(t: StaffTradeSummary): { cents: number; stage: string } | null {
   if (t.finalValueCents != null) return { cents: t.finalValueCents, stage: "final" };
+  if (t.handoffMethod === "local") return null;
   if (t.approvedValueCents != null) return { cents: t.approvedValueCents, stage: "approved" };
   return { cents: t.estimatedValueCents, stage: "estimate" };
 }
@@ -84,6 +87,8 @@ function nextUp(t: StaffTradeSummary): string {
     case "awaiting_deposit":
       return t.confirmBy ? `Confirm by ${formatDeadline(t.confirmBy)}` : "—";
     case "awaiting_shipment":
+      if (t.handoffMethod === "local") return t.shipBy ? `Meet by ${formatDeadline(t.shipBy)}` : "Arrange the meetup";
+      return t.shipBy ? `Ship by ${formatDeadline(t.shipBy)}` : "—";
     case "tracking_submitted":
       return t.shipBy ? `Ship by ${formatDeadline(t.shipBy)}` : "—";
     case "in_transit":
@@ -125,10 +130,18 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
             {waitingOnStaff(t) && <span className="gg-newdot" aria-hidden="true" />}
             {tradeLabel(t.tradeNumber)}
           </span>
-          <span className="gg-ordercell__cust">{t.customerName || t.customerEmail || "Customer"}</span>
+          <span className="gg-ordercell__cust">
+            {t.customerName || t.customerEmail || "Customer"}
+            {t.handoffMethod === "local" && (
+              <>
+                {" "}
+                <Badge tone="purple">Local</Badge>
+              </>
+            )}
+          </span>
           {/* Phones: the status column is hidden, so it shows here. */}
           <span className="gg-trades__inline-status">
-            <Badge tone={TRADE_STATUS_TONE[t.status]}>{TRADE_STATUS_ADMIN_LABELS[t.status]}</Badge>
+            <Badge tone={TRADE_STATUS_TONE[t.status]}>{tradeStatusAdminLabel(t.status, t.handoffMethod)}</Badge>
           </span>
         </div>
       ),
@@ -139,6 +152,7 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
       align: "right",
       render: (t) => {
         const v = theirValue(t);
+        if (!v) return <span className="gg-trades__stage">at the meetup</span>;
         return (
           <span className="gg-trades__value">
             {formatCents(v.cents)}
@@ -158,7 +172,7 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
       key: "status",
       header: "Status",
       secondary: true,
-      render: (t) => <Badge tone={TRADE_STATUS_TONE[t.status]}>{TRADE_STATUS_ADMIN_LABELS[t.status]}</Badge>,
+      render: (t) => <Badge tone={TRADE_STATUS_TONE[t.status]}>{tradeStatusAdminLabel(t.status, t.handoffMethod)}</Badge>,
     },
     {
       key: "deposit",

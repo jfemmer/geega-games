@@ -51,7 +51,7 @@ type GuestOrder = {
   store_credit_used_cents: number;
   total_cents: number;
   amount_due_cents: number;
-  shipping_method: string;
+  shipping_method: string | null;
   tracking_carrier: string | null;
   tracking_number: string | null;
   paid_at: string | null;
@@ -174,7 +174,7 @@ export default function TrackOrderPage() {
           <StatusBadge status={order.status} kind="order" />
           <StatusBadge status={order.payment_status} kind="payment" />
           <span className="gg-badge">
-            {order.shipping_method === "pwe" ? "Plain White Envelope" : "Tracked shipping"}
+            {!order.shipping_method ? "Picked up in person" : order.shipping_method === "pwe" ? "Plain White Envelope" : "Tracked shipping"}
           </span>
         </div>
 

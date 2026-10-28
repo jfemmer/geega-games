@@ -264,6 +264,10 @@ function settingsRow(over: Record<string, unknown> = {}) {
     free_ship_threshold_cents: 20000,
     free_ship_fee_cents: 0,
     ship_cost_estimate_cents: 600,
+    local_pickup_enabled: true,
+    local_pickup_area: "the St. Louis area",
+    local_meet_days: 7,
+    local_pickup_details: "We'll message you to set a time and a public place to meet.",
     ship_to_name: "Geega Games",
     ship_to_line1: "100 Test Ave",
     ship_to_line2: null,
@@ -287,6 +291,11 @@ function tradeRow(over: Record<string, unknown> = {}) {
     customer_name: "Ann Lee",
     customer_email: "ann@example.com",
     status: "awaiting_trade_list",
+    handoff_method: "ship",
+    meetup_details: null,
+    met_at: null,
+    local_payment_method: null,
+    local_paid_cents: null,
     credit_rate_percent: 80,
     min_card_value_cents: 1500,
     condition_percents: { NM: 100, LP: 90, MP: 75, HP: 60, DMG: 40 },
@@ -572,7 +581,13 @@ beforeEach(() => {
 
   // trade_start: a draft with the cards asked for, nothing held (the real one checks they're on sale).
   rpc("trade_start", (args) => {
-    const t = tradeRow({ user_id: args.p_user_id, customer_name: args.p_customer_name, customer_email: args.p_customer_email, created_at: iso(Date.now()) });
+    const t = tradeRow({
+      user_id: args.p_user_id,
+      customer_name: args.p_customer_name,
+      customer_email: args.p_customer_email,
+      handoff_method: args.p_handoff_method ?? "ship",
+      created_at: iso(Date.now()),
+    });
     trades().push(t);
     for (const i of args.p_items as { inventory_item_id: string; quantity: number }[]) {
       state.tables.trade_request_items.push(itemRow(t.id, { inventory_item_id: i.inventory_item_id, quantity: i.quantity }));
@@ -1043,6 +1058,7 @@ describe("confirming an approved trade (6, 7)", () => {
       shipDays: 4,
       shipByIfConfirmedNow: "2026-10-29T19:00:00.000Z",
       canPayOnline: true,
+      local: false,
     });
   });
 
@@ -2741,5 +2757,233 @@ describe("the worker (deadlines, scans, deposits, reminders)", () => {
   it("does nothing (and doesn't fail) where the Trade Center isn't set up", async () => {
     state.tables.trade_settings = [];
     expect(await runTradeWorker()).toEqual({ tradesExpired: 0, tradeReminders: 0, tradeAlerts: 0, tradeScansChecked: 0, tradeDepositsReconciled: 0 });
+  });
+});
+
+describe("local pickup trades", () => {
+  /** A local pickup trade at `status` (our cards on it; nothing of theirs listed). */
+  function localTrade(over: Record<string, unknown> = {}) {
+    const t = tradeRow({ handoff_method: "local", estimated_value_cents: 0, ...over });
+    trades().push(t);
+    state.tables.trade_request_items.push(itemRow(t.id, { status: (over.status as string) === "awaiting_shipment" ? "reserved" : "requested" }));
+    return t;
+  }
+
+  it("starts a local pickup trade when asked, and a shipped one otherwise", async () => {
+    const local = await ann.post({ action: "start", items: [{ inventoryItemId: RING, quantity: 1 }], handoffMethod: "local" });
+    expect(local.statusCode).toBe(200);
+    expect(rpcArgs("trade_start")[0]).toMatchObject({ p_handoff_method: "local" });
+    expect((local.body.trade as { handoffMethod: string }).handoffMethod).toBe("local");
+    const shipped = await bob.post({ action: "start", items: [{ inventoryItemId: SIGNET, quantity: 1 }] });
+    expect(rpcArgs("trade_start")[1]).toMatchObject({ p_handoff_method: "ship" });
+    expect((shipped.body.trade as { handoffMethod: string }).handoffMethod).toBe("ship");
+    const bad = await ann.post({ action: "start", items: [{ inventoryItemId: SIGNET, quantity: 1 }], handoffMethod: "drone" });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it("switches a draft between shipping and local pickup", async () => {
+    const t = tradeRow({ user_id: ANN });
+    trades().push(t);
+    rpc("trade_set_handoff", (args) => {
+      find(args.p_trade_id).handoff_method = args.p_handoff_method as string;
+      return { data: null, error: null };
+    });
+    const res = await ann.post({ action: "setHandoff", tradeId: t.id, handoffMethod: "local" });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_set_handoff")).toEqual([{ p_trade_id: t.id, p_user_id: ANN, p_handoff_method: "local" }]);
+    expect((await ann.post({ action: "setHandoff", tradeId: t.id, handoffMethod: "mail" })).statusCode).toBe(400);
+    t.status = "pending_review";
+    expect((await ann.post({ action: "setHandoff", tradeId: t.id, handoffMethod: "ship" })).statusCode).toBe(409);
+  });
+
+  it("sends a local trade without pricing their cards, with its own emails", async () => {
+    const t = localTrade({ user_id: ANN });
+    const res = await ann.post({ action: "submit", tradeId: t.id, note: "Free Saturdays" });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_save_offer")).toEqual([]);
+    expect(rpcArgs("trade_submit")[0]).toMatchObject({ p_note: "Free Saturdays" });
+    const customer = sent.find((e) => e.emailType === "trade_submitted");
+    expect(customer?.text).toMatch(/local pickup/);
+    expect(customer?.text).not.toMatch(/mail anything/);
+    expect(sent.find((e) => e.emailType === "trade_staff_submitted")?.subject).toMatch(/local pickup trade is waiting/);
+  });
+
+  it("confirms with no deposit and the local pickup terms, holding our cards for the meetup", async () => {
+    confirmStandIn();
+    const t = localTrade({ user_id: ANN, status: "awaiting_confirmation", confirm_by: iso(Date.now() + 40 * HOUR), approved_at: iso(Date.now() - HOUR) });
+    const view = (await ann.get({ id: t.id })).body.trade as { confirmation: Record<string, unknown> };
+    expect(view.confirmation).toMatchObject({ local: true, depositCents: 0, shipDays: 7 });
+    expect(view.confirmation.termsText).toMatch(/hold.*7 days/s);
+    // Local terms don't depend on the deposit terms' version.
+    const res = await ann.post({ action: "confirm", tradeId: t.id, acknowledged: true, termsVersion: 1 });
+    expect(res.statusCode).toBe(200);
+    const args = rpcArgs("trade_confirm")[0];
+    expect(args).toMatchObject({ p_ship_days: 7, p_payment_intent: null });
+    expect(args.p_terms_text).toMatch(/no deposit/);
+    // local_meet_days (7) qualifying days from now: Sundays don't count.
+    expect(Math.abs(Date.parse(args.p_ship_by as string) - addQualifyingDays(Date.now(), 7, []))).toBeLessThan(60_000);
+    expect(stripeState.created).toEqual([]);
+    expect(find(t.id).status).toBe("awaiting_shipment");
+    expect(emailTypes()).toEqual(expect.arrayContaining(["trade_reserved", "trade_staff_reserved"]));
+    expect(sent.find((e) => e.emailType === "trade_reserved")?.subject).toMatch(/Let's meet up/);
+    expect((await ann.post({ action: "confirm", tradeId: t.id, acknowledged: false, termsVersion: 3 })).statusCode).toBe(409);
+  });
+
+  it("refuses tracking and proof of shipping on a local trade", async () => {
+    const t = localTrade({ user_id: ANN, status: "awaiting_shipment", ship_by: iso(Date.now() + 3 * DAY) });
+    const tracking = await ann.post({ action: "tracking", tradeId: t.id, carrier: "USPS", trackingNumber: "9400111899223197428490", packagingConfirmed: true });
+    expect(tracking.statusCode).toBe(409);
+    expect((await ann.post({ action: "proof", tradeId: t.id, note: "x" })).statusCode).toBe(409);
+    expect(rpcArgs("trade_record_tracking")).toEqual([]);
+  });
+
+  it("cancels a reserved local trade without counting it against them", async () => {
+    const t = localTrade({ user_id: ANN, status: "awaiting_shipment", ship_by: iso(Date.now() + 3 * DAY), reserved_at: iso(Date.now()) });
+    const res = await ann.post({ action: "cancel", tradeId: t.id, reason: "Can't make it" });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_close")[0]).toMatchObject({ p_status: "canceled", p_fault: null });
+    expect(sent.find((e) => e.emailType === "trade_canceled")?.text).toMatch(/went back on sale/);
+  });
+
+  it("approves a local trade with no deposit and the meetup details, emailing both", async () => {
+    const t = localTrade({ status: "pending_review", wanted_total_cents: 40000 });
+    rpc("trade_set_meetup", (args) => {
+      find(args.p_trade_id).meetup_details = args.p_details as string;
+      return { data: null, error: null };
+    });
+    rpc("trade_approve", (args) => {
+      Object.assign(find(args.p_trade_id), { status: "awaiting_confirmation", approved_at: iso(Date.now()), confirm_by: args.p_confirm_by });
+      return { data: 0, error: null };
+    });
+    const res = await staff.post({ action: "approve", tradeId: t.id, meetupDetails: "Sat 2 PM, Ballwin library", depositOverride: "required" });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_set_meetup")[0]).toMatchObject({ p_details: "Sat 2 PM, Ballwin library" });
+    expect(rpcArgs("trade_approve")[0]).toMatchObject({ p_deposit_cents: 0, p_deposit_reason: null });
+    const email = sent.find((e) => e.emailType === "trade_approved");
+    expect(email?.text).toMatch(/Ballwin library/);
+    expect(email?.text).toMatch(/no deposit/i);
+    expect((await staff.post({ action: "setDeposit", tradeId: t.id, override: "required" })).statusCode).toBe(409);
+  });
+
+  it("emails the customer when staff change the meetup on an approved trade", async () => {
+    const t = localTrade({ status: "awaiting_shipment", ship_by: iso(Date.now() + 3 * DAY) });
+    rpc("trade_set_meetup", (args) => {
+      find(args.p_trade_id).meetup_details = args.p_details as string;
+      return { data: null, error: null };
+    });
+    const res = await staff.post({ action: "setMeetup", tradeId: t.id, details: "Sunday noon, the cafe" });
+    expect(res.statusCode).toBe(200);
+    expect(sent.find((e) => e.emailType === "trade_meetup_set")?.text).toMatch(/Sunday noon, the cafe/);
+    const shipped = approvedTrade();
+    expect((await staff.post({ action: "setMeetup", tradeId: shipped.id, details: "x" })).statusCode).toBe(409);
+  });
+
+  it("refuses shipping steps on a local trade", async () => {
+    const t = localTrade({ status: "awaiting_shipment" });
+    for (const action of ["markReceived", "verifyShipment", "sendFinalOffer", "inspect", "recordPayment", "setPostage"]) {
+      const res = await owner.post({ action, tradeId: t.id });
+      expect(res.statusCode, action).toBe(409);
+    }
+  });
+
+  it("finishes at the meetup: checks the cards and payment, sends them to the database, and emails a receipt", async () => {
+    const t = localTrade({ user_id: ANN, status: "awaiting_shipment", ship_by: iso(Date.now() + 3 * DAY), wanted_total_cents: 7999 });
+    rpc("trade_complete_local", (args) => {
+      Object.assign(find(args.p_trade_id), {
+        status: "completed",
+        order_id: "order-1",
+        final_value_cents: 5000,
+        final_credit_cents: 4000,
+        credit_issued_cents: 4000,
+        local_paid_cents: args.p_paid_cents,
+        local_payment_method: args.p_payment_method ?? "none",
+        met_at: iso(Date.now()),
+      });
+      return { data: "order-1", error: null };
+    });
+    const card = {
+      scryfallId: SHEOLDRED,
+      cardName: "Sheoldred, the Apocalypse",
+      setCode: "dmu",
+      setName: "Dominaria United",
+      collectorNumber: "107",
+      finish: "nonfoil",
+      imageUrl: "https://cards.scryfall.io/normal/front/x.jpg",
+      condition: "LP",
+      quantity: 1,
+      unitCents: 5000,
+      referencePriceCents: 6000,
+      note: null,
+    };
+    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [{ ...card, condition: "Mint" }], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(400);
+    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [{ ...card, finish: "chrome" }], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(400);
+    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999 })).statusCode).toBe(400);
+    expect(rpcArgs("trade_complete_local")).toEqual([]);
+
+    const res = await staff.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999, paymentMethod: "cash", paymentNote: "at the cafe" });
+    expect(res.statusCode).toBe(200);
+    const args = rpcArgs("trade_complete_local")[0];
+    expect(args).toMatchObject({ p_paid_cents: 3999, p_payment_method: "cash", p_payment_note: "at the cafe", p_cash_for_excess: false });
+    expect(args.p_cards).toEqual([
+      {
+        scryfall_id: SHEOLDRED,
+        card_name: "Sheoldred, the Apocalypse",
+        set_code: "dmu",
+        set_name: "Dominaria United",
+        collector_number: "107",
+        finish: "nonfoil",
+        image_url: "https://cards.scryfall.io/normal/front/x.jpg",
+        condition: "LP",
+        quantity: 1,
+        unit_cents: 5000,
+        reference_price_cents: 6000,
+        note: null,
+      },
+    ]);
+    const receipt = sent.find((e) => e.emailType === "trade_completed");
+    expect(receipt?.text).toMatch(/Paid when we met \(cash\)/);
+    expect(res.body.customerEmail).toMatchObject({ status: "sent" });
+    expect((state.tables.admin_audit_log as { action: string }[]).map((a) => a.action)).toContain("trade.complete_local");
+  });
+
+  it("tells the customer when a local hold ends, and reminds them before it does", async () => {
+    const gone = localTrade({ user_id: ANN, status: "expired", expired_stage: "shipping", ship_by: iso(Date.now() - HOUR), closed_at: iso(Date.now()) });
+    const soon = localTrade({ user_id: ANN, status: "awaiting_shipment", ship_by: iso(Date.now() + 3 * HOUR), meetup_details: "Sat 2 PM, the library" });
+    rpc("trade_expire_due", () => ({
+      data: [{ expired_trade_id: gone.id, expired_trade_number: gone.trade_number, expired_from_status: "awaiting_shipment", expired_stage: "shipping", expired_deposit_status: "not_required" }],
+      error: null,
+    }));
+    await runTradeWorker();
+    const expired = sent.find((e) => e.emailType === "trade_reservation_expired");
+    expect(expired?.subject).toMatch(/the hold on our cards ended/);
+    expect(expired?.text).not.toMatch(/proof of shipping/i);
+    const reminder = sent.find((e) => e.emailType === "trade_reminder_ship_by");
+    expect(reminder?.subject).toMatch(/our hold ends/);
+    expect(reminder?.text).toMatch(/Sat 2 PM, the library/);
+    expect(soon.status).toBe("awaiting_shipment");
+  });
+
+  it("lists local pickup trades on their own", async () => {
+    localTrade({ status: "pending_review" });
+    approvedTrade();
+    const res = await staff.get({ view: "list", filter: "local" });
+    expect((res.body.trades as unknown[]).length).toBe(1);
+    expect((res.body.counts as Record<string, number>).local).toBe(1);
+  });
+
+  it("keeps local pickup settings when an older page leaves them out, and saves them when sent", async () => {
+    const before = settings();
+    const { local_pickup_enabled: _e, local_pickup_area: _a, local_meet_days: _d, local_pickup_details: _p, ...rest } = before;
+    void rest;
+    const res = await owner.get({ view: "settings" });
+    const view = res.body.settings as Record<string, unknown>;
+    expect(view).toMatchObject({ localPickupEnabled: true, localMeetDays: 7, localPickupArea: "the St. Louis area" });
+    const { localPickupEnabled: _x, localPickupArea: _y, localMeetDays: _z, localPickupDetails: _w, updatedAt: _u, ...older } = view;
+    expect((await owner.post({ action: "saveSettings", settings: older })).statusCode).toBe(200);
+    expect(settings()).toMatchObject({ local_pickup_enabled: true, local_meet_days: 7 });
+    const saved = await owner.post({ action: "saveSettings", settings: { ...view, localPickupEnabled: false, localMeetDays: 5, localPickupArea: " Ballwin " } });
+    expect(saved.statusCode).toBe(200);
+    expect(settings()).toMatchObject({ local_pickup_enabled: false, local_meet_days: 5, local_pickup_area: "Ballwin" });
+    expect((await owner.post({ action: "saveSettings", settings: { ...view, localMeetDays: 31 } })).statusCode).toBe(400);
   });
 });

@@ -29,8 +29,11 @@ import {
   customerStanding,
   customerSummaryView,
   customerTradeView,
+  handoffOf,
   loadCustomerBundle,
   loadTradeSettings,
+  localPickupTerms,
+  meetDeadline,
   priceOffers,
   readOfferInputs,
   readShipTo,
@@ -55,6 +58,7 @@ import {
   DISPUTE_FILE_TYPES,
   TRADE_LIMITS,
   isConditionCode,
+  isHandoffMethod,
   isTradeFinish,
   tradeLabel,
   type TradeConfirmation,
@@ -69,12 +73,15 @@ import { checkTrackingNumber } from "../src/store/lib/tradeTracking.js";
 //   GET ?view=mine           → { terms, trades }          the signed-in customer's trades
 //   GET ?id=<trade id>       → { terms, trade }           one of their trades
 //   POST { action, … }       → { trade, … }               signed in:
-//     start          { items: [{ inventoryItemId, quantity }] }   open a trade (nothing is reserved)
+//     start          { items: [{ inventoryItemId, quantity }],    open a trade (nothing is reserved), shipped
+//                      handoffMethod? }                          or local pickup ("ship" | "local")
+//     setHandoff     { tradeId, handoffMethod }                  switch between shipping and local pickup (a draft)
 //     setWanted      { tradeId, items }                          change which of our cards
 //     saveOffer      { tradeId, cards: [...] }                   save their cards (priced here)
 //     submit         { tradeId, note? }                          send it for review
 //     confirm        { tradeId, acknowledged, termsVersion }     confirm an approved trade
-//                    → { trade, clientSecret?, depositCents? }   (with a deposit: pay it to reserve)
+//                    → { trade, clientSecret?, depositCents? }   (with a deposit: pay it to reserve; local
+//                                                                pickup: never a deposit, holds our cards to meet)
 //     confirmDeposit { tradeId, paymentIntentId }                record the deposit once Stripe says it went through
 //     tracking       { tradeId, carrier, trackingNumber,          their package (counts once the carrier scans it); a new
 //                      packagingConfirmed, shippedOn? }           number needs packagingConfirmed; shippedOn is YYYY-MM-DD
@@ -89,6 +96,10 @@ import { checkTrackingNumber } from "../src/store/lib/tradeTracking.js";
 //     pay            { tradeId }                                 → { clientSecret, amountDueCents }
 //     confirmPayment { tradeId, paymentIntentId }                record it once Stripe says it went through
 //     message        { tradeId, body }
+//
+// Local pickup trades (handoffMethod "local") skip everything about mail:
+// their cards aren't listed, nothing is tracked or proved, and staff finish
+// the trade when they meet (api/admin/trade-center.ts, completeLocal).
 //
 // Trust: who the customer is comes from their verified session, never the
 // body, and a trade that isn't theirs looks the same as one that doesn't
@@ -164,6 +175,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
 
+      case "setHandoff": {
+        if (!CUSTOMER_EDITABLE_STATUSES.includes(status)) throw new HttpError(409, "How you'll trade can be changed until you send your trade.");
+        if (!isHandoffMethod(body.handoffMethod)) throw new HttpError(400, "Choose shipping or local pickup.");
+        const { error } = await admin.rpc("trade_set_handoff", {
+          p_trade_id: tradeId,
+          p_user_id: customer.userId,
+          p_handoff_method: body.handoffMethod,
+        });
+        if (error) throw tradeDbError(error, "We couldn't change how you'll trade. Try again.");
+        break;
+      }
+
       case "saveOffer": {
         if (!CUSTOMER_EDITABLE_STATUSES.includes(status)) throw new HttpError(409, "Your cards can't be changed now.");
         const inputs = readOfferInputs(body.cards, settings.max_offered_lines);
@@ -179,8 +202,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case "submit": {
         if (!CUSTOMER_EDITABLE_STATUSES.includes(status)) throw new HttpError(409, "This trade has already been sent.");
-        // Prices are checked again as it's sent, so staff review today's numbers.
-        const inputs = offerInputsFromRows(bundle.offers);
+        // Prices are checked again as it's sent, so staff review today's numbers
+        // (a local pickup trade's cards are valued when we meet).
+        const inputs = handoffOf(bundle.trade) === "local" ? [] : offerInputsFromRows(bundle.offers);
         if (inputs.length > 0) {
           const priced = await priceOffers(admin, inputs, bundle.trade, settings);
           const saved = await admin.rpc("trade_save_offer", {
@@ -225,13 +249,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       case "tracking":
+        if (handoffOf(bundle.trade) === "local") throw new HttpError(409, "This is a local pickup trade: there's nothing to ship.");
         await addTracking(admin, customer, settings, bundle, body);
         break;
 
       case "proofUploads":
+        if (handoffOf(bundle.trade) === "local") throw new HttpError(409, "This is a local pickup trade: there's nothing to ship.");
         return sendJson(res, 200, { ok: true, uploads: await proofUploads(admin, bundle, body) });
 
       case "proof": {
+        if (handoffOf(bundle.trade) === "local") throw new HttpError(409, "This is a local pickup trade: there's nothing to ship.");
         await sendProof(admin, customer, settings, bundle, body);
         break;
       }
@@ -243,7 +270,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const note = cleanText(body.note, 1000);
         if (!note) throw new HttpError(400, "Tell us how much more time you need, and why.");
         await checkMessageLimit(admin, tradeId);
-        const text = `I'd like more time ${status === "awaiting_confirmation" || status === "awaiting_deposit" ? "to confirm" : "to ship"}: ${note}`;
+        const text = `I'd like more time ${
+          status === "awaiting_confirmation" || status === "awaiting_deposit"
+            ? "to confirm"
+            : handoffOf(bundle.trade) === "local"
+              ? "to meet up"
+              : "to ship"
+        }: ${note}`;
         const messageId = await addMessage(admin, tradeId, customer, text);
         await logEvent(admin, tradeId, customer, "extension_requested", status, { message_id: messageId, note });
         await notifyTradeStaff(bundle, settings, { kind: "message", messageId, body: text });
@@ -379,6 +412,19 @@ function readIntentId(raw: unknown): string {
 async function confirmationFor(admin: Admin, bundle: TradeBundle, settings: TradeSettingsRow, now: number): Promise<TradeConfirmation | null> {
   const t = bundle.trade;
   if ((t.status !== "awaiting_confirmation" && t.status !== "awaiting_deposit") || !t.confirm_by) return null;
+  if (handoffOf(t) === "local") {
+    return {
+      confirmBy: t.confirm_by,
+      depositCents: 0,
+      depositReason: null,
+      termsText: localPickupTerms(settings),
+      termsVersion: settings.deposit_terms_version,
+      shipDays: settings.local_meet_days,
+      shipByIfConfirmedNow: meetDeadline(now, settings),
+      canPayOnline: stripeConfigured(),
+      local: true,
+    };
+  }
   const standing = await customerStanding(admin, t.user_id, settings);
   const shipDays = standing.privileges.shipDays;
   return {
@@ -390,6 +436,7 @@ async function confirmationFor(admin: Admin, bundle: TradeBundle, settings: Trad
     shipDays,
     shipByIfConfirmedNow: shipDeadline(now, shipDays, settings),
     canPayOnline: stripeConfigured(),
+    local: false,
   };
 }
 
@@ -440,6 +487,8 @@ async function listTrades(admin: Admin, userId: string) {
 async function start(admin: Admin, customer: TradeCustomer, settings: TradeSettingsRow, body: Record<string, unknown>): Promise<string> {
   const items = readWantedInputs(body.items, settings.max_wanted_lines);
   if (items.length === 0) throw new HttpError(400, "Add the cards you want first.");
+  if (body.handoffMethod !== undefined && !isHandoffMethod(body.handoffMethod)) throw new HttpError(400, "Choose shipping or local pickup.");
+  const method = isHandoffMethod(body.handoffMethod) ? body.handoffMethod : "ship";
   const signature = items
     .map((i) => `${i.inventoryItemId}:${i.quantity}`)
     .sort()
@@ -451,6 +500,7 @@ async function start(admin: Admin, customer: TradeCustomer, settings: TradeSetti
     .select("id")
     .eq("user_id", customer.userId)
     .eq("status", "awaiting_trade_list")
+    .eq("handoff_method", method)
     .gte("created_at", since);
   for (const r of recent ?? []) {
     const { data: lines } = await admin
@@ -470,6 +520,7 @@ async function start(admin: Admin, customer: TradeCustomer, settings: TradeSetti
     p_items: items.map((i) => ({ inventory_item_id: i.inventoryItemId, quantity: i.quantity })),
     p_customer_name: customer.name,
     p_customer_email: customer.email,
+    p_handoff_method: method,
   });
   if (error || typeof data !== "string") throw tradeDbError(error, "We couldn't start your trade. Try again.");
   return data;
@@ -501,8 +552,12 @@ async function confirm(
     throw new HttpError(409, "The time to confirm this trade ran out. Start a new trade, or message us if you need help.");
   }
   if (body.acknowledged !== true) {
-    throw new HttpError(400, "Tick the box to agree to the deposit and cancellation terms.");
+    throw new HttpError(
+      400,
+      handoffOf(t) === "local" ? "Tick the box to confirm you'll meet us to trade." : "Tick the box to agree to the deposit and cancellation terms.",
+    );
   }
+  if (handoffOf(t) === "local") return await confirmLocal(req, res, admin, customer, settings, bundle);
   if (body.termsVersion !== settings.deposit_terms_version) {
     throw new HttpError(409, "Our deposit terms were just updated. Review them and confirm again.");
   }
@@ -546,6 +601,42 @@ async function confirm(
   }
 
   const { data, error } = await admin.rpc("trade_confirm", { ...consent, p_payment_intent: null });
+  if (error) throw tradeDbError(error, "We couldn't confirm your trade. Try again.");
+  const row = Array.isArray(data) ? data[0] : null;
+  if (row?.result === "unavailable") return await afterUnavailable(res, admin, settings, t.id, customer.userId, row.short_lines);
+  const fresh = await loadCustomerBundle(admin, t.id, customer.userId);
+  await sendTradeCustomerEmail(fresh, settings, { kind: "reserved" });
+  await notifyTradeStaff(fresh, settings, { kind: "reserved" });
+  return await sendFresh(res, admin, settings, t.id, customer.userId);
+}
+
+/**
+ * Confirming a local pickup trade: never a deposit. Our cards are held
+ * until the meetup deadline (local_meet_days of qualifying time), and the
+ * customer's agreement to the local pickup terms is kept like the deposit
+ * terms of a shipped trade.
+ */
+async function confirmLocal(
+  req: VercelRequest,
+  res: VercelResponse,
+  admin: Admin,
+  customer: TradeCustomer,
+  settings: TradeSettingsRow,
+  bundle: TradeBundle,
+) {
+  const t = bundle.trade;
+  if (t.deposit_cents > 0) throw new HttpError(409, "This trade changed. Refresh and try again.");
+  const { data, error } = await admin.rpc("trade_confirm", {
+    p_trade_id: t.id,
+    p_user_id: customer.userId,
+    p_terms_version: settings.deposit_terms_version,
+    p_terms_text: localPickupTerms(settings),
+    p_ship_days: settings.local_meet_days,
+    p_ship_by: meetDeadline(Date.now(), settings),
+    p_payment_intent: null,
+    p_ip: getClientIp(req).slice(0, 100),
+    p_user_agent: String(req.headers["user-agent"] ?? "").slice(0, 400) || null,
+  });
   if (error) throw tradeDbError(error, "We couldn't confirm your trade. Try again.");
   const row = Array.isArray(data) ? data[0] : null;
   if (row?.result === "unavailable") return await afterUnavailable(res, admin, settings, t.id, customer.userId, row.short_lines);
@@ -743,6 +834,8 @@ async function cancel(
     }
   }
   const reserved = status === "awaiting_shipment";
+  // Canceling a local pickup before we meet frees our cards: it isn't held against them.
+  const counts = reserved && handoffOf(t) === "ship";
   if (reserved && t.deposit_status === "paid" && body.acceptDepositReview !== true) {
     throw new HttpError(400, "Canceling now may cost your deposit under the cancellation terms. Confirm that you understand to cancel.");
   }
@@ -752,7 +845,7 @@ async function cancel(
     p_status: "canceled",
     p_from_statuses: [...CUSTOMER_CANCELABLE_STATUSES],
     p_reason: reason,
-    p_fault: reserved ? "canceled_while_reserved" : null,
+    p_fault: counts ? "canceled_while_reserved" : null,
     p_actor_type: "customer",
     p_actor_id: customer.userId,
     p_actor_label: customer.email,

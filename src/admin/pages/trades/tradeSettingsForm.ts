@@ -37,7 +37,8 @@ export type NumberKey =
   | "maxWantedLines"
   | "maxOfferedLines"
   | "cashRatePercent"
-  | "overstockThreshold";
+  | "overstockThreshold"
+  | "localMeetDays";
 
 export type MoneyKey =
   | "minCardValueCents"
@@ -79,6 +80,9 @@ export interface SettingsForm {
   shipTo: { name: string; line1: string; line2: string; city: string; state: string; postalCode: string };
   packingInstructions: string;
   returnPolicy: string;
+  localPickupEnabled: boolean;
+  localPickupArea: string;
+  localPickupDetails: string;
 }
 
 const R = TRADE_SETTING_RANGES;
@@ -108,6 +112,7 @@ export const NUMBER_RANGES: Record<NumberKey, readonly [number, number]> = {
   maxOfferedLines: R.maxOfferedLines,
   cashRatePercent: R.cashRatePercent,
   overstockThreshold: R.overstockThreshold,
+  localMeetDays: R.localMeetDays,
 };
 
 export const NUMBER_KEYS = Object.keys(NUMBER_RANGES) as NumberKey[];
@@ -136,6 +141,7 @@ export const NUMBER_LABELS: Record<NumberKey, string> = {
   maxOfferedLines: "Their cards per trade",
   cashRatePercent: "Cash rate",
   overstockThreshold: "Overstock limit",
+  localMeetDays: "Days to hold our cards for a meetup",
 };
 
 /** Dollar settings, with the range (in cents) each allows and its label for messages. */
@@ -195,6 +201,9 @@ export function formOf(s: TradeSettings): SettingsForm {
     },
     packingInstructions: s.packingInstructions,
     returnPolicy: s.returnPolicy,
+    localPickupEnabled: s.localPickupEnabled,
+    localPickupArea: s.localPickupArea,
+    localPickupDetails: s.localPickupDetails,
   };
 }
 
@@ -298,6 +307,9 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
   if (!form.returnPolicy.trim()) return { problem: "Add the return policy customers see." };
   if (!form.pauseMessage.trim()) return { problem: "Add the message customers see while new trades are paused." };
   if (!form.depositTerms.trim()) return { problem: "Add the deposit and cancellation terms customers agree to." };
+  if (!form.localPickupArea.trim()) return { problem: "Local pickup: say where it's offered (for example, the St. Louis area)." };
+  if (form.localPickupArea.trim().length > 120) return { problem: "Local pickup: keep where it's offered to 120 characters." };
+  if (form.localPickupEnabled && !form.localPickupDetails.trim()) return { problem: "Local pickup: add how meetups work, for customers." };
 
   const list = (text: string, split: RegExp) => [...new Set(text.split(split).map((v) => v.trim()).filter(Boolean))];
   return {
@@ -322,5 +334,8 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
     shipTo,
     packingInstructions: form.packingInstructions.trim(),
     returnPolicy: form.returnPolicy.trim(),
+    localPickupEnabled: form.localPickupEnabled,
+    localPickupArea: form.localPickupArea.trim(),
+    localPickupDetails: form.localPickupDetails.replace(/\r\n/g, "\n").trim(),
   };
 }

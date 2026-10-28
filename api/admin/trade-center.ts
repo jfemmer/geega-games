@@ -13,6 +13,7 @@ import {
   customerStanding,
   depositDecision,
   disputeFilesOf,
+  handoffOf,
   loadTradeBundle,
   loadTradeSettings,
   readTradeId,
@@ -60,7 +61,7 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 // hand and marking cash paid are for the store owner (role admin).
 //
 //   GET ?view=list[&filter=…][&deposit=<status>][&q=] → { trades, counts, settings, owner }
-//        filter: waiting (needs staff), open, all, deposits, reserved, abandoned, finished
+//        filter: waiting (needs staff), open, all, deposits, reserved, abandoned, local (local pickup), finished
 //        (approved for fulfillment or completed), or a status. The filters' counts and the
 //        statuses' share one object, so no filter is named after a status.
 //   GET ?id=<trade id>                               → { trade, settings, owner }
@@ -92,6 +93,12 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 //     setCustomerFlags  { userId, depositRequired, blocked, note? }  owner
 //     inspect, confirmAsDescribed, sendFinalOffer, reopenInspection, setWanted,
 //     setPostage        { tradeId, postageCents | null }     what shipping our cards cost (finished trades)
+//   Local pickup trades (handoff_method local):
+//     approve           { …, meetupDetails? }                 no card review and never a deposit
+//     setMeetup         { tradeId, details }                  where and when to meet (emailed once approved)
+//     completeLocal     { tradeId, cards: [...], paidCents,   at the meetup: the cards we took, what they paid
+//                         paymentMethod, paymentNote?,        in person (cash, card or other); finishes the
+//                         cashForExcess? }                    trade, our cards handed over on an in-person order
 //     markReturned, importCard, recordPayment (owner), markCashPaid (owner), message
 //
 // Every change and total is the database's (trade_* functions, one
@@ -102,6 +109,21 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 const MAX_BODY_BYTES = 128 * 1024;
 const MAX_LISTED = 300;
 const OWNER_ONLY = new Set(["saveSettings", "recordPayment", "markCashPaid", "forfeitDeposit", "setCustomerFlags", "clearFault"]);
+/** What only makes sense for a trade that ships: refused on a local pickup trade. */
+const SHIP_ONLY_ACTIONS = new Set([
+  "review",
+  "verifyShipment",
+  "markReceived",
+  "cardsArrived",
+  "inspect",
+  "confirmAsDescribed",
+  "sendFinalOffer",
+  "reopenInspection",
+  "markReturned",
+  "recordPayment",
+  "setPostage",
+  "resolveDispute",
+]);
 /** Signed links to proof-of-shipping files last this long. */
 const FILE_LINK_SECONDS = 15 * 60;
 
@@ -173,6 +195,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         after: { tradeNumber: t.trade_number, ...after },
       });
 
+    if (handoffOf(t) === "local" && SHIP_ONLY_ACTIONS.has(action)) {
+      throw new HttpError(409, "This is a local pickup trade: nothing is shipped. Finish it at the meetup instead.");
+    }
+    if (handoffOf(t) === "ship" && (action === "setMeetup" || action === "completeLocal")) {
+      throw new HttpError(409, "Meetups are for local pickup trades.");
+    }
+
     switch (action) {
       case "review": {
         const cards = readReviewCards(body.cards, bundle);
@@ -194,6 +223,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       case "approve": {
+        if (handoffOf(t) === "local") {
+          const meetup = cleanText(body.meetupDetails, 2000);
+          if (meetup) {
+            const set = await admin.rpc("trade_set_meetup", { p_trade_id: tradeId, p_details: meetup, ...actor });
+            if (set.error) throw tradeDbError(set.error, "We couldn't save where to meet. Try again.");
+          }
+          const confirmBy = confirmDeadline(Date.now(), settings);
+          const conditions = cleanText(body.conditions, 2000);
+          const { error } = await admin.rpc("trade_approve", {
+            p_trade_id: tradeId,
+            p_confirm_by: confirmBy,
+            p_deposit_cents: 0,
+            p_deposit_reason: null,
+            p_conditions: conditions,
+            ...actor,
+          });
+          if (error) throw tradeDbError(error, "We couldn't approve the trade. Try again.");
+          await audit("approve", { confirmBy, handoffMethod: "local", conditions, meetup });
+          customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "approved" });
+          break;
+        }
         const override = readOverride(body.depositOverride) ?? null;
         if (override && override !== t.deposit_override) {
           const { error } = await admin.from("trade_requests").update({ deposit_override: override }).eq("id", tradeId).eq("status", "pending_review");
@@ -243,6 +293,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "setDeposit": {
         const override = readOverride(body.override);
         if (!override) throw new HttpError(400, "Choose automatic, required or waived.");
+        if (handoffOf(t) === "local") throw new HttpError(409, "Local pickup trades don't take a deposit.");
         await retireOrRecordDeposit(bundle);
         const standing = await customerStanding(admin, t.user_id, settings);
         const deposit = depositDecision(t, standing, settings, override);
@@ -345,11 +396,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "reinstate": {
         const mode = body.mode === "awaiting_shipment" || body.mode === "in_transit" || body.mode === "received" ? body.mode : null;
         if (!mode) throw new HttpError(400, "Reinstate how?");
+        if (handoffOf(t) === "local" && mode !== "awaiting_shipment") {
+          throw new HttpError(400, "A local pickup trade is reinstated with a new meetup deadline.");
+        }
         let shipBy: string | null = null;
         let acceptedAt: string | null = null;
         if (mode === "awaiting_shipment") {
           const days = wholeNumber(body.shipDays, 1, 30);
-          if (days === null) throw new HttpError(400, "Give them 1 to 30 days to ship.");
+          if (days === null) throw new HttpError(400, handoffOf(t) === "local" ? "Hold our cards 1 to 30 days." : "Give them 1 to 30 days to ship.");
           shipBy = shipDeadline(Date.now(), days, settings);
         }
         if (mode === "in_transit") acceptedAt = readTime(body.acceptedAt, "When did the carrier accept it?");
@@ -627,6 +681,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
 
+      case "setMeetup": {
+        const details = cleanText(body.details, 2000);
+        const { error } = await admin.rpc("trade_set_meetup", { p_trade_id: tradeId, p_details: details, ...actor });
+        if (error) throw tradeDbError(error, "We couldn't save where to meet. Try again.");
+        await audit("set_meetup", { details });
+        // Before approval it goes out with the approval email.
+        if (details && details !== t.meetup_details && (status === "awaiting_confirmation" || status === "awaiting_shipment")) {
+          customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "meetup_set" });
+        }
+        break;
+      }
+
+      case "completeLocal": {
+        const cards = readLocalCards(body.cards, settings.max_offered_lines);
+        const paidCents = wholeNumber(body.paidCents, 0, 100_000_000);
+        if (paidCents === null) throw new HttpError(400, "Enter what they paid, or $0.00.");
+        const method = body.paymentMethod === "cash" || body.paymentMethod === "card" || body.paymentMethod === "other" ? body.paymentMethod : null;
+        if (paidCents > 0 && !method) throw new HttpError(400, "Say how they paid: cash, card or another way.");
+        const note = cleanText(body.paymentNote, 160);
+        const cash = body.cashForExcess === true;
+        const { data, error } = await admin.rpc("trade_complete_local", {
+          p_trade_id: tradeId,
+          p_cards: cards as unknown as Json,
+          p_paid_cents: paidCents,
+          p_payment_method: paidCents > 0 ? method : null,
+          p_payment_note: note,
+          p_cash_for_excess: cash,
+          ...actor,
+        });
+        if (error) throw tradeDbError(error, "We couldn't finish the trade. Try again.");
+        await audit("complete_local", { orderId: data, cards: cards.length, paidCents, paymentMethod: method, cashForExcess: cash });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "completed" });
+        break;
+      }
+
       case "message": {
         const text = cleanText(body.body, TRADE_LIMITS.maxMessage);
         if (!text) throw new HttpError(400, "Write a message first.");
@@ -812,6 +901,8 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
     query = query.in("customer_fault", ABANDONED_FAULTS);
   } else if (filter === "finished") {
     query = query.in("status", ["approved_for_fulfillment", "completed"]);
+  } else if (filter === "local") {
+    query = query.eq("handoff_method", "local");
   } else if (isTradeStatus(filter)) {
     query = query.eq("status", filter);
   }
@@ -827,10 +918,10 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
   }
   const [{ data, error }, rows] = await Promise.all([
     query,
-    admin.from("trade_requests").select("status, needs_staff, deposit_status, customer_fault").limit(10000),
+    admin.from("trade_requests").select("status, needs_staff, deposit_status, customer_fault, handoff_method").limit(10000),
   ]);
   if (error || rows.error) throw new HttpError(500, "We couldn't load trades. Try again.");
-  const counts: Record<string, number> = { waiting: 0, open: 0, all: 0, deposits: 0, reserved: 0, abandoned: 0, finished: 0 };
+  const counts: Record<string, number> = { waiting: 0, open: 0, all: 0, deposits: 0, reserved: 0, abandoned: 0, local: 0, finished: 0 };
   for (const s of TRADE_STATUSES) counts[s] = 0;
   for (const row of rows.data ?? []) {
     counts.all += 1;
@@ -841,6 +932,7 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
     if ((RESERVED_STATUSES as readonly string[]).includes(row.status)) counts.reserved += 1;
     if (row.customer_fault && ABANDONED_FAULTS.includes(row.customer_fault)) counts.abandoned += 1;
     if (row.status === "approved_for_fulfillment" || row.status === "completed") counts.finished += 1;
+    if (row.handoff_method === "local") counts.local += 1;
   }
   return { trades: (data ?? []).map(staffSummaryView), counts };
 }
@@ -849,7 +941,7 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
 async function reservedLines(admin: Admin) {
   const { data: trades, error } = await admin
     .from("trade_requests")
-    .select("id, trade_number, status, customer_name, customer_email, ship_by, inbound_accepted_at, deposit_status")
+    .select("id, trade_number, status, customer_name, customer_email, ship_by, inbound_accepted_at, deposit_status, handoff_method")
     .in("status", [...RESERVED_STATUSES])
     .order("ship_by", { ascending: true, nullsFirst: false })
     .limit(MAX_LISTED);
@@ -876,6 +968,7 @@ async function reservedLines(admin: Admin) {
       shipBy: t.ship_by,
       shippedAt: t.inbound_accepted_at,
       depositStatus: t.deposit_status,
+      handoffMethod: handoffOf(t),
       inventoryItemId: i.inventory_item_id,
       cardName: i.card_name,
       setCode: i.set_code,
@@ -986,7 +1079,7 @@ async function economicsReport(admin: Admin, settings: TradeSettingsRow, rawDays
     let query = admin
       .from("trade_requests")
       .select(
-        "id, trade_number, status, customer_name, customer_email, final_value_cents, wanted_total_cents, shipping_cents, outbound_postage_cents, order_id, paid_at, credit_rate_percent",
+        "id, trade_number, status, customer_name, customer_email, final_value_cents, wanted_total_cents, shipping_cents, outbound_postage_cents, order_id, paid_at, credit_rate_percent, handoff_method",
       )
       .in("status", ["approved_for_fulfillment", "completed"]);
     if (since) query = query.gte("paid_at", since);
@@ -1019,6 +1112,7 @@ async function economicsReport(admin: Admin, settings: TradeSettingsRow, rawDays
         shippingCents: t.shipping_cents,
         orderPostageCents: t.order_id ? (postage.get(t.order_id) ?? null) : null,
         outboundPostageCents: t.outbound_postage_cents,
+        localPickup: t.handoff_method === "local",
       },
       settings.ship_cost_estimate_cents,
     );
@@ -1062,6 +1156,62 @@ async function economicsReport(admin: Admin, settings: TradeSettingsRow, rawDays
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
+
+/** One card staff took at a meetup, as trade_complete_local stores it. */
+interface LocalCardInput {
+  scryfall_id: string | null;
+  card_name: string;
+  set_code: string | null;
+  set_name: string | null;
+  collector_number: string | null;
+  finish: string;
+  image_url: string | null;
+  condition: string;
+  quantity: number;
+  unit_cents: number;
+  reference_price_cents: number | null;
+  note: string | null;
+}
+
+/** Finishes a card can have (public.card_finish). */
+const CARD_FINISHES = new Set(["nonfoil", "foil", "etched", "glossy", "ripple", "surge", "rainbow", "galaxy", "textured", "mana", "gilded", "halo"]);
+
+/** The cards staff took at a meetup: each with its condition and what each copy is worth (staff set every value). */
+function readLocalCards(raw: unknown, maxLines: number): LocalCardInput[] {
+  if (!Array.isArray(raw)) throw new HttpError(400, "Their cards didn't come through. Try again.");
+  if (raw.length > maxLines) throw new HttpError(400, `A trade can take up to ${maxLines} different cards.`);
+  return raw.map((item, i) => {
+    const o = (item ?? {}) as Record<string, unknown>;
+    const name = cleanText(o.cardName, 200);
+    if (!name) throw new HttpError(400, `Card ${i + 1} has no name.`);
+    const quantity = wholeNumber(o.quantity, 1, TRADE_LIMITS.maxQuantity);
+    if (quantity === null) throw new HttpError(400, `${name}: take 1 to ${TRADE_LIMITS.maxQuantity}.`);
+    const unit = wholeNumber(o.unitCents, 0, TRADE_LIMITS.maxEstimateCents);
+    if (unit === null) throw new HttpError(400, `${name}: enter what each copy is worth.`);
+    const condition = typeof o.condition === "string" && (CARD_CONDITIONS as readonly string[]).includes(o.condition) ? o.condition : null;
+    if (!condition) throw new HttpError(400, `${name}: choose its condition.`);
+    const finish = typeof o.finish === "string" && CARD_FINISHES.has(o.finish) ? o.finish : null;
+    if (!finish) throw new HttpError(400, `${name}: choose its finish.`);
+    const scryfallId = typeof o.scryfallId === "string" && UUID_RE.test(o.scryfallId) ? o.scryfallId.toLowerCase() : null;
+    const image = typeof o.imageUrl === "string" && /^https:\/\//.test(o.imageUrl) ? o.imageUrl.slice(0, 1000) : null;
+    const reference =
+      o.referencePriceCents === null || o.referencePriceCents === undefined ? null : wholeNumber(o.referencePriceCents, 0, 99_999_999);
+    return {
+      scryfall_id: scryfallId,
+      card_name: name,
+      set_code: cleanText(o.setCode, 12),
+      set_name: cleanText(o.setName, 120),
+      collector_number: cleanText(o.collectorNumber, 16),
+      finish,
+      image_url: image,
+      condition,
+      quantity,
+      unit_cents: unit,
+      reference_price_cents: reference,
+      note: cleanText(o.note, 2000),
+    };
+  });
+}
 
 function cardIdsOf(bundle: TradeBundle): Set<string> {
   return new Set(bundle.offers.map((c) => c.id));
@@ -1295,6 +1445,12 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
   const returns = cleanText(o.returnPolicy, 4000);
   const terms = typeof o.depositTerms === "string" ? o.depositTerms.replace(/\r\n/g, "\n").trim().slice(0, 6000) : "";
   if (!packing) throw new HttpError(400, "Add packing instructions for customers.");
+  // Local pickup: what's left out stays as saved (a page from before local pickup saves the rest as before).
+  const localEnabled = typeof o.localPickupEnabled === "boolean" ? o.localPickupEnabled : before.local_pickup_enabled;
+  const localArea = o.localPickupArea === undefined ? before.local_pickup_area : cleanText(o.localPickupArea, 120);
+  const localDetails = o.localPickupDetails === undefined ? before.local_pickup_details : cleanText(o.localPickupDetails, 2000);
+  if (!localArea) throw new HttpError(400, "Say where local pickup is offered (for example, the St. Louis area).");
+  if (localEnabled && !localDetails) throw new HttpError(400, "Add how local pickup meetups work, for customers.");
   if (!returns) throw new HttpError(400, "Add the return policy customers see.");
   if (!terms) throw new HttpError(400, "Add the deposit and cancellation terms customers agree to.");
 
@@ -1362,6 +1518,11 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
     ...address,
     packing_instructions: packing,
     return_policy: returns,
+    local_pickup_enabled: localEnabled,
+    local_pickup_area: localArea,
+    local_meet_days:
+      o.localMeetDays === undefined ? before.local_meet_days : num(o, "localMeetDays", r.localMeetDays, "Days to hold our cards for a meetup"),
+    local_pickup_details: localDetails ?? "",
     updated_at: new Date().toISOString(),
     updated_by: staff.userId,
   };
