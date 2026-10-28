@@ -47,6 +47,8 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
   const confirmBy = confirmByPreview(settings, now);
   const short = trade.wanted.filter((w) => w.status === "requested" && w.available !== null && w.available < w.quantity);
   const bring = valueForCreditCents(trade.wantedTotalCents, trade.creditRatePercent, trade.processingFeeCents);
+  // Local pickup never takes a deposit, so a customer you'd normally ask for one gets a mention here.
+  const flagged = Boolean(trade.customerRecord?.depositRequired || trade.privileges?.reliabilityDeposit);
 
   async function finish() {
     if (outcome === "approve") {
@@ -77,6 +79,12 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
         They want {formatCents(trade.wantedTotalCents)} of our cards and will bring theirs to the meetup (about {formatCents(bring)} at TCG
         low covers ours at {trade.creditRatePercent}%). There&rsquo;s nothing of theirs to review now: you value their cards when you meet.
       </p>
+      {flagged && (
+        <p className="gg-trd-blocker" role="note">
+          <Icon name="warning" size={16} /> This customer would need a deposit on a shipped trade (canceled or missed reservations
+          before). Local pickup has no deposit: approve only if you&rsquo;re happy to hold our cards for them.
+        </p>
+      )}
       {short.length > 0 && (
         <p className="gg-trd-blocker" role="note">
           <Icon name="warning" size={16} /> Fewer left than they picked:{" "}
@@ -298,7 +306,7 @@ function unitCents(text: string): number | null {
 type PayMethod = "cash" | "card" | "other";
 
 /** Reserved for the meetup: record the cards taken and what they paid, and finish the trade. */
-export function LocalMeetupPanel({ trade, settings, busy, run }: TradePanelProps) {
+export function LocalMeetupPanel({ trade, settings, owner, busy, run }: TradePanelProps) {
   const toast = useToast();
   const [rows, setRows] = useState<MeetRow[]>(() => rowsOf(trade));
   const [adding, setAdding] = useState(false);
@@ -315,8 +323,9 @@ export function LocalMeetupPanel({ trade, settings, busy, run }: TradePanelProps
     settings,
   );
   const useCash = cash && totals.cashOptionCents > 0;
-  const blocker =
-    unpriced.length > 0
+  const blocker = !owner
+    ? "Only the store owner can finish a trade at the meetup."
+    : unpriced.length > 0
       ? `Enter the TCG low for ${unpriced.length === 1 ? unpriced[0].row.cardName : `${unpriced.length} cards`}.`
       : totals.dueCents > 0 && !method
         ? `Choose how they paid the ${formatCents(totals.dueCents)}.`
@@ -523,6 +532,7 @@ export function LocalMeetupPanel({ trade, settings, busy, run }: TradePanelProps
         Finishing issues their credit, puts our cards on an in-person order (marked picked up) and completes the trade. The customer is
         emailed a receipt. It can&rsquo;t be undone.
       </p>
+      {!owner && <p className="gg-card-meta">Only the store owner can finish a trade at the meetup (it records a payment and issues credit).</p>}
       <div className="gg-drawer-actions__buttons">
         <Button variant="primary" icon="check" loading={busy === "completeLocal"} disabled={busy !== null || blocker !== null} onClick={() => void finish()}>
           Finish the trade

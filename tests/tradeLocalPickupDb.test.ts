@@ -194,6 +194,8 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     // Our cards: 2 × $40 = $80. Their cards: $50 + 2 × $10 = $70 → $56 credit at 80%. They pay $24.
     const cards = [taken(), taken({ scryfall_id: null, card_name: "Llanowar Elves", set_code: null, finish: "foil", condition: "NM", quantity: 2, unit_cents: 1000, reference_price_cents: null, note: "binder" })];
     expect((await errorOf(`select public.trade_complete_local($1, $2::jsonb, 2400, null, null, false, null, 'jacob')`, [id, JSON.stringify(cards)]))?.code).toBe("GT010");
+    // A stale total is reported as the amount, before anything about how they paid.
+    expect((await errorOf(`select public.trade_complete_local($1, $2::jsonb, 0, null, null, false, null, 'jacob')`, [id, JSON.stringify(cards)]))?.code).toBe("GT008");
     expect((await errorOf(`select public.trade_complete_local($1, $2::jsonb, 2000, 'cash', null, false, null, 'jacob')`, [id, JSON.stringify(cards)]))?.code).toBe("GT008");
     expect((await errorOf(`select public.trade_complete_local($1, $2::jsonb, 2400, 'cash', null, false, null, 'jacob')`, [id, JSON.stringify([taken({ condition: "Mint" })])]))?.code).toBe("GT010");
     expect((await errorOf(`select public.trade_complete_local($1, $2::jsonb, 2400, 'cash', null, false, null, 'jacob')`, [id, JSON.stringify([taken({ finish: "chrome" })])]))?.code).toBe("GT010");

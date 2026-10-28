@@ -2915,12 +2915,14 @@ describe("local pickup trades", () => {
       referencePriceCents: 6000,
       note: null,
     };
-    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [{ ...card, condition: "Mint" }], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(400);
-    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [{ ...card, finish: "chrome" }], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(400);
-    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999 })).statusCode).toBe(400);
+    // Like recording a payment by hand: the owner's call.
+    expect((await staff.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(403);
+    expect((await owner.post({ action: "completeLocal", tradeId: t.id, cards: [{ ...card, condition: "Mint" }], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(400);
+    expect((await owner.post({ action: "completeLocal", tradeId: t.id, cards: [{ ...card, finish: "chrome" }], paidCents: 3999, paymentMethod: "cash" })).statusCode).toBe(400);
+    expect((await owner.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999 })).statusCode).toBe(400);
     expect(rpcArgs("trade_complete_local")).toEqual([]);
 
-    const res = await staff.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999, paymentMethod: "cash", paymentNote: "at the cafe" });
+    const res = await owner.post({ action: "completeLocal", tradeId: t.id, cards: [card], paidCents: 3999, paymentMethod: "cash", paymentNote: "at the cafe" });
     expect(res.statusCode).toBe(200);
     const args = rpcArgs("trade_complete_local")[0];
     expect(args).toMatchObject({ p_paid_cents: 3999, p_payment_method: "cash", p_payment_note: "at the cafe", p_cash_for_excess: false });

@@ -1216,6 +1216,17 @@ describe("local pickup trades", () => {
     await waitFor(() => expect(repo.expireNow).toHaveBeenCalledWith(TRADE_ID, { reason: "Couldn't find a time", countAgainst: false }));
   });
 
+  it("warns about a customer who'd need a deposit, and leaves finishing to the owner", async () => {
+    const flagged = staffTrade({ ...LOCAL, status: "pending_review", customerRecord: record({ depositRequired: true }), privileges: privileges() });
+    let dialog = await openTrade(flagged);
+    expect(dialog).toHaveTextContent("This customer would need a deposit on a shipped trade");
+    cleanup();
+    const meet = staffTrade({ ...LOCAL, status: "awaiting_shipment", wanted: [wantedItem({ status: "reserved" })] });
+    dialog = await openTrade(meet, { owner: false });
+    expect(dialog).toHaveTextContent("Only the store owner can finish a trade at the meetup");
+    expect(within(dialog).getByRole("button", { name: "Finish the trade" })).toBeDisabled();
+  });
+
   it("marks local trades in the list", async () => {
     repo.list.mockResolvedValue({
       trades: [tradeSummary({ handoffMethod: "local", status: "awaiting_shipment", shipBy: "2099-01-01T05:59:59.000Z" })],

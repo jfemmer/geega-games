@@ -867,14 +867,15 @@ begin
     v_cash := round(v_excess * s.cash_rate_percent / v_trade.credit_rate_percent::numeric)::int;
   end if;
 
-  v_method := case when v_due = 0 then 'none' else coalesce(nullif(btrim(p_payment_method), ''), 'none') end;
-  if v_due > 0 and v_method not in ('cash', 'card', 'other') then
-    raise exception 'Say how they paid the %.', to_char(v_due / 100.0, 'FM$999,999,990.00') using errcode = 'GT010';
-  end if;
+  -- The amount first: a page with stale totals should hear that, not "say how they paid".
   if coalesce(p_paid_cents, 0) <> v_due then
     raise exception 'With these cards they pay %, not %. Check the cards and the amount, then finish again.',
       to_char(v_due / 100.0, 'FM$999,999,990.00'), to_char(coalesce(p_paid_cents, 0) / 100.0, 'FM$999,999,990.00')
       using errcode = 'GT008';
+  end if;
+  v_method := case when v_due = 0 then 'none' else coalesce(nullif(btrim(p_payment_method), ''), 'none') end;
+  if v_due > 0 and v_method not in ('cash', 'card', 'other') then
+    raise exception 'Say how they paid the %.', to_char(v_due / 100.0, 'FM$999,999,990.00') using errcode = 'GT010';
   end if;
 
   update public.trade_requests set

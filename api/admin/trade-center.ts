@@ -108,7 +108,8 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 
 const MAX_BODY_BYTES = 128 * 1024;
 const MAX_LISTED = 300;
-const OWNER_ONLY = new Set(["saveSettings", "recordPayment", "markCashPaid", "forfeitDeposit", "setCustomerFlags", "clearFault"]);
+// completeLocal values every card and records a payment in one step (like recordPayment): the owner's call.
+const OWNER_ONLY = new Set(["saveSettings", "recordPayment", "markCashPaid", "forfeitDeposit", "setCustomerFlags", "clearFault", "completeLocal"]);
 /** What only makes sense for a trade that ships: refused on a local pickup trade. */
 const SHIP_ONLY_ACTIONS = new Set([
   "review",
@@ -225,10 +226,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "approve": {
         if (handoffOf(t) === "local") {
           const meetup = cleanText(body.meetupDetails, 2000);
-          if (meetup) {
-            const set = await admin.rpc("trade_set_meetup", { p_trade_id: tradeId, p_details: meetup, ...actor });
-            if (set.error) throw tradeDbError(set.error, "We couldn't save where to meet. Try again.");
-          }
           const confirmBy = confirmDeadline(Date.now(), settings);
           const conditions = cleanText(body.conditions, 2000);
           const { error } = await admin.rpc("trade_approve", {
@@ -240,6 +237,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ...actor,
           });
           if (error) throw tradeDbError(error, "We couldn't approve the trade. Try again.");
+          // Saved once the approval stands, so a refused approval leaves nothing behind; it goes out with the approval email.
+          if (meetup) {
+            const set = await admin.rpc("trade_set_meetup", { p_trade_id: tradeId, p_details: meetup, ...actor });
+            if (set.error) console.error("[admin/trade-center] meetup not saved after approval", tradeId, set.error.message);
+          }
           await audit("approve", { confirmBy, handoffMethod: "local", conditions, meetup });
           customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "approved" });
           break;
