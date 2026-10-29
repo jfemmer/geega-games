@@ -26,6 +26,7 @@ import {
   type SellPhoto,
   type SellPrinting,
 } from "../lib/sellTypes";
+import { useFormTracking } from "../lib/formTracking";
 
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 const TOTAL_STEPS = 4;
@@ -77,6 +78,18 @@ export default function SellPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<{ referenceNumber: string } | null>(null);
+  // Where people stop (admin Overview → Seller forms). Steps are 1-based
+  // there; photos that failed to upload don't count as added.
+  const tracking = useFormTracking("sell", {
+    step: step + 1,
+    photos: photos.filter((p) => p.status !== "error").length,
+  });
+
+  /** Shows a submit error, and records that the form showed it. */
+  function failSubmit(message: string) {
+    setSubmitError(message);
+    tracking.error(message);
+  }
 
   useEffect(() => {
     saveDraft(draft);
@@ -253,7 +266,9 @@ export default function SellPage() {
   function goNext() {
     if (step === 2) {
       if (!draft.contact.firstName.trim() || !draft.contact.lastName.trim() || !isValidEmail(draft.contact.email)) {
-        setContactError("Please enter your first name, last name, and a valid email address.");
+        const message = "Please enter your first name, last name, and a valid email address.";
+        setContactError(message);
+        tracking.error(message);
         return;
       }
     }
@@ -283,12 +298,13 @@ export default function SellPage() {
   );
 
   async function handleSubmit() {
+    tracking.attempt();
     if (!draft.agreedToTerms) {
-      setSubmitError("Please confirm you own or are authorized to sell these items before submitting.");
+      failSubmit("Please confirm you own or are authorized to sell these items before submitting.");
       return;
     }
     if (cardsMissingRequiredPhotos.length > 0) {
-      setSubmitError(
+      failSubmit(
         "Please add front and back photos for the cards where you changed the condition before submitting — see above.",
       );
       return;
@@ -313,15 +329,16 @@ export default function SellPage() {
         partnerConsent,
       });
       if (!res.ok) {
-        setSubmitError(res.message ?? "Something went wrong. Please try again.");
+        failSubmit(res.message ?? "Something went wrong. Please try again.");
         return;
       }
+      tracking.sent();
       clearDraft();
       photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
       if (res.claim) rememberClaim({ kind: "sell", id: res.claim.id, token: res.claim.token });
       setResult({ referenceNumber: res.referenceNumber! });
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      failSubmit(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -365,7 +382,7 @@ export default function SellPage() {
   }
 
   return (
-    <div className="gg-page gg-sell">
+    <div className="gg-page gg-sell" {...tracking.fieldEvents}>
       {step === 0 && (
         <>
           <section className="gg-sellhero">

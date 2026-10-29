@@ -18,7 +18,19 @@ import {
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from "../utils/labels";
 import { countryLabel, placeLabel, regionLabel } from "../utils/geoLabels";
 import { DataTable, type Column } from "../components/ui/DataTable";
-import type { DateRangeKey, NamedValue, RecentVisitor, SiteCampaign, SiteSearch, SiteTraffic } from "../types";
+import type {
+  DateRangeKey,
+  FormPageStarts,
+  FormStart,
+  NamedValue,
+  RecentVisitor,
+  SellerFormProgress,
+  SiteCampaign,
+  SiteSearch,
+  SiteTraffic,
+} from "../types";
+import { FORM_NAMES, FORM_STEPS } from "../../store/lib/formSteps";
+import { biggestDropOff, funnelStages } from "../utils/formFunnel";
 
 const RANGE_TABS = [
   { key: "7d", label: "7 days" },
@@ -52,6 +64,8 @@ export function OverviewPage({
     const timer = window.setInterval(reloadTraffic, 60_000);
     return () => window.clearInterval(timer);
   }, [reloadTraffic]);
+
+  const formProgress = useAsync(() => analyticsRepository.formProgress(range), [range]);
 
   const m = overview.data?.metrics;
 
@@ -173,6 +187,8 @@ export function OverviewPage({
       </div>
 
       <WebsiteVisitors traffic={traffic.data} error={traffic.error} onRetry={traffic.reload} />
+
+      <SellerForms progress={formProgress.data} error={formProgress.error} onRetry={formProgress.reload} />
 
       <div className="gg-grid-2">
         <SectionCard
@@ -691,6 +707,180 @@ function WebsiteVisitors({
           <VisitorLocations traffic={traffic} />
         </>
       )}
+    </>
+  );
+}
+
+/* -------------------- Seller forms: where people stop -------------------- */
+
+const SELLER_FORMS = ["quick_quote", "sell", "referral"] as const;
+
+function stepLabel(start: FormStart): string {
+  const steps = FORM_STEPS[start.form] ?? [];
+  if (steps.length <= 1) return "—";
+  return `Step ${start.furthestStep} of ${steps.length}: ${start.furthestStepLabel ?? steps[start.furthestStep - 1] ?? "?"}`;
+}
+
+function outcome(start: FormStart) {
+  if (start.sent) return <Badge tone="success">Sent</Badge>;
+  if (start.lastError) return <Badge tone="danger">Stopped after an error</Badge>;
+  if (start.submitAttempts > 0) return <Badge tone="warning">Pressed send, didn&rsquo;t finish</Badge>;
+  return <Badge tone="neutral">Stopped</Badge>;
+}
+
+const FORM_START_COLUMNS: Column<FormStart>[] = [
+  {
+    key: "when",
+    header: "Started",
+    render: (f) => (
+      <span title={new Date(f.startedAt).toLocaleString()}>
+        <strong>{timeAgo(f.startedAt)}</strong>
+      </span>
+    ),
+  },
+  {
+    key: "form",
+    header: "Form",
+    render: (f) => (
+      <>
+        {FORM_NAMES[f.form] ?? f.form}
+        <br />
+        <code className="gg-muted">{f.path}</code>
+      </>
+    ),
+  },
+  { key: "outcome", header: "Outcome", render: outcome },
+  { key: "step", header: "Got to", render: stepLabel },
+  {
+    key: "field",
+    header: "Last field touched",
+    render: (f) => f.lastField ?? <span className="gg-muted">—</span>,
+  },
+  {
+    key: "error",
+    header: "Error they saw",
+    secondary: true,
+    render: (f) => f.lastError ?? <span className="gg-muted">None</span>,
+  },
+  { key: "photos", header: "Photos", align: "right", secondary: true, render: (f) => formatNumber(f.photos) },
+  {
+    key: "who",
+    header: "Where",
+    secondary: true,
+    render: (f) => `${placeLabel(f.city, f.region, f.country)} · ${DEVICE_LABEL[f.device] ?? f.device}`,
+  },
+];
+
+const FORM_PAGE_COLUMNS: Column<FormPageStarts>[] = [
+  { key: "page", header: "Page", render: (p) => <code>{pageLabel(p.path)}</code> },
+  { key: "form", header: "Form", secondary: true, render: (p) => FORM_NAMES[p.form] ?? p.form },
+  { key: "started", header: "Started", align: "right", render: (p) => formatNumber(p.started) },
+  { key: "sent", header: "Sent", align: "right", render: (p) => formatNumber(p.sent) },
+];
+
+/** How far each seller form start got, and where people stop. */
+function SellerForms({
+  progress,
+  error,
+  onRetry,
+}: {
+  progress: SellerFormProgress | null;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const heading = (
+    <div className="gg-overview-heading">
+      <h2>Seller forms: where people stop</h2>
+      <p className="gg-muted">
+        Every time someone starts one of the sell forms — taps or types in a field — you see how
+        far they got, the last field they touched, and any error the form showed them. Anonymous:
+        never what they typed, and never you or your staff.
+      </p>
+    </div>
+  );
+  if (error && !progress) {
+    return (
+      <>
+        {heading}
+        <ErrorState message="Could not load seller form progress." onRetry={onRetry} />
+      </>
+    );
+  }
+  if (!progress) {
+    return (
+      <>
+        {heading}
+        <div className="gg-skeleton" style={{ height: 180 }} />
+      </>
+    );
+  }
+
+  const active = SELLER_FORMS.map((form) => progress.forms.find((f) => f.form === form)).filter(
+    (f): f is NonNullable<typeof f> => Boolean(f && f.started > 0),
+  );
+
+  if (active.length === 0) {
+    return (
+      <>
+        {heading}
+        <SectionCard title="Seller forms">
+          <EmptyState
+            icon="info"
+            title="No form starts in this period"
+            message="When someone starts the quick photo quote, the full sell form or a partner-store form, you'll see here how far they got."
+          />
+        </SectionCard>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {heading}
+      <div className="gg-grid-2">
+        {active.map((f) => {
+          const steps = FORM_STEPS[f.form] ?? [];
+          const summary = biggestDropOff(f, steps);
+          return (
+            <SectionCard key={f.form} title={FORM_NAMES[f.form] ?? f.form}>
+              <BarChart
+                data={funnelStages(f, steps)}
+                summaryLabel={`${FORM_NAMES[f.form] ?? f.form}: how far people got`}
+                format={(v) => formatNumber(v)}
+                color="var(--gg-brand)"
+              />
+              {summary && (
+                <p className="gg-muted" style={{ marginTop: 12, fontSize: 13 }}>
+                  {summary}
+                </p>
+              )}
+            </SectionCard>
+          );
+        })}
+        {progress.pages.length > 1 && (
+          <SectionCard title="Where forms were started" className="gg-visitor-insight">
+            <DataTable
+              columns={FORM_PAGE_COLUMNS}
+              rows={progress.pages}
+              rowKey={(p) => `${p.form}|${p.path}`}
+              caption="Form starts by page"
+            />
+          </SectionCard>
+        )}
+      </div>
+      <SectionCard title="Recent form starts" className="gg-recent-visitors">
+        <DataTable
+          columns={FORM_START_COLUMNS}
+          rows={progress.recent}
+          rowKey={(f) => f.id}
+          caption="The latest seller form starts and where each one stopped"
+        />
+        <p className="gg-muted" style={{ marginTop: 12, fontSize: 13 }}>
+          A start that shows &ldquo;Stopped&rdquo; may still be in progress if it began in the last
+          few minutes. On a phone, the error and location columns are hidden — turn the phone
+          sideways or use a computer to see them.
+        </p>
+      </SectionCard>
     </>
   );
 }

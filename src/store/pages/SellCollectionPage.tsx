@@ -52,11 +52,13 @@ import {
 
 const CTA_LABEL = "Get my free offer";
 
+// Kept to three short lines so the form's first step still shows on a phone.
+// The other promises (offer changes explained card by card, unsorted is fine)
+// are covered right below in How it works and What you can count on.
 const HERO_POINTS = [
   "Free offer — no obligation to sell",
-  "Unsorted, bulk or inherited is fine",
-  "Paid by PayPal Goods & Services, protected for both of us",
-  "Any change to your offer, explained card by card",
+  "No account, sorting or pricing needed",
+  "Paid by PayPal Goods & Services or store credit",
 ];
 
 // Worries first (payment, how offers are set, condition, changing your
@@ -161,34 +163,41 @@ export default function SellCollectionPage() {
     jsonLd: JSON_LD,
   });
 
+  // Visitor data (2026-10-29): most visitors are on phones, arrive from the
+  // homepage, read for 30–60 seconds and leave before scrolling to the form,
+  // which sat almost two screens down. So the offer form now starts right
+  // under a short intro — its first step is visible on a phone without
+  // scrolling — and the reassurance (how it works, trust, reviews, FAQ)
+  // follows for anyone who wants it before or after starting.
   return (
     <div className="gg-page">
-      <section className="gg-collect-hero">
-        <h1>Sell your Magic cards — one card or a whole collection</h1>
+      <section className="gg-collect-hero gg-collect-hero--quote">
+        <h1>Sell your Magic cards</h1>
         <p className="gg-collect-hero-sub">
-          Binders you haven&rsquo;t opened in years, boxes from a basement or an estate, or a few
-          valuable singles. Ship them from anywhere in the US, meet up with us in {HUB_CITY}, or
-          we&rsquo;ll drive to you — no sorting or pricing needed.
+          One card or a whole collection — unsorted is fine. Get a free offer, then ship it, meet
+          up in {HUB_CITY}, or we&rsquo;ll drive to you.
         </p>
         <HeroPoints points={HERO_POINTS} />
-        <CreditBonusBadge />
-        <div className="gg-collect-hero-actions">
-          <a href="#quick-quote" className="gg-btn">
-            {CTA_LABEL}
-          </a>
-          <Link to="/sell" className="gg-btn gg-btn-ghost">
-            List my cards one by one
-          </Link>
-        </div>
         <ShopRatingLine />
+      </section>
+
+      <section className="gg-collect-section gg-collect-section--quote" id="quick-quote">
+        <h2 className="gg-visually-hidden">Get a free offer</h2>
+        <div className="gg-referral-card">
+          <QuickPhotoQuote />
+        </div>
+        <CreditBonusBadge />
+        <p className="gg-area-note">
+          Only a few cards? <Link to="/sell">List them one by one</Link> instead.
+        </p>
       </section>
 
       <section className="gg-collect-section">
         <h2>How it works</h2>
         <ol className="gg-collect-steps">
           <li>
-            <strong>Tell us what you have.</strong> Send a few photos below, or list your cards one by
-            one. &ldquo;Not sure&rdquo; is a fine answer to anything.
+            <strong>Tell us what you have.</strong> A few taps and some photos in the form above, or
+            list your cards one by one. &ldquo;Not sure&rdquo; is a fine answer to anything.
           </li>
           <li>
             <strong>Get your offer.</strong> One offer on the whole lot — free, and with no
@@ -204,21 +213,6 @@ export default function SellCollectionPage() {
             credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
           </li>
         </ol>
-      </section>
-
-      <section className="gg-collect-section" id="quick-quote">
-        <h2>Get a free offer from a few photos</h2>
-        <p className="gg-collect-lead">
-          Tell us what you have in a few taps, then add photos if you like — binder pages, box tops,
-          anything that looks valuable — and where to send your offer. We&rsquo;ll reply with an offer
-          or a few questions. No card-by-card list needed.
-        </p>
-        <div className="gg-referral-card">
-          <QuickPhotoQuote />
-        </div>
-        <p className="gg-area-note">
-          Rather list each card? <Link to="/sell">List your cards one by one</Link>.
-        </p>
       </section>
 
       <TrustSection />

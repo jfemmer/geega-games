@@ -10,6 +10,7 @@ import {
   type SellPhoto,
 } from "../lib/sellTypes";
 import { MAGIC_PARTNER_CONSENT_LABEL } from "../lib/partnerTypes";
+import { useFormTracking } from "../lib/formTracking";
 
 // "Get a free offer" for Magic sellers, in two short steps — the way most
 // collection buyers quote now (seller research, 2026-09-25):
@@ -78,6 +79,18 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
   const doneRef = useRef<HTMLDivElement>(null);
   const stepRef = useRef<HTMLHeadingElement>(null);
   const movedStep = useRef(false);
+  // Where people stop (admin Overview → Seller forms). Photos that failed
+  // to upload don't count as added.
+  const tracking = useFormTracking("quick_quote", {
+    step,
+    photos: photos.filter((p) => p.status !== "error").length,
+  });
+
+  /** Shows an error message, and records that this form showed it. */
+  function fail(message: string) {
+    setError(message);
+    tracking.error(message);
+  }
 
   // Moving between the steps puts focus (and a screen reader) on the new step.
   useEffect(() => {
@@ -98,7 +111,7 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
   function next(e: React.FormEvent) {
     e.preventDefault();
     if (types.length === 0 && !description.trim()) {
-      return setError("Tell us what kind of cards you have, or add a short note.");
+      return fail("Tell us what kind of cards you have, or add a short note.");
     }
     goTo(2);
   }
@@ -171,20 +184,21 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    tracking.attempt();
     const uploaded = photos.filter((p) => p.status === "uploaded" && p.uploadedPath);
     if (types.length === 0 && !description.trim() && uploaded.length === 0) {
-      return setError("Tell us what kind of cards you have, add a short note, or add a few photos.");
+      return fail("Tell us what kind of cards you have, add a short note, or add a few photos.");
     }
     if (photos.some((p) => p.status === "uploading" || p.status === "pending")) {
-      return setError("Your photos are still uploading — give it a moment and try again.");
+      return fail("Your photos are still uploading — give it a moment and try again.");
     }
     if (!firstName.trim() || !lastName.trim() || !isValidEmail(email)) {
-      return setError("Please enter your first name, last name and a valid email address.");
+      return fail("Please enter your first name, last name and a valid email address.");
     }
     if (contactMethod !== "email" && !phone.trim()) {
-      return setError("Please add a phone number, or choose email as your contact method.");
+      return fail("Please add a phone number, or choose email as your contact method.");
     }
-    if (!agreed) return setError("Please confirm you own or are authorized to sell these items.");
+    if (!agreed) return fail("Please confirm you own or are authorized to sell these items.");
 
     setSubmitting(true);
     try {
@@ -210,12 +224,13 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         partnerConsent,
       });
       if (!res.ok) throw new Error(res.message);
+      tracking.sent();
       if (res.claim) rememberClaim({ kind: "sell", id: res.claim.id, token: res.claim.token });
       photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
       setPhotos([]);
       setReferenceNumber(res.referenceNumber ?? "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      fail(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -256,7 +271,13 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
 
   if (step === 1) {
     return (
-      <form className="gg-referral-form gg-qq" onSubmit={next} noValidate aria-labelledby="qq-step-title">
+      <form
+        className="gg-referral-form gg-qq"
+        onSubmit={next}
+        noValidate
+        aria-labelledby="qq-step-title"
+        {...tracking.fieldEvents}
+      >
         <p className="gg-qq__step">Step 1 of 2</p>
         <h3 id="qq-step-title" className="gg-qq__title" ref={stepRef} tabIndex={-1}>
           What are you selling?
@@ -325,7 +346,13 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
   }
 
   return (
-    <form className="gg-referral-form gg-qq" onSubmit={submit} noValidate aria-labelledby="qq-step-title">
+    <form
+      className="gg-referral-form gg-qq"
+      onSubmit={submit}
+      noValidate
+      aria-labelledby="qq-step-title"
+      {...tracking.fieldEvents}
+    >
       <p className="gg-qq__step">Step 2 of 2</p>
       <h3 id="qq-step-title" className="gg-qq__title" ref={stepRef} tabIndex={-1}>
         Where should we send your offer?

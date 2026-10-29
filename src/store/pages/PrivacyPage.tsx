@@ -2,7 +2,7 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 
-const EFFECTIVE_DATE = "October 27, 2026";
+const EFFECTIVE_DATE = "October 29, 2026";
 
 export function PrivacyPage() {
   useSEO({
@@ -91,7 +91,10 @@ export function PrivacyPage() {
           keeping you signed in or remembering your cart). Our own visitor statistics record the
           pages you view, whether you interacted with each page (for example, tapped, scrolled or
           typed — not what you did), what you search for in our shop and how many cards each
-          search found, the campaign tags of the link you arrived on (for example, that it came
+          search found, how far you get through our sell forms (which step you reach, the name of
+          the last field you were on, how many photos you added, any error message the form
+          showed you and whether you sent it — never what you type or choose in the form itself),
+          the campaign tags of the link you arrived on (for example, that it came
           from one of our social media posts), your device type, the site that referred you, and
           your approximate location (country, state/region and city, estimated from your IP
           address) without storing your IP address or identifying you. Searches that look like an

@@ -7,8 +7,9 @@ import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
 import { isMetaNetwork } from "./_lib/metaNetwork.js";
 import type { TablesInsert } from "../src/types/database.js";
 
-// POST /api/track — one storefront page view, or one shop search
-// (src/store/lib/pageViews.ts, src/store/lib/searchTracking.ts).
+// POST /api/track — one storefront page view, one shop search, or one
+// seller-form progress report (src/store/lib/pageViews.ts,
+// src/store/lib/searchTracking.ts, src/store/lib/formTracking.ts).
 //
 // Privacy by design (see migrations 20260924070000 and 20261027050000):
 //   * Stores no IP, no cookie, no user id. The visitor is an HMAC of
@@ -94,6 +95,61 @@ export function cleanSearchQuery(raw: unknown): string | null {
   return q;
 }
 
+const TRACKED_FORMS = new Set(["quick_quote", "sell", "referral"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A form or step name, or one of our error messages: no control characters, single-spaced, capped. */
+function cleanText(raw: unknown, max: number): string | null {
+  if (typeof raw !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const text = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max).trim();
+  return text || null;
+}
+
+function smallCount(raw: unknown, max: number): number {
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? Math.min(raw, max) : 0;
+}
+
+export interface FormProgress {
+  id: string;
+  form: string;
+  path: string;
+  step: number;
+  stepLabel: string | null;
+  field: string | null;
+  photos: number;
+  attempts: number;
+  error: string | null;
+  submitted: boolean;
+}
+
+/**
+ * One seller-form progress report (src/store/lib/formTracking.ts), checked
+ * and cleaned, or null to ignore it. Field and step names and error messages
+ * are our own wording; anything that still looks like an email address or a
+ * phone number is dropped rather than stored.
+ */
+export function cleanFormProgress(body: TrackBody): FormProgress | null {
+  const id = typeof body.id === "string" && UUID_RE.test(body.id) ? body.id.toLowerCase() : null;
+  const form = typeof body.f === "string" && TRACKED_FORMS.has(body.f) ? body.f : null;
+  const path = cleanPath(body.p);
+  const step = typeof body.s === "number" && Number.isInteger(body.s) && body.s >= 1 && body.s <= 10 ? body.s : null;
+  if (!id || !form || !path || step === null) return null;
+  const notPersonal = (text: string | null) => (text && !looksPersonal(text) ? text : null);
+  return {
+    id,
+    form,
+    path,
+    step,
+    stepLabel: notPersonal(cleanText(body.sl, 80)),
+    field: notPersonal(cleanText(body.fl, 80)),
+    photos: smallCount(body.ph, 1000),
+    attempts: smallCount(body.a, 1000),
+    error: notPersonal(cleanText(body.er, 300)),
+    submitted: body.ok === true,
+  };
+}
+
 function header(req: VercelRequest, name: string): string | null {
   const v = req.headers[name];
   return typeof v === "string" && v ? v : null;
@@ -135,8 +191,18 @@ interface TrackBody {
   u?: { s?: unknown; m?: unknown; c?: unknown } | null;
   q?: unknown;
   n?: unknown;
+  /** A search: filters were on. A form report ("f"): which form. */
   f?: unknown;
   d?: unknown;
+  /** Form report: session id, step, step name, last field, photos, send attempts, error shown, sent. */
+  id?: unknown;
+  s?: unknown;
+  sl?: unknown;
+  fl?: unknown;
+  ph?: unknown;
+  a?: unknown;
+  er?: unknown;
+  ok?: unknown;
 }
 
 type PageViewRow = TablesInsert<"site_page_views">;
@@ -196,6 +262,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         device: deviceFrom(ua),
       });
       if (error) console.error("[track] search insert failed", error.message);
+      return res.status(204).end();
+    }
+
+    if (body.t === "f") {
+      const progress = cleanFormProgress(body);
+      if (!progress) return res.status(204).end();
+      const countryHeader = header(req, "x-vercel-ip-country");
+      const { error } = await getSupabaseAdmin().rpc("record_form_session", {
+        p_id: progress.id,
+        p_form: progress.form,
+        p_path: progress.path,
+        p_visitor_hash: visitorHash(ip, ua),
+        p_device: deviceFrom(ua),
+        p_country: countryHeader && /^[A-Z]{2}$/.test(countryHeader) ? countryHeader : null,
+        p_region: cleanRegion(header(req, "x-vercel-ip-country-region")),
+        p_city: cleanCity(header(req, "x-vercel-ip-city")),
+        p_step: progress.step,
+        p_step_label: progress.stepLabel,
+        p_field: progress.field,
+        p_photos: progress.photos,
+        p_attempts: progress.attempts,
+        p_error: progress.error,
+        p_submitted: progress.submitted,
+      });
+      if (error) console.error("[track] form progress failed", error.message);
       return res.status(204).end();
     }
 
