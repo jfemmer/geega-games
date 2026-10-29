@@ -842,7 +842,7 @@ $$;
 -- ============================================================ payouts: sales and adjustments together
 
 drop function if exists public.consignment_record_payout(uuid, uuid[], text, text, timestamptz, text, text);
-create function public.consignment_record_payout(
+create or replace function public.consignment_record_payout(
   p_consignment_id uuid,
   p_sale_ids uuid[],
   p_adjustment_ids uuid[],
