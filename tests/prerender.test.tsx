@@ -169,14 +169,18 @@ describe("build-time prerender", () => {
     }
   });
 
-  it("puts the steps before the photo form on the Magic sell page, and the partner cross-sell after it", () => {
+  it("starts the photo form right after the intro on the Magic sell page, then the steps, then the partner cross-sell", () => {
     const { html } = renderPage("/sell-my-collection");
-    const steps = html.indexOf("<h2>How it works</h2>");
+    const h1 = html.indexOf("<h1>Sell your Magic cards</h1>");
     const form = html.indexOf('id="quick-quote"');
+    const steps = html.indexOf("<h2>How it works</h2>");
     const partner = html.indexOf("Selling Pokémon, One Piece or video games too?");
-    expect(steps).toBeGreaterThan(0);
-    expect(steps).toBeLessThan(form);
-    expect(form).toBeLessThan(partner);
+    expect(h1).toBeGreaterThan(0);
+    expect(h1).toBeLessThan(form);
+    expect(form).toBeLessThan(steps);
+    expect(steps).toBeLessThan(partner);
+    // The form's first step is rendered into the page, not loaded later.
+    expect(html).toContain("What are you selling?");
     expect(html).toContain("Get my free offer");
     expect(html).toContain('href="#reviews"');
   });
