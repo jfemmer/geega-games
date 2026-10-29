@@ -39,7 +39,13 @@ const cart = vi.hoisted(() => {
 
 vi.mock("../src/store/lib/CartContext", async () => {
   const React = await import("react");
-  return { useCart: () => React.useSyncExternalStore(cart.subscribe, cart.get) };
+  // Every card here is ours, so the whole subtotal can be discounted.
+  return {
+    useCart: () => {
+      const s = React.useSyncExternalStore(cart.subscribe, cart.get);
+      return { ...s, discountableSubtotalCents: s.subtotalCents };
+    },
+  };
 });
 
 vi.mock("../src/supabase", () => ({

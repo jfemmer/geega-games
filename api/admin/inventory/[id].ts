@@ -92,6 +92,17 @@ function readId(req: VercelRequest): string {
 }
 
 /** Fetch the current row or 404. */
+/**
+ * Consigned copies belong to a consignor: their price, stock and status are
+ * managed in Consignments (the database enforces it too, GC001/GC052), so the
+ * inventory editor says where to go instead of failing on save.
+ */
+function refuseConsigned(row: { ownership?: string | null; card_name?: string | null }, what: string) {
+  if (row.ownership === "consigned") {
+    throw new HttpError(409, `${row.card_name ?? "This card"} is a consigned card and can't be ${what}. Manage it in Consignments.`);
+  }
+}
+
 async function getRowOr404(
   admin: ReturnType<typeof getSupabaseAdmin>,
   id: string,
@@ -145,6 +156,7 @@ async function handlePatch(req: VercelRequest, res: VercelResponse) {
   const admin = getSupabaseAdmin();
 
   const current = await getRowOr404(admin, id);
+  refuseConsigned(current, "edited here");
 
   // 1) Status change routed through the RPC (also writes a movement row).
   if (body.status !== undefined) {
@@ -427,6 +439,7 @@ async function handleDelete(req: VercelRequest, res: VercelResponse) {
 
   // Confirm the row exists (clean 404 rather than a silent no-op).
   const current = await getRowOr404(admin, id);
+  refuseConsigned(current, "deleted");
 
   // Historical safety: refuse when referenced by orders/carts/scans.
   const blockers = await inventoryDeleteBlockers(admin, id).catch(() => {

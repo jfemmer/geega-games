@@ -52,8 +52,10 @@ export function qualifiesForFreeShipping(subtotalCents: number): boolean {
 export function effectiveShippingMethod(
   method: ShippingMethod,
   subtotalCents: number,
+  /** The cart holds a consigned card: those orders always ship tracked. */
+  requiresTracked = false,
 ): ShippingMethod {
-  return qualifiesForFreeShipping(subtotalCents) ? "tracked" : method;
+  return qualifiesForFreeShipping(subtotalCents) || requiresTracked ? "tracked" : method;
 }
 
 /** Format a cent amount as USD, e.g. 1234 -> "$12.34". */
@@ -112,13 +114,17 @@ export function shippingCents(
 /**
  * Preview the full order math the same way the server will. Returns cents.
  *   * `member`: the customer is signed in, so the cards are MEMBER_DISCOUNT_PERCENT
- *     off. Free shipping is still decided on the cards' full price, so the
- *     discount can never cost an order its free shipping.
+ *     off — all but consigned cards, which are never discounted
+ *     (`discountableSubtotalCents`; defaults to the whole subtotal). Free
+ *     shipping is still decided on the cards' full price, so the discount can
+ *     never cost an order its free shipping.
  *   * storeCreditRequestedCents is clamped to [0, balance] ∩ [0, total] just
  *     like the RPC, so the preview cannot show a negative amount due.
  */
 export function previewOrderTotals(input: {
   subtotalCents: number;
+  /** The cards the member discount applies to (the subtotal minus consigned cards). */
+  discountableSubtotalCents?: number;
   method: ShippingMethod;
   member?: boolean;
   storeCreditBalanceCents?: number;
@@ -132,7 +138,7 @@ export function previewOrderTotals(input: {
   amountDueCents: number;
 } {
   const ship = shippingCents(input.method, input.subtotalCents);
-  const discount = input.member ? memberDiscountCents(input.subtotalCents) : 0;
+  const discount = input.member ? memberDiscountCents(input.discountableSubtotalCents ?? input.subtotalCents) : 0;
   const total = input.subtotalCents - discount + ship;
   const balance = Math.max(0, input.storeCreditBalanceCents ?? 0);
   const requested = Math.max(0, input.storeCreditRequestedCents ?? 0);

@@ -6,12 +6,22 @@ import { SelectField, TextArea, TextField } from "../../components/ui/Field";
 import { useToast } from "../../hooks/useToast";
 import type { BadgeTone } from "../../utils/labels";
 import { CARD_CONDITIONS, CARD_FINISHES, dollarsToCents, type CardCondition, type CardFinish } from "../../../store/lib/consignmentReceiving";
-import { LOT_STATUS_LABELS, consignmentAdminApi, type LotEvent, type LotRecord, type LotStatus, type ReceivingBatch } from "./consignmentAdminApi";
+import {
+  LOT_STATUS_LABELS,
+  consignmentAdminApi,
+  type LotEvent,
+  type LotQuantities,
+  type LotRecord,
+  type LotStatus,
+  type ReceivingBatch,
+} from "./consignmentAdminApi";
+import { LotSellingDialog, type SellingAction } from "./LotSellingDialogs";
 
 // The consignment's cards, by the batch they arrived in, and inspection:
 // start, accept (count, grade, finish, list price, the consignor's minimum),
 // reject with a reason the consignor sees, or reopen a decision. Every step
-// is recorded in the line's history.
+// is recorded in the line's history. Accepted lines are then sold: listed on
+// the website (when the consignor approved it) or sold on TCGplayer/eBay.
 
 const STATUS_TONE: Record<LotStatus, BadgeTone> = {
   submitted: "neutral",
@@ -201,10 +211,34 @@ function InspectDialog({ lot, events, onClose, onDone }: { lot: LotRecord; event
   );
 }
 
-export function ConsignmentLotsPanel({ batches, lots, events, onChanged }: { batches: ReceivingBatch[]; lots: LotRecord[]; events: LotEvent[]; onChanged: () => Promise<void> | void }) {
+export interface SellingContext {
+  quantities: LotQuantities[];
+  /** Copies on the website per lot, from its inventory row. */
+  onSiteByLot: Record<string, number>;
+  approved: { website: boolean; tcgplayer: boolean; ebay: boolean };
+  /** The consignment is signed and not ended. */
+  canSell: boolean;
+}
+
+export function ConsignmentLotsPanel({
+  batches,
+  lots,
+  events,
+  onChanged,
+  selling,
+}: {
+  batches: ReceivingBatch[];
+  lots: LotRecord[];
+  events: LotEvent[];
+  onChanged: () => Promise<void> | void;
+  selling?: SellingContext;
+}) {
   const toast = useToast();
   const [inspecting, setInspecting] = useState<LotRecord | null>(null);
+  const [selling_, setSelling] = useState<{ lot: LotRecord; action: SellingAction } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const qtyByLot = new Map((selling?.quantities ?? []).map((q) => [q.lot_id, q]));
+  const marketplace = !!selling && (selling.approved.tcgplayer || selling.approved.ebay);
 
   const received = lots.filter((l) => l.status === "received");
   const totals = lots.reduce(
@@ -286,6 +320,12 @@ export function ConsignmentLotsPanel({ batches, lots, events, onChanged }: { bat
       <td data-label="Status">
         <Badge tone={STATUS_TONE[l.status]}>{LOT_STATUS_LABELS[l.status]}</Badge>
         {l.rejection_reason && <span className="gg-cs-note">{l.rejection_reason}</span>}
+        {qtyByLot.get(l.id) && (
+          <span className="gg-cs-note">
+            {qtyByLot.get(l.id)!.on_sale} on sale · {qtyByLot.get(l.id)!.sold} sold · {qtyByLot.get(l.id)!.unlisted} not listed
+            {qtyByLot.get(l.id)!.pending ? ` · ${qtyByLot.get(l.id)!.pending} in checkout` : ""}
+          </span>
+        )}
       </td>
       <td>
         <div className="gg-btn-row">
@@ -298,6 +338,30 @@ export function ConsignmentLotsPanel({ batches, lots, events, onChanged }: { bat
             <Button size="sm" variant="primary" disabled={busy !== null} onClick={() => setInspecting(l)}>
               Inspect
             </Button>
+          )}
+          {selling?.canSell && (l.status === "accepted" || l.status === "listed") && qtyByLot.get(l.id) && (
+            <>
+              {selling.approved.website && qtyByLot.get(l.id)!.unlisted > 0 && (
+                <Button size="sm" variant="primary" disabled={busy !== null} onClick={() => setSelling({ lot: l, action: "list" })}>
+                  List on website
+                </Button>
+              )}
+              {l.status === "listed" && (
+                <Button size="sm" disabled={busy !== null} onClick={() => setSelling({ lot: l, action: "price" })}>
+                  Change price
+                </Button>
+              )}
+              {(selling.onSiteByLot[l.id] ?? 0) > 0 && (
+                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setSelling({ lot: l, action: "unlist" })}>
+                  Take off sale
+                </Button>
+              )}
+              {marketplace && qtyByLot.get(l.id)!.unlisted + (selling.onSiteByLot[l.id] ?? 0) > 0 && (
+                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setSelling({ lot: l, action: "sale" })}>
+                  Record a sale
+                </Button>
+              )}
+            </>
           )}
           {(l.status === "accepted" || l.status === "rejected") && (
             <Button
@@ -365,6 +429,20 @@ export function ConsignmentLotsPanel({ batches, lots, events, onChanged }: { bat
         );
       })}
       {unbatched.length > 0 && table(unbatched)}
+      {selling_ && selling && qtyByLot.get(selling_.lot.id) && (
+        <LotSellingDialog
+          action={selling_.action}
+          lot={selling_.lot}
+          quantities={qtyByLot.get(selling_.lot.id)!}
+          onSale={selling.onSiteByLot[selling_.lot.id] ?? 0}
+          approved={selling.approved}
+          onClose={() => setSelling(null)}
+          onDone={() => {
+            setSelling(null);
+            void onChanged();
+          }}
+        />
+      )}
       {inspecting && (
         <InspectDialog
           lot={inspecting}

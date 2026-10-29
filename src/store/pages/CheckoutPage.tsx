@@ -179,7 +179,7 @@ async function pollPaymentStatus(
 
 export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
-  const { lines, subtotalCents, loading: cartLoading, refresh, clear } = useCart();
+  const { lines, subtotalCents, discountableSubtotalCents, hasSaleOnly, loading: cartLoading, refresh, clear } = useCart();
   useRouter();
   const storeStatus = useStoreStatus();
 
@@ -328,26 +328,28 @@ export default function CheckoutPage() {
   }, [user]);
 
   // How the order will really ship: the customer's pick, unless the cart
-  // qualifies for free shipping, which is always tracked.
-  const shipMethod = effectiveShippingMethod(method, subtotalCents);
+  // qualifies for free shipping or holds a consigned card, which always ship
+  // tracked (checkout_place_order_core does the same).
+  const shipMethod = effectiveShippingMethod(method, subtotalCents, hasSaleOnly);
 
   const totals = useMemo(
     () =>
       previewOrderTotals({
         subtotalCents,
+        discountableSubtotalCents,
         method: shipMethod,
         member: !!user,
         storeCreditBalanceCents: creditBalance,
         storeCreditRequestedCents: useCredit ? creditBalance : 0,
       }),
-    [subtotalCents, shipMethod, user, creditBalance, useCredit],
+    [subtotalCents, discountableSubtotalCents, shipMethod, user, creditBalance, useCredit],
   );
   // What signing in would take off this order, for a guest, and what they'd
-  // pay then.
-  const guestSavingsCents = isGuest ? memberDiscountCents(subtotalCents) : 0;
+  // pay then. Consigned cards are never discounted.
+  const guestSavingsCents = isGuest ? memberDiscountCents(discountableSubtotalCents) : 0;
   const memberAmountDueCents = useMemo(
-    () => previewOrderTotals({ subtotalCents, method: shipMethod, member: true }).amountDueCents,
-    [subtotalCents, shipMethod],
+    () => previewOrderTotals({ subtotalCents, discountableSubtotalCents, method: shipMethod, member: true }).amountDueCents,
+    [subtotalCents, discountableSubtotalCents, shipMethod],
   );
 
   const chosenAddress: Partial<Address> | null =
@@ -829,6 +831,7 @@ export default function CheckoutPage() {
                 <div className="gg-card-meta">
                   {l.setName ?? l.setCode?.toUpperCase()} · {l.condition} × {l.quantity}
                 </div>
+                {l.saleOnly && <div className="gg-card-meta gg-line-consigned">Consigned · no discounts apply</div>}
               </div>
               <div className="gg-price">
                 {formatCents(l.priceCents * l.quantity)}
@@ -923,7 +926,7 @@ export default function CheckoutPage() {
 
           {/* Shipping method */}
           <h2 style={{ marginTop: "1.5rem" }}>Shipping method</h2>
-          <ShippingMethodPicker subtotalCents={subtotalCents} method={method} onChange={setMethod} />
+          <ShippingMethodPicker subtotalCents={subtotalCents} method={method} onChange={setMethod} trackedOnly={hasSaleOnly} />
         </div>
 
         {/* Summary */}

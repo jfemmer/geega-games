@@ -42,12 +42,18 @@ export type CartLine = {
   sellable: number;
   /** "Artist Proof", "Special Edition", a custom label, or null for a standard copy. */
   variantType: string | null;
+  /** A consigned copy: sold at its listed price, never discounted, ships tracked. */
+  saleOnly: boolean;
 };
 
 type CartContextValue = {
   lines: CartLine[];
   itemCount: number;
   subtotalCents: number;
+  /** The part of the subtotal the member discount applies to (consigned cards excluded). */
+  discountableSubtotalCents: number;
+  /** True when the cart holds a consigned card, so the order must ship tracked. */
+  hasSaleOnly: boolean;
   loading: boolean;
   error: string | null;
   /** True if any line was clamped/dropped on the last stock revalidation. */
@@ -72,6 +78,7 @@ type PublicRow = {
   price_cents: number | null;
   quantity: number | null; // sellable (view already subtracts reservations)
   variant_type: string | null;
+  sale_only?: boolean | null;
 };
 
 /**
@@ -108,6 +115,7 @@ function buildLine(row: PublicRow, quantity: number): CartLine {
     priceCents: row.price_cents ?? 0,
     sellable,
     variantType: row.variant_type || null,
+    saleOnly: row.sale_only === true,
   };
 }
 
@@ -459,12 +467,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     () => lines.reduce((n, l) => n + l.priceCents * l.quantity, 0),
     [lines],
   );
+  const discountableSubtotalCents = useMemo(
+    () => lines.reduce((n, l) => n + (l.saleOnly ? 0 : l.priceCents * l.quantity), 0),
+    [lines],
+  );
+  const hasSaleOnly = useMemo(() => lines.some((l) => l.saleOnly), [lines]);
 
   const value = useMemo<CartContextValue>(
     () => ({
       lines,
       itemCount,
       subtotalCents,
+      discountableSubtotalCents,
+      hasSaleOnly,
       loading,
       error,
       stockAdjusted,
@@ -478,6 +493,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       lines,
       itemCount,
       subtotalCents,
+      discountableSubtotalCents,
+      hasSaleOnly,
       loading,
       error,
       stockAdjusted,

@@ -46,6 +46,7 @@ export interface InventoryRowLike {
   status: ListingStatus;
   variant_type?: string;
   language?: string;
+  ownership?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +91,7 @@ export function mapInventoryRow(row: InventoryRowLike): InventoryItem {
     scryfallPriceCents: row.scryfall_price_cents ?? null,
     storefrontListedAt: row.storefront_listed_at ?? row.created_at,
     isDeal: row.is_deal ?? false,
+    consigned: row.ownership === "consigned",
     dealSource: row.deal_source ?? null,
     originalPriceCents: row.original_price_cents ?? null,
     dealDiscountPercent: row.deal_discount_percent ?? null,

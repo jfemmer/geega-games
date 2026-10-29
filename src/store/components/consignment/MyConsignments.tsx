@@ -11,6 +11,8 @@ import {
   type MyAgreement,
   type MyConsignedCard,
   type MyConsignment,
+  type MyConsignmentPayout,
+  type MyConsignmentSale,
 } from "../../lib/consignmentApi";
 import { PayoutEstimator } from "./PayoutEstimator";
 
@@ -19,7 +21,8 @@ import { PayoutEstimator } from "./PayoutEstimator";
 // their signed agreement (PDF), and the payout estimator limited to the
 // channels they approved. Only their own consignments are ever loaded
 // (my_consignments()), including the cards we received and how each line's
-// inspection went. Sales and payouts join this page in later phases.
+// inspection went, what has sold (and, once final, the full settlement:
+// expenses, commission and payout), and the payouts we've sent.
 
 const STATUS_LABELS: Record<MyConsignment["status"], string> = {
   draft: "Being set up",
@@ -136,6 +139,131 @@ function YourCards({ cards }: { cards: MyConsignedCard[] }) {
   );
 }
 
+const SALE_STATUS: Record<MyConsignmentSale["status"], string> = {
+  open: "Sold",
+  settled: "Settled: payout coming",
+  paid: "Paid to you",
+  cancelled: "Cancelled",
+};
+const PAYOUT_METHOD: Record<string, string> = {
+  paypal: "PayPal",
+  venmo: "Venmo",
+  zelle: "Zelle",
+  check: "Check",
+  ach: "Bank transfer",
+  store_credit: "Store credit",
+};
+
+function saleStage(s: MyConsignmentSale, now: number): string {
+  if (s.status !== "open") return SALE_STATUS[s.status];
+  if (!s.deliveredAt) return s.shippedAt ? "Sold · on its way to the buyer" : "Sold · shipping soon";
+  if (s.payableAt && new Date(s.payableAt).getTime() > now) return `Delivered · buyer inspection until ${dateLabel(s.payableAt)}`;
+  return "Delivered · being settled";
+}
+
+function YourSales({ sales, payouts }: { sales: MyConsignmentSale[]; payouts: MyConsignmentPayout[] }) {
+  const [now] = useState(() => Date.now());
+  const live = sales.filter((s) => s.status !== "cancelled");
+  const paid = payouts.filter((p) => !p.voided).reduce((n, p) => n + p.amountCents, 0);
+  const owed = sales.filter((s) => s.status === "settled").reduce((n, s) => n + (s.settlement?.payoutCents ?? 0), 0);
+  return (
+    <section className="gg-myconsign__cards" aria-label="Your sales">
+      <h3>Sales and payouts</h3>
+      <p className="gg-card-meta">
+        {live.length} sold · {formatCents(owed)} settled and on its way · {formatCents(paid)} paid to you
+      </p>
+      {sales.length > 0 && (
+        <ul className="gg-myconsign__cardlist">
+          {sales.map((s) => (
+            <li key={s.id} className="gg-myconsign__sale">
+              <div>
+                <strong>{s.cardName}</strong>
+                <span className="gg-card-meta">
+                  {s.quantity} × {formatCents(s.unitPriceCents)} on {CHANNEL_LABELS[s.channel]} · {dateLabel(s.soldAt)}
+                </span>
+                {s.cancelReason && <span className="gg-card-meta">{s.cancelReason}</span>}
+                {s.settlement && (
+                  <details className="gg-myconsign__settle">
+                    <summary>Your payout: {formatCents(s.settlement.payoutCents)}</summary>
+                    <dl>
+                      <div>
+                        <dt>Final selling price</dt>
+                        <dd>{formatCents(s.grossCents)}</dd>
+                      </div>
+                      {s.settlement.marketplaceFeeCents > 0 && (
+                        <div>
+                          <dt>Marketplace fee</dt>
+                          <dd>−{formatCents(s.settlement.marketplaceFeeCents)}</dd>
+                        </div>
+                      )}
+                      {s.settlement.processingFeeCents > 0 && (
+                        <div>
+                          <dt>Payment processing</dt>
+                          <dd>−{formatCents(s.settlement.processingFeeCents)}</dd>
+                        </div>
+                      )}
+                      {s.settlement.postageCents > 0 && (
+                        <div>
+                          <dt>Postage (after the buyer's shipping)</dt>
+                          <dd>−{formatCents(s.settlement.postageCents)}</dd>
+                        </div>
+                      )}
+                      {s.settlement.insuranceCents > 0 && (
+                        <div>
+                          <dt>Shipping insurance</dt>
+                          <dd>−{formatCents(s.settlement.insuranceCents)}</dd>
+                        </div>
+                      )}
+                      {s.settlement.otherExpenseCents > 0 && (
+                        <div>
+                          <dt>{s.settlement.otherExpenseNote ?? "Other approved expense"}</dt>
+                          <dd>−{formatCents(s.settlement.otherExpenseCents)}</dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>Net sale amount</dt>
+                        <dd>{formatCents(s.settlement.netSaleCents)}</dd>
+                      </div>
+                      <div>
+                        <dt>Commission ({formatBps(s.settlement.commissionRateBps)})</dt>
+                        <dd>−{formatCents(s.settlement.commissionCents)}</dd>
+                      </div>
+                      <div>
+                        <dt>
+                          <strong>Your payout</strong>
+                        </dt>
+                        <dd>
+                          <strong>{formatCents(s.settlement.payoutCents)}</strong>
+                        </dd>
+                      </div>
+                    </dl>
+                  </details>
+                )}
+              </div>
+              <span className={`gg-myconsign__cardstatus gg-myconsign__cardstatus--sale-${s.status}`}>{saleStage(s, now)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {payouts.length > 0 && (
+        <ul className="gg-myconsign__payouts">
+          {payouts.map((p) => (
+            <li key={p.id} className={p.voided ? "gg-myconsign__payout--void" : undefined}>
+              {dateLabel(p.paidAt)}: {formatCents(p.amountCents)} by {PAYOUT_METHOD[p.method] ?? p.method} for {p.saleCount} sale{p.saleCount === 1 ? "" : "s"}
+              {p.reference ? ` (ref. ${p.reference})` : ""}
+              {p.voided ? " · cancelled" : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="gg-card-meta">
+        Each sale is paid after the buyer's inspection period ends. Your payout is the selling price less the actual transaction expenses, less our
+        commission.
+      </p>
+    </section>
+  );
+}
+
 function ConsignmentCard({ c }: { c: MyConsignment }) {
   const signed = c.agreements.find((a) => a.status === "signed") ?? null;
   const pending = c.agreements.find((a) => a.status === "pending") ?? null;
@@ -221,6 +349,8 @@ function ConsignmentCard({ c }: { c: MyConsignment }) {
       ) : null}
 
       {c.cards && c.cards.length > 0 && <YourCards cards={c.cards} />}
+
+      {((c.sales?.length ?? 0) > 0 || (c.payouts?.length ?? 0) > 0) && <YourSales sales={c.sales ?? []} payouts={c.payouts ?? []} />}
 
       {signed && approved.length > 0 && (
         <div className="gg-myconsign__estimator">

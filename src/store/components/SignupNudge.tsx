@@ -77,11 +77,11 @@ function useAddedWhileSignedOut(signedOut: boolean): boolean {
 export default function SignupNudge() {
   const { user, loading } = useAuth();
   const { path } = useRouter();
-  const { subtotalCents } = useCart();
+  const { discountableSubtotalCents } = useCart();
   const signedOut = !loading && !user;
   const added = useAddedWhileSignedOut(signedOut);
   const [closed, setClosed] = useState(false);
-  const savingsCents = memberDiscountCents(subtotalCents);
+  const savingsCents = memberDiscountCents(discountableSubtotalCents);
 
   const visible =
     signedOut &&

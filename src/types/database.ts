@@ -1435,6 +1435,54 @@ export type Database = {
         }
         Relationships: []
       }
+      consignment_payouts: {
+        Row: {
+          amount_cents: number
+          consignment_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          method: string
+          note: string | null
+          paid_at: string
+          reference: string | null
+          sale_count: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount_cents: number
+          consignment_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method: string
+          note?: string | null
+          paid_at: string
+          reference?: string | null
+          sale_count: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          consignment_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method?: string
+          note?: string | null
+          paid_at?: string
+          reference?: string | null
+          sale_count?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: []
+      }
       consignment_receiving_batches: {
         Row: {
           batch_number: number
@@ -1471,6 +1519,130 @@ export type Database = {
           notes?: string | null
           received_at?: string
           tracking_number?: string | null
+        }
+        Relationships: []
+      }
+      consignment_sales: {
+        Row: {
+          cancel_reason: string | null
+          cancelled_at: string | null
+          channel: string
+          commission_cents: number | null
+          commission_rate_bps: number | null
+          commission_tiers: Json
+          consignment_id: string
+          created_at: string
+          created_by: string | null
+          delivered_at: string | null
+          external_order_ref: string | null
+          flag: string | null
+          gross_cents: number
+          id: string
+          insurance_cents: number | null
+          inspection_days: number
+          inventory_item_id: string | null
+          lot_id: string
+          marketplace_fee_cents: number | null
+          net_sale_cents: number | null
+          notes: string | null
+          order_id: string | null
+          order_item_id: string | null
+          other_expense_cents: number | null
+          other_expense_note: string | null
+          payable_at: string | null
+          payout_cents: number | null
+          payout_id: string | null
+          postage_cents: number | null
+          processing_fee_cents: number | null
+          quantity: number
+          restocked: boolean
+          settled_at: string | null
+          settled_by: string | null
+          settlement_detail: Json | null
+          shipped_at: string | null
+          sold_at: string
+          status: string
+          unit_price_cents: number
+        }
+        Insert: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          channel: string
+          commission_cents?: number | null
+          commission_rate_bps?: number | null
+          commission_tiers: Json
+          consignment_id: string
+          created_at?: string
+          created_by?: string | null
+          delivered_at?: string | null
+          external_order_ref?: string | null
+          flag?: string | null
+          id?: string
+          insurance_cents?: number | null
+          inspection_days?: number
+          inventory_item_id?: string | null
+          lot_id: string
+          marketplace_fee_cents?: number | null
+          net_sale_cents?: number | null
+          notes?: string | null
+          order_id?: string | null
+          order_item_id?: string | null
+          other_expense_cents?: number | null
+          other_expense_note?: string | null
+          payable_at?: string | null
+          payout_cents?: number | null
+          payout_id?: string | null
+          postage_cents?: number | null
+          processing_fee_cents?: number | null
+          quantity: number
+          restocked?: boolean
+          settled_at?: string | null
+          settled_by?: string | null
+          settlement_detail?: Json | null
+          shipped_at?: string | null
+          sold_at: string
+          status?: string
+          unit_price_cents: number
+        }
+        Update: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          channel?: string
+          commission_cents?: number | null
+          commission_rate_bps?: number | null
+          commission_tiers?: Json
+          consignment_id?: string
+          created_at?: string
+          created_by?: string | null
+          delivered_at?: string | null
+          external_order_ref?: string | null
+          flag?: string | null
+          id?: string
+          insurance_cents?: number | null
+          inspection_days?: number
+          inventory_item_id?: string | null
+          lot_id?: string
+          marketplace_fee_cents?: number | null
+          net_sale_cents?: number | null
+          notes?: string | null
+          order_id?: string | null
+          order_item_id?: string | null
+          other_expense_cents?: number | null
+          other_expense_note?: string | null
+          payable_at?: string | null
+          payout_cents?: number | null
+          payout_id?: string | null
+          postage_cents?: number | null
+          processing_fee_cents?: number | null
+          quantity?: number
+          restocked?: boolean
+          settled_at?: string | null
+          settled_by?: string | null
+          settlement_detail?: Json | null
+          shipped_at?: string | null
+          sold_at?: string
+          status?: string
+          unit_price_cents?: number
         }
         Relationships: []
       }
@@ -5355,6 +5527,10 @@ export type Database = {
         }
         Returns: string
       }
+      consignment_cancel_sale: {
+        Args: { p_actor: string; p_reason: string; p_sale_id: string }
+        Returns: undefined
+      }
       consignment_current_elections: {
         Args: { p_consignment_id: string }
         Returns: Json
@@ -5374,6 +5550,22 @@ export type Database = {
         }
         Returns: string
       }
+      consignment_list_lot: {
+        Args: { p_actor: string; p_lot_id: string; p_price_cents: number | null; p_quantity: number }
+        Returns: string
+      }
+      consignment_lot_quantities: {
+        Args: { p_lot_id: string }
+        Returns: { accepted: number; on_sale: number; pending: number; sold: number; unlisted: number }[]
+      }
+      consignment_lot_quantities_all: {
+        Args: { p_consignment_id: string }
+        Returns: { accepted: number; lot_id: string; on_sale: number; pending: number; sold: number; unlisted: number }[]
+      }
+      consignment_mark_sale_delivered: {
+        Args: { p_actor: string; p_delivered_at: string; p_sale_id: string }
+        Returns: string
+      }
       consignment_publish_version: {
         Args: { p_actor: string; p_version_id: string }
         Returns: number
@@ -5390,6 +5582,52 @@ export type Database = {
         }
         Returns: string
       }
+      consignment_record_external_sale: {
+        Args: {
+          p_actor: string
+          p_channel: string
+          p_external_ref: string
+          p_lot_id: string
+          p_marketplace_fee_cents: number
+          p_notes: string
+          p_postage_cents: number
+          p_processing_fee_cents: number
+          p_quantity: number
+          p_sold_at: string
+          p_unit_price_cents: number
+        }
+        Returns: string
+      }
+      consignment_record_payout: {
+        Args: {
+          p_actor: string
+          p_consignment_id: string
+          p_method: string
+          p_note: string
+          p_paid_at: string
+          p_reference: string
+          p_sale_ids: string[]
+        }
+        Returns: string
+      }
+      consignment_set_lot_price: {
+        Args: { p_actor: string; p_lot_id: string; p_price_cents: number }
+        Returns: undefined
+      }
+      consignment_settle_sale: {
+        Args: {
+          p_actor: string
+          p_detail: Json
+          p_insurance_cents: number
+          p_marketplace_fee_cents: number
+          p_other_expense_cents: number
+          p_other_expense_note: string
+          p_postage_cents: number
+          p_processing_fee_cents: number
+          p_sale_id: string
+        }
+        Returns: number
+      }
       consignment_sign_agreement: {
         Args: {
           p_acknowledgments: Json
@@ -5405,6 +5643,18 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
+      }
+      consignment_unlist_lot: {
+        Args: { p_actor: string; p_lot_id: string; p_quantity: number }
+        Returns: string
+      }
+      consignment_unsettle_sale: {
+        Args: { p_actor: string; p_sale_id: string }
+        Returns: undefined
+      }
+      consignment_void_payout: {
+        Args: { p_actor: string; p_payout_id: string; p_reason: string }
+        Returns: undefined
       }
       my_consignments: {
         Args: Record<PropertyKey, never>
@@ -5884,6 +6134,7 @@ export type Database = {
           quantity: number
           set_code: string
           set_name: string
+          sale_only: boolean
           variant_type: string
         }[]
       }

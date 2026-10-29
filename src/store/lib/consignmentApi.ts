@@ -161,6 +161,51 @@ export interface MyConsignment {
   agreements: MyAgreement[];
   /** What we received and how inspection went. Older responses may omit it. */
   cards?: MyConsignedCard[];
+  sales?: MyConsignmentSale[];
+  payouts?: MyConsignmentPayout[];
+}
+
+export interface MyConsignmentSale {
+  id: string;
+  cardName: string;
+  setCode: string;
+  collectorNumber: string;
+  channel: ConsignmentChannel;
+  quantity: number;
+  unitPriceCents: number;
+  grossCents: number;
+  soldAt: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  /** When the buyer's inspection period ends and the sale can be paid. */
+  payableAt: string | null;
+  status: "open" | "settled" | "paid" | "cancelled";
+  cancelReason: string | null;
+  /** Final figures, once the sale is settled. */
+  settlement: {
+    marketplaceFeeCents: number;
+    processingFeeCents: number;
+    postageCents: number;
+    insuranceCents: number;
+    otherExpenseCents: number;
+    otherExpenseNote: string | null;
+    netSaleCents: number;
+    commissionRateBps: number;
+    commissionCents: number;
+    payoutCents: number;
+    settledAt: string;
+  } | null;
+  payoutId: string | null;
+}
+
+export interface MyConsignmentPayout {
+  id: string;
+  amountCents: number;
+  saleCount: number;
+  method: string;
+  paidAt: string;
+  reference: string | null;
+  voided: boolean;
 }
 
 export interface MyConsignedCard {

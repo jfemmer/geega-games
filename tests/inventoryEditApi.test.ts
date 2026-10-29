@@ -116,6 +116,14 @@ async function save(id: string, body: Record<string, unknown>) {
 const row = (id: string) => state.tables.inventory_items.find((r) => r.id === id) as Record<string, unknown>;
 
 describe("PATCH /api/admin/inventory/:id (the Edit drawer)", () => {
+  it("sends consigned copies to Consignments instead of editing them", async () => {
+    state.tables.inventory_items = [line(ITEM, { ownership: "consigned" })];
+    const res = await save(ITEM, drawer({ priceCents: 100 }));
+    expect(res.statusCode).toBe(409);
+    expect(String(res.body.message ?? res.body.error)).toMatch(/consigned card.*Manage it in Consignments/);
+    expect(row(ITEM).price_cents).toBe(300);
+  });
+
   it("saves a price and storage change", async () => {
     const res = await save(ITEM, drawer({ priceCents: 450, storageLocation: "Binder 2" }));
     expect(res.statusCode).toBe(200);

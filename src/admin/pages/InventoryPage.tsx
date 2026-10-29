@@ -351,7 +351,9 @@ export function InventoryPage({
       header: "Placement",
       secondary: true,
       render: (r) =>
-        r.isDeal ? (
+        r.consigned ? (
+          <Badge tone="gold">Consigned</Badge>
+        ) : r.isDeal ? (
           <Badge tone="purple">
             {r.dealSource === "aged_inventory"
               ? "Auto deal"
