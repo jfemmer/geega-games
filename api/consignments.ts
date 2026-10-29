@@ -13,6 +13,8 @@ import {
 } from "./_lib/consignments.js";
 import { ACKNOWLEDGMENTS, consignmentLabel } from "../src/store/lib/consignmentAgreement.js";
 import { CONSIGNMENT_CHANNELS } from "../src/store/lib/consignmentMath.js";
+import { aftercareDbError, requestReturn } from "./_lib/consignmentAftercare.js";
+import { buildStatementPdf, loadStatement } from "./_lib/consignmentStatement.js";
 
 // Consignors' side of consignment agreements. Every call needs a signed-in
 // account.
@@ -23,6 +25,10 @@ import { CONSIGNMENT_CHANNELS } from "../src/store/lib/consignmentMath.js";
 //                                     then make, store and email the PDF
 //   GET  ?view=pdf&agreement=<id>     a five-minute link to the consignor's
 //                                     own signed PDF
+//   GET  ?view=statement&payout=<id>  a payout statement PDF (their own only)
+//   POST { action: "requestReturn", consignmentId, lines?, endsConsignment? }
+//                                     ask for unsold cards back (agreement 7.3,
+//                                     7.4); staff approve it
 //
 // The consignor's list of consignments comes straight from my_consignments()
 // in the browser (it only ever returns their own).
@@ -124,6 +130,32 @@ async function sign(admin: Admin, req: VercelRequest) {
   return { ok: true, agreementId: a.id, pdfReady };
 }
 
+async function statement(admin: Admin, req: VercelRequest, res: VercelResponse) {
+  const customer = await requireConsignmentCustomer(req, admin);
+  const data = await loadStatement(admin, String(req.query.payout ?? ""), customer.userId);
+  const pdf = await buildStatementPdf(data);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${consignmentLabel(data.consignmentNumber)}-statement-${data.payout.paid_at.slice(0, 10)}.pdf"`);
+  res.status(200).end(Buffer.from(pdf));
+}
+
+async function consignorRequestReturn(admin: Admin, req: VercelRequest, body: Record<string, unknown>) {
+  const customer = await requireConsignmentCustomer(req, admin);
+  const consignmentId = String(body.consignmentId ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(consignmentId)) throw new HttpError(400, "Choose a consignment.");
+  const { data: c } = await admin.from("consignments").select("id, consignor_id").eq("id", consignmentId).maybeSingle();
+  const { data: p } = c ? await admin.from("consignors").select("user_id").eq("id", c.consignor_id).maybeSingle() : { data: null };
+  // Someone else's consignment looks the same as none.
+  if (!c || !p || p.user_id !== customer.userId) throw new HttpError(404, "That consignment isn't there.");
+  try {
+    const returnId = await requestReturn(admin, c.id, body, "consignor", customer.email);
+    return { ok: true, returnId };
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw aftercareDbError(null, "Could not request the return.");
+  }
+}
+
 async function pdfLink(admin: Admin, req: VercelRequest) {
   const customer = await requireConsignmentCustomer(req, admin);
   const agreementId = String(req.query.agreement ?? "");
@@ -155,9 +187,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const view = String(req.query.view ?? "");
       if (view === "invite") return sendJson(res, 200, await viewInvite(admin, req));
       if (view === "pdf") return sendJson(res, 200, await pdfLink(admin, req));
+      if (view === "statement") return await statement(admin, req, res);
       throw new HttpError(400, "Unknown view.");
     }
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+    if (body.action === "requestReturn") {
+      const ip = getClientIp(req);
+      if (!checkRateLimit("consignment-return", ip, 10, 60 * 60_000).allowed) throw new HttpError(429, "Too many requests. Try again later.");
+      return sendJson(res, 200, await consignorRequestReturn(admin, req, body));
+    }
     if (body.action !== undefined && body.action !== "sign") throw new HttpError(400, "Unknown action.");
     return sendJson(res, 200, await sign(admin, req));
   } catch (err) {

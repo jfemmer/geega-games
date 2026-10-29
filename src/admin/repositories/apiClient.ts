@@ -76,3 +76,27 @@ export async function adminFetch<T>(
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
+/** Download a file (a PDF statement, say) from an admin endpoint with the staff session. */
+export async function adminDownload(path: string, filename: string): Promise<void> {
+  const token = await getAccessToken();
+  if (!token) throw new Error("You must be signed in as staff to download this.");
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` }, credentials: "same-origin" });
+  if (!res.ok) {
+    let message = `Download failed (${res.status}).`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

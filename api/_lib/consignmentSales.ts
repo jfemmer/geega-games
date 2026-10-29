@@ -6,9 +6,7 @@ import {
   allocateByPrice,
   applyBps,
   commissionRateBps,
-  insurancePremium,
   type CommissionTier,
-  type InsuranceSchedule,
 } from "../../src/store/lib/consignmentMath.js";
 
 // Selling consigned cards: listing on the website, TCGplayer/eBay sales staff
@@ -63,8 +61,8 @@ function when(value: unknown, label: string): string {
 /** The database's GC0xx refusals carry messages written for staff. */
 export function salesDbError(error: { code?: string; message?: string } | null, fallback: string): HttpError {
   const code = error?.code ?? "";
-  if (/^GC0[4-7][0-9]$/.test(code) && error?.message) {
-    const status = ["GC041", "GC062", "GC066"].includes(code) ? 404 : ["GC044", "GC063", "GC064", "GC065"].includes(code) ? 409 : 400;
+  if (/^GC0[4-9][0-9]$/.test(code) && error?.message) {
+    const status = ["GC041", "GC062", "GC066"].includes(code) ? 404 : ["GC044", "GC063", "GC064", "GC065", "GC082", "GC085"].includes(code) ? 409 : 400;
     return new HttpError(status, error.message);
   }
   return new HttpError(500, fallback);
@@ -148,6 +146,7 @@ interface SaleRow {
   gross_cents: number;
   sold_at: string;
   status: string;
+  insurance_elected: boolean | null;
   commission_tiers: CommissionTier[];
   marketplace_fee_cents: number | null;
   processing_fee_cents: number | null;
@@ -240,33 +239,27 @@ export async function proposeSettlement(admin: Admin, saleId: string): Promise<S
     warnings.push("The label wasn't bought through the site, so postage isn't known. Enter the postage you paid.");
   }
 
-  // Additional insurance only if the consignor approved it and it was bought.
-  const { data: elections } = await admin.rpc("consignment_current_elections", { p_consignment_id: s.consignment_id });
-  const insured = (elections as { additionalInsurance?: boolean | null } | null)?.additionalInsurance === true;
-  if (insured) {
-    const { data: ins } = await admin
-      .from("consignment_insurance_schedules")
-      .select("included_coverage_cents, brackets, step_cents, step_premium_cents, max_insurable_cents")
-      .lte("effective_from", s.sold_at)
-      .order("effective_from", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (ins) {
-      const schedule: InsuranceSchedule = {
-        includedCoverageCents: ins.included_coverage_cents,
-        brackets: ins.brackets as unknown as InsuranceSchedule["brackets"],
-        stepCents: ins.step_cents,
-        stepPremiumCents: ins.step_premium_cents,
-        maxInsurableCents: ins.max_insurable_cents,
-      };
-      const quote = insurancePremium(packageValue, schedule);
-      if (quote.premiumCents > 0) {
-        warnings.push(
-          `The consignor approved additional insurance. For a ${usd(packageValue)} package the USPS premium is ${usd(quote.premiumCents)} (this card's share ${usd(share(quote.premiumCents))}). Enter it under insurance only if you bought it.`,
-        );
-      }
+  // Additional insurance (5.2, 5.3): the premium recorded for this package,
+  // by this card's share, only if the consignor had approved insurance when
+  // it sold. Shares of consignors who declined, and of our own cards, are ours.
+  const { data: shipment } = await admin
+    .from("consignment_shipments")
+    .select("insurance_needed, insurance_premium_cents, insured_value_cents, estimated_premium_cents, over_limit")
+    .eq("order_id", s.order_id!)
+    .maybeSingle();
+  if (shipment?.insurance_premium_cents != null) {
+    if (s.insurance_elected) {
+      expenses.insuranceCents = share(shipment.insurance_premium_cents);
+      basis.push(`Insurance: ${usd(shipment.insurance_premium_cents)} premium on a ${usd(packageValue)} package${others}.`);
+    } else {
+      basis.push("Insurance: the consignor declined additional insurance, so its premium isn't charged to them.");
     }
+  } else if (shipment?.insurance_needed) {
+    warnings.push(
+      `The consignor approved additional insurance and the package was worth ${usd(packageValue)}${shipment.estimated_premium_cents != null ? ` (published premium ${usd(shipment.estimated_premium_cents)})` : ""}, but no insurance purchase is recorded. Record it on the shipment first. If it wasn't bought, a carrier loss on this package is ours under agreement 5.5.`,
+    );
   }
+  if (shipment?.over_limit) warnings.push("This package was worth more than USPS insures. Check how it was covered.");
 
   return { saleId: s.id, expenses, basis, warnings, preview: previewSettlement(s, expenses) };
 }
@@ -328,13 +321,20 @@ export async function cancelSale(admin: Admin, staff: StaffContext, body: Record
 
 export async function recordPayout(admin: Admin, staff: StaffContext, body: Record<string, unknown>) {
   const consignmentId = id(body.consignmentId, "a consignment");
-  if (!Array.isArray(body.saleIds) || body.saleIds.length === 0 || body.saleIds.length > 500) throw new HttpError(400, "Choose the sales this payout covers.");
-  const saleIds = [...new Set(body.saleIds.map((s) => id(s, "a sale")))];
+  const list = (v: unknown, label: string) => {
+    if (v === undefined || v === null) return [] as string[];
+    if (!Array.isArray(v) || v.length > 500) throw new HttpError(400, `Choose the ${label} this payout covers.`);
+    return [...new Set(v.map((x) => id(x, `a ${label.replace(/s$/, "")}`)))];
+  };
+  const saleIds = list(body.saleIds, "sales");
+  const adjustmentIds = list(body.adjustmentIds, "adjustments");
+  if (saleIds.length + adjustmentIds.length === 0) throw new HttpError(400, "Choose the sales and adjustments this payout covers.");
   const method = PAYOUT_METHODS.find((m) => m === body.method);
   if (!method) throw new HttpError(400, "Choose how you paid.");
   const args = {
     p_consignment_id: consignmentId,
     p_sale_ids: saleIds,
+    p_adjustment_ids: adjustmentIds,
     p_method: method,
     p_reference: text(body.reference, 200) ?? "",
     p_paid_at: when(body.paidAt, "when you paid"),

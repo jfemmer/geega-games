@@ -90,6 +90,7 @@ beforeEach(() => {
     },
   ];
   stub("consignment_current_elections", { channels: { website: true }, additionalInsurance: false });
+  state.tables.consignment_shipments = [];
 });
 
 describe("listing", () => {
@@ -145,14 +146,26 @@ describe("settling", () => {
     expect((res.body.basis as string[]).join(" ")).toMatch(/2\.90% \+ \$0\.30 on \$300\.00 charged/);
   });
 
-  it("asks for postage when the label wasn't bought here, and flags approved insurance", async () => {
+  it("asks for postage when the label wasn't bought here, and for insurance the consignor approved", async () => {
     state.tables.orders[0].postage_cost_cents = null;
-    stub("consignment_current_elections", { channels: { website: true }, additionalInsurance: true });
+    state.tables.consignment_shipments = [{ order_id: ORDER, insurance_needed: true, insurance_premium_cents: null, estimated_premium_cents: 560, over_limit: false }];
     const res = await call(STAFF, "GET", undefined, { view: "settlement", sale: SALE });
     const warnings = (res.body.warnings as string[]).join(" ");
     expect(warnings).toMatch(/postage isn't known/);
-    expect(warnings).toMatch(/approved additional insurance\. For a \$300\.00 package the USPS premium is \$5\.60/);
+    expect(warnings).toMatch(/approved additional insurance and the package was worth \$300\.00 \(published premium \$5\.60\), but no insurance purchase is recorded/);
     expect((res.body.expenses as Record<string, number>).insuranceCents).toBe(0);
+  });
+
+  it("charges the recorded premium by the card's share, only when the consignor approved insurance", async () => {
+    state.tables.consignment_shipments = [{ order_id: ORDER, insurance_needed: true, insurance_premium_cents: 560, over_limit: false }];
+    state.tables.consignment_sales[0].insurance_elected = true;
+    let res = await call(STAFF, "GET", undefined, { view: "settlement", sale: SALE });
+    // $5.60 split $225 / $75: $4.20 for this card.
+    expect((res.body.expenses as Record<string, number>).insuranceCents).toBe(420);
+    state.tables.consignment_sales[0].insurance_elected = false;
+    res = await call(STAFF, "GET", undefined, { view: "settlement", sale: SALE });
+    expect((res.body.expenses as Record<string, number>).insuranceCents).toBe(0);
+    expect((res.body.basis as string[]).join(" ")).toMatch(/declined additional insurance/);
   });
 
   it("settles with the confirmed expenses, recording what was changed from the proposal", async () => {
@@ -192,7 +205,7 @@ describe("payouts", () => {
     stub("consignment_record_payout", "p1");
     const res = await call(OWNER, "POST", body);
     expect(res.statusCode).toBe(200);
-    expect(calls.consignment_record_payout[0]).toMatchObject({ p_consignment_id: CONSIGNMENT, p_sale_ids: [SALE], p_method: "paypal", p_reference: "PP-1" });
+    expect(calls.consignment_record_payout[0]).toMatchObject({ p_consignment_id: CONSIGNMENT, p_sale_ids: [SALE], p_adjustment_ids: [], p_method: "paypal", p_reference: "PP-1" });
     expect((await call(OWNER, "POST", { ...body, method: "cash" })).statusCode).toBe(400);
   });
 });

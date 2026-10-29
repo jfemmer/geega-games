@@ -8,8 +8,13 @@ import { useToast } from "../../hooks/useToast";
 import type { BadgeTone } from "../../utils/labels";
 import { CHANNEL_LABELS, applyBps, formatBps } from "../../../store/lib/consignmentMath";
 import { dollarsToCents } from "../../../store/lib/consignmentReceiving";
+import { adminDownload } from "../../repositories/apiClient";
 import {
+  ADJUSTMENT_LABELS,
   consignmentAdminApi,
+  type AdjustmentKind,
+  type AdjustmentRecord,
+  type HoldRecord,
   type LotRecord,
   type PayoutRecord,
   type SaleRecord,
@@ -38,8 +43,9 @@ const PAYOUT_METHODS: Record<string, string> = {
   store_credit: "Store credit",
 };
 
-function saleState(s: SaleRecord, now: number): { label: string; tone: BadgeTone } {
-  if (s.status === "cancelled") return { label: "Cancelled", tone: "neutral" };
+function saleState(s: SaleRecord, now: number, held: boolean): { label: string; tone: BadgeTone } {
+  if (s.status === "cancelled") return { label: s.lost ? "Lost in shipping" : "Cancelled", tone: "neutral" };
+  if (held) return { label: "On hold", tone: "danger" };
   if (s.status === "paid") return { label: "Paid out", tone: "success" };
   if (s.status === "settled") return { label: "Settled, ready to pay", tone: "gold" };
   if (!s.delivered_at) return { label: s.shipped_at ? "Shipped" : "Sold, not shipped", tone: "info" };
@@ -216,25 +222,44 @@ function SettleDialog({ sale, cardName, onClose, onDone }: { sale: SaleRecord; c
   );
 }
 
-function PayoutDialog({ consignmentId, settled, cardName, onClose, onDone }: { consignmentId: string; settled: SaleRecord[]; cardName: (s: SaleRecord) => string; onClose: () => void; onDone: () => void }) {
+function PayoutDialog({
+  consignmentId,
+  settled,
+  adjustments,
+  cardName,
+  onClose,
+  onDone,
+}: {
+  consignmentId: string;
+  settled: SaleRecord[];
+  adjustments: AdjustmentRecord[];
+  cardName: (s: SaleRecord) => string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(settled.map((s) => s.id)));
+  const [pickedAdj, setPickedAdj] = useState<Set<string>>(() => new Set(adjustments.map((a) => a.id)));
   const [method, setMethod] = useState("paypal");
   const [reference, setReference] = useState("");
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const total = settled.filter((s) => picked.has(s.id)).reduce((n, s) => n + (s.payout_cents ?? 0), 0);
+  const total =
+    settled.filter((s) => picked.has(s.id)).reduce((n, s) => n + (s.payout_cents ?? 0), 0) +
+    adjustments.filter((a) => pickedAdj.has(a.id)).reduce((n, a) => n + a.amount_cents, 0);
 
   async function save() {
-    if (picked.size === 0) return setError("Choose the sales this payout covers.");
+    if (picked.size + pickedAdj.size === 0) return setError("Choose what this payout covers.");
+    if (total < 0) return setError("These come to less than $0. Leave the recovery for a later payout, or invoice the consignor.");
     setBusy(true);
     setError(null);
     try {
       await consignmentAdminApi.recordPayout({
         consignmentId,
         saleIds: [...picked],
+        adjustmentIds: [...pickedAdj],
         method,
         reference: reference.trim(),
         paidAt: new Date(`${paidOn}T12:00:00`).toISOString(),
@@ -286,6 +311,23 @@ function PayoutDialog({ consignmentId, settled, cardName, onClose, onDone }: { c
             {cardName(s)} · {s.quantity} × {money(s.unit_price_cents)} · payout {money(s.payout_cents)}
           </label>
         ))}
+        {adjustments.map((a) => (
+          <label key={a.id} className="gg-cs-check">
+            <input
+              type="checkbox"
+              checked={pickedAdj.has(a.id)}
+              onChange={(e) =>
+                setPickedAdj((p) => {
+                  const next = new Set(p);
+                  if (e.target.checked) next.add(a.id);
+                  else next.delete(a.id);
+                  return next;
+                })
+              }
+            />
+            {ADJUSTMENT_LABELS[a.kind]}: {a.reason} · {money(a.amount_cents)}
+          </label>
+        ))}
       </fieldset>
       <div className="gg-cs-row">
         <SelectField label="Paid by" value={method} onChange={(e) => setMethod(e.target.value)}>
@@ -308,17 +350,107 @@ function PayoutDialog({ consignmentId, settled, cardName, onClose, onDone }: { c
   );
 }
 
+const ADJUSTMENT_CHOICES: { kind: AdjustmentKind; label: string; sign: 1 | -1; hint: string }[] = [
+  { kind: "chargeback", label: "Chargeback or refund after payout (recover)", sign: -1, hint: "Only for a refund the agreement lets us recover (6.5(3), 6.6), with the documentation sent to the consignor first." },
+  { kind: "refund_costs", label: "Refund or return costs (recover)", sign: -1, hint: "Non-refundable fees and return costs when the card didn't match the consignor's description (6.5(3))." },
+  { kind: "return_shipping", label: "Return shipping (recover)", sign: -1, hint: "Return shipping the consignor owes (7.4(3))." },
+  { kind: "reversal", label: "Sale reversed after payout (recover)", sign: -1, hint: "A paid-out sale that was reversed." },
+  { kind: "goodwill", label: "Goodwill credit (pay)", sign: 1, hint: "Money we owe or choose to give the consignor." },
+  { kind: "correction", label: "Correction (pay or recover)", sign: 1, hint: "Fixing a statement error (6.7). Enter a negative amount to recover." },
+];
+
+function AdjustmentDialog({ consignmentId, sales, cardName, onClose, onDone }: { consignmentId: string; sales: SaleRecord[]; cardName: (s: SaleRecord) => string; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [kind, setKind] = useState<AdjustmentKind>("chargeback");
+  const [amount, setAmount] = useState("");
+  const [saleId, setSaleId] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const choice = ADJUSTMENT_CHOICES.find((c) => c.kind === kind)!;
+
+  async function save() {
+    const negative = amount.trim().startsWith("-");
+    const c = dollarsToCents(amount.replace("-", ""));
+    if (!c) return setError("Enter the amount in dollars.");
+    const cents = kind === "correction" ? (negative ? -c : c) : choice.sign * c;
+    if (reason.trim().length < 3) return setError("Document the reason. The consignor sees it on their statement.");
+    setBusy(true);
+    setError(null);
+    try {
+      await consignmentAdminApi.addAdjustment({ consignmentId, saleId: saleId || null, kind, amountCents: cents, reason: reason.trim() });
+      toast.success(`Added a ${money(cents)} adjustment. It's settled in the next payout.`);
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add the adjustment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add an adjustment"
+      size="md"
+      footer={
+        <div className="gg-btn-row">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>
+            Add adjustment
+          </Button>
+        </div>
+      }
+    >
+      <SelectField label="Kind" value={kind} onChange={(e) => setKind(e.target.value as AdjustmentKind)} hint={choice.hint}>
+        {ADJUSTMENT_CHOICES.map((c) => (
+          <option key={c.kind} value={c.kind}>
+            {c.label}
+          </option>
+        ))}
+      </SelectField>
+      <div className="gg-cs-row">
+        <TextField label="Amount ($)" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} hint={kind === "correction" ? "Negative to recover" : choice.sign < 0 ? "Recovered from the consignor" : "Paid to the consignor"} />
+        <SelectField label="Sale (optional)" value={saleId} onChange={(e) => setSaleId(e.target.value)}>
+          <option value="">Not tied to one sale</option>
+          {sales.map((s) => (
+            <option key={s.id} value={s.id}>
+              {cardName(s)} · {day(s.sold_at)}
+            </option>
+          ))}
+        </SelectField>
+      </div>
+      <TextArea label="Reason (the consignor sees this)" rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+      {error && (
+        <p className="gg-field__error" role="alert">
+          {error}
+        </p>
+      )}
+    </Modal>
+  );
+}
+
 export function ConsignmentSalesPanel({
   consignmentId,
   sales,
   payouts,
   lots,
+  holds = [],
+  adjustments = [],
+  label = "consignment",
   onChanged,
 }: {
   consignmentId: string;
   sales: SaleRecord[];
   payouts: PayoutRecord[];
   lots: LotRecord[];
+  holds?: HoldRecord[];
+  adjustments?: AdjustmentRecord[];
+  /** "GG-C-1001", for statement file names. */
+  label?: string;
   onChanged: () => Promise<void> | void;
 }) {
   const toast = useToast();
@@ -328,8 +460,12 @@ export function ConsignmentSalesPanel({
   const [now] = useState(() => Date.now());
   const lotById = new Map(lots.map((l) => [l.id, l]));
   const cardName = (s: SaleRecord) => lotById.get(s.lot_id)?.card_name ?? "Card";
-  const settled = sales.filter((s) => s.status === "settled");
-  const owed = settled.reduce((n, s) => n + (s.payout_cents ?? 0), 0);
+  const openHolds = new Map<string, HoldRecord>();
+  for (const h of holds) if (!h.resolved_at) openHolds.set(h.sale_id, h);
+  const settled = sales.filter((s) => s.status === "settled" && !openHolds.has(s.id));
+  const openAdjustments = adjustments.filter((a) => !a.payout_id && !a.voided_at);
+  const owed = settled.reduce((n, s) => n + (s.payout_cents ?? 0), 0) + openAdjustments.reduce((n, a) => n + a.amount_cents, 0);
+  const [adjusting, setAdjusting] = useState(false);
   const paid = payouts.filter((p) => !p.voided_at).reduce((n, p) => n + p.amount_cents, 0);
   const flagged = sales.filter((s) => s.flag);
 
@@ -346,7 +482,7 @@ export function ConsignmentSalesPanel({
     }
   }
 
-  if (sales.length === 0 && payouts.length === 0) {
+  if (sales.length === 0 && payouts.length === 0 && adjustments.length === 0) {
     return <p className="gg-muted">No sales yet. Website sales appear here when an order is paid; record TCGplayer and eBay sales from Cards.</p>;
   }
 
@@ -354,13 +490,19 @@ export function ConsignmentSalesPanel({
     <div className="gg-lots">
       <div className="gg-btn-row gg-lots-summary">
         <span>
-          {sales.filter((s) => s.status !== "cancelled").length} sales · {money(owed)} settled and owed · {money(paid)} paid out
+          {sales.filter((s) => s.status !== "cancelled").length} sales · {money(owed)} ready to pay · {money(paid)} paid out
+          {openHolds.size > 0 ? ` · ${openHolds.size} on hold` : ""}
         </span>
-        {settled.length > 0 && (
-          <Button size="sm" variant="primary" icon="dollar" onClick={() => setPaying(true)}>
-            Record a payout
+        <div className="gg-btn-row">
+          <Button size="sm" variant="ghost" onClick={() => setAdjusting(true)}>
+            Add adjustment
           </Button>
-        )}
+          {(settled.length > 0 || openAdjustments.length > 0) && (
+            <Button size="sm" variant="primary" icon="dollar" onClick={() => setPaying(true)}>
+              Record a payout
+            </Button>
+          )}
+        </div>
       </div>
       {flagged.length > 0 && (
         <div className="gg-cn-problems" role="alert">
@@ -390,8 +532,10 @@ export function ConsignmentSalesPanel({
           </thead>
           <tbody>
             {sales.map((s) => {
-              const state = saleState(s, now);
-              const ready = s.status === "open" && s.delivered_at && s.payable_at && new Date(s.payable_at).getTime() <= now;
+              const hold = openHolds.get(s.id);
+              const state = saleState(s, now, !!hold);
+              const fundsOk = s.channel === "website" || !!s.funds_released_at;
+              const ready = !hold && fundsOk && s.status === "open" && s.delivered_at && s.payable_at && new Date(s.payable_at).getTime() <= now;
               return (
                 <tr key={s.id}>
                   <td data-label="Card">
@@ -404,6 +548,12 @@ export function ConsignmentSalesPanel({
                   <td data-label="Sold">
                     {day(s.sold_at)}
                     {s.delivered_at && <span className="gg-cs-note">delivered {day(s.delivered_at)}</span>}
+                    {s.payout_due_on && (s.status === "open" || s.status === "settled") && (
+                      <span className="gg-cs-note">payout due {day(`${s.payout_due_on}T12:00:00`)}</span>
+                    )}
+                    {s.channel !== "website" && s.status === "open" && (
+                      <span className="gg-cs-note">{s.funds_released_at ? `funds released ${day(s.funds_released_at)}` : "funds not released yet"}</span>
+                    )}
                   </td>
                   <td data-label="Price">
                     {s.quantity} × {money(s.unit_price_cents)}
@@ -411,6 +561,7 @@ export function ConsignmentSalesPanel({
                   <td data-label="Status">
                     <Badge tone={state.tone}>{state.label}</Badge>
                     {s.cancel_reason && <span className="gg-cs-note">{s.cancel_reason}{s.restocked ? " · put back on sale" : ""}</span>}
+                    {hold && <span className="gg-cs-note">Hold: {hold.reason}</span>}
                   </td>
                   <td data-label="Payout">
                     {s.payout_cents != null ? (
@@ -450,6 +601,62 @@ export function ConsignmentSalesPanel({
                       {ready && (
                         <Button size="sm" variant="primary" disabled={busy !== null} onClick={() => setSettling(s)}>
                           Settle
+                        </Button>
+                      )}
+                      {s.channel !== "website" && s.status === "open" && !s.funds_released_at && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={busy === `f-${s.id}`}
+                          disabled={busy !== null}
+                          onClick={() => {
+                            const input = window.prompt(`When did ${s.channel === "ebay" ? "eBay" : "TCGplayer"} release the funds? (YYYY-MM-DD)`, new Date().toISOString().slice(0, 10));
+                            if (!input) return;
+                            const at = new Date(`${input.trim()}T12:00:00`);
+                            if (Number.isNaN(at.getTime())) return toast.error("Enter the date as YYYY-MM-DD.");
+                            void run(`f-${s.id}`, async () => {
+                              await consignmentAdminApi.markFundsReleased(s.id, new Date(Math.min(at.getTime(), Date.now())).toISOString());
+                              return "Recorded.";
+                            });
+                          }}
+                        >
+                          Funds released
+                        </Button>
+                      )}
+                      {(s.status === "open" || s.status === "settled") && !hold && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={busy === `h-${s.id}`}
+                          disabled={busy !== null}
+                          onClick={() => {
+                            const reason = window.prompt("What did the buyer report? The consignor is told this reason (agreement 6.4).");
+                            if (!reason?.trim()) return;
+                            void run(`h-${s.id}`, async () => {
+                              await consignmentAdminApi.openHold(s.id, "buyer_report", reason.trim());
+                              return "Held. Tell the consignor within 2 business days.";
+                            });
+                          }}
+                        >
+                          Hold
+                        </Button>
+                      )}
+                      {hold && hold.source !== "claim" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={busy === `r-${hold.id}`}
+                          disabled={busy !== null}
+                          onClick={() => {
+                            const resolution = window.prompt("How was it resolved?");
+                            if (!resolution?.trim()) return;
+                            void run(`r-${hold.id}`, async () => {
+                              await consignmentAdminApi.releaseHold(hold.id, resolution.trim());
+                              return "Hold released.";
+                            });
+                          }}
+                        >
+                          Release hold
                         </Button>
                       )}
                       {s.status === "settled" && (
@@ -512,6 +719,7 @@ export function ConsignmentSalesPanel({
                     {p.voided_at ? <s>{money(p.amount_cents)}</s> : money(p.amount_cents)}
                     <span className="gg-cs-note">
                       {p.sale_count} sale{p.sale_count === 1 ? "" : "s"}
+                      {p.adjustment_count ? `, ${p.adjustment_count} adjustment${p.adjustment_count === 1 ? "" : "s"}` : ""}
                     </span>
                   </td>
                   <td>
@@ -520,6 +728,20 @@ export function ConsignmentSalesPanel({
                     {p.voided_at && <span className="gg-cs-note">Void: {p.void_reason}</span>}
                   </td>
                   <td>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon="download"
+                      loading={busy === `s-${p.id}`}
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void run(`s-${p.id}`, async () => {
+                          await adminDownload(consignmentAdminApi.statementUrl(p.id), `${label}-statement-${p.paid_at.slice(0, 10)}.pdf`);
+                        })
+                      }
+                    >
+                      Statement
+                    </Button>
                     {!p.voided_at && (
                       <Button
                         size="sm"
@@ -546,6 +768,56 @@ export function ConsignmentSalesPanel({
         </section>
       )}
 
+      {adjustments.length > 0 && (
+        <section aria-label="Adjustments" className="gg-lots-batch">
+          <h4>Adjustments</h4>
+          <ul className="gg-adj-list">
+            {adjustments.map((a) => (
+              <li key={a.id} className={a.voided_at ? "gg-adj--void" : undefined}>
+                <span>
+                  <strong>{money(a.amount_cents)}</strong> {ADJUSTMENT_LABELS[a.kind]}: {a.reason}
+                  <span className="gg-cs-note">
+                    {day(a.created_at)}
+                    {a.created_by ? ` by ${a.created_by}` : ""}
+                    {a.payout_id ? " · in a payout" : a.voided_at ? ` · void: ${a.void_reason}` : " · open"}
+                  </span>
+                </span>
+                {!a.payout_id && !a.voided_at && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={busy === `va-${a.id}`}
+                    disabled={busy !== null}
+                    onClick={() => {
+                      const reason = window.prompt("Why is this adjustment void?");
+                      if (!reason?.trim()) return;
+                      void run(`va-${a.id}`, async () => {
+                        await consignmentAdminApi.voidAdjustment(a.id, reason.trim());
+                        return "Adjustment voided.";
+                      });
+                    }}
+                  >
+                    Void
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {adjusting && (
+        <AdjustmentDialog
+          consignmentId={consignmentId}
+          sales={sales}
+          cardName={cardName}
+          onClose={() => setAdjusting(false)}
+          onDone={() => {
+            setAdjusting(false);
+            void onChanged();
+          }}
+        />
+      )}
       {settling && (
         <SettleDialog
           sale={settling}
@@ -561,6 +833,7 @@ export function ConsignmentSalesPanel({
         <PayoutDialog
           consignmentId={consignmentId}
           settled={settled}
+          adjustments={openAdjustments}
           cardName={cardName}
           onClose={() => setPaying(false)}
           onDone={() => {

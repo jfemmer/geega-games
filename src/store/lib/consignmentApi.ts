@@ -137,6 +137,38 @@ export async function signedAgreementUrl(agreementId: string): Promise<string> {
   return url;
 }
 
+/** Ask for unsold cards back (agreement 7.3, 7.4). `lines` null means everything that can go back. */
+export function requestReturn(input: {
+  consignmentId: string;
+  lines: { lotId: string; pool: "accepted" | "rejected"; quantity: number }[] | null;
+  endsConsignment: boolean;
+  note?: string;
+}): Promise<{ ok: true; returnId: string }> {
+  return call({ method: "POST", body: { action: "requestReturn", ...input } });
+}
+
+/** Download a payout statement PDF. */
+export async function downloadStatement(payoutId: string, filename: string): Promise<void> {
+  const token = await bearer();
+  const res = await fetch(`${CONSIGN_API}?${new URLSearchParams({ view: "statement", payout: payoutId })}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "same-origin",
+  }).catch(() => null);
+  if (!res) throw new ConsignmentApiError("We couldn't reach the server. Check your connection and try again.", 0);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new ConsignmentApiError(body?.message || "Could not download the statement.", res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export interface MyAgreement {
   id: string;
   status: "pending" | "signed";
@@ -157,12 +189,29 @@ export interface MyConsignment {
   signedAt: string | null;
   termStartedAt: string | null;
   initialTermDays: number;
+  /** End of the initial term; month to month after it. */
+  termEndsAt?: string | null;
   elections: { channels: Partial<Record<ConsignmentChannel, boolean>>; additionalInsurance: boolean | null };
   agreements: MyAgreement[];
   /** What we received and how inspection went. Older responses may omit it. */
   cards?: MyConsignedCard[];
   sales?: MyConsignmentSale[];
   payouts?: MyConsignmentPayout[];
+  adjustments?: { id: string; kind: string; amountCents: number; reason: string; createdAt: string; payoutId: string | null }[];
+  returns?: {
+    id: string;
+    returnNumber: number;
+    status: "requested" | "removed_from_sale" | "awaiting_shipping_payment" | "ready_to_ship" | "shipped" | "delivered" | "cancelled";
+    endsConsignment: boolean;
+    requestedAt: string;
+    shippingCostCents: number | null;
+    wePayShipping: boolean;
+    carrier: string | null;
+    trackingNumber: string | null;
+    shippedAt: string | null;
+    deliveredAt: string | null;
+    cards: number;
+  }[];
 }
 
 export interface MyConsignmentSale {
@@ -196,6 +245,19 @@ export interface MyConsignmentSale {
     settledAt: string;
   } | null;
   payoutId: string | null;
+  payoutDueOn?: string | null;
+  insuranceElected?: boolean | null;
+  lost?: boolean;
+  holds?: { reason: string; openedAt: string; resolvedAt: string | null; resolution: string | null }[];
+  shipment?: {
+    carrier: string | null;
+    service: string | null;
+    declaredValueCents: number | null;
+    includedCoverageCents: number | null;
+    insuredValueCents: number | null;
+    insurancePremiumCents: number | null;
+    claim: { kind: string; status: string; outcome: string | null } | null;
+  } | null;
 }
 
 export interface MyConsignmentPayout {
@@ -227,6 +289,8 @@ export interface MyConsignedCard {
   minPriceCents: number | null;
   rejectionReason: string | null;
   receivedAt: string | null;
+  /** What can still be returned: unsold accepted copies and declined copies. */
+  returnable?: { accepted: number; rejected: number };
 }
 
 export async function loadMyConsignments(): Promise<MyConsignment[]> {
