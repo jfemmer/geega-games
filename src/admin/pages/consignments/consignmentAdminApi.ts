@@ -101,6 +101,133 @@ export interface ConsignmentDetail {
   payouts: PayoutRecord[];
   lotQuantities: LotQuantities[];
   listings: { id: string; consignment_lot_id: string; quantity: number; price_cents: number | null; status: string }[];
+  holds: HoldRecord[];
+  adjustments: AdjustmentRecord[];
+  returns: ReturnRecord[];
+  shipments: ShipmentRecord[];
+  claims: ClaimRecord[];
+  /** Every consigned card in this consignment's packages, any consignor's (claims cover the whole package). */
+  orderSales: { id: string; order_id: string; status: string; gross_cents: number; cardName: string }[];
+  orders: { id: string; status: string; shipped_at: string | null; delivered_at: string | null; tracking_carrier: string | null; tracking_number: string | null; shipping_service: string | null; postage_cost_cents: number | null }[];
+}
+
+export interface HoldRecord {
+  id: string;
+  sale_id: string;
+  source: "buyer_report" | "dispute" | "chargeback" | "claim" | "other";
+  reason: string;
+  claim_id: string | null;
+  opened_at: string;
+  opened_by: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution: string | null;
+}
+
+export type AdjustmentKind = "claim_payment" | "reversal" | "chargeback" | "refund_costs" | "return_shipping" | "correction" | "goodwill";
+
+export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
+  claim_payment: "Carrier claim payment",
+  reversal: "Sale reversed",
+  chargeback: "Chargeback",
+  refund_costs: "Refund costs",
+  return_shipping: "Return shipping",
+  correction: "Correction",
+  goodwill: "Goodwill credit",
+};
+
+export interface AdjustmentRecord {
+  id: string;
+  sale_id: string | null;
+  kind: AdjustmentKind;
+  amount_cents: number;
+  reason: string;
+  payout_id: string | null;
+  created_at: string;
+  created_by: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+export type ReturnStatus = "requested" | "removed_from_sale" | "awaiting_shipping_payment" | "ready_to_ship" | "shipped" | "delivered" | "cancelled";
+
+export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
+  requested: "Requested, awaiting approval",
+  removed_from_sale: "Removed from sale",
+  awaiting_shipping_payment: "Awaiting shipping payment",
+  ready_to_ship: "Ready to ship",
+  shipped: "Return shipped",
+  delivered: "Return delivered",
+  cancelled: "Cancelled",
+};
+
+export interface ReturnRecord {
+  id: string;
+  return_number: number;
+  requested_by: "consignor" | "staff";
+  ends_consignment: boolean;
+  status: ReturnStatus;
+  shipping_cost_cents: number | null;
+  we_pay_shipping: boolean;
+  shipping_paid_at: string | null;
+  carrier: string | null;
+  tracking_number: string | null;
+  insured_value_cents: number | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  note: string | null;
+  requested_at: string;
+  approved_at: string | null;
+  cancel_reason: string | null;
+  lines: { id: string; lot_id: string; pool: "accepted" | "rejected"; quantity: number }[];
+}
+
+export interface ShipmentRecord {
+  id: string;
+  order_id: string;
+  declared_value_cents: number;
+  included_coverage_cents: number;
+  insurance_needed: boolean;
+  over_limit: boolean;
+  estimated_premium_cents: number | null;
+  insured_value_cents: number | null;
+  insurance_premium_cents: number | null;
+  insurance_source: string | null;
+  insurance_recorded_at: string | null;
+}
+
+export type ClaimStatus = "open" | "filed" | "approved" | "denied" | "paid" | "closed";
+
+export interface ClaimRecord {
+  id: string;
+  order_id: string;
+  kind: "lost" | "damaged";
+  status: ClaimStatus;
+  carrier: string | null;
+  tracking_number: string | null;
+  shipment_value_cents: number | null;
+  insured_value_cents: number | null;
+  insurance_premium_cents: number | null;
+  insurance_elected_summary: string | null;
+  claim_number: string | null;
+  filed_at: string | null;
+  customer_refund_status: "none" | "pending" | "refunded";
+  reimbursement_cents: number | null;
+  reimbursed_at: string | null;
+  outcome: "carrier_loss" | "our_responsibility" | null;
+  notes: string | null;
+  opened_at: string;
+  closed_at: string | null;
+}
+
+export interface PayoutDashboardSale extends SaleRecord {
+  consignment_id: string;
+  consignmentLabel: string;
+  consignorName: string;
+  cardName: string;
+  holdReason: string | null;
+  payout_due_on: string | null;
+  funds_released_at: string | null;
 }
 
 export interface LotQuantities {
@@ -110,6 +237,9 @@ export interface LotQuantities {
   pending: number;
   sold: number;
   unlisted: number;
+  returning_accepted: number;
+  rejected: number;
+  returning_rejected: number;
 }
 
 export type SaleChannel = ConsignmentChannel;
@@ -142,6 +272,11 @@ export interface SaleRecord {
   settled_at: string | null;
   settled_by: string | null;
   payout_id: string | null;
+  payout_due_on?: string | null;
+  insurance_elected?: boolean | null;
+  funds_released_at?: string | null;
+  lost?: boolean;
+  claim_id?: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
   restocked: boolean;
@@ -160,6 +295,8 @@ export interface PayoutRecord {
   created_by: string | null;
   voided_at: string | null;
   void_reason: string | null;
+  adjustment_count?: number;
+  consignment_id?: string;
 }
 
 export interface SettlementExpenses {
@@ -344,8 +481,47 @@ export const consignmentAdminApi = {
     post<{ payoutCents: number }>({ action: "settleSale", saleId, expenses, otherExpenseNote, adjustmentNote }),
   unsettleSale: (saleId: string) => post<{ ok: true }>({ action: "unsettleSale", saleId }),
   cancelSale: (saleId: string, reason: string) => post<{ ok: true }>({ action: "cancelSale", saleId, reason }),
-  recordPayout: (input: { consignmentId: string; saleIds: string[]; method: string; reference: string; paidAt: string; note: string }) =>
+  recordPayout: (input: { consignmentId: string; saleIds: string[]; adjustmentIds?: string[]; method: string; reference: string; paidAt: string; note: string }) =>
     post<{ payoutId: string }>({ action: "recordPayout", ...input }),
   voidPayout: (payoutId: string, reason: string) => post<{ ok: true }>({ action: "voidPayout", payoutId, reason }),
+  payoutDashboard: () =>
+    adminFetch<{ sales: PayoutDashboardSale[]; payouts: (PayoutRecord & { consignment_id: string; consignmentLabel: string; consignorName: string })[] }>(`${API}?view=payouts`),
+  statementUrl: (payoutId: string) => `${API}?view=statement&payout=${encodeURIComponent(payoutId)}`,
+  recordInsurance: (input: { orderId: string; insuredValueCents: number; premiumCents: number; source: string; notes?: string }) =>
+    post<{ ok: true }>({ action: "recordInsurance", ...input }),
+  markFundsReleased: (saleId: string, releasedAt: string) => post<{ ok: true }>({ action: "markFundsReleased", saleId, releasedAt }),
+  openHold: (saleId: string, source: HoldRecord["source"], reason: string) => post<{ holdId: string }>({ action: "openHold", saleId, source, reason }),
+  releaseHold: (holdId: string, resolution: string) => post<{ ok: true }>({ action: "releaseHold", holdId, resolution }),
+  addAdjustment: (input: { consignmentId: string; saleId?: string | null; kind: AdjustmentKind; amountCents: number; reason: string }) =>
+    post<{ adjustmentId: string }>({ action: "addAdjustment", ...input }),
+  voidAdjustment: (adjustmentId: string, reason: string) => post<{ ok: true }>({ action: "voidAdjustment", adjustmentId, reason }),
+  openClaim: (orderId: string, kind: "lost" | "damaged", notes: string) => post<{ claimId: string }>({ action: "openClaim", orderId, kind, notes }),
+  updateClaim: (input: {
+    claimId: string;
+    status?: Exclude<ClaimStatus, "closed">;
+    claimNumber?: string;
+    filedAt?: string | null;
+    customerRefundStatus?: ClaimRecord["customer_refund_status"];
+    reimbursementCents?: number | null;
+    reimbursedAt?: string | null;
+    notes?: string;
+  }) => post<{ ok: true }>({ action: "updateClaim", ...input }),
+  closeClaim: (input: { claimId: string; outcome: "carrier_loss" | "our_responsibility"; allocations?: { saleId: string; claimPaymentCents: number; returnedDamaged: boolean }[]; note: string }) =>
+    post<{ ok: true }>({ action: "closeClaim", ...input }),
+  requestReturn: (input: { consignmentId: string; lines: { lotId: string; pool: "accepted" | "rejected"; quantity: number }[] | null; endsConsignment: boolean; note?: string }) =>
+    post<{ returnId: string }>({ action: "requestReturn", ...input }),
+  approveReturn: (returnId: string) => post<{ ok: true }>({ action: "approveReturn", returnId }),
+  advanceReturn: (input: {
+    returnId: string;
+    step: "quote" | "paid" | "ship" | "delivered";
+    shippingCostCents?: number;
+    wePay?: boolean;
+    carrier?: string;
+    trackingNumber?: string;
+    insuredValueCents?: number | null;
+    at?: string;
+  }) => post<{ status: ReturnStatus }>({ action: "advanceReturn", ...input }),
+  cancelReturn: (returnId: string, reason: string) => post<{ ok: true }>({ action: "cancelReturn", returnId, reason }),
+  closeConsignment: (consignmentId: string) => post<{ ok: true }>({ action: "closeConsignment", consignmentId }),
   publish: (id: string) => post<{ versions: AgreementVersion[] }>({ action: "publishVersion", id, confirm: true }).then((r) => r.versions),
 };

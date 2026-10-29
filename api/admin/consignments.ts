@@ -31,6 +31,25 @@ import {
   unsettleSale,
   voidPayout,
 } from "../_lib/consignmentSales.js";
+import {
+  addAdjustment,
+  advanceReturn,
+  approveReturn,
+  cancelReturn,
+  closeClaim,
+  closeConsignment,
+  markFundsReleased,
+  openClaim,
+  openHold,
+  payoutDashboard,
+  recordInsurance,
+  releaseHold,
+  staffRequestReturn,
+  updateClaim,
+  voidAdjustment,
+} from "../_lib/consignmentAftercare.js";
+import { buildStatementPdf, loadStatement } from "../_lib/consignmentStatement.js";
+import { consignmentLabel } from "../../src/store/lib/consignmentAgreement.js";
 
 type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Update"];
 
@@ -47,6 +66,8 @@ type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Upda
 //                                  from being published
 //   GET  ?view=pdf&signature=      a five-minute link to a signed PDF
 //   GET  ?view=settlement&sale=    the expenses proposed for settling a sale
+//   GET  ?view=payouts             every unpaid sale across consignments (the payout dashboard)
+//   GET  ?view=statement&payout=   a payout statement PDF
 //   POST { action, ... }           see ACTIONS below
 //
 // Receiving (staff): previewReceive matches lines to exact printings without
@@ -56,6 +77,11 @@ type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Upda
 // Selling (staff): listLot, unlistLot, setLotPrice, recordExternalSale,
 // markSaleDelivered, settleSale, unsettleSale, cancelSale. Payouts move money,
 // so recordPayout and voidPayout are for the owner.
+//
+// After the sale (staff): recordInsurance, markFundsReleased, openHold,
+// releaseHold, openClaim, updateClaim, requestReturn, approveReturn,
+// advanceReturn, cancelReturn. Owner: addAdjustment, voidAdjustment,
+// closeClaim (it moves money), closeConsignment.
 //
 // Staff can create consignments and send, cancel and resend agreements. Only
 // the owner (role admin) can change rates, settings and the agreement's
@@ -335,6 +361,10 @@ const OWNER_ACTIONS = new Set([
   "publishVersion",
   "recordPayout",
   "voidPayout",
+  "addAdjustment",
+  "voidAdjustment",
+  "closeClaim",
+  "closeConsignment",
 ]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -358,6 +388,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return sendJson(res, 200, await staffPdfLink(admin, String(req.query.signature ?? "")));
         case "settlement":
           return sendJson(res, 200, await proposeSettlement(admin, String(req.query.sale ?? "")));
+        case "payouts":
+          return sendJson(res, 200, await payoutDashboard(admin));
+        case "statement": {
+          const data = await loadStatement(admin, String(req.query.payout ?? ""));
+          const pdf = await buildStatementPdf(data);
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="${consignmentLabel(data.consignmentNumber)}-statement-${data.payout.paid_at.slice(0, 10)}.pdf"`);
+          res.setHeader("Cache-Control", "no-store");
+          res.status(200).end(Buffer.from(pdf));
+          return;
+        }
         default:
           throw new HttpError(400, "Unknown view.");
       }
@@ -418,6 +459,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return sendJson(res, 200, await recordPayout(admin, staff, body));
       case "voidPayout":
         await voidPayout(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "recordInsurance":
+        await recordInsurance(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "markFundsReleased":
+        await markFundsReleased(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "openHold":
+        return sendJson(res, 200, await openHold(admin, staff, body));
+      case "releaseHold":
+        await releaseHold(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "addAdjustment":
+        return sendJson(res, 200, await addAdjustment(admin, staff, body));
+      case "voidAdjustment":
+        await voidAdjustment(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "openClaim":
+        return sendJson(res, 200, await openClaim(admin, staff, body));
+      case "updateClaim":
+        await updateClaim(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "closeClaim":
+        await closeClaim(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "requestReturn":
+        return sendJson(res, 200, await staffRequestReturn(admin, staff, body));
+      case "approveReturn":
+        await approveReturn(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "advanceReturn":
+        return sendJson(res, 200, await advanceReturn(admin, staff, body));
+      case "cancelReturn":
+        await cancelReturn(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "closeConsignment":
+        await closeConsignment(admin, staff, body);
         return sendJson(res, 200, { ok: true });
       case "resendSignedCopy":
         return sendJson(res, 200, { copy: await resendSignedCopy(admin, staff, body) });

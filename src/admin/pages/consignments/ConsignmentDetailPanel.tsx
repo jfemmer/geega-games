@@ -10,6 +10,8 @@ import { CONSIGNMENT_STATUS_LABELS, consignmentAdminApi, type ConsignmentDetail 
 import { ReceiveCardsPanel } from "./ReceiveCardsPanel";
 import { ConsignmentLotsPanel } from "./ConsignmentLotsPanel";
 import { ConsignmentSalesPanel } from "./ConsignmentSalesPanel";
+import { ConsignmentShipmentsPanel } from "./ConsignmentShipmentsPanel";
+import { ConsignmentReturnsPanel } from "./ConsignmentReturnsPanel";
 
 // One consignment: its consignor, status, the agreement invitations sent
 // (with send, resend and cancel), the signing record with the signed PDF,
@@ -24,6 +26,7 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
   const [busy, setBusy] = useState<string | null>(null);
   const [lastLink, setLastLink] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
+  const [now] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     setError(null);
@@ -54,7 +57,8 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
   if (!data) return <Spinner label="Loading consignment" />;
 
   const { consignment: c, consignor: p, agreements, signatures, elections, batches = [], lots = [], lotEvents = [] } = data;
-  const { sales = [], payouts = [], lotQuantities = [] } = data;
+  const { sales = [], payouts = [], lotQuantities = [], holds = [], adjustments = [], returns = [], shipments = [], claims = [], orders = [], orderSales = [] } = data;
+  const termEnds = c.term_started_at ? new Date(new Date(c.term_started_at).getTime() + c.initial_term_days * 86_400_000).toISOString() : null;
   const canReceive = Boolean(c.signed_at) && ["signed", "inventory_received", "active"].includes(c.status);
   const selling = {
     quantities: lotQuantities,
@@ -113,7 +117,11 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
           </div>
           <div>
             <dt>Term</dt>
-            <dd>{c.term_started_at ? `${c.initial_term_days} days from ${when(c.term_started_at)}` : `${c.initial_term_days} days, starts when accepted cards are posted`}</dd>
+            <dd>
+              {c.term_started_at
+                ? `${c.initial_term_days} days from ${when(c.term_started_at)}, to ${when(termEnds)}${termEnds && Date.parse(termEnds) < now ? "; now month to month" : ""}`
+                : `${c.initial_term_days} days, starts when accepted cards are posted`}
+            </dd>
           </div>
           {c.admin_notes && (
             <div>
@@ -370,7 +378,28 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
 
       {(sales.length > 0 || payouts.length > 0 || lots.some((l) => l.status === "listed" || l.status === "sold")) && (
         <SectionCard title="Sales and payouts">
-          <ConsignmentSalesPanel consignmentId={c.id} sales={sales} payouts={payouts} lots={lots} onChanged={refresh} />
+          <ConsignmentSalesPanel
+            consignmentId={c.id}
+            sales={sales}
+            payouts={payouts}
+            lots={lots}
+            holds={holds}
+            adjustments={adjustments}
+            label={c.label}
+            onChanged={refresh}
+          />
+        </SectionCard>
+      )}
+
+      {orders.length > 0 && (
+        <SectionCard title="Shipments, insurance and claims">
+          <ConsignmentShipmentsPanel detail={{ orders, shipments, claims, sales, orderSales }} lots={lots} onChanged={refresh} />
+        </SectionCard>
+      )}
+
+      {(lots.length > 0 || returns.length > 0) && (
+        <SectionCard title="Returns and closing">
+          <ConsignmentReturnsPanel consignmentId={c.id} status={c.status} returns={returns} lots={lots} quantities={lotQuantities} onChanged={refresh} />
         </SectionCard>
       )}
     </div>

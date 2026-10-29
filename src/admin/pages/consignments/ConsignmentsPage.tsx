@@ -9,15 +9,17 @@ import { ConsignmentListPanel } from "./ConsignmentListPanel";
 import { ConsignmentDetailPanel } from "./ConsignmentDetailPanel";
 import { NewConsignmentForm } from "./NewConsignmentForm";
 import { AgreementVersionsPanel } from "./AgreementVersionsPanel";
+import { PayoutDashboardPanel } from "./PayoutDashboardPanel";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 
-// Admin > Consignments: consignments and their agreements, the agreement's
-// versions, the Payout Estimator and Consignment Settings. Receiving, sales
-// and payouts arrive in the next phases.
+// Admin > Consignments: consignments (agreements, cards, sales, shipments,
+// returns), the payout dashboard across consignors, the agreement's
+// versions, the Payout Estimator and Consignment Settings.
 
-type Tab = "consignments" | "agreement" | "estimator" | "settings";
+type Tab = "consignments" | "payouts" | "agreement" | "estimator" | "settings";
 const TABS: { key: Tab; label: string }[] = [
   { key: "consignments", label: "Consignments" },
+  { key: "payouts", label: "Payouts" },
   { key: "agreement", label: "Agreement" },
   { key: "estimator", label: "Payout estimator" },
   { key: "settings", label: "Settings" },
@@ -66,6 +68,8 @@ export function ConsignmentsPage({ query, onNavigate }: { query: URLSearchParams
         ) : (
           <ConsignmentListPanel reloadKey={reloadKey} onOpen={(id) => go("consignments", `id=${id}`)} onNew={() => go("consignments", "new=1")} />
         ))}
+
+      {tab === "payouts" && <PayoutDashboardPanel onOpen={(id) => go("consignments", `id=${id}`)} />}
 
       {tab === "agreement" && <AgreementVersionsPanel />}
 

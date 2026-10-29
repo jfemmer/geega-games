@@ -1437,6 +1437,7 @@ export type Database = {
       }
       consignment_payouts: {
         Row: {
+          adjustment_count: number
           amount_cents: number
           consignment_id: string
           created_at: string
@@ -1452,6 +1453,7 @@ export type Database = {
           voided_by: string | null
         }
         Insert: {
+          adjustment_count?: number
           amount_cents: number
           consignment_id: string
           created_at?: string
@@ -1467,6 +1469,7 @@ export type Database = {
           voided_by?: string | null
         }
         Update: {
+          adjustment_count?: number
           amount_cents?: number
           consignment_id?: string
           created_at?: string
@@ -1524,6 +1527,11 @@ export type Database = {
       }
       consignment_sales: {
         Row: {
+          claim_id: string | null
+          funds_released_at: string | null
+          insurance_elected: boolean | null
+          lost: boolean
+          payout_due_on: string | null
           cancel_reason: string | null
           cancelled_at: string | null
           channel: string
@@ -1565,6 +1573,11 @@ export type Database = {
           unit_price_cents: number
         }
         Insert: {
+          claim_id?: string | null
+          funds_released_at?: string | null
+          insurance_elected?: boolean | null
+          lost?: boolean
+          payout_due_on?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
           channel: string
@@ -1605,6 +1618,11 @@ export type Database = {
           unit_price_cents: number
         }
         Update: {
+          claim_id?: string | null
+          funds_released_at?: string | null
+          insurance_elected?: boolean | null
+          lost?: boolean
+          payout_due_on?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
           channel?: string
@@ -1643,6 +1661,192 @@ export type Database = {
           sold_at?: string
           status?: string
           unit_price_cents?: number
+        }
+        Relationships: []
+      }
+      consignment_adjustments: {
+        Row: {
+          amount_cents: number
+          claim_id: string | null
+          consignment_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          payout_id: string | null
+          reason: string
+          sale_id: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount_cents: number
+          claim_id?: string | null
+          consignment_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          payout_id?: string | null
+          reason: string
+          sale_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          claim_id?: string | null
+          consignment_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          payout_id?: string | null
+          reason?: string
+          sale_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: []
+      }
+      consignment_return_lines: {
+        Row: {
+          id: string
+          lot_id: string
+          pool: string
+          quantity: number
+          return_id: string
+        }
+        Insert: {
+          id?: string
+          lot_id: string
+          pool: string
+          quantity: number
+          return_id: string
+        }
+        Update: {
+          id?: string
+          lot_id?: string
+          pool?: string
+          quantity?: number
+          return_id?: string
+        }
+        Relationships: []
+      }
+      consignment_returns: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          carrier: string | null
+          consignment_id: string
+          delivered_at: string | null
+          ends_consignment: boolean
+          id: string
+          insured_value_cents: number | null
+          note: string | null
+          requested_actor: string | null
+          requested_at: string
+          requested_by: string
+          return_number: number
+          shipped_at: string | null
+          shipping_cost_cents: number | null
+          shipping_paid_at: string | null
+          status: string
+          tracking_number: string | null
+          we_pay_shipping: boolean
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          carrier?: string | null
+          consignment_id: string
+          delivered_at?: string | null
+          ends_consignment?: boolean
+          id?: string
+          insured_value_cents?: number | null
+          note?: string | null
+          requested_actor?: string | null
+          requested_at?: string
+          requested_by: string
+          return_number: number
+          shipped_at?: string | null
+          shipping_cost_cents?: number | null
+          shipping_paid_at?: string | null
+          status?: string
+          tracking_number?: string | null
+          we_pay_shipping?: boolean
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          carrier?: string | null
+          consignment_id?: string
+          delivered_at?: string | null
+          ends_consignment?: boolean
+          id?: string
+          insured_value_cents?: number | null
+          note?: string | null
+          requested_actor?: string | null
+          requested_at?: string
+          requested_by?: string
+          return_number?: number
+          shipped_at?: string | null
+          shipping_cost_cents?: number | null
+          shipping_paid_at?: string | null
+          status?: string
+          tracking_number?: string | null
+          we_pay_shipping?: boolean
+        }
+        Relationships: []
+      }
+      consignment_sale_holds: {
+        Row: {
+          claim_id: string | null
+          consignment_id: string
+          id: string
+          opened_at: string
+          opened_by: string | null
+          reason: string
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          sale_id: string
+          source: string
+        }
+        Insert: {
+          claim_id?: string | null
+          consignment_id: string
+          id?: string
+          opened_at?: string
+          opened_by?: string | null
+          reason: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sale_id: string
+          source: string
+        }
+        Update: {
+          claim_id?: string | null
+          consignment_id?: string
+          id?: string
+          opened_at?: string
+          opened_by?: string | null
+          reason?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sale_id?: string
+          source?: string
         }
         Relationships: []
       }
@@ -1685,6 +1889,140 @@ export type Database = {
         }
         Relationships: []
       }
+      consignment_shipments: {
+        Row: {
+          created_at: string
+          declared_value_cents: number
+          estimated_premium_cents: number | null
+          id: string
+          included_coverage_cents: number
+          insurance_needed: boolean
+          insurance_premium_cents: number | null
+          insurance_recorded_at: string | null
+          insurance_recorded_by: string | null
+          insurance_source: string | null
+          insured_value_cents: number | null
+          max_insurable_cents: number | null
+          notes: string | null
+          order_id: string
+          over_limit: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          declared_value_cents: number
+          estimated_premium_cents?: number | null
+          id?: string
+          included_coverage_cents?: number
+          insurance_needed?: boolean
+          insurance_premium_cents?: number | null
+          insurance_recorded_at?: string | null
+          insurance_recorded_by?: string | null
+          insurance_source?: string | null
+          insured_value_cents?: number | null
+          max_insurable_cents?: number | null
+          notes?: string | null
+          order_id: string
+          over_limit?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          declared_value_cents?: number
+          estimated_premium_cents?: number | null
+          id?: string
+          included_coverage_cents?: number
+          insurance_needed?: boolean
+          insurance_premium_cents?: number | null
+          insurance_recorded_at?: string | null
+          insurance_recorded_by?: string | null
+          insurance_source?: string | null
+          insured_value_cents?: number | null
+          max_insurable_cents?: number | null
+          notes?: string | null
+          order_id?: string
+          over_limit?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      consignment_shipping_claims: {
+        Row: {
+          carrier: string | null
+          claim_number: string | null
+          closed_at: string | null
+          closed_by: string | null
+          customer_refund_status: string
+          filed_at: string | null
+          id: string
+          insurance_elected_summary: string | null
+          insurance_premium_cents: number | null
+          insured_value_cents: number | null
+          kind: string
+          notes: string | null
+          opened_at: string
+          opened_by: string | null
+          order_id: string
+          outcome: string | null
+          reimbursed_at: string | null
+          reimbursement_cents: number | null
+          shipment_id: string | null
+          shipment_value_cents: number | null
+          status: string
+          tracking_number: string | null
+        }
+        Insert: {
+          carrier?: string | null
+          claim_number?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          customer_refund_status?: string
+          filed_at?: string | null
+          id?: string
+          insurance_elected_summary?: string | null
+          insurance_premium_cents?: number | null
+          insured_value_cents?: number | null
+          kind: string
+          notes?: string | null
+          opened_at?: string
+          opened_by?: string | null
+          order_id: string
+          outcome?: string | null
+          reimbursed_at?: string | null
+          reimbursement_cents?: number | null
+          shipment_id?: string | null
+          shipment_value_cents?: number | null
+          status?: string
+          tracking_number?: string | null
+        }
+        Update: {
+          carrier?: string | null
+          claim_number?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          customer_refund_status?: string
+          filed_at?: string | null
+          id?: string
+          insurance_elected_summary?: string | null
+          insurance_premium_cents?: number | null
+          insured_value_cents?: number | null
+          kind?: string
+          notes?: string | null
+          opened_at?: string
+          opened_by?: string | null
+          order_id?: string
+          outcome?: string | null
+          reimbursed_at?: string | null
+          reimbursement_cents?: number | null
+          shipment_id?: string | null
+          shipment_value_cents?: number | null
+          status?: string
+          tracking_number?: string | null
+        }
+        Relationships: []
+      }
+
+
       consignments: {
         Row: {
           admin_notes: string | null
@@ -5527,6 +5865,74 @@ export type Database = {
         }
         Returns: string
       }
+      consignment_add_adjustment: {
+        Args: { p_actor: string; p_amount_cents: number; p_consignment_id: string; p_kind: string; p_reason: string; p_sale_id: string | null }
+        Returns: string
+      }
+      consignment_advance_return: {
+        Args: { p_actor: string; p_at: string | null; p_carrier: string; p_insured_value_cents: number | null; p_return_id: string; p_shipping_cost_cents: number | null; p_step: string; p_tracking: string; p_we_pay: boolean }
+        Returns: string
+      }
+      consignment_approve_return: {
+        Args: { p_actor: string; p_return_id: string }
+        Returns: undefined
+      }
+      consignment_cancel_return: {
+        Args: { p_actor: string; p_reason: string; p_return_id: string }
+        Returns: undefined
+      }
+      consignment_close: {
+        Args: { p_actor: string; p_consignment_id: string }
+        Returns: undefined
+      }
+      consignment_close_claim: {
+        Args: { p_actor: string; p_allocations: Json; p_claim_id: string; p_note: string; p_outcome: string }
+        Returns: undefined
+      }
+      consignment_mark_funds_released: {
+        Args: { p_actor: string; p_released_at: string; p_sale_id: string }
+        Returns: undefined
+      }
+      consignment_open_claim: {
+        Args: { p_actor: string; p_kind: string; p_notes: string; p_order_id: string }
+        Returns: string
+      }
+      consignment_open_hold: {
+        Args: { p_actor: string; p_reason: string; p_sale_id: string; p_source: string }
+        Returns: string
+      }
+      consignment_payable_at: {
+        Args: { p_delivered_at: string; p_inspection_days: number }
+        Returns: string
+      }
+      consignment_payout_due_on: {
+        Args: { p_payable_at: string }
+        Returns: string
+      }
+      consignment_record_insurance: {
+        Args: { p_actor: string; p_insured_value_cents: number; p_notes: string; p_order_id: string; p_premium_cents: number; p_source: string }
+        Returns: undefined
+      }
+      consignment_release_hold: {
+        Args: { p_actor: string; p_hold_id: string; p_resolution: string }
+        Returns: undefined
+      }
+      consignment_request_return: {
+        Args: { p_actor: string; p_consignment_id: string; p_ends_consignment: boolean; p_lines: Json; p_note: string; p_requested_by: string }
+        Returns: string
+      }
+      consignment_returnable: {
+        Args: { p_lot_id: string }
+        Returns: { accepted: number; rejected: number }[]
+      }
+      consignment_update_claim: {
+        Args: { p_actor: string; p_claim_id: string; p_claim_number: string; p_customer_refund_status: string | null; p_filed_at: string | null; p_notes: string; p_reimbursed_at: string | null; p_reimbursement_cents: number | null; p_status: string | null }
+        Returns: undefined
+      }
+      consignment_void_adjustment: {
+        Args: { p_actor: string; p_adjustment_id: string; p_reason: string }
+        Returns: undefined
+      }
       consignment_cancel_sale: {
         Args: { p_actor: string; p_reason: string; p_sale_id: string }
         Returns: undefined
@@ -5556,11 +5962,11 @@ export type Database = {
       }
       consignment_lot_quantities: {
         Args: { p_lot_id: string }
-        Returns: { accepted: number; on_sale: number; pending: number; sold: number; unlisted: number }[]
+        Returns: { accepted: number; on_sale: number; pending: number; rejected: number; returning_accepted: number; returning_rejected: number; sold: number; unlisted: number }[]
       }
       consignment_lot_quantities_all: {
         Args: { p_consignment_id: string }
-        Returns: { accepted: number; lot_id: string; on_sale: number; pending: number; sold: number; unlisted: number }[]
+        Returns: { accepted: number; lot_id: string; on_sale: number; pending: number; rejected: number; returning_accepted: number; returning_rejected: number; sold: number; unlisted: number }[]
       }
       consignment_mark_sale_delivered: {
         Args: { p_actor: string; p_delivered_at: string; p_sale_id: string }
@@ -5600,6 +6006,7 @@ export type Database = {
       }
       consignment_record_payout: {
         Args: {
+          p_adjustment_ids: string[]
           p_actor: string
           p_consignment_id: string
           p_method: string

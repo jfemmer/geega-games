@@ -5,6 +5,7 @@ import { HttpError } from "./http.js";
 import { consignmentDbError, finalizeSignedCopy, sendInvitation, signedPdfLink } from "./consignments.js";
 import { consignmentLabel, publishProblems } from "../../src/store/lib/consignmentAgreement.js";
 import { salesForConsignment } from "./consignmentSales.js";
+import { aftercareForConsignment } from "./consignmentAftercare.js";
 
 // Admin > Consignments: consignors and consignments, invitations, agreement
 // versions, and signed copies. Used by api/admin/consignments.ts.
@@ -117,6 +118,8 @@ export async function consignmentDetail(admin: Admin, id: string) {
     admin.from("consignment_lot_events").select("*").eq("consignment_id", c.id).order("created_at", { ascending: true }).limit(20000),
   ]);
   const selling = await salesForConsignment(admin, c.id);
+  const orderIds = [...new Set((selling.sales as { order_id: string | null }[]).map((s) => s.order_id).filter((o): o is string => !!o))];
+  const aftercare = await aftercareForConsignment(admin, c.id, orderIds);
   if (consignor.error || agreements.error || signatures.error || batches.error || lots.error || events.error) {
     throw new HttpError(500, "Could not load that consignment.");
   }
@@ -130,6 +133,7 @@ export async function consignmentDetail(admin: Admin, id: string) {
     lots: lots.data ?? [],
     lotEvents: events.data ?? [],
     ...selling,
+    ...aftercare,
   };
 }
 

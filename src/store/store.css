@@ -8035,6 +8035,12 @@ html {
 .gg-myconsign__cardstatus--sale-cancelled { background: #f1eff3; color: #6d6575; }
 .gg-myconsign__payouts { margin: 0.5rem 0 0; padding-left: 1.2rem; font-size: 0.92rem; }
 .gg-myconsign__payout--void { color: #8a8195; text-decoration: line-through; }
+.gg-myconsign__subhead { margin: 0.75rem 0 0; font-size: 0.95rem; }
+.gg-myconsign__returnform { display: grid; gap: 0.6rem; padding: 0.75rem; border: 1px solid #ece6f2; border-radius: 8px; }
+.gg-myconsign__returnrow { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+.gg-myconsign__returnrow > span { font-weight: 600; min-width: 10rem; }
+.gg-myconsign__returnrow label { display: flex; gap: 0.4rem; align-items: center; font-size: 0.9rem; }
+.gg-myconsign__returnrow input { width: 4.5rem; min-height: 40px; }
 @media (max-width: 560px) {
   .gg-myconsign__facts div { grid-template-columns: 1fr; gap: 0.1rem; }
   .gg-myconsign__card { grid-template-columns: 48px 1fr; }
