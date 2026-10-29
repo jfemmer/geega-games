@@ -13,6 +13,7 @@ import type {
   DateRangeKey,
   NamedValue,
   OverviewMetrics,
+  SellerFormProgress,
   SiteTraffic,
   TimeSeriesPoint,
   TrendMetrics,
@@ -68,6 +69,13 @@ export const supabaseAnalyticsRepository: AnalyticsRepository = {
       missedSearches: r.missedSearches ?? [],
       campaigns: r.campaigns ?? [],
     };
+  },
+
+  async formProgress(range: DateRangeKey): Promise<SellerFormProgress> {
+    const { data, error } = await supabase.rpc("admin_form_funnel", { p_range: range });
+    if (error) throw new Error(error.message);
+    const r = (data ?? {}) as unknown as Partial<SellerFormProgress>;
+    return { forms: r.forms ?? [], pages: r.pages ?? [], recent: r.recent ?? [] };
   },
 
   async trends(range: DateRangeKey): Promise<TrendMetrics> {

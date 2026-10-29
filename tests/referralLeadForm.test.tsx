@@ -2,11 +2,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ReferralLeadForm from "../src/store/components/ReferralLeadForm";
+
+// Seller-form progress tracking (formTracking.ts) reads who is signed in and
+// reports through sendTrackingEvent: a signed-out visitor here, with the
+// reports captured instead of sent.
+const tracked = vi.hoisted(() => [] as Record<string, unknown>[]);
+vi.mock("../src/store/lib/AuthContext", () => ({
+  useAuth: () => ({ user: null, loading: false }),
+}));
+vi.mock("../src/store/lib/pageViews", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/store/lib/pageViews")>();
+  return { ...actual, sendTrackingEvent: (e: Record<string, unknown>) => tracked.push(e) };
+});
+
+const { default: ReferralLeadForm } = await import("../src/store/components/ReferralLeadForm");
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  tracked.length = 0;
 });
 
 function renderForm() {
@@ -57,6 +71,9 @@ describe("ReferralLeadForm", () => {
     await user.click(screen.getByRole("button", { name: /request my free offer/i }));
 
     expect(await screen.findByText("GG-R-100007")).toBeInTheDocument();
+    // Progress tracking recorded this start as sent — with no names, email or notes in it.
+    expect(tracked.at(-1)).toMatchObject({ t: "f", f: "referral", s: 1, ok: true });
+    expect(JSON.stringify(tracked)).not.toMatch(/@example\.com/);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
     expect(url).toBe("/api/referral-leads");
     const body = JSON.parse(init.body);

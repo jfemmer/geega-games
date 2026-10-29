@@ -10,11 +10,24 @@ vi.mock("../src/supabase", () => ({
   },
 }));
 
+// Seller-form progress tracking (formTracking.ts) reads who is signed in and
+// reports through sendTrackingEvent: a signed-out visitor here, with the
+// reports captured instead of sent.
+const tracked = vi.hoisted(() => [] as Record<string, unknown>[]);
+vi.mock("../src/store/lib/AuthContext", () => ({
+  useAuth: () => ({ user: null, loading: false }),
+}));
+vi.mock("../src/store/lib/pageViews", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/store/lib/pageViews")>();
+  return { ...actual, sendTrackingEvent: (e: Record<string, unknown>) => tracked.push(e) };
+});
+
 const { default: QuickPhotoQuote } = await import("../src/store/components/QuickPhotoQuote");
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  tracked.length = 0;
 });
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -134,6 +147,9 @@ describe("QuickPhotoQuote", () => {
     await user.click(screen.getByRole("button", { name: "Get my free offer" }));
 
     expect(await screen.findByText("GG-S-100042")).toBeInTheDocument();
+    // Progress tracking recorded this start as sent — with no names, email or notes in it.
+    expect(tracked.at(-1)).toMatchObject({ t: "f", f: "quick_quote", s: 2, ok: true });
+    expect(JSON.stringify(tracked)).not.toMatch(/@example\.com/);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
     expect(url).toBe("/api/sell/submit");
     expect(JSON.parse(init.body)).toMatchObject({

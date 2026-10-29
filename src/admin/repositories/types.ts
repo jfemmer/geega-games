@@ -54,6 +54,7 @@ import type {
   StaffRole,
   TimeSeriesPoint,
   TrendMetrics,
+  SellerFormProgress,
   SiteTraffic,
   YardSaleCompleteResult,
 } from "../types";
@@ -513,6 +514,8 @@ export interface AnalyticsRepository {
   trends(range: DateRangeKey): Promise<TrendMetrics>;
   /** Website visitors (first-party, privacy-friendly page-view tracking). */
   traffic(range: DateRangeKey): Promise<SiteTraffic>;
+  /** Seller form progress: how far each form start got. */
+  formProgress(range: DateRangeKey): Promise<SellerFormProgress>;
 }
 
 /** Sourcing/growth intelligence: what to buy next, and where demand is

@@ -2314,6 +2314,66 @@ export type Database = {
         }
         Relationships: []
       }
+      site_form_sessions: {
+        Row: {
+          city: string | null
+          country: string | null
+          device: string
+          form: string
+          furthest_step: number
+          furthest_step_label: string | null
+          id: string
+          last_error: string | null
+          last_field: string | null
+          path: string
+          photos: number
+          region: string | null
+          started_at: string
+          submit_attempts: number
+          submitted_at: string | null
+          updated_at: string
+          visitor_hash: string
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          device: string
+          form: string
+          furthest_step?: number
+          furthest_step_label?: string | null
+          id: string
+          last_error?: string | null
+          last_field?: string | null
+          path: string
+          photos?: number
+          region?: string | null
+          started_at?: string
+          submit_attempts?: number
+          submitted_at?: string | null
+          updated_at?: string
+          visitor_hash: string
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          device?: string
+          form?: string
+          furthest_step?: number
+          furthest_step_label?: string | null
+          id?: string
+          last_error?: string | null
+          last_field?: string | null
+          path?: string
+          photos?: number
+          region?: string | null
+          started_at?: string
+          submit_attempts?: number
+          submitted_at?: string | null
+          updated_at?: string
+          visitor_hash?: string
+        }
+        Relationships: []
+      }
       site_searches: {
         Row: {
           deals: boolean
@@ -6084,9 +6144,33 @@ export type Database = {
         Args: { p_order_id: string; p_reason?: string }
         Returns: undefined
       }
+      admin_form_funnel: {
+        Args: { p_range?: string }
+        Returns: Json
+      }
       admin_site_traffic: {
         Args: { p_range?: string }
         Returns: Json
+      }
+      record_form_session: {
+        Args: {
+          p_attempts: number
+          p_city: string | null
+          p_country: string | null
+          p_device: string
+          p_error: string | null
+          p_field: string | null
+          p_form: string
+          p_id: string
+          p_path: string
+          p_photos: number
+          p_region: string | null
+          p_step: number
+          p_step_label: string | null
+          p_submitted: boolean
+          p_visitor_hash: string
+        }
+        Returns: undefined
       }
       site_visitor_counts: {
         Args: { p_end: string; p_start: string }

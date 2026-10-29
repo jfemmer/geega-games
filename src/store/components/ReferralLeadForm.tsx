@@ -13,6 +13,7 @@ import {
 } from "../lib/referralTypes";
 import { HEARD_ABOUT_OPTIONS } from "../lib/attribution";
 import { getAttribution } from "../lib/attributionStore";
+import { useFormTracking } from "../lib/formTracking";
 
 // Lead form for the partner-store pages (POST /api/referral-leads). Geega
 // Games doesn't buy these itself — the consent checkbox says plainly that the
@@ -64,6 +65,17 @@ export default function ReferralLeadForm({
   const [submitting, setSubmitting] = useState(false);
   const [referenceNumber, setReferenceNumber] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  // Where people stop (admin Overview → Seller forms). Photos that failed to
+  // upload don't count as added.
+  const tracking = useFormTracking("referral", {
+    photos: photos.filter((p) => p.status !== "error").length,
+  });
+
+  /** Shows an error message, and records that this form showed it. */
+  function fail(message: string) {
+    setError(message);
+    tracking.error(message);
+  }
 
   // Free the photo previews' object URLs when the form goes away.
   const photosRef = useRef<SellPhoto[]>([]);
@@ -137,17 +149,18 @@ export default function ReferralLeadForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (categories.length === 0) return setError("Please choose what you're selling.");
-    if (!description.trim()) return setError("Please tell us a little about what you have.");
+    tracking.attempt();
+    if (categories.length === 0) return fail("Please choose what you're selling.");
+    if (!description.trim()) return fail("Please tell us a little about what you have.");
     if (!firstName.trim() || !isValidEmail(email)) {
-      return setError("Please enter your first name and a valid email address.");
+      return fail("Please enter your first name and a valid email address.");
     }
     if (contactMethod !== "email" && !phone.trim()) {
-      return setError("Please add a phone number, or choose email as your contact method.");
+      return fail("Please add a phone number, or choose email as your contact method.");
     }
-    if (!consent) return setError("Please confirm we can share your details with a partner store.");
+    if (!consent) return fail("Please confirm we can share your details with a partner store.");
     if (photos.some((p) => p.status === "uploading" || p.status === "pending")) {
-      return setError("Your photos are still uploading — give it a moment and try again.");
+      return fail("Your photos are still uploading — give it a moment and try again.");
     }
 
     setSubmitting(true);
@@ -181,11 +194,12 @@ export default function ReferralLeadForm({
       if (!res.ok || !body?.ok) {
         throw new Error((body && typeof body.message === "string" && body.message) || "Something went wrong. Please try again.");
       }
+      tracking.sent();
       photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
       setPhotos([]);
       setReferenceNumber(String(body.referenceNumber));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      fail(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -213,7 +227,7 @@ export default function ReferralLeadForm({
   }
 
   return (
-    <form className="gg-referral-form" onSubmit={submit} noValidate>
+    <form className="gg-referral-form" onSubmit={submit} noValidate {...tracking.fieldEvents}>
       <fieldset className="gg-sellcheckgroup">
         <legend>What are you selling?</legend>
         <div className="gg-sellcheckgroup__grid">

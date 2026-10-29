@@ -10,6 +10,7 @@
 
 import type { ReferralLeadStatus } from "../../store/lib/referralTypes.js";
 import type { LeadSourceFields } from "../../store/lib/attribution.js";
+import type { TrackedForm } from "../../store/lib/formSteps.js";
 import type {
   CheckinAnswer,
   FeeStatus,
@@ -955,6 +956,56 @@ export interface SiteTraffic {
   missedSearches: SiteSearch[];
   /** Visits that arrived on a tagged link (utm_source / utm_campaign), e.g. a Facebook post. */
   campaigns: SiteCampaign[];
+}
+
+/** Seller form progress (admin Overview → Seller forms): how far each form start got. */
+export type SellerFormKind = TrackedForm;
+
+export interface FormFunnel {
+  form: SellerFormKind;
+  /** Form starts: someone tapped or typed in a field, or pressed Next. */
+  started: number;
+  /** Starts that pressed the send button at least once. */
+  attempted: number;
+  /** Starts that went through. */
+  sent: number;
+  /** How many starts got no further than each step (1-based). */
+  stoppedAt: { step: number; sessions: number }[];
+}
+
+export interface FormPageStarts {
+  form: SellerFormKind;
+  path: string;
+  started: number;
+  sent: number;
+}
+
+export interface FormStart {
+  id: string;
+  form: SellerFormKind;
+  path: string;
+  startedAt: string;
+  updatedAt: string;
+  device: "mobile" | "tablet" | "desktop";
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  furthestStep: number;
+  furthestStepLabel: string | null;
+  /** The last field they tapped or typed in (its name, never its value). */
+  lastField: string | null;
+  photos: number;
+  submitAttempts: number;
+  /** The last error message the form showed them. */
+  lastError: string | null;
+  sent: boolean;
+}
+
+export interface SellerFormProgress {
+  forms: FormFunnel[];
+  pages: FormPageStarts[];
+  /** The 50 latest form starts, newest first. */
+  recent: FormStart[];
 }
 
 export interface SiteSearch {

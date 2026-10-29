@@ -43,6 +43,7 @@ import type {
   PosSaleResult,
   PosSettings,
   PosTerminalLocation,
+  SellerFormProgress,
   SiteTraffic,
   PosTerminalReader,
   ShippingCarrier,
@@ -1313,6 +1314,31 @@ export const mockAnalyticsRepository: AnalyticsRepository = {
         ],
       },
       300,
+    );
+  },
+  async formProgress(): Promise<SellerFormProgress> {
+    // Illustrative only (mock mode).
+    const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    return delay(
+      {
+        forms: [
+          { form: "quick_quote", started: 14, attempted: 6, sent: 4, stoppedAt: [{ step: 1, sessions: 6 }, { step: 2, sessions: 8 }] },
+          { form: "sell", started: 5, attempted: 1, sent: 1, stoppedAt: [{ step: 1, sessions: 3 }, { step: 3, sessions: 1 }, { step: 4, sessions: 1 }] },
+          { form: "referral", started: 3, attempted: 2, sent: 2, stoppedAt: [{ step: 1, sessions: 3 }] },
+        ],
+        pages: [
+          { form: "quick_quote", path: "/sell-my-collection", started: 11, sent: 3 },
+          { form: "sell", path: "/sell", started: 5, sent: 1 },
+          { form: "quick_quote", path: "/sell-magic-cards/st-louis", started: 3, sent: 1 },
+          { form: "referral", path: "/sell-pokemon-cards", started: 3, sent: 2 },
+        ],
+        recent: [
+          { id: "m1", form: "quick_quote", path: "/sell-my-collection", startedAt: ago(40), updatedAt: ago(36), device: "mobile", city: "Florissant", region: "MO", country: "US", furthestStep: 2, furthestStepLabel: "Where to send your offer", lastField: "Email", photos: 0, submitAttempts: 1, lastError: "Please enter your first name, last name and a valid email address.", sent: false },
+          { id: "m2", form: "quick_quote", path: "/sell-my-collection", startedAt: ago(190), updatedAt: ago(171), device: "mobile", city: "Belleville", region: "IL", country: "US", furthestStep: 2, furthestStepLabel: "Where to send your offer", lastField: "Photos of your cards (optional, for a faster offer)", photos: 12, submitAttempts: 1, lastError: null, sent: true },
+          { id: "m3", form: "quick_quote", path: "/sell-magic-cards/st-louis", startedAt: ago(1500), updatedAt: ago(1499), device: "desktop", city: "St. Louis", region: "MO", country: "US", furthestStep: 1, furthestStepLabel: "What you're selling", lastField: "About how many cards?", photos: 0, submitAttempts: 0, lastError: null, sent: false },
+        ],
+      },
+      250,
     );
   },
 };
