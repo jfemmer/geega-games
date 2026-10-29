@@ -2845,6 +2845,48 @@ html {
   color: inherit;
 }
 
+/* /sell-my-collection: the offer form starts right under a short intro, so on
+   a phone its first step is visible without scrolling. */
+.gg-collect-hero--quote {
+  padding-bottom: 0.5rem;
+}
+.gg-collect-section--quote {
+  margin-top: 1rem;
+}
+.gg-collect-section--quote .gg-credit-badge {
+  margin-bottom: 0.75rem;
+}
+@media (max-width: 600px) {
+  .gg-collect-hero--quote {
+    padding-top: 1.25rem;
+  }
+  .gg-collect-hero--quote h1 {
+    font-size: 1.7rem;
+    margin-bottom: 0.5rem;
+  }
+  .gg-collect-hero--quote .gg-collect-hero-sub {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .gg-collect-hero--quote .gg-hero-points {
+    margin-top: 0.75rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* Read by screen readers, not shown on screen. */
+.gg-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .gg-collect-lead--center {
   text-align: center;
 }
