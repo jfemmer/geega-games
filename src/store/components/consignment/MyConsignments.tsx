@@ -9,6 +9,7 @@ import {
   signedAgreementUrl,
   useEstimatorConfig,
   type MyAgreement,
+  type MyConsignedCard,
   type MyConsignment,
 } from "../../lib/consignmentApi";
 import { PayoutEstimator } from "./PayoutEstimator";
@@ -17,7 +18,8 @@ import { PayoutEstimator } from "./PayoutEstimator";
 // status, the channels and insurance choice in force, the terms they signed,
 // their signed agreement (PDF), and the payout estimator limited to the
 // channels they approved. Only their own consignments are ever loaded
-// (my_consignments()). Sales and payouts join this page in later phases.
+// (my_consignments()), including the cards we received and how each line's
+// inspection went. Sales and payouts join this page in later phases.
 
 const STATUS_LABELS: Record<MyConsignment["status"], string> = {
   draft: "Being set up",
@@ -68,6 +70,69 @@ function PdfLink({ agreement }: { agreement: MyAgreement }) {
         </span>
       )}
     </span>
+  );
+}
+
+const CARD_STATUS: Record<MyConsignedCard["status"], string> = {
+  submitted: "Expected",
+  received: "Received, waiting for inspection",
+  under_inspection: "Being inspected",
+  accepted: "Accepted",
+  rejected: "Not accepted",
+  listed: "Listed for sale",
+  reserved_for_sale: "In a pending sale",
+  sold: "Sold",
+  returned: "Returned to you",
+};
+const DECIDED = new Set<MyConsignedCard["status"]>(["accepted", "rejected", "listed", "reserved_for_sale", "sold", "returned"]);
+const finishName = (f: string) => (f === "nonfoil" ? "Non-foil" : f[0].toUpperCase() + f.slice(1));
+
+function YourCards({ cards }: { cards: MyConsignedCard[] }) {
+  const totals = cards.reduce(
+    (t, card) => ({
+      received: t.received + (card.quantitySubmitted ?? 0),
+      accepted: t.accepted + (DECIDED.has(card.status) ? card.quantityAccepted : 0),
+      rejected: t.rejected + (DECIDED.has(card.status) ? card.quantityRejected : 0),
+      waiting: t.waiting + (DECIDED.has(card.status) ? 0 : (card.quantitySubmitted ?? 0)),
+    }),
+    { received: 0, accepted: 0, rejected: 0, waiting: 0 },
+  );
+  return (
+    <section className="gg-myconsign__cards" aria-label="Your cards">
+      <h3>Your cards</h3>
+      <p className="gg-card-meta">
+        {totals.received} received · {totals.accepted} accepted · {totals.rejected} not accepted
+        {totals.waiting ? ` · ${totals.waiting} waiting for inspection` : ""}
+      </p>
+      <ul className="gg-myconsign__cardlist">
+        {cards.map((card) => {
+          const decided = DECIDED.has(card.status);
+          return (
+            <li key={card.id} className="gg-myconsign__card">
+              {card.imageUrl ? <img src={card.imageUrl} alt="" loading="lazy" width={48} height={67} /> : <span className="gg-myconsign__noimg" aria-hidden="true" />}
+              <div>
+                <strong>{card.cardName}</strong>
+                <span className="gg-card-meta">
+                  {card.setName ?? card.setCode.toUpperCase()} #{card.collectorNumber} · {finishName(card.finish)}
+                </span>
+                <span className="gg-card-meta">
+                  {decided && card.status !== "rejected"
+                    ? `${card.quantityAccepted} of ${card.quantitySubmitted ?? card.quantityAccepted} accepted${card.condition ? `, graded ${card.condition}` : ""}`
+                    : `${card.quantitySubmitted ?? "?"} received${card.declaredCondition ? `, described as ${card.declaredCondition}` : ""}`}
+                  {decided && card.listPriceCents != null ? ` · list ${formatCents(card.listPriceCents)}` : ""}
+                  {decided && card.minPriceCents != null ? ` · your minimum ${formatCents(card.minPriceCents)}` : ""}
+                </span>
+                {decided && card.rejectionReason && <span className="gg-myconsign__reason">{card.status === "rejected" ? "Why: " : "Note: "}{card.rejectionReason}</span>}
+              </div>
+              <span className={`gg-myconsign__cardstatus gg-myconsign__cardstatus--${card.status}`}>{CARD_STATUS[card.status] ?? card.status}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {totals.rejected > 0 && (
+        <p className="gg-card-meta">Cards we don't accept are returned to you as described in your agreement. Questions? Contact us.</p>
+      )}
+    </section>
   );
 }
 
@@ -154,6 +219,8 @@ function ConsignmentCard({ c }: { c: MyConsignment }) {
           {signed?.pdfSha256 && <p className="gg-myconsign__hash">PDF fingerprint (SHA-256): {signed.pdfSha256}</p>}
         </div>
       ) : null}
+
+      {c.cards && c.cards.length > 0 && <YourCards cards={c.cards} />}
 
       {signed && approved.length > 0 && (
         <div className="gg-myconsign__estimator">

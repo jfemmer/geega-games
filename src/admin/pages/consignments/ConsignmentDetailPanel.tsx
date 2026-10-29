@@ -7,9 +7,12 @@ import { useToast } from "../../hooks/useToast";
 import { CHANNEL_LABELS, CONSIGNMENT_CHANNELS } from "../../../store/lib/consignmentMath";
 import { ACKNOWLEDGMENTS } from "../../../store/lib/consignmentAgreement";
 import { CONSIGNMENT_STATUS_LABELS, consignmentAdminApi, type ConsignmentDetail } from "./consignmentAdminApi";
+import { ReceiveCardsPanel } from "./ReceiveCardsPanel";
+import { ConsignmentLotsPanel } from "./ConsignmentLotsPanel";
 
 // One consignment: its consignor, status, the agreement invitations sent
-// (with send, resend and cancel), and the signing record with the signed PDF.
+// (with send, resend and cancel), the signing record with the signed PDF,
+// and the cards: receiving batches and inspection.
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
@@ -19,6 +22,7 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [lastLink, setLastLink] = useState<string | null>(null);
+  const [receiving, setReceiving] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -48,7 +52,8 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
   if (error) return <ErrorState message={error} onRetry={() => void load()} />;
   if (!data) return <Spinner label="Loading consignment" />;
 
-  const { consignment: c, consignor: p, agreements, signatures, elections } = data;
+  const { consignment: c, consignor: p, agreements, signatures, elections, batches = [], lots = [], lotEvents = [] } = data;
+  const canReceive = Boolean(c.signed_at) && ["signed", "inventory_received", "active"].includes(c.status);
   const open = agreements.find((a) => a.status === "pending");
   const canSend = c.status === "draft" || c.status === "awaiting_signature";
 
@@ -309,6 +314,49 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
           )}
         </SectionCard>
       ))}
+      <SectionCard
+        title="Cards"
+        action={
+          canReceive && !receiving ? (
+            <Button variant="primary" icon="package" onClick={() => setReceiving(true)}>
+              Receive cards
+            </Button>
+          ) : undefined
+        }
+      >
+        {receiving && (
+          <ReceiveCardsPanel
+            consignmentId={c.id}
+            onCancel={() => setReceiving(false)}
+            onReceived={() => {
+              setReceiving(false);
+              void load();
+              onChanged();
+            }}
+          />
+        )}
+        {!receiving && lots.length === 0 && (
+          <p className="gg-muted">
+            {canReceive
+              ? "No cards received yet. Use Receive cards when the consignor's cards arrive."
+              : "Cards can be received once the consignor has signed the agreement."}
+          </p>
+        )}
+        {lots.length > 0 && (
+          <ConsignmentLotsPanel
+            batches={batches}
+            lots={lots}
+            events={lotEvents}
+            onChanged={async () => {
+              await load();
+              onChanged();
+            }}
+          />
+        )}
+        {lots.some((l) => l.status === "accepted") && (
+          <p className="gg-cs-note">Accepted cards are ready to list. Listing them for sale comes with sales and payout tracking in the next update.</p>
+        )}
+      </SectionCard>
     </div>
   );
 }

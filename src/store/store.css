@@ -8011,6 +8011,19 @@ html {
 .gg-myconsign__hash { margin: 0; font-size: 0.75rem; color: #8a8195; word-break: break-all; }
 .gg-myconsign__estimator { display: grid; gap: 0.75rem; justify-items: start; }
 .gg-myconsign__estimator .gg-pe { width: 100%; }
+.gg-myconsign__cards h3 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.gg-myconsign__cardlist { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.gg-myconsign__card { display: grid; grid-template-columns: 48px 1fr auto; gap: 0.65rem; align-items: start; padding: 0.5rem 0; border-top: 1px solid #ece6f2; }
+.gg-myconsign__card img, .gg-myconsign__noimg { width: 48px; height: 67px; border-radius: 4px; object-fit: cover; background: #ece6f2; display: block; }
+.gg-myconsign__card strong { display: block; }
+.gg-myconsign__card .gg-card-meta { display: block; margin: 0; }
+.gg-myconsign__reason { display: block; font-size: 0.88rem; color: #8a3b2b; margin-top: 0.15rem; }
+.gg-myconsign__cardstatus { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; background: #f0eaf6; color: #4c2a85; white-space: nowrap; }
+.gg-myconsign__cardstatus--accepted, .gg-myconsign__cardstatus--listed, .gg-myconsign__cardstatus--sold { background: #e7f6ee; color: #1f6b43; }
+.gg-myconsign__cardstatus--rejected { background: #fbe9e6; color: #8a3b2b; }
+.gg-myconsign__cardstatus--received, .gg-myconsign__cardstatus--under_inspection { background: #fff4dc; color: #8a5a00; }
 @media (max-width: 560px) {
   .gg-myconsign__facts div { grid-template-columns: 1fr; gap: 0.1rem; }
+  .gg-myconsign__card { grid-template-columns: 48px 1fr; }
+  .gg-myconsign__cardstatus { grid-column: 2; justify-self: start; }
 }

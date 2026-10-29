@@ -1294,8 +1294,55 @@ export type Database = {
         }
         Relationships: []
       }
+      consignment_lot_events: {
+        Row: {
+          actor: string | null
+          consignment_id: string
+          created_at: string
+          details: Json
+          event: string
+          from_status: string | null
+          id: string
+          lot_id: string
+          to_status: string
+        }
+        Insert: {
+          actor?: string | null
+          consignment_id: string
+          created_at?: string
+          details?: Json
+          event: string
+          from_status?: string | null
+          id?: string
+          lot_id: string
+          to_status: string
+        }
+        Update: {
+          actor?: string | null
+          consignment_id?: string
+          created_at?: string
+          details?: Json
+          event?: string
+          from_status?: string | null
+          id?: string
+          lot_id?: string
+          to_status?: string
+        }
+        Relationships: []
+      }
       consignment_lots: {
         Row: {
+          batch_id: string | null
+          rarity: string | null
+          image_url: string | null
+          market_price_cents: number | null
+          declared_condition: Database["public"]["Enums"]["card_condition"] | null
+          quantity_rejected: number
+          rejection_reason: string | null
+          inspected_at: string | null
+          inspected_by: string | null
+          decided_at: string | null
+          decided_by: string | null
           card_name: string
           collector_number: string
           condition: Database["public"]["Enums"]["card_condition"] | null
@@ -1319,6 +1366,17 @@ export type Database = {
           variant_type: string
         }
         Insert: {
+          batch_id?: string | null
+          rarity?: string | null
+          image_url?: string | null
+          market_price_cents?: number | null
+          declared_condition?: Database["public"]["Enums"]["card_condition"] | null
+          quantity_rejected?: number
+          rejection_reason?: string | null
+          inspected_at?: string | null
+          inspected_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
           card_name: string
           collector_number: string
           condition?: Database["public"]["Enums"]["card_condition"] | null
@@ -1342,6 +1400,17 @@ export type Database = {
           variant_type?: string
         }
         Update: {
+          batch_id?: string | null
+          rarity?: string | null
+          image_url?: string | null
+          market_price_cents?: number | null
+          declared_condition?: Database["public"]["Enums"]["card_condition"] | null
+          quantity_rejected?: number
+          rejection_reason?: string | null
+          inspected_at?: string | null
+          inspected_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
           card_name?: string
           collector_number?: string
           condition?: Database["public"]["Enums"]["card_condition"] | null
@@ -1363,6 +1432,45 @@ export type Database = {
           status?: string
           updated_at?: string
           variant_type?: string
+        }
+        Relationships: []
+      }
+      consignment_receiving_batches: {
+        Row: {
+          batch_number: number
+          carrier: string | null
+          consignment_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          method: string
+          notes: string | null
+          received_at: string
+          tracking_number: string | null
+        }
+        Insert: {
+          batch_number: number
+          carrier?: string | null
+          consignment_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method?: string
+          notes?: string | null
+          received_at?: string
+          tracking_number?: string | null
+        }
+        Update: {
+          batch_number?: number
+          carrier?: string | null
+          consignment_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method?: string
+          notes?: string | null
+          received_at?: string
+          tracking_number?: string | null
         }
         Relationships: []
       }
@@ -5251,9 +5359,36 @@ export type Database = {
         Args: { p_consignment_id: string }
         Returns: Json
       }
+      consignment_inspect_lot: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_allow_below_minimum: boolean
+          p_condition: Database["public"]["Enums"]["card_condition"]
+          p_finish: Database["public"]["Enums"]["card_finish"]
+          p_list_price_cents: number
+          p_lot_id: string
+          p_min_price_cents: number
+          p_quantity_accepted: number
+          p_reason: string
+        }
+        Returns: string
+      }
       consignment_publish_version: {
         Args: { p_actor: string; p_version_id: string }
         Returns: number
+      }
+      consignment_receive: {
+        Args: {
+          p_actor: string
+          p_carrier: string
+          p_consignment_id: string
+          p_lines: Json
+          p_method: string
+          p_notes: string
+          p_tracking: string
+        }
+        Returns: string
       }
       consignment_sign_agreement: {
         Args: {

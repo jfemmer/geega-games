@@ -4300,3 +4300,37 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-cn-facts > div { grid-template-columns: 1fr; gap: 0.1rem; }
   .gg-cn-row__side { justify-items: start; }
 }
+
+/* Consignments: receiving and inspection */
+.gg-rc { display: grid; gap: 0.85rem; }
+.gg-rc-csv { display: grid; gap: 0.6rem; justify-items: start; }
+.gg-rc-csv .gg-field { width: 100%; }
+.gg-rc-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.gg-rc-table td { vertical-align: middle; }
+.gg-rc-table .gg-input { min-width: 0; }
+.gg-rc-table .gg-select { min-width: 7.5rem; }
+.gg-rc-num { width: 5.5rem; }
+.gg-rc-card { display: flex; gap: 0.55rem; align-items: flex-start; min-width: 12rem; }
+.gg-rc-card img, .gg-rc-noimg { width: 36px; height: 50px; border-radius: 3px; object-fit: cover; flex: none; background: var(--gg-line); }
+.gg-rc-card strong { display: block; }
+.gg-rc-bad td { background: color-mix(in srgb, var(--gg-warning) 10%, transparent); }
+.gg-rc-problems { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--gg-text); }
+.gg-rc-shipment { border: 1px solid var(--gg-line); border-radius: var(--gg-radius-sm); padding: 0.75rem; display: grid; gap: 0.5rem; }
+.gg-rc-shipment legend { font-weight: 600; padding: 0 0.3rem; }
+.gg-lots { display: grid; gap: 1rem; }
+.gg-lots-summary { justify-content: space-between; align-items: center; }
+.gg-lots-batch h4 { margin: 0 0 0.35rem; font-size: 0.9rem; }
+.gg-lot-head { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 0.85rem; }
+.gg-lot-head img { border-radius: 6px; flex: none; }
+.gg-lot-history { margin-top: 0.85rem; font-size: 0.85rem; }
+.gg-lot-history ol { margin: 0.35rem 0 0; padding-left: 1.2rem; }
+@media (max-width: 720px) {
+  .gg-rc-table thead { display: none; }
+  .gg-rc-table, .gg-rc-table tbody, .gg-rc-table tr, .gg-rc-table td { display: block; width: 100%; }
+  .gg-rc-table tr { border-bottom: 1px solid var(--gg-line); padding: 0.5rem 0; }
+  .gg-rc-table td { border: 0; padding: 0.25rem 0; }
+  .gg-rc-table td[data-label]:not([data-label="Card"])::before { content: attr(data-label); display: block; font-size: 0.75rem; color: var(--gg-text-soft); }
+  .gg-rc-num, .gg-rc-table .gg-select, .gg-rc-table .gg-input { width: 100%; }
+  .gg-lot-head { flex-direction: column; }
+  .gg-lot-head img { width: 110px; height: auto; }
+}
