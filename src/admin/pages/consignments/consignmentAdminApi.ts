@@ -97,6 +97,98 @@ export interface ConsignmentDetail {
   batches: ReceivingBatch[];
   lots: LotRecord[];
   lotEvents: LotEvent[];
+  sales: SaleRecord[];
+  payouts: PayoutRecord[];
+  lotQuantities: LotQuantities[];
+  listings: { id: string; consignment_lot_id: string; quantity: number; price_cents: number | null; status: string }[];
+}
+
+export interface LotQuantities {
+  lot_id: string;
+  accepted: number;
+  on_sale: number;
+  pending: number;
+  sold: number;
+  unlisted: number;
+}
+
+export type SaleChannel = ConsignmentChannel;
+export type SaleStatus = "open" | "settled" | "paid" | "cancelled";
+
+export interface SaleRecord {
+  id: string;
+  lot_id: string;
+  channel: SaleChannel;
+  order_id: string | null;
+  external_order_ref: string | null;
+  quantity: number;
+  unit_price_cents: number;
+  gross_cents: number;
+  sold_at: string;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  payable_at: string | null;
+  status: SaleStatus;
+  marketplace_fee_cents: number | null;
+  processing_fee_cents: number | null;
+  postage_cents: number | null;
+  insurance_cents: number | null;
+  other_expense_cents: number | null;
+  other_expense_note: string | null;
+  net_sale_cents: number | null;
+  commission_rate_bps: number | null;
+  commission_cents: number | null;
+  payout_cents: number | null;
+  settled_at: string | null;
+  settled_by: string | null;
+  payout_id: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  restocked: boolean;
+  flag: string | null;
+  notes: string | null;
+}
+
+export interface PayoutRecord {
+  id: string;
+  amount_cents: number;
+  sale_count: number;
+  method: string;
+  reference: string | null;
+  paid_at: string;
+  note: string | null;
+  created_by: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+export interface SettlementExpenses {
+  marketplaceFeeCents: number;
+  processingFeeCents: number;
+  postageCents: number;
+  insuranceCents: number;
+  otherExpenseCents: number;
+}
+
+export interface SettlementProposal {
+  saleId: string;
+  expenses: SettlementExpenses;
+  basis: string[];
+  warnings: string[];
+  preview: { grossCents: number; expensesCents: number; netSaleCents: number; commissionRateBps: number; commissionCents: number; payoutCents: number };
+}
+
+export interface ExternalSaleInput {
+  lotId: string;
+  channel: "tcgplayer" | "ebay";
+  quantity: number;
+  unitPriceCents: number;
+  soldAt: string;
+  externalRef: string;
+  marketplaceFeeCents: number;
+  processingFeeCents: number;
+  postageCents: number;
+  notes?: string;
 }
 
 export type LotStatus = "submitted" | "received" | "under_inspection" | "accepted" | "rejected" | "listed" | "reserved_for_sale" | "sold" | "returned";
@@ -242,5 +334,18 @@ export const consignmentAdminApi = {
   receiveCards: (consignmentId: string, lines: ReceiveLineInput[], shipment: ReceiveShipment) =>
     post<{ batchId: string; lines: number }>({ action: "receiveCards", consignmentId, lines, ...shipment }),
   inspectLot: (lotId: string, step: InspectStep) => post<{ status: LotStatus }>({ action: "inspectLot", lotId, ...step }),
+  listLot: (lotId: string, quantity: number, priceCents: number | null) => post<{ inventoryId: string }>({ action: "listLot", lotId, quantity, priceCents }),
+  unlistLot: (lotId: string, quantity: number) => post<{ status: LotStatus }>({ action: "unlistLot", lotId, quantity }),
+  setLotPrice: (lotId: string, priceCents: number) => post<{ ok: true }>({ action: "setLotPrice", lotId, priceCents }),
+  recordExternalSale: (input: ExternalSaleInput) => post<{ saleId: string }>({ action: "recordExternalSale", ...input }),
+  markSaleDelivered: (saleId: string, deliveredAt: string) => post<{ payableAt: string }>({ action: "markSaleDelivered", saleId, deliveredAt }),
+  settlement: (saleId: string) => adminFetch<SettlementProposal>(`${API}?view=settlement&sale=${encodeURIComponent(saleId)}`),
+  settleSale: (saleId: string, expenses: SettlementExpenses, otherExpenseNote: string, adjustmentNote: string) =>
+    post<{ payoutCents: number }>({ action: "settleSale", saleId, expenses, otherExpenseNote, adjustmentNote }),
+  unsettleSale: (saleId: string) => post<{ ok: true }>({ action: "unsettleSale", saleId }),
+  cancelSale: (saleId: string, reason: string) => post<{ ok: true }>({ action: "cancelSale", saleId, reason }),
+  recordPayout: (input: { consignmentId: string; saleIds: string[]; method: string; reference: string; paidAt: string; note: string }) =>
+    post<{ payoutId: string }>({ action: "recordPayout", ...input }),
+  voidPayout: (payoutId: string, reason: string) => post<{ ok: true }>({ action: "voidPayout", payoutId, reason }),
   publish: (id: string) => post<{ versions: AgreementVersion[] }>({ action: "publishVersion", id, confirm: true }).then((r) => r.versions),
 };

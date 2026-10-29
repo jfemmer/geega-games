@@ -9,6 +9,7 @@ import { ACKNOWLEDGMENTS } from "../../../store/lib/consignmentAgreement";
 import { CONSIGNMENT_STATUS_LABELS, consignmentAdminApi, type ConsignmentDetail } from "./consignmentAdminApi";
 import { ReceiveCardsPanel } from "./ReceiveCardsPanel";
 import { ConsignmentLotsPanel } from "./ConsignmentLotsPanel";
+import { ConsignmentSalesPanel } from "./ConsignmentSalesPanel";
 
 // One consignment: its consignor, status, the agreement invitations sent
 // (with send, resend and cancel), the signing record with the signed PDF,
@@ -53,7 +54,22 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
   if (!data) return <Spinner label="Loading consignment" />;
 
   const { consignment: c, consignor: p, agreements, signatures, elections, batches = [], lots = [], lotEvents = [] } = data;
+  const { sales = [], payouts = [], lotQuantities = [] } = data;
   const canReceive = Boolean(c.signed_at) && ["signed", "inventory_received", "active"].includes(c.status);
+  const selling = {
+    quantities: lotQuantities,
+    onSiteByLot: Object.fromEntries(lotQuantities.map((q) => [q.lot_id, q.on_sale])),
+    approved: {
+      website: elections?.channels.website === true,
+      tcgplayer: elections?.channels.tcgplayer === true,
+      ebay: elections?.channels.ebay === true,
+    },
+    canSell: canReceive,
+  };
+  const refresh = async () => {
+    await load();
+    onChanged();
+  };
   const open = agreements.find((a) => a.status === "pending");
   const canSend = c.status === "draft" || c.status === "awaiting_signature";
 
@@ -343,20 +359,20 @@ export function ConsignmentDetailPanel({ id, onBack, onChanged }: { id: string; 
           </p>
         )}
         {lots.length > 0 && (
-          <ConsignmentLotsPanel
-            batches={batches}
-            lots={lots}
-            events={lotEvents}
-            onChanged={async () => {
-              await load();
-              onChanged();
-            }}
-          />
+          <ConsignmentLotsPanel batches={batches} lots={lots} events={lotEvents} onChanged={refresh} selling={selling} />
         )}
-        {lots.some((l) => l.status === "accepted") && (
-          <p className="gg-cs-note">Accepted cards are ready to list. Listing them for sale comes with sales and payout tracking in the next update.</p>
+        {lots.some((l) => l.status === "accepted") && !selling.approved.website && (
+          <p className="gg-cs-note">
+            The consignor didn't approve website sales, so accepted cards are sold on {[selling.approved.tcgplayer && "TCGplayer", selling.approved.ebay && "eBay"].filter(Boolean).join(" or ") || "no channel yet"} and recorded here.
+          </p>
         )}
       </SectionCard>
+
+      {(sales.length > 0 || payouts.length > 0 || lots.some((l) => l.status === "listed" || l.status === "sold")) && (
+        <SectionCard title="Sales and payouts">
+          <ConsignmentSalesPanel consignmentId={c.id} sales={sales} payouts={payouts} lots={lots} onChanged={refresh} />
+        </SectionCard>
+      )}
     </div>
   );
 }

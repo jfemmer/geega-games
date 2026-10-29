@@ -63,6 +63,7 @@ async function repriceExistingInventory(
         .from("inventory_items")
         .select("id", { count: "exact", head: true })
         .eq("rarity", rarity)
+        .eq("ownership", "business")
         .neq("status", "archived")
         .lt("price_cents", floorCents);
       if (error) throw new HttpError(500, error.message);
@@ -72,6 +73,7 @@ async function repriceExistingInventory(
         .from("inventory_items")
         .update({ price_cents: floorCents })
         .eq("rarity", rarity)
+        .eq("ownership", "business")
         .neq("status", "archived")
         .lt("price_cents", floorCents)
         .select("id");

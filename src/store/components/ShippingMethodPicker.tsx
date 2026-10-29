@@ -15,13 +15,25 @@ export function ShippingMethodPicker({
   subtotalCents,
   method,
   onChange,
+  trackedOnly = false,
 }: {
   subtotalCents: number;
   method: ShippingMethod;
   onChange: (method: ShippingMethod) => void;
+  /** The cart holds a consigned card: it ships tracked, with no envelope option. */
+  trackedOnly?: boolean;
 }) {
   if (qualifiesForFreeShipping(subtotalCents)) {
     return <FreeShippingNote subtotalCents={subtotalCents} />;
+  }
+  if (trackedOnly) {
+    return (
+      <>
+        <p className="gg-check">Tracked ({formatCents(SHIPPING.trackedCents)})</p>
+        <p className="gg-card-meta">Orders with a consigned card ship tracked, so we know when it arrives.</p>
+        <FreeShippingNote subtotalCents={subtotalCents} />
+      </>
+    );
   }
   return (
     <>

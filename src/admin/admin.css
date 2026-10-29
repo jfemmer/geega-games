@@ -4334,3 +4334,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-lot-head { flex-direction: column; }
   .gg-lot-head img { width: 110px; height: auto; }
 }
+.gg-settle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 0.75rem; }
+.gg-settle-sum { margin-top: 0.75rem; }
+.gg-settle-sum th { font-weight: 500; }
+.gg-settle-sum td { text-align: right; }

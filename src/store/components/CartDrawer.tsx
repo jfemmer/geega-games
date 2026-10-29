@@ -16,8 +16,9 @@ export default function CartDrawer({
   open: boolean;
   onClose: () => void;
 }) {
-  const { lines, subtotalCents, itemCount, setQuantity, removeItem, clear, loading, error, stockAdjusted } =
+  const { lines, subtotalCents, discountableSubtotalCents, itemCount, setQuantity, removeItem, clear, loading, error, stockAdjusted } =
     useCart();
+  const memberSavingsCents = memberDiscountCents(discountableSubtotalCents);
   const { user } = useAuth();
   const { ordersPaused, message: pausedMessage, pausedUntil } = useStoreStatus();
   const { navigate } = useRouter();
@@ -135,6 +136,7 @@ export default function CartDrawer({
                   {l.finish !== "nonfoil" ? ` · ${l.finish}` : ""}
                 </div>
                 <div className="gg-card-meta">{formatCents(l.priceCents)} each</div>
+                {l.saleOnly && <div className="gg-card-meta gg-line-consigned">Consigned · no discounts apply</div>}
                 {l.quantity >= l.sellable && (
                   <div className="gg-card-meta" style={{ color: "#92400e" }}>
                     Max available: {l.sellable}
@@ -195,11 +197,11 @@ export default function CartDrawer({
               <strong>Subtotal</strong>
               <strong>{formatCents(subtotalCents)}</strong>
             </div>
-            {user && memberDiscountCents(subtotalCents) > 0 && (
+            {user && memberSavingsCents > 0 && (
               // Signed in: the database takes this off at checkout.
               <div className="gg-drawer-member">
                 <span>Member discount ({MEMBER_DISCOUNT_PERCENT}%)</span>
-                <span>−{formatCents(memberDiscountCents(subtotalCents))}</span>
+                <span>−{formatCents(memberSavingsCents)}</span>
               </div>
             )}
             <FreeShippingNote subtotalCents={subtotalCents} />
@@ -225,7 +227,7 @@ export default function CartDrawer({
             >
               {ordersPaused ? "Checkout paused" : "Checkout"}
             </button>
-            {!user && !ordersPaused && (
+            {!user && !ordersPaused && memberSavingsCents > 0 && (
               <p className="gg-card-meta" style={{ textAlign: "center", margin: "0 0 0.5rem" }}>
                 No account needed — but{" "}
                 <button
@@ -238,7 +240,7 @@ export default function CartDrawer({
                 >
                   sign in
                 </button>{" "}
-                and you&rsquo;ll save {formatCents(memberDiscountCents(subtotalCents))} (
+                and you&rsquo;ll save {formatCents(memberSavingsCents)} (
                 {MEMBER_DISCOUNT_PERCENT}%) on this order.
               </p>
             )}

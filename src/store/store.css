@@ -6673,6 +6673,7 @@ html {
   font-size: 0.78rem;
   color: #6d6575;
 }
+.gg-line-consigned { color: #4c2a85; font-weight: 600; }
 @media (max-width: 640px) {
   .gg-card-detail__listingbuy { flex-wrap: wrap; }
 }
@@ -8022,8 +8023,22 @@ html {
 .gg-myconsign__cardstatus--accepted, .gg-myconsign__cardstatus--listed, .gg-myconsign__cardstatus--sold { background: #e7f6ee; color: #1f6b43; }
 .gg-myconsign__cardstatus--rejected { background: #fbe9e6; color: #8a3b2b; }
 .gg-myconsign__cardstatus--received, .gg-myconsign__cardstatus--under_inspection { background: #fff4dc; color: #8a5a00; }
+.gg-myconsign__sale { display: grid; grid-template-columns: 1fr auto; gap: 0.65rem; align-items: start; padding: 0.5rem 0; border-top: 1px solid #ece6f2; }
+.gg-myconsign__sale strong { display: block; }
+.gg-myconsign__sale .gg-card-meta { display: block; margin: 0; }
+.gg-myconsign__settle summary { cursor: pointer; font-weight: 600; min-height: 36px; display: flex; align-items: center; }
+.gg-myconsign__settle dl { margin: 0.25rem 0 0; display: grid; gap: 0.2rem; max-width: 360px; font-size: 0.92rem; }
+.gg-myconsign__settle dl div { display: flex; justify-content: space-between; gap: 1rem; }
+.gg-myconsign__settle dd { margin: 0; font-variant-numeric: tabular-nums; }
+.gg-myconsign__cardstatus--sale-paid { background: #e7f6ee; color: #1f6b43; }
+.gg-myconsign__cardstatus--sale-settled { background: #e7f6ee; color: #1f6b43; }
+.gg-myconsign__cardstatus--sale-cancelled { background: #f1eff3; color: #6d6575; }
+.gg-myconsign__payouts { margin: 0.5rem 0 0; padding-left: 1.2rem; font-size: 0.92rem; }
+.gg-myconsign__payout--void { color: #8a8195; text-decoration: line-through; }
 @media (max-width: 560px) {
   .gg-myconsign__facts div { grid-template-columns: 1fr; gap: 0.1rem; }
   .gg-myconsign__card { grid-template-columns: 48px 1fr; }
   .gg-myconsign__cardstatus { grid-column: 2; justify-self: start; }
+  .gg-myconsign__sale { grid-template-columns: 1fr; }
+  .gg-myconsign__sale .gg-myconsign__cardstatus { grid-column: 1; }
 }

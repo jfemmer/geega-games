@@ -135,6 +135,20 @@ export function EditInventoryDrawer({
 
   if (!item) return null;
 
+  // A consignor's copy: its price, stock and status are set in Consignments,
+  // where the consignor's minimum and approved channels are checked.
+  if (item.consigned) {
+    return (
+      <Modal open={open} onClose={onClose} title={`${item.cardName} (consigned)`} variant="drawer" size="md"
+        footer={<div className="gg-drawer-actions__buttons"><Button variant="ghost" onClick={onClose}>Close</Button></div>}>
+        <p>
+          This copy belongs to a consignor. Change its price, take it off sale or record a sale from its consignment in{" "}
+          <a href="/admin_dashboard/consignments">Consignments</a>. Consigned cards are never discounted or traded.
+        </p>
+      </Modal>
+    );
+  }
+
   async function handleSave() {
     if (!item) return;
     const priceCents = centsFromInput(price);

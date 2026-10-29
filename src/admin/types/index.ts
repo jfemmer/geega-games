@@ -165,6 +165,8 @@ export interface InventoryItem {
   storefrontListedAt?: string;
   /** True when the line should appear in Deals & Specials. */
   isDeal?: boolean;
+  /** A consignor's copy: managed in Consignments, sale only, never discounted. */
+  consigned?: boolean;
   /** Why the line is a deal: staff pick, the 30-day rule, or a flaw/grading quirk. */
   dealSource?: "manual" | "aged_inventory" | "flawed" | null;
   /** Regular pre-discount price, retained so the storefront can show savings. */

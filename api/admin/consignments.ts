@@ -18,6 +18,19 @@ import {
   voidAgreement,
 } from "../_lib/consignmentAdmin.js";
 import { inspectLot, previewReceive, receiveCards } from "../_lib/consignmentReceiving.js";
+import {
+  cancelSale,
+  listLot,
+  markDelivered,
+  proposeSettlement,
+  recordExternalSale,
+  recordPayout,
+  setLotPrice,
+  settleSale,
+  unlistLot,
+  unsettleSale,
+  voidPayout,
+} from "../_lib/consignmentSales.js";
 
 type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Update"];
 
@@ -33,11 +46,16 @@ type SettingsUpdate = Database["public"]["Tables"]["consignment_settings"]["Upda
 //   GET  ?view=versions            agreement versions, with what blocks a draft
 //                                  from being published
 //   GET  ?view=pdf&signature=      a five-minute link to a signed PDF
+//   GET  ?view=settlement&sale=    the expenses proposed for settling a sale
 //   POST { action, ... }           see ACTIONS below
 //
 // Receiving (staff): previewReceive matches lines to exact printings without
 // saving; receiveCards saves a batch (refused if any line has a problem);
 // inspectLot { lotId, step: start|accept|reject|reopen, ... } grades a line.
+//
+// Selling (staff): listLot, unlistLot, setLotPrice, recordExternalSale,
+// markSaleDelivered, settleSale, unsettleSale, cancelSale. Payouts move money,
+// so recordPayout and voidPayout are for the owner.
 //
 // Staff can create consignments and send, cancel and resend agreements. Only
 // the owner (role admin) can change rates, settings and the agreement's
@@ -315,6 +333,8 @@ const OWNER_ACTIONS = new Set([
   "saveDraft",
   "deleteDraft",
   "publishVersion",
+  "recordPayout",
+  "voidPayout",
 ]);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -336,6 +356,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return sendJson(res, 200, { versions: await listVersions(admin) });
         case "pdf":
           return sendJson(res, 200, await staffPdfLink(admin, String(req.query.signature ?? "")));
+        case "settlement":
+          return sendJson(res, 200, await proposeSettlement(admin, String(req.query.sale ?? "")));
         default:
           throw new HttpError(400, "Unknown view.");
       }
@@ -373,6 +395,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return sendJson(res, 200, await receiveCards(admin, staff, body));
       case "inspectLot":
         return sendJson(res, 200, await inspectLot(admin, staff, body));
+      case "listLot":
+        return sendJson(res, 200, await listLot(admin, staff, body));
+      case "unlistLot":
+        return sendJson(res, 200, await unlistLot(admin, staff, body));
+      case "setLotPrice":
+        await setLotPrice(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "recordExternalSale":
+        return sendJson(res, 200, await recordExternalSale(admin, staff, body));
+      case "markSaleDelivered":
+        return sendJson(res, 200, await markDelivered(admin, staff, body));
+      case "settleSale":
+        return sendJson(res, 200, await settleSale(admin, staff, body));
+      case "unsettleSale":
+        await unsettleSale(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "cancelSale":
+        await cancelSale(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
+      case "recordPayout":
+        return sendJson(res, 200, await recordPayout(admin, staff, body));
+      case "voidPayout":
+        await voidPayout(admin, staff, body);
+        return sendJson(res, 200, { ok: true });
       case "resendSignedCopy":
         return sendJson(res, 200, { copy: await resendSignedCopy(admin, staff, body) });
       case "saveDraft":

@@ -81,8 +81,10 @@ describe("the browser's shipping numbers match the server's", () => {
 
   it("and the member discount: the same percentage, the same rounding, for signed-in orders only", () => {
     expect(constant("c_member_discount_percent")).toBe(MEMBER_DISCOUNT_PERCENT);
-    // Half up, in whole cents: memberDiscountCents uses the same arithmetic.
-    expect(sql).toContain("((v_subtotal::bigint * c_member_discount_percent + 50) / 100)::integer");
+    // Half up, in whole cents: memberDiscountCents uses the same arithmetic,
+    // on the cards that aren't consigned (consigned cards are never discounted).
+    expect(sql).toContain("(((v_subtotal - v_consigned_subtotal)::bigint * c_member_discount_percent + 50) / 100)::integer");
+    expect(sql).toMatch(/if v_inv\.ownership = 'consigned' then\s+v_consigned_subtotal := v_consigned_subtotal \+ v_line;/);
     // Only for a signed-in customer (guest checkout passes no user).
     expect(sql).toMatch(/if p_uid is not null\s+and not exists \(select 1 from auth\.users u where u\.id = p_uid and u\.is_anonymous\) then\s+v_discount :=/);
     // Free shipping is decided before the discount, on the cards' full price,
@@ -214,6 +216,21 @@ describe("the member discount", () => {
       storeCreditRequestedCents: 5000,
     });
     expect(t).toMatchObject({ discountCents: 100, totalCents: 2050, storeCreditUsedCents: 2050, amountDueCents: 0 });
+  });
+});
+
+describe("consigned cards", () => {
+  it("are never member-discounted: only the other cards are", () => {
+    // $10.00 of our cards and $40.00 consigned: 5% of $10.00 only.
+    const t = previewOrderTotals({ subtotalCents: 5000, discountableSubtotalCents: 1000, method: "tracked", member: true });
+    expect(t).toMatchObject({ discountCents: 50, totalCents: 5000 - 50 + SHIPPING.trackedCents });
+    expect(previewOrderTotals({ subtotalCents: 4000, discountableSubtotalCents: 0, method: "tracked", member: true }).discountCents).toBe(0);
+  });
+
+  it("always ship tracked, as the server does", () => {
+    expect(effectiveShippingMethod("pwe", 1000, true)).toBe("tracked");
+    expect(effectiveShippingMethod("pwe", 1000, false)).toBe("pwe");
+    expect(effectiveShippingMethod("pwe", 1000)).toBe("pwe");
   });
 });
 
