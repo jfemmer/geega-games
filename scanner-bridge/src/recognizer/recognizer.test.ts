@@ -74,6 +74,18 @@ describe("CardRecognizer.recognizePair", () => {
     expect(backMeta.width!).toBeGreaterThan(1400);
   }, 30_000);
 
+  it("uses the batch's resolution for a 600 dpi scan whose file doesn't say it", async () => {
+    const scan = await fakeScan(bolt, { angle: 1 });
+    const meta = await sharp(scan).metadata();
+    // No density in the file: without the batch's 600 dpi, the bridge's own 300 would be assumed.
+    const at600 = await sharp(scan).resize(meta.width! * 2, meta.height! * 2).jpeg({ quality: 92 }).toBuffer();
+    const r = await recognizer.recognizePair({ front: at600, back: null, finish: null, dpi: 600 });
+    expect(r.result.decision).toBe("sure");
+    expect(r.result.candidates[0].scryfallId).toBe(bolt.id);
+    const front = await sharp(r.frontJpeg!).metadata();
+    expect(Math.abs(front.width! - 1488)).toBeLessThanOrEqual(4);
+  }, 30_000);
+
   it("finds the face when the card went through face-down the other way, and upside down", async () => {
     const r = await recognizer.recognizePair({ front: back, back: await fakeScan(ocean, { angle: -2, upsideDown: true }), finish: null });
     expect(r.result.decision).toBe("sure");

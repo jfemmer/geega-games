@@ -12,7 +12,7 @@ export const SCANNER_BRIDGE_URL =
  * two equal). The Scanner panel asks for an update when the bridge on the
  * scanning PC reports an older one, or none (bridges before 1.1.0 didn't).
  */
-export const LATEST_BRIDGE_VERSION = "1.1.0";
+export const LATEST_BRIDGE_VERSION = "1.3.0";
 
 /** Compares dotted version numbers: negative when a is older than b ("1.9.2" < "1.10.0"). */
 export function compareVersions(a: string, b: string): number {

@@ -6,8 +6,9 @@ import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
 import { ScannerBridgePanel } from "../src/admin/pages/scan/ScannerBridgePanel";
 import { LATEST_BRIDGE_VERSION } from "../src/admin/utils/scannerBridge";
 
-// The Scanner panel talks to the bridge on the scanning PC: the Foil switch,
-// "Scan now" carrying it, and the on-PC recognizer's library + self-test.
+// The Scanner panel talks to the bridge on the scanning PC: the Foil and
+// scan type (Inventory / Condition / Inventory + condition) switches, "Scan now" carrying them, and the on-PC
+// recognizer's library + self-test.
 
 const BRIDGE = "http://127.0.0.1:8787";
 
@@ -29,7 +30,10 @@ function bridgeStatus(overrides: Record<string, unknown> = {}) {
     currentSessionId: null,
     lastScanResult: null,
     batchFinish: "nonfoil",
+    scanKind: "card_matching",
     scanDpi: 300,
+    scanDpiByKind: { card_matching: 300, condition: 600, both: 600 },
+    sessionsByKind: { card_matching: null, condition: null, both: null },
     recognizer: {
       state: "ready",
       message: "Ready — 108,512 card faces in the library.",
@@ -52,8 +56,9 @@ function stubBridge(status: Record<string, unknown>) {
     calls.push({ url, body });
     if (url === `${BRIDGE}/status`) return new Response(JSON.stringify(status), { status: 200 });
     if (url === `${BRIDGE}/settings`) {
-      status.batchFinish = body.batchFinish;
-      return new Response(JSON.stringify({ ok: true, batchFinish: body.batchFinish }), { status: 200 });
+      if (body.batchFinish !== undefined) status.batchFinish = body.batchFinish;
+      if (body.scanKind !== undefined) status.scanKind = body.scanKind;
+      return new Response(JSON.stringify({ ok: true, batchFinish: status.batchFinish, scanKind: status.scanKind }), { status: 200 });
     }
     if (url === `${BRIDGE}/scan/start`) return new Response(JSON.stringify({ started: true }), { status: 202 });
     if (url === `${BRIDGE}/library/update`) return new Response(JSON.stringify({ ok: true }), { status: 202 });
@@ -121,8 +126,71 @@ describe("ScannerBridgePanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Scan now" }));
     await waitFor(() => expect(calls.some((c) => c.url === `${BRIDGE}/scan/start`)).toBe(true));
-    expect(calls.find((c) => c.url === `${BRIDGE}/scan/start`)?.body).toEqual({ batchFinish: "foil" });
+    expect(calls.find((c) => c.url === `${BRIDGE}/scan/start`)?.body).toEqual({ batchFinish: "foil", scanKind: "card_matching" });
     expect(await screen.findByText(/foil batch/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["Condition", "Condition scan", "condition", /from both sides at 600 dpi.*Find Match/],
+    ["Inventory + condition", "Inventory + condition scan", "both", /Identifies and grades each card from both sides at 600 dpi/],
+  ] as const)("runs a %s scan: saves the switch, sends it with the scan, and says what it does", async (tab, button, kind, hint) => {
+    const status = bridgeStatus();
+    const calls = stubBridge(status);
+    const user = userEvent.setup();
+    renderPanel();
+    // Inventory is the default: the fast, identify-only scan.
+    expect(await screen.findByRole("radio", { name: "Inventory" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText(/from its front at 300 dpi/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: tab }));
+    await waitFor(() => expect(calls.some((c) => c.url === `${BRIDGE}/settings`)).toBe(true));
+    expect(calls.find((c) => c.url === `${BRIDGE}/settings`)?.body).toEqual({ scanKind: kind });
+    await waitFor(() => expect(screen.getByRole("radio", { name: tab })).toHaveAttribute("aria-checked", "true"));
+    expect(screen.getByText(hint)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Scan now" }));
+    await waitFor(() => expect(calls.some((c) => c.url === `${BRIDGE}/scan/start`)).toBe(true));
+    expect(calls.find((c) => c.url === `${BRIDGE}/scan/start`)?.body).toEqual({ batchFinish: "nonfoil", scanKind: kind });
+    expect(await screen.findByText(`${button} started (600 dpi) — feed the cards into the ADF now.`)).toBeInTheDocument();
+  });
+
+  it("links to each scan type's open session, and ends them all", async () => {
+    const onNavigate = vi.fn();
+    const status = bridgeStatus({
+      currentSessionId: "both-1",
+      sessionsByKind: { card_matching: "inv-1", condition: null, both: "both-1" },
+    });
+    const calls = stubBridge(status);
+    const user = userEvent.setup();
+    render(
+      <ToastProvider>
+        <ScannerBridgePanel onNavigate={onNavigate} />
+      </ToastProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "Review inventory session" }));
+    expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/\/scanning\/inv-1$/));
+    await user.click(screen.getByRole("button", { name: "Review inventory + condition session" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/\/scanning\/both-1$/));
+    expect(screen.queryByRole("button", { name: "Review condition session" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "End sessions" }));
+    await waitFor(() => expect(calls.some((c) => c.url === `${BRIDGE}/session/end`)).toBe(true));
+  });
+
+  it("only offers scan types on a bridge that can do them", async () => {
+    const old = bridgeStatus({ version: "1.1.0", currentSessionId: "s-1" });
+    delete (old as Record<string, unknown>).scanKind;
+    delete (old as Record<string, unknown>).scanDpiByKind;
+    delete (old as Record<string, unknown>).sessionsByKind;
+    const calls = stubBridge(old);
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Scan now" }));
+    await waitFor(() => expect(calls.some((c) => c.url === `${BRIDGE}/scan/start`)).toBe(true));
+    expect(calls.find((c) => c.url === `${BRIDGE}/scan/start`)?.body).toEqual({ batchFinish: "nonfoil" });
+    expect(screen.queryByRole("radio", { name: "Condition" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Review current session" })).toBeInTheDocument();
+    expect(screen.getByText("Update the scanner bridge on this PC")).toBeInTheDocument();
   });
 
   it("shows build progress while the library is being made, and can be asked to update", async () => {
@@ -148,6 +216,7 @@ describe("ScannerBridgePanel", () => {
     const old = bridgeStatus();
     delete (old as Record<string, unknown>).recognizer;
     delete (old as Record<string, unknown>).batchFinish;
+    delete (old as Record<string, unknown>).scanKind;
     delete (old as Record<string, unknown>).totalCardsRecognizedOnPc;
     const calls = stubBridge(old);
     const user = userEvent.setup();

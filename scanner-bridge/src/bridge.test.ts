@@ -56,6 +56,7 @@ function config(overrides: Partial<BridgeConfig> = {}): BridgeConfig {
     statusPort: 0,
     sessionStateFile: path.join(dir, ".geega-session-id"),
     scanDpi: 300,
+    inventoryScanDpi: 300,
     recognizer: {
       enabled: true,
       dataDir: path.join(dir, "data"),

@@ -124,6 +124,18 @@ describe("uploadBatch with the on-PC recognizer", () => {
     expect(result.fileOutcomes.map((o) => path.basename(o.localPath)).sort()).toEqual(["scan_1.tiff", "scan_2.tiff"]);
   });
 
+  it("tells the recognizer a condition batch's resolution", async () => {
+    const pairs: PairedCard[] = [{ sequenceHint: 1, front: file("geega-condition_1_0001.jpg"), back: file("geega-condition_1_0002.jpg") }];
+    const rec = recognizer(async () => ({
+      result: localResult(),
+      frontJpeg: Buffer.from("front-jpeg"),
+      backJpeg: Buffer.from("back-jpeg"),
+      faceSource: "front",
+    }));
+    await uploadBatch(fakeApi(), fakeSupabase(), "S", pairs, { recognizer: rec, scanDpi: 600 });
+    expect(rec.recognizePair).toHaveBeenCalledWith({ front: pairs[0].front, back: pairs[0].back, finish: null, dpi: 600 });
+  });
+
   it("puts the face up as the front when the card went through the other way round", async () => {
     const pairs: PairedCard[] = [{ sequenceHint: 1, front: file("scan_1.tiff"), back: file("scan_2.tiff") }];
     const rec = recognizer(async () => ({

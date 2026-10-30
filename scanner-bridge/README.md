@@ -62,6 +62,22 @@ hand); put foils in their own batch and flip the **Foil** switch next to
 "Scan now" first. Cards don't all need to face the same way — upside-down
 and face-down cards are handled.
 
+**Scan types.** Next to "Scan now" there's also a scan type switch:
+
+| Type | What it does | How it scans |
+| --- | --- | --- |
+| **Inventory** (the default) | Identifies each card. No grading — set condition in review. | Fronts only, at `SCAN_DPI` (300). Feed cards face up. |
+| **Condition** | Grades each card. No matching — use Find Match in review. | Both sides at 600 dpi. |
+| **Inventory + condition** | Identifies and grades each card. | Both sides at 600 dpi. |
+
+600 dpi is slower than 300, so grade only the batches that need it. Each
+type goes into its own session ("Inventory Scan #N", "Condition Scan #N",
+"Inventory + Condition Scan #N"), so a session never mixes types; "End
+sessions" ends them all. Grades are suggestions to check in Scan Review,
+never applied on their own. The switch goes back to Inventory when the
+bridge restarts. Files PaperStream drops in the folder still follow
+`SCAN_MODE`.
+
 ## 2. How pairing works
 
 With duplex scanning, PaperStream writes pages in strict feed order: front
@@ -249,8 +265,11 @@ failed here, so it isn't necessarily affected by the same bug) — see
 
 Each scanned side is saved as a quality-95 JPEG named
 `scan_<time>_0001.jpg`, `scan_<time>_0002.jpg`, … in feed order (NAPS2's
-`$(nnnn)` numbering), at `SCAN_DPI` (300 by default; 600 for condition-only
-sessions). The fi-8170's driver trims each page to the card plus about 1 mm
+`$(nnnn)` numbering): `geega-inventory_<time>_0001.jpg`,
+`geega-condition_<time>_0001.jpg` or `geega-condition-inventory_<time>_0001.jpg`
+for the three scan types. The name is how the bridge keeps each type in its
+own batch and session. Inventory scans use `SCAN_DPI` (300 by default);
+the two that grade always scan both sides at 600. The fi-8170's driver trims each page to the card plus about 1 mm
 of grey margin (with a dark shadow along the card's trailing edge) but
 doesn't straighten it; the bridge finds the card's exact edges and
 straightens it itself. JPEG rather than TIFF keeps each page small (a few

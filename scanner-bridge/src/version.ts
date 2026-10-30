@@ -19,7 +19,7 @@ import path from "node:path";
  * LATEST_BRIDGE_VERSION in the website's src/admin/utils/scannerBridge.ts
  * (tests/scannerBridgeVersion.test.ts there checks it against package.json).
  */
-export const BRIDGE_VERSION = "1.1.0";
+export const BRIDGE_VERSION = "1.3.0";
 
 /** An update on disk that the running bridge isn't using yet. */
 export interface PendingUpdate {

@@ -160,6 +160,17 @@ describe("startStatusServer", () => {
     expect(status.currentSessionId).toBeNull();
   });
 
+  it("POST /session/end ends every scan type's session", async () => {
+    const files = [".geega-condition-session-id", ".geega-inventory-session-id"].map((f) => path.join(dir, f));
+    for (const f of files) writeFileSync(f, "some-session-id", "utf8");
+    status.sessionsByKind = { card_matching: "inv-1", condition: "cond-1", both: "both-1" };
+
+    const res = await fetch(`${baseUrl}/session/end`, { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(files.some((f) => existsSync(f))).toBe(false);
+    expect(status.sessionsByKind).toEqual({ card_matching: null, condition: null, both: null });
+  });
+
   it("POST /session/end is idempotent when there is no session file yet", async () => {
     expect(existsSync(sessionStateFile)).toBe(false);
     const res = await fetch(`${baseUrl}/session/end`, { method: "POST" });
@@ -269,11 +280,88 @@ describe("startStatusServer", () => {
       headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
       body: JSON.stringify({ batchFinish: "foil" }),
     });
-    expect(await ok.json()).toEqual({ ok: true, batchFinish: "foil" });
+    expect(await ok.json()).toEqual({ ok: true, batchFinish: "foil", scanKind: "card_matching" });
     expect(status.batchFinish).toBe("foil");
     const bad = await fetch(`${baseUrl}/settings`, { method: "POST", body: JSON.stringify({ batchFinish: "etched" }) });
     expect(bad.status).toBe(400);
     expect(status.batchFinish).toBe("foil");
+  });
+
+  it("POST /settings sets the scan type switch, and rejects anything else", async () => {
+    const ok = await fetch(`${baseUrl}/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+      body: JSON.stringify({ scanKind: "condition" }),
+    });
+    expect(await ok.json()).toEqual({ ok: true, batchFinish: "nonfoil", scanKind: "condition" });
+    expect(status.scanKind).toBe("condition");
+    // A bad value changes nothing, not even a valid one sent alongside it.
+    const bad = await fetch(`${baseUrl}/settings`, {
+      method: "POST",
+      body: JSON.stringify({ scanKind: "deluxe", batchFinish: "foil" }),
+    });
+    expect(bad.status).toBe(400);
+    expect(status.scanKind).toBe("condition");
+    expect(status.batchFinish).toBe("nonfoil");
+  });
+
+  it.each([
+    ["card_matching", 300, false, /^geega-inventory_\d+$/],
+    ["condition", 600, true, /^geega-condition_\d+$/],
+    ["both", 600, true, /^geega-condition-inventory_\d+$/],
+  ] as const)("POST /scan/start runs a %s scan at %i dpi (both sides: %s), named for its type", async (kind, dpi, duplex, prefix) => {
+    serverOptions.duplex = !duplex; // the bridge's own pairing setting never decides a "Scan now" type
+    mockRunScan.mockResolvedValueOnce(scanResult());
+    const res = await fetch(`${baseUrl}/scan/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+      body: JSON.stringify({ scanKind: kind, batchFinish: "foil" }),
+    });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ started: true, scanKind: kind });
+    await vi.waitFor(() => expect(resumeAndProcessNow).toHaveBeenCalledTimes(1));
+    expect(mockRunScan).toHaveBeenCalledWith(
+      expect.objectContaining({ resolution: dpi, duplex, filePrefix: expect.stringMatching(prefix) }),
+    );
+    expect(status.scanKind).toBe(kind);
+    expect(status.batchFinish).toBe("foil");
+  });
+
+  it("POST /scan/start scans an Inventory scan at the bridge's SCAN_DPI", async () => {
+    serverOptions.inventoryScanDpi = 240;
+    mockRunScan.mockResolvedValueOnce(scanResult());
+    await fetch(`${baseUrl}/scan/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+      body: JSON.stringify({ scanKind: "card_matching" }),
+    });
+    await vi.waitFor(() => expect(resumeAndProcessNow).toHaveBeenCalledTimes(1));
+    expect(mockRunScan).toHaveBeenCalledWith(expect.objectContaining({ resolution: 240, duplex: false }));
+  });
+
+  it("POST /scan/start takes \"standard\" from a 1.2.0 dashboard as the bridge's own mode", async () => {
+    serverOptions.scanMode = "card_matching";
+    mockRunScan.mockResolvedValueOnce(scanResult());
+    const res = await fetch(`${baseUrl}/scan/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+      body: JSON.stringify({ scanKind: "standard" }),
+    });
+    expect(res.status).toBe(202);
+    await vi.waitFor(() => expect(resumeAndProcessNow).toHaveBeenCalledTimes(1));
+    expect(status.scanKind).toBe("card_matching");
+  });
+
+  it("POST /scan/start refuses an unknown scan type without touching the scanner", async () => {
+    const res = await fetch(`${baseUrl}/scan/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ALLOWED_ORIGIN },
+      body: JSON.stringify({ scanKind: "deluxe" }),
+    });
+    expect(res.status).toBe(400);
+    expect(mockRunScan).not.toHaveBeenCalled();
+    expect(suppressAutoProcess).not.toHaveBeenCalled();
+    expect(status.state).not.toBe("scanning");
   });
 
   it("refuses POSTs from any other website", async () => {
@@ -357,7 +445,14 @@ describe("startStatusServer", () => {
 
   it("GET /status includes the recognizer, the foil switch and the scan resolution", async () => {
     const body = (await (await fetch(`${baseUrl}/status`)).json()) as BridgeStatus;
-    expect(body).toMatchObject({ batchFinish: "nonfoil", scanDpi: 300, totalCardsRecognizedOnPc: 0 });
+    expect(body).toMatchObject({
+      batchFinish: "nonfoil",
+      scanKind: "card_matching",
+      scanDpi: 300,
+      scanDpiByKind: { card_matching: 300, condition: 600, both: 600 },
+      sessionsByKind: { card_matching: null, condition: null, both: null },
+      totalCardsRecognizedOnPc: 0,
+    });
     expect(body.recognizer).toMatchObject({ state: "off", library: null });
   });
 

@@ -4,6 +4,15 @@ import type { WatcherControl } from "./watcher.js";
 import { listScanDevices, runScan } from "./naps2Scan.js";
 import { createRecognizerStatus, type RecognizerStatus } from "./recognizer/status.js";
 import type { BatchFinish } from "./recognizer/types.js";
+import {
+  allSessionStateFiles,
+  filePrefixFor,
+  parseScanKind,
+  SCAN_KIND_NAME,
+  scanDpiByKind,
+  scanSettingsFor,
+  type ScanKind,
+} from "./scanKind.js";
 import { BRIDGE_VERSION, type PendingUpdate } from "./version.js";
 
 // A local status + control endpoint — bound to 127.0.0.1 ONLY, never
@@ -34,7 +43,8 @@ import { BRIDGE_VERSION, type PendingUpdate } from "./version.js";
 // exactly what's left to do.
 //
 // The card recognizer (src/recognizer) adds: GET /status's `recognizer`
-// block, POST /settings (the foil / non-foil switch next to "Scan now"),
+// block, POST /settings (the foil / non-foil and scan type switches next to
+// "Scan now": Inventory, Condition, or Inventory + condition — scanKind.ts),
 // POST /library/update, POST /library/self-test, and POST /recognize
 // (re-run recognition for one stored scan on this PC).
 //
@@ -72,10 +82,12 @@ export interface BridgeStatus {
   totalRecognitionFailures: number;
   lastError: string | null;
   startedAt: string;
-  /** Null until the first batch resolves a session (see watcher.ts). Also
-   * null right after a POST /session/end, until the next batch creates a
-   * fresh one. */
+  /** The most recent batch's session. Null until the first batch resolves
+   * a session (see watcher.ts). Also null right after a POST /session/end,
+   * until the next batch creates a fresh one. */
   currentSessionId: string | null;
+  /** The open session of each scan type (each type keeps its own; scanKind.ts). */
+  sessionsByKind: Record<ScanKind, string | null>;
   /** Result of the most recent direct scan (POST /scan/start) — NAPS2's own
    * page count/error, exactly as logged to this process's console, but
    * surfaced here too so the dashboard can show it without anyone needing
@@ -90,13 +102,17 @@ export interface BridgeStatus {
   } | null;
   /** Applied to cards as they arrive; set from the switch next to "Scan now". */
   batchFinish: BatchFinish;
-  /** Resolution "Scan now" uses. */
+  /** What the next "Scan now" does: Inventory ("card_matching"), Condition, or both. */
+  scanKind: ScanKind;
+  /** The bridge's SCAN_DPI setting (PaperStream batches use whatever their files say). */
   scanDpi: number;
+  /** Resolution of each scan type. */
+  scanDpiByKind: Record<ScanKind, number>;
   /** The on-PC card recognizer (model, card library, self-test). */
   recognizer: RecognizerStatus;
 }
 
-export function createStatus(watchFolder: string, scanDpi = 300): BridgeStatus {
+export function createStatus(watchFolder: string, scanDpi = 300, inventoryScanDpi = scanDpi): BridgeStatus {
   return {
     version: BRIDGE_VERSION,
     pendingUpdate: null,
@@ -112,9 +128,14 @@ export function createStatus(watchFolder: string, scanDpi = 300): BridgeStatus {
     lastError: null,
     startedAt: new Date().toISOString(),
     currentSessionId: null,
+    sessionsByKind: { card_matching: null, condition: null, both: null },
     lastScanResult: null,
     batchFinish: "nonfoil",
+    // Inventory is the fast everyday scan; the dashboard switch changes it
+    // (until the bridge restarts, like the foil switch).
+    scanKind: "card_matching",
     scanDpi,
+    scanDpiByKind: scanDpiByKind({ inventoryScanDpi }),
     recognizer: createRecognizerStatus(false),
   };
 }
@@ -161,6 +182,8 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
   res.end(JSON.stringify(body));
 }
 
+const BAD_SCAN_KIND = 'scanKind must be "card_matching" (inventory), "condition" or "both".';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -188,6 +211,10 @@ export interface StatusServerOptions {
   watcherControl: WatcherControl | null;
   /** config.scanDpi — resolution for "Scan now". */
   scanDpi?: number;
+  /** config.scanMode — what "standard" means to a 1.2.0 dashboard. */
+  scanMode?: ScanKind;
+  /** config.inventoryScanDpi — resolution of an Inventory scan. */
+  inventoryScanDpi?: number;
   /** The card recognizer's controls; null when it's turned off. */
   recognizer?: RecognizerControl | null;
   /** Looks for an update on disk the running bridge isn't using yet (version.ts), for GET /status. */
@@ -266,14 +293,18 @@ export function startStatusServer(
     if (req.method === "POST" && req.url === "/settings") {
       readJson(req)
         .then((body) => {
-          if (body.batchFinish !== undefined) {
-            if (body.batchFinish !== "foil" && body.batchFinish !== "nonfoil") {
-              sendJson(res, 400, { ok: false, message: 'batchFinish must be "foil" or "nonfoil".' });
-              return;
-            }
-            status.batchFinish = body.batchFinish;
+          if (body.batchFinish !== undefined && body.batchFinish !== "foil" && body.batchFinish !== "nonfoil") {
+            sendJson(res, 400, { ok: false, message: 'batchFinish must be "foil" or "nonfoil".' });
+            return;
           }
-          sendJson(res, 200, { ok: true, batchFinish: status.batchFinish });
+          const kind = body.scanKind === undefined ? undefined : parseScanKind(body.scanKind, options.scanMode ?? "both");
+          if (kind === null) {
+            sendJson(res, 400, { ok: false, message: BAD_SCAN_KIND });
+            return;
+          }
+          if (body.batchFinish !== undefined) status.batchFinish = body.batchFinish;
+          if (kind !== undefined) status.scanKind = kind;
+          sendJson(res, 200, { ok: true, batchFinish: status.batchFinish, scanKind: status.scanKind });
         })
         .catch((err: Error) => sendJson(res, 400, { ok: false, message: err.message }));
       return;
@@ -347,8 +378,12 @@ export function startStatusServer(
       try {
         // Idempotent: no file at all (no session yet) is success, not an
         // error — the caller's intent ("no active session") is already true.
-        if (existsSync(options.sessionStateFile)) unlinkSync(options.sessionStateFile);
+        // Ends every scan type's session: "the next batch starts fresh".
+        for (const file of allSessionStateFiles(options.sessionStateFile)) {
+          if (existsSync(file)) unlinkSync(file);
+        }
         status.currentSessionId = null;
+        status.sessionsByKind = { card_matching: null, condition: null, both: null };
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
@@ -403,17 +438,25 @@ export function startStatusServer(
 
       // Claim the scanner before reading the (optional) body, so two quick
       // clicks can never both start NAPS2.
+      const stateBefore = status.state;
       status.state = "scanning";
       status.lastError = null;
       void readJson(req)
         .catch(() => ({}) as Record<string, unknown>)
         .then((body) => {
-          // The dashboard sends the foil / non-foil switch with the click, so
-          // this run's cards get it even if the switch moved a moment ago.
+          const kind = body.scanKind === undefined ? undefined : parseScanKind(body.scanKind, options.scanMode ?? "both");
+          if (kind === null) {
+            status.state = stateBefore;
+            sendJson(res, 400, { ok: false, message: BAD_SCAN_KIND });
+            return;
+          }
+          // The dashboard sends both switches with the click, so this run's
+          // cards get them even if a switch moved a moment ago.
           if (body.batchFinish === "foil" || body.batchFinish === "nonfoil") status.batchFinish = body.batchFinish;
+          if (kind !== undefined) status.scanKind = kind;
           res.writeHead(202, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ started: true }));
-          startDirectScan(status, options, watcherControl);
+          res.end(JSON.stringify({ started: true, scanKind: status.scanKind }));
+          startDirectScan(status, options, watcherControl, status.scanKind);
         });
       return;
     }
@@ -440,10 +483,19 @@ export function startStatusServer(
 }
 
 /** Runs one NAPS2 scan into the watch folder, holding off the watcher's own processing meanwhile. */
-function startDirectScan(status: BridgeStatus, options: StatusServerOptions, watcherControl: WatcherControl): void {
+function startDirectScan(
+  status: BridgeStatus,
+  options: StatusServerOptions,
+  watcherControl: WatcherControl,
+  kind: ScanKind,
+): void {
   // Unique per run so a direct-scan batch's files can never collide
-  // with leftover PaperStream-written ones sitting in the same folder.
-  const filePrefix = `scan_${Date.now()}`;
+  // with leftover PaperStream-written ones sitting in the same folder. The
+  // prefix also tells the watcher which kind of batch the pages are.
+  const filePrefix = filePrefixFor(kind);
+  const { duplex, dpi } = scanSettingsFor(kind, {
+    inventoryScanDpi: options.inventoryScanDpi ?? options.scanDpi ?? status.scanDpi,
+  });
   watcherControl.suppressAutoProcess();
 
   runScan({
@@ -452,8 +504,8 @@ function startDirectScan(status: BridgeStatus, options: StatusServerOptions, wat
     filePrefix,
     driver: options.scannerDriver,
     deviceNameMatch: options.scannerDeviceNameMatch,
-    duplex: options.duplex,
-    resolution: options.scanDpi ?? status.scanDpi,
+    duplex,
+    resolution: dpi,
   })
     .then((result) => {
       status.lastScanResult = {
@@ -466,7 +518,9 @@ function startDirectScan(status: BridgeStatus, options: StatusServerOptions, wat
         status.lastError = result.message;
         console.error(`[geega-scanner-bridge] Scan reported an error: ${result.message}`);
       }
-      console.log(`[geega-scanner-bridge] Scan finished: ${result.pagesScanned} page(s) saved.`);
+      console.log(
+        `[geega-scanner-bridge] ${SCAN_KIND_NAME[kind]} finished: ${result.pagesScanned} page(s) saved.`,
+      );
     })
     .catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
