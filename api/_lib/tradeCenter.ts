@@ -26,6 +26,8 @@ import {
   type CustomerTradeSummary,
   type DepositStatus,
   type StaffTrade,
+  type MeetupDraft,
+  type MeetupDraftCard,
   type StaffTradeOfferCard,
   type StaffTradeSummary,
   type TradeAddress,
@@ -944,6 +946,36 @@ export interface StaffExtras extends ViewExtras {
   fileUrls?: Map<string, string>;
 }
 
+/** The cards and TCG lows staff saved at a local meetup (staff only), or null when there's nothing saved. */
+function meetupDraftView(t: TradeRow): MeetupDraft | null {
+  if (!t.meetup_draft_saved_at || !Array.isArray(t.meetup_draft)) return null;
+  const cards: MeetupDraftCard[] = [];
+  for (const item of t.meetup_draft) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const name = str(o.card_name);
+    const quantity = num(o.quantity);
+    const condition = str(o.condition);
+    if (!name || !quantity || !condition || !(CARD_CONDITIONS as readonly string[]).includes(condition)) continue;
+    cards.push({
+      scryfallId: str(o.scryfall_id),
+      cardName: name,
+      setCode: str(o.set_code),
+      setName: str(o.set_name),
+      collectorNumber: str(o.collector_number),
+      finish: str(o.finish) ?? "nonfoil",
+      imageUrl: str(o.image_url),
+      condition: condition as CardConditionCode,
+      quantity,
+      unitCents: num(o.unit_cents),
+      referencePriceCents: num(o.reference_price_cents),
+    });
+  }
+  return { cards, savedAt: t.meetup_draft_saved_at, savedBy: t.meetup_draft_saved_by };
+}
+
 export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow | null, extras: StaffExtras = {}): StaffTrade {
   const { trade: t, offers, events, messages, disputes } = bundle;
   const base = baseView({ ...bundle, messages }, true, settings, extras);
@@ -1039,6 +1071,7 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
     paymentReference: t.payment_reference,
     orderPostageCents: bundle.order?.postage_cost_cents ?? null,
     outboundPostageCents: t.outbound_postage_cents,
+    meetupDraft: meetupDraftView(t),
   };
 }
 

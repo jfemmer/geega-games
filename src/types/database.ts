@@ -4857,6 +4857,9 @@ export type Database = {
           local_paid_cents: number | null
           local_payment_method: string | null
           meetup_details: string | null
+          meetup_draft: Json | null
+          meetup_draft_saved_at: string | null
+          meetup_draft_saved_by: string | null
           met_at: string | null
           inbound_acceptance_source: string | null
           inbound_accepted_at: string | null
@@ -4962,6 +4965,9 @@ export type Database = {
           local_paid_cents?: number | null
           local_payment_method?: string | null
           meetup_details?: string | null
+          meetup_draft?: Json | null
+          meetup_draft_saved_at?: string | null
+          meetup_draft_saved_by?: string | null
           met_at?: string | null
           inbound_acceptance_source?: string | null
           inbound_accepted_at?: string | null
@@ -5067,6 +5073,9 @@ export type Database = {
           local_paid_cents?: number | null
           local_payment_method?: string | null
           meetup_details?: string | null
+          meetup_draft?: Json | null
+          meetup_draft_saved_at?: string | null
+          meetup_draft_saved_by?: string | null
           met_at?: string | null
           inbound_acceptance_source?: string | null
           inbound_accepted_at?: string | null

@@ -101,6 +101,9 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 //     completeLocal     { tradeId, cards: [...], paidCents,   at the meetup: the cards we took, what they paid
 //                         paymentMethod, paymentNote?,        in person (cash, card or other); finishes the
 //                         cashForExcess? }                    trade, our cards handed over on an in-person order
+//     saveMeetupDraft   { tradeId, cards: [...] }             at the meetup: save the cards and TCG lows entered so
+//                                                             far (a card may be unpriced); staff only, not shown
+//                                                             to the customer, finishes nothing
 //     markReturned, importCard, recordPayment (owner), markCashPaid (owner), message
 //
 // Every change and total is the database's (trade_* functions, one
@@ -732,6 +735,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
 
+      case "saveMeetupDraft": {
+        // The cards and TCG lows entered at the meetup, kept until the trade is
+        // finished. Changes nothing else about the trade; the customer never sees it.
+        if (handoffOf(t) !== "local" || status !== "awaiting_shipment") {
+          throw new HttpError(409, "Prices can only be saved on a local pickup trade waiting for the meetup.");
+        }
+        const cards = readLocalCards(body.cards, settings.max_offered_lines, { draft: true });
+        const savedAt = new Date().toISOString();
+        const { data, error } = await admin
+          .from("trade_requests")
+          .update({ meetup_draft: cards as unknown as Json, meetup_draft_saved_at: savedAt, meetup_draft_saved_by: staff.email ?? staff.userId })
+          .eq("id", tradeId)
+          .eq("status", "awaiting_shipment")
+          .eq("handoff_method", "local")
+          .select("id");
+        if (error) throw new HttpError(500, "We couldn't save the prices. Try again.");
+        if (!data || data.length === 0) throw new HttpError(409, "This trade changed. Refresh and try again.");
+        await audit("save_meetup_draft", { cards: cards.length, priced: cards.filter((c) => c.unit_cents !== null).length });
+        break;
+      }
+
       case "message": {
         const text = cleanText(body.body, TRADE_LIMITS.maxMessage);
         if (!text) throw new HttpError(400, "Write a message first.");
@@ -1191,11 +1215,20 @@ interface LocalCardInput {
   note: string | null;
 }
 
+/** The same, saved as a draft at the meetup: a card may not be priced yet. */
+type DraftCardInput = Omit<LocalCardInput, "unit_cents"> & { unit_cents: number | null };
+
 /** Finishes a card can have (public.card_finish). */
 const CARD_FINISHES = new Set(["nonfoil", "foil", "etched", "glossy", "ripple", "surge", "rainbow", "galaxy", "textured", "mana", "gilded", "halo"]);
 
-/** The cards staff took at a meetup: each with its condition and what each copy is worth (staff set every value). */
-function readLocalCards(raw: unknown, maxLines: number): LocalCardInput[] {
+/**
+ * The cards staff took at a meetup: each with its condition and what each copy
+ * is worth (staff set every value). As a draft (`draft: true`), a card's
+ * value may be left blank, to be priced later.
+ */
+function readLocalCards(raw: unknown, maxLines: number): LocalCardInput[];
+function readLocalCards(raw: unknown, maxLines: number, options: { draft: true }): DraftCardInput[];
+function readLocalCards(raw: unknown, maxLines: number, options: { draft?: boolean } = {}): DraftCardInput[] {
   if (!Array.isArray(raw)) throw new HttpError(400, "Their cards didn't come through. Try again.");
   if (raw.length > maxLines) throw new HttpError(400, `A trade can take up to ${maxLines} different cards.`);
   return raw.map((item, i) => {
@@ -1204,8 +1237,9 @@ function readLocalCards(raw: unknown, maxLines: number): LocalCardInput[] {
     if (!name) throw new HttpError(400, `Card ${i + 1} has no name.`);
     const quantity = wholeNumber(o.quantity, 1, TRADE_LIMITS.maxQuantity);
     if (quantity === null) throw new HttpError(400, `${name}: take 1 to ${TRADE_LIMITS.maxQuantity}.`);
-    const unit = wholeNumber(o.unitCents, 0, TRADE_LIMITS.maxEstimateCents);
-    if (unit === null) throw new HttpError(400, `${name}: enter what each copy is worth.`);
+    const blank = o.unitCents === null || o.unitCents === undefined;
+    const unit = blank && options.draft ? null : wholeNumber(o.unitCents, 0, TRADE_LIMITS.maxEstimateCents);
+    if (unit === null && !(blank && options.draft)) throw new HttpError(400, `${name}: enter what each copy is worth.`);
     const condition = typeof o.condition === "string" && (CARD_CONDITIONS as readonly string[]).includes(o.condition) ? o.condition : null;
     if (!condition) throw new HttpError(400, `${name}: choose its condition.`);
     const finish = typeof o.finish === "string" && CARD_FINISHES.has(o.finish) ? o.finish : null;

@@ -257,6 +257,11 @@ export const tradeCenterRepository = {
   },
 
   /** Local pickup: where and when to meet (emailed to the customer once the trade is approved). */
+  /** At the meetup: save the cards and TCG lows entered so far (a card may be unpriced). Finishes nothing. */
+  saveMeetupDraft(tradeId: string, cards: (Omit<LocalCardInput, "unitCents" | "note"> & { unitCents: number | null })[]) {
+    return post({ action: "saveMeetupDraft", tradeId, cards });
+  },
+
   setMeetup(tradeId: string, details: string) {
     return post({ action: "setMeetup", tradeId, details });
   },
