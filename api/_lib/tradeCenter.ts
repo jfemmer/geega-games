@@ -555,6 +555,30 @@ export async function loadAvailability(admin: Admin, tradeId: string, inventoryI
   return out;
 }
 
+/** A card's colors and type line, from the inventory line it came from. */
+export interface WantedCardTraits {
+  colors: string[];
+  typeLine: string | null;
+}
+
+/**
+ * Colors and type lines of a bundle's cards (our inventory), so staff can sort
+ * what a customer wants by color. Best effort: a failed read just leaves the
+ * cards unsorted by color, never fails the trade.
+ */
+export async function loadWantedTraits(admin: Admin, bundle: TradeBundle): Promise<Map<string, WantedCardTraits>> {
+  const out = new Map<string, WantedCardTraits>();
+  const ids = [...new Set(bundle.items.map((i) => i.inventory_item_id).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return out;
+  const { data, error } = await admin.from("inventory_items").select("id, colors, type_line").in("id", ids);
+  if (error) {
+    console.error("[tradeCenter] card colors failed", error.message);
+    return out;
+  }
+  for (const row of data ?? []) out.set(row.id, { colors: row.colors ?? [], typeLine: row.type_line ?? null });
+  return out;
+}
+
 /** Availability for a bundle's lines that are only requested (not held). */
 export async function bundleAvailability(admin: Admin, bundle: TradeBundle): Promise<Map<string, number>> {
   const requested = bundle.items.filter((i) => i.status === "requested" && i.inventory_item_id).map((i) => i.inventory_item_id as string);
@@ -606,7 +630,11 @@ function returnStatusOf(value: string): "none" | "pending" | "returned" {
 
 const ITEM_STATUSES: readonly TradeWantedItem["status"][] = ["requested", "reserved", "released", "removed", "fulfilled"];
 
-function wantedView(row: TradeItemRow, availability: Map<string, number> | undefined): TradeWantedItem {
+function wantedView(
+  row: TradeItemRow,
+  availability: Map<string, number> | undefined,
+  traits?: Map<string, WantedCardTraits>,
+): TradeWantedItem {
   const status = ITEM_STATUSES.includes(row.status as TradeWantedItem["status"]) ? (row.status as TradeWantedItem["status"]) : "requested";
   return {
     id: row.id,
@@ -626,7 +654,13 @@ function wantedView(row: TradeItemRow, availability: Map<string, number> | undef
       status === "requested" && row.inventory_item_id && availability?.has(row.inventory_item_id)
         ? (availability.get(row.inventory_item_id) as number)
         : null,
+    ...(traits ? cardTraitsOf(row, traits) : {}),
   };
+}
+
+function cardTraitsOf(row: TradeItemRow, traits: Map<string, WantedCardTraits>): Pick<TradeWantedItem, "colors" | "typeLine"> {
+  const found = row.inventory_item_id ? traits.get(row.inventory_item_id) : undefined;
+  return { colors: found?.colors ?? null, typeLine: found?.typeLine ?? null };
 }
 
 function offerView(row: TradeOfferRow): TradeOfferCard {
@@ -726,6 +760,8 @@ const MAIL_TO_STATUSES: ReadonlySet<TradeStatus> = new Set(["awaiting_shipment",
 
 export interface ViewExtras {
   availability?: Map<string, number>;
+  /** Our cards' colors and type lines (the staff view sends them, for sorting). */
+  wantedTraits?: Map<string, WantedCardTraits>;
   /** EasyPost is connected: scans are checked automatically. */
   autoTracked?: boolean;
   now?: number;
@@ -809,7 +845,7 @@ function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSetting
     closeReason: t.close_reason,
     shipTo: shipToOf(t),
     outgoing: outgoingOf(bundle.order),
-    wanted: items.map((row) => wantedView(row, extras.availability)),
+    wanted: items.map((row) => wantedView(row, extras.availability, forStaff ? extras.wantedTraits : undefined)),
     messages: messages.filter((m) => forStaff || m.visible_to_customer).map((m) => messageView(m, forStaff)),
     mailTo: showMailTo && settings ? shipToAddress(settings) : null,
     packingInstructions: showMailTo && settings ? settings.packing_instructions : null,

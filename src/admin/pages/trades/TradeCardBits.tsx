@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import { CardImage } from "../../components/cards/CardImage";
+import type { CardImageUris } from "../../types";
+import { scryfallImageAtSize } from "../../../store/lib/cardImages";
 import { formatCents } from "../../utils/format";
 import {
   CONDITION_NAMES,
@@ -9,12 +12,25 @@ import {
 
 // Small pieces shared by the trade drawer's card lists.
 
-export function CardThumb({ imageUrl }: { imageUrl: string | null }) {
-  return imageUrl ? (
-    <img className="gg-trd-thumb" src={imageUrl} alt="" loading="lazy" />
-  ) : (
-    <span className="gg-trd-thumb gg-trd-thumb--none" aria-hidden="true" />
-  );
+/**
+ * A card's picture on a trade. Hover (or tap, on a touch screen) shows it
+ * larger, through the admin's shared CardImage preview. A Scryfall picture is
+ * shown at the right size for each (small thumbnail, large preview).
+ */
+export function CardThumb({ imageUrl, alt = "" }: { imageUrl: string | null; alt?: string }) {
+  if (!imageUrl) return <span className="gg-trd-thumb gg-trd-thumb--none" aria-hidden="true" />;
+  return <CardImage images={tradeCardImages(imageUrl)} alt={alt || "Card"} size="sm" className="gg-trd-thumb-img" />;
+}
+
+/** One stored picture as the sizes CardImage asks for (the same file when it isn't a Scryfall picture). */
+function tradeCardImages(imageUrl: string): CardImageUris {
+  return {
+    small: scryfallImageAtSize(imageUrl, "small") ?? imageUrl,
+    normal: scryfallImageAtSize(imageUrl, "normal") ?? imageUrl,
+    large: scryfallImageAtSize(imageUrl, "large") ?? imageUrl,
+    png: null,
+    artCrop: null,
+  };
 }
 
 /** TCGplayer's search for a card, to look up its TCG low (staff pick the printing there). */
@@ -44,7 +60,7 @@ export function OfferCardHead({
   const printing = printingLabel(card);
   return (
     <div className="gg-trd-card__head">
-      <CardThumb imageUrl={card.imageUrl} />
+      <CardThumb imageUrl={card.imageUrl} alt={card.cardName} />
       <div className="gg-trd-card__info">
         <p className="gg-trd-card__name">{card.cardName}</p>
         <p className="gg-trd-card__meta">

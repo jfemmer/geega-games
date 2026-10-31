@@ -3897,6 +3897,16 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-trd-card__head { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
 .gg-trd-thumb { width: 48px; height: 67px; object-fit: cover; border-radius: 4px; display: block; background: var(--gg-surface-3); }
 .gg-trd-thumb--none { display: block; }
+/* Trade card pictures use the shared CardImage (hover / tap to enlarge). */
+.gg-trd-card__head > .gg-trd-thumb-img { align-self: start; }
+.gg-trd-thumb-img .gg-cardimg__thumb { width: 48px; height: 67px; border-radius: 4px; }
+.gg-trd-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gg-text-soft); }
+.gg-trd-sort .gg-input { width: auto; padding: 6px 8px; font-size: 0.84rem; min-height: 36px; }
+.gg-trd-cards__group {
+  margin-top: 4px; padding-bottom: 2px; border-bottom: 1px solid var(--gg-line);
+  font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gg-text-soft);
+}
+.gg-trd-cards__group:first-child { margin-top: 0; }
 .gg-trd-card__info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gg-trd .gg-trd-card__info p { margin: 0; }
 .gg-trd-card__name { font-weight: 700; color: var(--gg-text); font-size: 0.95rem !important; }
@@ -4076,6 +4086,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 @media (max-width: 560px) {
   .gg-trd-card__head { grid-template-columns: 40px minmax(0, 1fr); }
   .gg-trd-thumb { width: 40px; height: 56px; }
+  .gg-trd-thumb-img .gg-cardimg__thumb { width: 40px; height: 56px; }
   .gg-trd-card__aside { grid-column: 2; align-items: flex-start; text-align: left; flex-direction: row; flex-wrap: wrap; gap: 4px 10px; }
   .gg-trd-card__approved { align-items: flex-start; }
   .gg-trd-card__notelist { padding-left: 0; }
