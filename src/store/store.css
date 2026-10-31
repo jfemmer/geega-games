@@ -3085,39 +3085,8 @@ html {
 .gg-card-imgwrap--foil .gg-card-img {
   z-index: 0;
 }
-.gg-card-foil-shimmer {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  border-radius: inherit;
-  mix-blend-mode: screen;
-  opacity: .62;
-  background:
-    linear-gradient(
-      112deg,
-      transparent 42%,
-      rgba(255, 255, 255, .6) 49%,
-      transparent 56%
-    ),
-    linear-gradient(
-      112deg,
-      transparent 0%,
-      rgba(255, 74, 190, .26) 16%,
-      rgba(88, 220, 255, .36) 31%,
-      rgba(255, 247, 145, .40) 46%,
-      rgba(180, 92, 255, .37) 61%,
-      rgba(72, 235, 188, .28) 76%,
-      transparent 91%
-    );
-  /* 3× the card, and positions kept within 0–100%, so the gradient image
-     always covers the whole card while it slides. Anything else lets an edge
-     of the image cross the card, which shows as a hard seam in the sweep. */
-  background-size: 300% 300%, 300% 300%;
-  background-position: 0% 0%, 10% 10%;
-  filter: saturate(1.15);
-  animation: gg-foil-shimmer 4.2s ease-in-out infinite;
-}
+/* The shimmer layer itself (.gg-card-foil-shimmer) is shared with the admin:
+   src/foilShimmer.css. */
 .gg-card-imgwrap--foil::after {
   content: "";
   position: absolute;
@@ -3140,34 +3109,13 @@ html {
   opacity: .6;
 }
 
-@keyframes gg-foil-shimmer {
-  0%,
-  100% {
-    background-position: 0% 0%, 10% 10%;
-  }
-  50% {
-    background-position: 100% 100%, 90% 90%;
-  }
-}
-
 /* No hover on touch screens, so the resting state carries a little more. */
 @media (hover: none), (pointer: coarse) {
-  .gg-card-foil-shimmer {
-    opacity: .72;
-    animation-duration: 3.6s;
-  }
   .gg-card-imgwrap--foil::after {
     opacity: .52;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .gg-card-foil-shimmer {
-    animation: none;
-    background-position: 50% 50%, 50% 50%;
-    opacity: .5;
-  }
-}
 
 
 /* ---- Deals & Specials ---- */

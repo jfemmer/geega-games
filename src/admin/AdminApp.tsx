@@ -28,6 +28,7 @@ import { StorewideSalePage } from "./pages/StorewideSalePage";
 import { VacationModePage } from "./pages/VacationModePage";
 import { YardSaleModePage } from "./pages/YardSaleModePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import "../foilShimmer.css";
 import "./admin.css";
 
 // The dashboard itself is only rendered once AdminAuthGate confirms a signed-in

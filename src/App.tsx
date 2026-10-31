@@ -1,4 +1,5 @@
 import "./App.css";
+import "./foilShimmer.css";
 import "./store/store.css";
 import "./store/brand-refresh.css";
 import Footer from "./Footer";

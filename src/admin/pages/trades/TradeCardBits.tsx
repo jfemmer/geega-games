@@ -5,6 +5,7 @@ import { scryfallImageAtSize } from "../../../store/lib/cardImages";
 import { formatCents } from "../../utils/format";
 import {
   CONDITION_NAMES,
+  FINISH_NAMES,
   eligibilityMessage,
   printingLabel,
   type StaffTradeOfferCard,
@@ -15,11 +16,27 @@ import {
 /**
  * A card's picture on a trade. Hover (or tap, on a touch screen) shows it
  * larger, through the admin's shared CardImage preview. A Scryfall picture is
- * shown at the right size for each (small thumbnail, large preview).
+ * shown at the right size for each (small thumbnail, large preview). With
+ * `foil`, the storefront's foil shimmer sweeps across it (src/foilShimmer.css).
  */
-export function CardThumb({ imageUrl, alt = "" }: { imageUrl: string | null; alt?: string }) {
-  if (!imageUrl) return <span className="gg-trd-thumb gg-trd-thumb--none" aria-hidden="true" />;
-  return <CardImage images={tradeCardImages(imageUrl)} alt={alt || "Card"} size="sm" className="gg-trd-thumb-img" />;
+export function CardThumb({ imageUrl, alt = "", foil = false }: { imageUrl: string | null; alt?: string; foil?: boolean }) {
+  if (!imageUrl) {
+    return <span className={`gg-trd-thumb gg-trd-thumb--none${foil ? " gg-foil-frame gg-trd-thumb--foil" : ""}`} aria-hidden="true">{foil && <span className="gg-card-foil-shimmer" />}</span>;
+  }
+  const image = <CardImage images={tradeCardImages(imageUrl)} alt={alt || "Card"} size="sm" className="gg-trd-thumb-img" />;
+  if (!foil) return image;
+  return (
+    <span className="gg-foil-frame gg-trd-thumb--foil">
+      {image}
+      <span className="gg-card-foil-shimmer" aria-hidden="true" />
+    </span>
+  );
+}
+
+/** "Foil" or "Etched foil", shimmering, for a card that isn't non-foil (nothing otherwise). */
+export function FoilTag({ finish }: { finish: string }) {
+  if (finish === "nonfoil") return null;
+  return <span className="gg-trd-foiltag">{FINISH_NAMES[finish] ?? finish}</span>;
 }
 
 /** One stored picture as the sizes CardImage asks for (the same file when it isn't a Scryfall picture). */
