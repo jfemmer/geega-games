@@ -11,6 +11,7 @@ import OrdersPausedBanner from "./OrdersPausedBanner";
 import { useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCartCount, useTradeCart } from "../lib/tradeCart";
 import { TRADE_CENTER_PATH } from "../lib/tradeCenter";
+import { siteLogoSrc } from "../lib/siteLogo";
 
 const SUGGEST_DEBOUNCE_MS = 200;
 
@@ -170,7 +171,7 @@ export default function Header() {
     <header className="gg-header" ref={headerRef}>
       <div className="gg-header-row">
         <Link to="/" aria-label="Geega Games home">
-          <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />
+          <img className="gg-logo" src={siteLogoSrc()} alt="Geega Games" width={600} height={480} />
         </Link>
 
         <div className="gg-header-search">

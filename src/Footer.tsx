@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { FOOTER_GROUPS, SITE } from "./siteConfig";
 import { Link } from "./store/lib/router";
+import { siteLogoSrc } from "./store/lib/siteLogo";
 
 /** Internal SPA routes get client-side navigation; anything else (#anchors,
  * external URLs) stays a plain anchor. */
@@ -17,7 +18,7 @@ export default function Footer() {
       <div className="footer-inner">
         <div className="footer-brand">
           <img
-            src="/logo.png"
+            src={siteLogoSrc()}
             alt="Geega Games"
             width={140}
             height={112}
