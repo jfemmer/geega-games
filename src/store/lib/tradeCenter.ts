@@ -1208,6 +1208,15 @@ export interface CustomerTradeSummary {
 }
 
 /** One of the customer's cards, as staff see it. */
+/** A line we already stock of the same printing and finish as a card we took (it would join it in that condition). */
+export interface StockedLine {
+  condition: CardConditionCode;
+  quantity: number;
+  priceCents: number | null;
+  /** On a deal: its price can't be changed from the trade. */
+  isDeal: boolean;
+}
+
 export interface StaffTradeOfferCard extends TradeOfferCard {
   internalNote: string | null;
   inspectionInternalNote: string | null;
@@ -1215,6 +1224,8 @@ export interface StaffTradeOfferCard extends TradeOfferCard {
   inspectedAt: string | null;
   stockOnHand: number | null;
   importedInventoryItemId: string | null;
+  /** For a card we took that isn't in inventory yet: the lines we already stock of it, by condition. Older servers don't send it. */
+  stockedLines?: StockedLine[];
 }
 
 export interface StaffTradeEvent {

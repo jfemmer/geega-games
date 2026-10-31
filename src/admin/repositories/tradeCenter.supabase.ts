@@ -368,8 +368,18 @@ export const tradeCenterRepository = {
     return post({ action: "markReturned", tradeId, carrier: input.carrier, trackingNumber: input.trackingNumber });
   },
 
-  importCard(offerCardId: string, priceCents: number, storageLocation: string) {
-    return post({ action: "importCard", offerCardId, priceCents, storageLocation });
+  /**
+   * A card we took, into inventory: at the condition chosen (the trade's when
+   * left out) and this price. Joining a line we already stock, that line's
+   * price only changes with updateLinePrice.
+   */
+  importCard(
+    offerCardId: string,
+    priceCents: number,
+    storageLocation: string,
+    options: { condition?: CardConditionCode; updateLinePrice?: boolean } = {},
+  ) {
+    return post({ action: "importCard", offerCardId, priceCents, storageLocation, ...options });
   },
 
   recordPayment(tradeId: string, note: string) {

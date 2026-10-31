@@ -28,6 +28,7 @@ import {
   type StaffTrade,
   type MeetupDraft,
   type MeetupDraftCard,
+  type StockedLine,
   type StaffTradeOfferCard,
   type StaffTradeSummary,
   type TradeAddress,
@@ -580,6 +581,50 @@ export async function loadWantedTraits(admin: Admin, bundle: TradeBundle): Promi
   return out;
 }
 
+/**
+ * For each card we took that isn't in inventory yet, the lines we already
+ * stock of the same printing and finish, in every condition: adding it in
+ * one of those conditions joins that line (trade_import_card, the same rule
+ * as admin_upsert_inventory: active, business-owned, plain, English). Best
+ * effort: a failed read just shows no matches.
+ */
+export async function loadStockedLines(admin: Admin, bundle: TradeBundle): Promise<Map<string, StockedLine[]>> {
+  const out = new Map<string, StockedLine[]>();
+  const waiting = bundle.offers.filter((o) => o.disposition === "accepted" && (o.final_quantity ?? 0) > 0);
+  if (waiting.length === 0) return out;
+  const ids = [...new Set(waiting.map((o) => o.scryfall_id).filter((v): v is string => Boolean(v)))];
+  const sets = [...new Set(waiting.filter((o) => !o.scryfall_id && o.set_code).map((o) => o.set_code as string))];
+  const base = () =>
+    admin
+      .from("inventory_items")
+      .select("scryfall_id, set_code, collector_number, condition, finish, quantity, price_cents, is_deal")
+      .eq("status", "active")
+      .eq("ownership", "business")
+      .eq("variant_type", "")
+      .eq("language", "en");
+  const [byId, bySet] = await Promise.all([
+    ids.length > 0 ? base().in("scryfall_id", ids) : Promise.resolve({ data: [], error: null }),
+    sets.length > 0 ? base().is("scryfall_id", null).in("set_code", sets) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (byId.error || bySet.error) {
+    console.error("[tradeCenter] stocked lines failed", byId.error?.message ?? bySet.error?.message);
+    return out;
+  }
+  const rows = [...(byId.data ?? []), ...(bySet.data ?? [])];
+  for (const o of waiting) {
+    const lines = rows
+      .filter((r) =>
+        r.finish === o.finish &&
+        (o.scryfall_id
+          ? r.scryfall_id === o.scryfall_id
+          : r.scryfall_id === null && r.set_code === (o.set_code ?? "") && r.collector_number === (o.collector_number ?? "")),
+      )
+      .map((r) => ({ condition: r.condition as CardConditionCode, quantity: r.quantity, priceCents: r.price_cents, isDeal: r.is_deal }));
+    out.set(o.id, lines);
+  }
+  return out;
+}
+
 /** Availability for a bundle's lines that are only requested (not held). */
 export async function bundleAvailability(admin: Admin, bundle: TradeBundle): Promise<Map<string, number>> {
   const requested = bundle.items.filter((i) => i.status === "requested" && i.inventory_item_id).map((i) => i.inventory_item_id as string);
@@ -939,6 +984,8 @@ function staffOfferView(row: TradeOfferRow): StaffTradeOfferCard {
 }
 
 export interface StaffExtras extends ViewExtras {
+  /** For cards we took that aren't in inventory yet: the lines we already stock of each, by offer card id. */
+  stockedLines?: Map<string, StockedLine[]>;
   standing?: CustomerStanding | null;
   extensions?: TradeExtensionRow[];
   consents?: TradeConsentRow[];
@@ -985,7 +1032,11 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
     userId: t.user_id,
     customerName: t.customer_name,
     customerEmail: t.customer_email,
-    offered: offers.map(staffOfferView),
+    offered: offers.map((row) => {
+      const view = staffOfferView(row);
+      const lines = extras.stockedLines?.get(row.id);
+      return lines ? { ...view, stockedLines: lines } : view;
+    }),
     events: events.map((e) => ({
       id: e.id,
       actorType: e.actor_type === "staff" || e.actor_type === "system" ? e.actor_type : "customer",

@@ -6800,9 +6800,11 @@ export type Database = {
       trade_import_card: {
         Args: {
           p_actor: string
+          p_condition?: string | null
           p_offer_card_id: string
           p_price_cents: number
           p_storage_location: string | null
+          p_update_line_price?: boolean
         }
         Returns: string
       }

@@ -35,6 +35,8 @@ create table public.inventory_items (
   variant_type text not null default '', language text not null default 'en', colors text[] not null default '{}',
   creature_types text[] not null default '{}', status public.inventory_status not null default 'active',
   original_price_cents integer, is_deal boolean not null default false,
+  -- Production's (20261028120000_consignment_foundation.sql): only business-owned stock is traded or joined.
+  ownership text not null default 'business',
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 create table public.inventory_reservations (
