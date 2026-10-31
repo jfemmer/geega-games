@@ -23,12 +23,18 @@ const MIGRATIONS = [
   "../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql",
   "../supabase/migrations/20261031030000_trade_meetup_draft.sql",
   "../supabase/migrations/20261031050000_trade_import_condition_price.sql",
+  "../supabase/migrations/20261031070000_trade_hold_from_sending.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
 type Row = Record<string, any>;
 
 let db: PGlite;
+/** Runs a migration again (it's safe to run twice), then every later one, so later definitions stay in force. */
+async function rerunFrom(index: number): Promise<void> {
+  expect(index).toBeGreaterThanOrEqual(0);
+  for (const sql of MIGRATIONS.slice(index)) await db.exec(sql);
+}
 const one = async (q: string, params?: unknown[]): Promise<Row> => (await db.query<Row>(q, params)).rows[0];
 const all = async (q: string, params?: unknown[]): Promise<Row[]> => (await db.query<Row>(q, params)).rows;
 async function errorOf(statement: string, params?: unknown[]): Promise<{ code?: string; message?: string } | null> {
@@ -47,6 +53,7 @@ const users = {
   max: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   ned: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   oz: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  pip: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
 };
 let ring: string;
 let bolt: string;
@@ -127,7 +134,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     expect(s.local_cash_rate_percent).toBe(s.cash_rate_percent);
     // Running the migration again leaves changed values alone.
     await db.exec(`update public.trade_settings set local_credit_rate_percent = 77`);
-    await db.exec(MIGRATIONS[3]);
+    await rerunFrom(3);
     expect((await one(`select local_credit_rate_percent from public.trade_settings`)).local_credit_rate_percent).toBe(77);
     expect((await errorOf(`update public.trade_settings set local_credit_rate_percent = 0`))?.code).toBe("23514");
     expect((await errorOf(`update public.trade_settings set local_min_trade_value_cents = -1`))?.code).toBe("23514");
@@ -266,15 +273,33 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     await db.exec(`update public.trade_settings set ship_to_line1 = '1 Main St'`);
   });
 
-  it("holds nothing when one of our cards sold before approval", async () => {
+  it("won't send a trade if one of our cards sold while it was a draft, and holds nothing", async () => {
     const solo = await inv("Mana Crypt", 1, 9000);
-    const id = await start(users.ned, [[solo, 1], [bolt, 1]], "local");
-    await db.query(`select public.trade_submit($1, $2, null)`, [id, users.ned]);
+    const extra = await inv("Arcane Signet", 2, 4000);
+    const id = await start(users.pip, [[solo, 1], [extra, 1]], "local");
+    // A draft holds nothing, so the Crypt can still sell.
+    expect(await held(id)).toBe(0);
+    await db.query(`update public.inventory_items set quantity = 0 where id = $1`, [solo]);
+    const refused = await errorOf(`select public.trade_submit($1, $2, null)`, [id, users.pip]);
+    expect(refused?.code).toBe("GT004");
+    expect(refused?.message).toMatch(/Mana Crypt isn't available in that quantity any more\. Change our cards on your trade and send it again\./);
+    expect((await tradeRow(id)).status).toBe("awaiting_trade_list");
+    // All or none: the Signet isn't held either.
+    expect(await held(id)).toBe(0);
+
+    // A trade sent before holds started at sending (its lines only requested): approving it holds everything, or nothing if one sold.
+    await db.query(`update public.inventory_items set quantity = 1 where id = $1`, [solo]);
+    await db.query(`select public.trade_submit($1, $2, null)`, [id, users.pip]);
+    await db.query(`update public.inventory_reservations set status = 'released' where trade_request_id = $1`, [id]);
+    await db.query(`update public.trade_request_items set status = 'requested', reservation_id = null where trade_request_id = $1`, [id]);
     await db.query(`update public.inventory_items set quantity = 0 where id = $1`, [solo]);
     expect((await errorOf(`select public.trade_approve($1, null, 0, null, null, null, 'jacob')`, [id]))?.code).toBe("GT004");
     expect((await tradeRow(id)).status).toBe("pending_review");
     expect(await held(id)).toBe(0);
-    await db.query(`select * from public.trade_close($1, 'canceled', array['pending_review'], null, null, 'customer', null, 'x')`, [id]);
+    await db.query(`update public.inventory_items set quantity = 1 where id = $1`, [solo]);
+    await approve(id);
+    expect(await held(id)).toBe(2);
+    await db.query(`select * from public.trade_close($1, 'canceled', array['awaiting_shipment'], null, null, 'customer', null, 'x')`, [id]);
   });
 
   it("takes cards the customer changed their mind on off a held trade: each goes straight back on sale", async () => {
@@ -488,7 +513,9 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     const old = await start(users.max, [[crypt, 2]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [old, users.max]);
     await db.query(`update public.trade_requests set status = 'awaiting_confirmation', confirm_by = now() + interval '1 day' where id = $1`, [old]);
-    await db.query(`update public.trade_request_items set status = 'requested' where trade_request_id = $1`, [old]);
+    // (Under the old flow nothing was held before confirming.)
+    await db.query(`update public.inventory_reservations set status = 'released' where trade_request_id = $1`, [old]);
+    await db.query(`update public.trade_request_items set status = 'requested', reservation_id = null where trade_request_id = $1`, [old]);
     expect((await confirm(old, users.max)).result).toBe("reserved");
     await db.query(`update public.trade_requests set ship_by = now() - interval '1 minute' where id = $1`, [old]);
 
@@ -507,7 +534,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
 
     // The update clears a meetup deadline an older held local trade still carries.
     await db.query(`update public.trade_requests set ship_by = now() + interval '1 day', ship_by_original = now() + interval '1 day' where id = $1`, [old]);
-    await db.exec(MIGRATIONS.find((sql) => sql.includes("holds our cards from approval until")) as string);
+    await rerunFrom(MIGRATIONS.findIndex((sql) => sql.includes("holds our cards from approval until")));
     expect(await tradeRow(old)).toMatchObject({ ship_by: null, ship_by_original: null });
 
     // Released early by staff, then brought back: held again, still with no deadline.

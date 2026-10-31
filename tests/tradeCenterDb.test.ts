@@ -21,6 +21,7 @@ const FOLLOW_UPS = [
   readFileSync(new URL("../supabase/migrations/20261028030000_trade_meet_spot.sql", import.meta.url), "utf8"),
   readFileSync(new URL("../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql", import.meta.url), "utf8"),
   readFileSync(new URL("../supabase/migrations/20261031050000_trade_import_condition_price.sql", import.meta.url), "utf8"),
+  readFileSync(new URL("../supabase/migrations/20261031070000_trade_hold_from_sending.sql", import.meta.url), "utf8"),
 ];
 
 /** A row: whatever the query selected. */
@@ -38,6 +39,7 @@ async function expectError(statement: string, label: string, code?: string, para
   }
   expect.soft(error, `${label}: it went through`).not.toBeNull();
   if (error && code) expect.soft(error.code, `${label} (${error.message?.split("\n")[0]})`).toBe(code);
+  return error;
 }
 const one = async (q: string, params?: unknown[]): Promise<Row> => (await db.query<Row>(q, params)).rows[0];
 const all = async (q: string, params?: unknown[]): Promise<Row[]> => (await db.query<Row>(q, params)).rows;
@@ -54,6 +56,7 @@ const users = {
   eve: "55555555-5555-4555-8555-555555555556",
   fay: "66666666-6666-4666-8666-666666666667",
   gus: "77777777-7777-4777-8777-777777777778",
+  hal: "88888888-8888-4888-8888-888888888889",
 };
 const inv = async (name: string, qty: number, price: number, extra = ""): Promise<string> =>
   (
@@ -210,43 +213,72 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check((await tradeRow(t1)).status === "offer_expired" && (await tradeRow(t1)).customer_fault === null, "as offer_expired, with nothing counted against Ann");
   });
 
-  it("review and approval reserve nothing", async () => {
+  it("sending a trade holds our cards; review and approval keep them held", async () => {
     await db.exec(`update public.trade_settings set ship_to_name = 'Geega Games', ship_to_line1 = '1 Test St', ship_to_city = 'Ballwin', ship_to_state = 'MO', ship_to_postal_code = '63011'`);
     cat1 = await inv("Mana Crypt", 2, 15000);
     t3 = (await one(`select public.trade_start('${users.cat}', '${items([cat1, 2])}', 'Cat', 'cat@example.com') as id`)).id;
+    check((await holds(t3)) === 0 && (await free(cat1)) === 2, "a draft holds nothing");
     await one(`select public.trade_save_offer($1, $2, $3::jsonb) as v`, [t3, users.cat, JSON.stringify([card()])]);
     await db.query(`select public.trade_submit($1, $2, 'Pack carefully')`, [t3, users.cat]);
     const t3a = await tradeRow(t3);
-    check(t3a.status === "pending_review" && t3a.list_due_at === null && (await holds(t3)) === 0, "sent for review: no deadline, still nothing held");
+    check(t3a.status === "pending_review" && t3a.list_due_at === null, "sent for review, with no deadline");
+    check((await holds(t3)) === 2 && (await free(cat1)) === 0, "sending it holds both Mana Crypts: no one else can buy them");
+    const lines3 = await all(`select status, reservation_id from public.trade_request_items where trade_request_id = $1`, [t3]);
+    check(lines3.every((l) => l.status === "reserved" && l.reservation_id !== null), "each line is held");
+    const sent = await one(`select detail from public.trade_events where trade_request_id = $1 and event = 'submitted'`, [t3]);
+    check(sent.detail.held === true && sent.detail.lines[0].quantity === 2, "the hold is in the trade's history");
+    await expectError(`select public.trade_start('${users.bob}', '${items([cat1, 1])}', 'Bob', 'bob@example.com')`, "another customer can't put a held card on their trade", "GT004");
     const c3 = (await one(`select id from public.trade_offer_cards where trade_request_id = $1`, [t3])).id;
     await db.query(`select public.trade_review_cards($1, $2::jsonb, null, 'jacob')`, [t3, JSON.stringify([{ id: c3, review_status: "approved", approved_quantity: 1, approved_unit_cents: 7000 }])]);
     await expectError(`select public.trade_approve('${t3}', now() - interval '1 hour', 0, null, null, null, 'jacob')`, "a confirmation deadline in the past is refused", "GT010");
     await expectError(`select public.trade_approve('${t3}', now() + interval '2 days', 25, 'threshold', null, null, 'jacob')`, "a deposit under 50 cents is refused", "GT010");
     await expectError(`select public.trade_approve('${t3}', now() + interval '2 days', 3000, null, null, null, 'jacob')`, "a deposit needs a reason", "GT010");
-    // Someone checks out one Mana Crypt meanwhile: only 1 is left.
-    await db.exec(`insert into public.inventory_reservations (inventory_item_id, customer_id, quantity) values ('${cat1}', gen_random_uuid(), 1)`);
-    await expectError(`select public.trade_approve('${t3}', now() + interval '2 days', 3000, 'threshold', null, null, 'jacob')`, "approving is refused once a card isn't available in that quantity", "GT004");
-    await db.exec(`update public.inventory_reservations set status = 'released' where inventory_item_id = '${cat1}' and customer_id is not null`);
     const confirmBy3 = Date.now() + 2 * DAY;
     const approvedValue = (await one(`select public.trade_approve($1, $2::timestamptz, 3000, 'threshold', 'Near mint only', null, 'jacob') as v`, [t3, iso(confirmBy3)])).v;
     const t3b = await tradeRow(t3);
     check(approvedValue === 7000 && t3b.status === "awaiting_confirmation", "approved: waiting for the customer to confirm");
     check(Math.abs(new Date(t3b.confirm_by) - confirmBy3) < 1000 && t3b.confirm_by_original !== null, "the confirmation deadline the server worked out is kept");
     check(t3b.deposit_cents === 3000 && t3b.deposit_status === "payment_pending" && t3b.deposit_reason === "threshold", "a $30 deposit is due on $300 of cards");
-    check((await holds(t3)) === 0 && (await free(cat1)) === 2, "approving reserves nothing: both Mana Crypts are still for sale");
+    check((await holds(t3)) === 2 && (await free(cat1)) === 0, "still held while the customer decides, and never held twice");
+    // Not confirmed in time: the approval closes and both go back on sale.
+    await db.exec(`update public.trade_requests set confirm_by = now() - interval '1 minute' where id = '${t3}'`);
+    const lapsed = await expire();
+    check(lapsed.some((r) => r.expired_trade_id === t3 && r.expired_stage === "confirmation"), "an unconfirmed approval closes");
+    check((await holds(t3)) === 0 && (await free(cat1)) === 2, "and the hold ends with it");
   });
 
-  it("a card that sells before the customer confirms sends the trade back to them", async () => {
-    await db.exec(`insert into public.inventory_reservations (inventory_item_id, customer_id, quantity) values ('${cat1}', gen_random_uuid(), 1)`);
-    const shortNow = (await one(`select public.trade_short_lines($1) as s`, [t3])).s;
+  it("a card can't sell from under a sent trade; one sent before holds started still goes back to its customer", async () => {
+    // A trade the customer is changing (sent back for changes) stays held: cards added are held, cards taken off go back on sale.
+    const ink = await inv("Mystic Remora", 3, 500);
+    const mox = await inv("Chrome Mox", 2, 6000);
+    const tR = await approvedTrade(users.hal, [[ink, 1]]);
+    await db.query(`select public.trade_request_revision($1, 'Add a second card?', null, 'jacob')`, [tR]);
+    check((await tradeRow(tR)).status === "revision_requested" && (await holds(tR)) === 1, "sent back for changes: still held");
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['revision_requested'], 'customer', $3, 'hal')`, [tR, items([ink, 1], [mox, 2]), users.hal]);
+    check((await holds(tR)) === 3 && (await free(mox)) === 0, "a card the customer adds while making changes is held at once");
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['revision_requested'], 'customer', $3, 'hal')`, [tR, items([mox, 2]), users.hal]);
+    check((await holds(tR)) === 2 && (await free(ink)) === 3, "a card taken off goes straight back on sale");
+    await db.query(`select public.trade_submit($1, $2, null)`, [tR, users.hal]);
+    check((await tradeRow(tR)).status === "pending_review" && (await holds(tR)) === 2, "sent again: the same holds, nothing doubled");
+    // Rejecting it frees everything.
+    await close(tR, "rejected", ["pending_review"], null, "staff");
+    check((await holds(tR)) === 0 && (await free(mox)) === 2, "rejected: both Chrome Moxen are for sale again");
+
+    // A trade approved before holds started at sending (its line only requested) still goes back to its customer if the card sells.
+    const crypt = await inv("Grim Monolith", 2, 9000);
+    const tOld = await approvedTrade(users.cat, [[crypt, 2]]);
+    await db.exec(`update public.inventory_reservations set status = 'released' where trade_request_id = '${tOld}'`);
+    await db.exec(`update public.trade_request_items set status = 'requested', reservation_id = null where trade_request_id = '${tOld}'`);
+    await db.exec(`insert into public.inventory_reservations (inventory_item_id, customer_id, quantity) values ('${crypt}', gen_random_uuid(), 1)`);
+    const shortNow = (await one(`select public.trade_short_lines($1) as s`, [tOld])).s;
     check(shortNow.length === 1 && shortNow[0].wanted === 2 && shortNow[0].available === 1, "the trade knows 1 of the 2 is left");
-    const marked = (await one(`select public.trade_mark_unavailable($1) as s`, [t3])).s;
-    const t3c = await tradeRow(t3);
-    check(marked && t3c.status === "revision_requested" && t3c.list_due_at, "it goes back to the customer to update their selection");
-    check(t3c.deposit_status === "not_required" && t3c.deposit_payment_intent === null, "and no deposit is due (nothing was charged)");
-    const sysMsg = await one(`select author_type, body from public.trade_messages where trade_request_id = $1 order by created_at desc limit 1`, [t3]);
+    const marked = (await one(`select public.trade_mark_unavailable($1) as s`, [tOld])).s;
+    const tOldC = await tradeRow(tOld);
+    check(marked && tOldC.status === "revision_requested" && tOldC.list_due_at, "it goes back to the customer to update their selection");
+    const sysMsg = await one(`select author_type, body from public.trade_messages where trade_request_id = $1 order by created_at desc limit 1`, [tOld]);
     check(sysMsg.author_type === "system" && /1 left of the 2 you picked/.test(sysMsg.body), "with a message saying which card and how many are left");
-    check((await one(`select public.trade_mark_unavailable($1) as s`, [t3])).s === null, "marking it again changes nothing");
+    check((await one(`select public.trade_mark_unavailable($1) as s`, [tOld])).s === null, "marking it again changes nothing");
+    await close(tOld, "canceled", ["revision_requested"]);
   });
 
   it("confirming with no deposit reserves at once and keeps what was agreed", async () => {
@@ -282,17 +314,17 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check((await tradeRow(t5)).status === "offer_expired" && (await tradeRow(t5)).customer_fault === null, "as offer_expired, not counted against Eve");
   });
 
-  it("with a deposit, nothing is held until it's paid (a short or stray payment is refunded)", async () => {
+  it("with a deposit, our cards stay held while it's paid (a short or stray payment is refunded)", async () => {
     const fay1 = await inv("Jeweled Lotus", 1, 32000);
     t6 = await approvedTrade(users.fay, [[fay1, 1]], { deposit: 2000 });
     await expectError(`select * from public.trade_confirm('${t6}', '${users.fay}', 1, 'The terms', 3, now() + interval '3 days', null, null, null)`, "confirming a trade with a deposit needs its payment", "GT010");
     const c6 = await confirm(t6, users.fay, { pi: "pi_fay_1" });
     const t6a = await tradeRow(t6);
     check(c6.result === "awaiting_deposit" && t6a.status === "awaiting_deposit" && t6a.deposit_payment_intent === "pi_fay_1", "waiting for the deposit payment");
-    check((await holds(t6)) === 0 && (await free(fay1)) === 1, "the Lotus is still for sale until the deposit is paid");
+    check((await holds(t6)) === 1 && (await free(fay1)) === 0, "the Lotus has been held since the trade was sent");
     check((await reserve(t6, "pi_someone_else", 2000)).result === "other_payment", "a payment that isn't this trade's deposit isn't used for it");
     check((await reserve(t6, "pi_fay_1", 1500)).result === "refund", "a short payment reserves nothing and is refunded");
-    check((await tradeRow(t6)).deposit_status === "refund_pending" && (await holds(t6)) === 0, "(the refund is due; nothing held)");
+    check((await tradeRow(t6)).deposit_status === "refund_pending" && (await holds(t6)) === 1, "(the refund is due; the Lotus is still held for the trade)");
     // Start again properly.
     await db.exec(`update public.trade_requests set deposit_status = 'payment_pending', deposit_paid_at = null, deposit_paid_cents = null, deposit_refund_requested_at = null where id = '${t6}'`);
     const r6 = await reserve(t6, "pi_fay_1", 2000);
@@ -303,21 +335,25 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check((await one(`select count(*)::int as n from public.inventory_reservations where trade_request_id = $1`, [t6])).n === 1, "and never holds it twice");
   });
 
-  it("two customers paying for the last copy: one reservation, the other refunded", async () => {
+  it("two customers wanting the last copy: the first to send holds it, the second is told it isn't available", async () => {
     const gus1 = await inv("Mox Opal", 1, 9000);
-    const tA = await approvedTrade(users.gus, [[gus1, 1]], { deposit: 500 });
-    const tB = await approvedTrade(users.bob, [[gus1, 1]], { deposit: 500 });
-    await confirm(tA, users.gus, { pi: "pi_a" });
-    await confirm(tB, users.bob, { pi: "pi_b" });
-    check((await reserve(tA, "pi_a", 500)).result === "reserved", "the first payment reserves the Mox");
-    const rB = await reserve(tB, "pi_b", 500);
-    const tBr = await tradeRow(tB);
-    check(rB.result === "conflict" && rB.short_lines[0].available === 0, "the second can't: nothing is held for it");
-    check(tBr.status === "revision_requested" && tBr.deposit_status === "refund_pending" && tBr.deposit_paid_cents === 500, "its deposit is to be refunded and the trade goes back to the customer");
-    check((await holds(tB)) === 0 && (await holds(tA)) === 1, "only one reservation exists for the one copy");
-    const conflictMsg = await one(`select body from public.trade_messages where trade_request_id = $1 order by created_at desc limit 1`, [tB]);
-    check(/refunded in full/.test(conflictMsg.body), "Bob is told his deposit is being refunded in full");
-    await expectError(`select public.trade_approve('${tB}', now() + interval '2 days', 0, null, null, null, 'jacob')`, "it can't be approved again until that refund is settled", "GT009");
+    // Both can pick it while their trades are drafts.
+    const tA = (await one(`select public.trade_start($1, $2::jsonb, 'Gus', 'gus@x.com') as id`, [users.gus, items([gus1, 1])])).id;
+    const tB = (await one(`select public.trade_start($1, $2::jsonb, 'Bob', 'bob@x.com') as id`, [users.bob, items([gus1, 1])])).id;
+    for (const [id, user] of [[tA, users.gus], [tB, users.bob]]) {
+      await one(`select public.trade_save_offer($1, $2, $3::jsonb) as v`, [id, user, JSON.stringify([card()])]);
+    }
+    await db.query(`select public.trade_submit($1, $2, null)`, [tA, users.gus]);
+    check((await holds(tA)) === 1 && (await free(gus1)) === 0, "Gus sent his first: the Mox is his");
+    const refused = await expectError(`select public.trade_submit('${tB}', '${users.bob}', null)`, "Bob's can't be sent with it", "GT004");
+    check(/Mox Opal isn't available in that quantity any more/.test(refused?.message ?? ""), "he's told which card, and to change his trade");
+    check((await tradeRow(tB)).status === "awaiting_trade_list" && (await holds(tB)) === 0, "his trade stays a draft, holding nothing");
+    // Gus cancels during review: free, and the Mox can go to Bob.
+    const g = await close(tA, "canceled", ["pending_review"]);
+    check(g.closed && (await tradeRow(tA)).customer_fault === null, "canceling during review costs Gus nothing");
+    await db.query(`select public.trade_submit($1, $2, null)`, [tB, users.bob]);
+    check((await holds(tB)) === 1, "now Bob's trade holds it");
+    await close(tB, "canceled", ["pending_review"]);
   });
 
   it("a deposit paid after the trade closed is refunded, nothing reserved", async () => {
