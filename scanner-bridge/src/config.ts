@@ -95,6 +95,9 @@ export interface BridgeConfig {
   /** Resolution for "Scan now". 300 dpi is the fi-8170's full speed and all
    * identification needs; condition-grading sessions default to 600. */
   scanDpi: number;
+  /** Resolution of an Inventory scan from "Scan now": SCAN_DPI, or 300.
+   * Scans that grade condition always use 600 (scanKind.ts). */
+  inventoryScanDpi: number;
   /** The on-PC card recognizer (scanner-bridge/src/recognizer). */
   recognizer: RecognizerRuntimeConfig;
 }
@@ -185,6 +188,7 @@ export function loadConfig(): BridgeConfig {
     statusPort: optionalInt("STATUS_PORT", 8787),
     sessionStateFile: path.join(watchFolder, ".geega-session-id"),
     scanDpi,
+    inventoryScanDpi: parseScanDpi(process.env.SCAN_DPI, "card_matching"),
     recognizer: {
       enabled: parseRecognizerSwitch(process.env.RECOGNIZER),
       dataDir: path.resolve(optional("DATA_DIR", defaultDataDir())),

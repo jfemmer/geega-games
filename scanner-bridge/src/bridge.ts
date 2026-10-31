@@ -85,7 +85,7 @@ export async function startBridge(config: BridgeConfig, deps: BridgeDeps = {}): 
   const watch = deps.startWatcher ?? startWatcher;
   const retryDelay = deps.signInRetryDelayMs ?? signInRetryDelayMs;
 
-  const status = createStatus(config.watchFolder, config.scanDpi);
+  const status = createStatus(config.watchFolder, config.scanDpi, config.inventoryScanDpi);
   status.recognizer = createRecognizerStatus(config.recognizer.enabled);
 
   let stopped = false;
@@ -108,6 +108,8 @@ export async function startBridge(config: BridgeConfig, deps: BridgeDeps = {}): 
     duplex: config.duplex,
     watcherControl: null,
     scanDpi: config.scanDpi,
+    scanMode: config.scanMode,
+    inventoryScanDpi: config.inventoryScanDpi,
     checkForUpdate: deps.bridgeDir ? pendingUpdateChecker(deps.bridgeDir) : undefined,
     recognizer: config.recognizer.enabled
       ? {

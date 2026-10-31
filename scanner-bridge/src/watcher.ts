@@ -9,6 +9,7 @@ import { ensureSession, uploadBatch } from "./uploader.js";
 import type { BridgeStatus } from "./statusServer.js";
 import type { CardRecognizer } from "./recognizer/recognizer.js";
 import type { BatchFinish } from "./recognizer/types.js";
+import { isScanNowFile, SCAN_KIND_NAME, SCAN_KINDS, scanKindOfFile, scanSettingsFor, type ScanKind } from "./scanKind.js";
 
 const IMAGE_EXTENSIONS = new Set([".tif", ".tiff", ".jpg", ".jpeg", ".png"]);
 const BATCH_RETRY_DELAY_MS = 30_000;
@@ -111,22 +112,49 @@ export function startWatcher(
     status.state = "uploading";
 
     try {
+      // Batches of different kinds can land close together (a second
+      // "Scan now" before the first batch's quiet period ends, or a
+      // PaperStream drop). They pair and file differently, so each kind —
+      // and "Scan now" pages apart from PaperStream's — goes through on its own.
+      let allOk = true;
+      for (const kind of SCAN_KINDS) {
+        for (const scanNow of [true, false]) {
+          const group = files.filter((f) => scanKindOfFile(f, config.scanMode) === kind && isScanNowFile(f) === scanNow);
+          if (group.length > 0 && !(await processGroup(kind, scanNow, group))) allOk = false;
+        }
+      }
+      if (allOk) status.lastError = null;
+    } finally {
+      status.state = "watching";
+      processing = false;
+    }
+  }
+
+  /** Uploads one kind's files into that kind's session. False when any of it must be retried. */
+  async function processGroup(kind: ScanKind, scanNow: boolean, files: string[]): Promise<boolean> {
+    try {
       const byName = new Map(files.map((f) => [path.basename(f), f]));
       const sortedNames = sortScannedFileNames(Array.from(byName.keys()));
       const sortedPaths = sortedNames.map((n) => byName.get(n)!);
-      const pairs = pairScannedFiles(sortedPaths, config.duplex);
+      // "Scan now" pages were scanned the way their kind says; PaperStream's
+      // are paired by the bridge's own setting, at a resolution only the file knows.
+      const scan = scanNow ? scanSettingsFor(kind, config) : { duplex: config.duplex, dpi: null };
+      const pairs = pairScannedFiles(sortedPaths, scan.duplex);
       // Cards, not files — with both sides scanned that's half the files.
       status.lastBatchSize = pairs.length;
 
       console.log(
-        `[geega-scanner-bridge] Processing ${files.length} file(s) as ${pairs.length} card(s)…`,
+        `[geega-scanner-bridge] Processing ${files.length} file(s) as ${pairs.length} card(s)` +
+          `${scanNow ? ` (${SCAN_KIND_NAME[kind]})` : ""}…`,
       );
 
-      const sessionId = await ensureSession(config, api, supabase);
+      const sessionId = await ensureSession(config, api, supabase, kind);
+      status.sessionsByKind[kind] = sessionId;
       status.currentSessionId = sessionId;
       const recognizer = getRecognizer();
       const result = await uploadBatch(api, supabase, sessionId, pairs, {
         recognizer,
+        scanDpi: scan.dpi,
         finishFor: (pair) => {
           const file = pair.front ?? pair.back;
           return file ? (finishByFile.get(file) ?? status.batchFinish) : status.batchFinish;
@@ -150,6 +178,17 @@ export function startWatcher(
         }
       }
 
+      status.totalCardsCreated += result.cardsCreated;
+      status.totalCardsRecognized += result.cardsRecognized;
+      status.totalCardsRecognizedOnPc += result.cardsRecognizedOnPc;
+      status.totalRecognitionFailures += result.cardsFailedRecognition;
+      status.lastBatchAt = new Date().toISOString();
+      console.log(
+        `[geega-scanner-bridge] Batch done: ${result.cardsCreated} card(s) created, ` +
+          `${result.cardsRecognized} recognized (${result.cardsRecognizedOnPc} on this PC), ` +
+          `${result.cardsFailedRecognition} recognition failures.`,
+      );
+
       if (result.retryLater.length > 0) {
         // Part of the batch never reached the server (connection dropped
         // mid-way). The cards before that point are in the session; only
@@ -159,23 +198,10 @@ export function startWatcher(
         console.error(
           `[geega-scanner-bridge] Batch interrupted (${result.retryReason}); retrying ${result.retryLater.length} file(s) in ${BATCH_RETRY_DELAY_MS / 1000}s.`,
         );
-        if (retryTimer) clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => {
-          void processBatch();
-        }, BATCH_RETRY_DELAY_MS);
+        armRetry();
+        return false;
       }
-
-      status.totalCardsCreated += result.cardsCreated;
-      status.totalCardsRecognized += result.cardsRecognized;
-      status.totalCardsRecognizedOnPc += result.cardsRecognizedOnPc;
-      status.totalRecognitionFailures += result.cardsFailedRecognition;
-      if (result.retryLater.length === 0) status.lastError = null;
-      status.lastBatchAt = new Date().toISOString();
-      console.log(
-        `[geega-scanner-bridge] Batch done: ${result.cardsCreated} card(s) created, ` +
-          `${result.cardsRecognized} recognized (${result.cardsRecognizedOnPc} on this PC), ` +
-          `${result.cardsFailedRecognition} recognition failures.`,
-      );
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       status.lastError = message;
@@ -187,14 +213,16 @@ export function startWatcher(
       // disk, so retrying requires explicitly re-arming the timer here —
       // just re-adding to `pending` is not enough on its own.
       for (const f of files) pending.add(f);
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => {
-        void processBatch();
-      }, BATCH_RETRY_DELAY_MS);
-    } finally {
-      status.state = "watching";
-      processing = false;
+      armRetry();
+      return false;
     }
+  }
+
+  function armRetry() {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      void processBatch();
+    }, BATCH_RETRY_DELAY_MS);
   }
 
   watcher.on("add", (filePath) => {

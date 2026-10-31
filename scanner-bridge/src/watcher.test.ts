@@ -78,6 +78,7 @@ function testConfig(dir: string, overrides: Partial<BridgeConfig> = {}): BridgeC
     statusPort: 0,
     sessionStateFile: path.join(dir, ".geega-session-id"),
     scanDpi: 300,
+    inventoryScanDpi: 300,
     recognizer: {
       enabled: false,
       dataDir: path.join(dir, "data"),
@@ -187,6 +188,103 @@ describe("startWatcher — straggler-file races", () => {
       expect(allFiles.some((f) => f.includes("card2.tiff"))).toBe(true);
       // The Scanner panel's "Last batch" counts cards, not scanned sides.
       expect(status.lastBatchSize).toBe(pairs.length);
+    },
+    20_000,
+  );
+});
+
+describe("startWatcher — scan types", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "geega-watcher-kind-test-"));
+    mkdirSync(path.join(dir, "_processed"), { recursive: true });
+    mkdirSync(path.join(dir, "_failed"), { recursive: true });
+    mockEnsureSession.mockReset();
+    mockUploadBatch.mockReset();
+    mockEnsureSession.mockImplementation(async (_c, _a, _s, kind) => `${kind}-session`);
+    mockUploadBatch.mockResolvedValue(emptyBatchResult());
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it(
+    "never mixes them: each type is paired its own way and goes into its own session",
+    async () => {
+      // The bridge's own SCAN_MODE is the full scan (PaperStream files pair as front/back).
+      const config = testConfig(dir, { scanMode: "both", duplex: true, batchQuietMs: 1500 });
+      const status = createStatus(dir);
+      const control = startWatcher(config, fakeApi, fakeSupabase, status);
+
+      control.suppressAutoProcess();
+      writeFileSync(path.join(dir, "geega-inventory_100_0001.jpg"), "i1");
+      writeFileSync(path.join(dir, "geega-inventory_100_0002.jpg"), "i2");
+      writeFileSync(path.join(dir, "geega-condition_200_0001.jpg"), "c1-front");
+      writeFileSync(path.join(dir, "geega-condition_200_0002.jpg"), "c1-back");
+      writeFileSync(path.join(dir, "geega-condition-inventory_300_0001.jpg"), "b1-front");
+      writeFileSync(path.join(dir, "geega-condition-inventory_300_0002.jpg"), "b1-back");
+      writeFileSync(path.join(dir, "card_00001.tif"), "p1-front");
+      writeFileSync(path.join(dir, "card_00002.tif"), "p1-back");
+      await new Promise((r) => setTimeout(r, 1600));
+      control.resumeAndProcessNow();
+
+      await vi.waitFor(() => expect(mockUploadBatch).toHaveBeenCalledTimes(4), { timeout: 8000 });
+
+      const batches = mockUploadBatch.mock.calls.map((c) => ({ session: c[2], pairs: c[3] as PairedCard[], dpi: c[4]?.scanDpi }));
+      const find = (session: string, name: string) =>
+        batches.find((b) => b.session === session && b.pairs.some((p) => p.front?.includes(name)))!;
+
+      // Inventory: two front-only cards, at 300 dpi.
+      const inventory = find("card_matching-session", "geega-inventory_");
+      expect(inventory.pairs).toHaveLength(2);
+      expect(inventory.pairs.every((p) => p.back === null)).toBe(true);
+      expect(inventory.dpi).toBe(300);
+      // Condition and the full scan: one card each, front and back paired, at 600 dpi.
+      const condition = find("condition-session", "geega-condition_");
+      expect(condition.pairs).toEqual([expect.objectContaining({ back: expect.stringContaining("geega-condition_200_0002.jpg") })]);
+      expect(condition.dpi).toBe(600);
+      const full = find("both-session", "geega-condition-inventory_");
+      expect(full.pairs).toHaveLength(1);
+      expect(full.dpi).toBe(600);
+      // PaperStream's pages: the bridge's own mode, paired by its own setting, resolution left to the file.
+      const paperstream = find("both-session", "card_00001.tif");
+      expect(paperstream.pairs).toEqual([expect.objectContaining({ back: expect.stringContaining("card_00002.tif") })]);
+      expect(paperstream.dpi).toBeNull();
+
+      expect(status.sessionsByKind).toEqual({
+        card_matching: "card_matching-session",
+        condition: "condition-session",
+        both: "both-session",
+      });
+    },
+    20_000,
+  );
+
+  it(
+    "retries only the type that failed",
+    async () => {
+      const config = testConfig(dir, { batchQuietMs: 1500 });
+      mockEnsureSession.mockImplementation(async (_c, _a, _s, kind) => {
+        if (kind === "condition") throw new Error("server busy");
+        return `${kind}-session`;
+      });
+      const status = createStatus(dir);
+      const control = startWatcher(config, fakeApi, fakeSupabase, status);
+
+      control.suppressAutoProcess();
+      writeFileSync(path.join(dir, "geega-inventory_100_0001.jpg"), "i1");
+      writeFileSync(path.join(dir, "geega-condition_200_0001.jpg"), "c1-front");
+      writeFileSync(path.join(dir, "geega-condition_200_0002.jpg"), "c1-back");
+      await new Promise((r) => setTimeout(r, 1600));
+      control.resumeAndProcessNow();
+
+      await vi.waitFor(() => expect(mockUploadBatch).toHaveBeenCalledTimes(1), { timeout: 8000 });
+      await vi.waitFor(() => expect(status.state).toBe("watching"), { timeout: 3000 });
+      expect(mockUploadBatch.mock.calls[0][2]).toBe("card_matching-session");
+      expect(status.lastError).toBe("server busy");
+      expect(status.sessionsByKind.condition).toBeNull();
     },
     20_000,
   );

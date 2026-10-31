@@ -7,6 +7,7 @@ import type { BridgeConfig } from "./config.js";
 import type { PairedCard } from "./pairing.js";
 import type { CardRecognizer, PairRecognition } from "./recognizer/recognizer.js";
 import type { BatchFinish } from "./recognizer/types.js";
+import { sessionStateFileFor, type ScanKind } from "./scanKind.js";
 
 const readFileAsync = promisify(readFile);
 
@@ -102,29 +103,37 @@ export interface UploadOptions {
   recognizer?: CardRecognizer | null;
   /** The foil / non-foil batch setting that applied when this card was scanned. */
   finishFor?: (pair: PairedCard) => BatchFinish | null;
+  /** The resolution the whole batch was scanned at, when known ("Scan now" batches). */
+  scanDpi?: number | null;
   log?: (message: string) => void;
 }
 
 /** Reuses a persisted session across restarts (Part 12: resumable, never
- * fragments one physical batch run into a pile of orphaned sessions). */
+ * fragments one physical batch run into a pile of orphaned sessions).
+ * Each kind of scan (Inventory, Condition, Inventory + condition) keeps its
+ * own session (scanKind.ts); PaperStream batches are the bridge's SCAN_MODE. */
 export async function ensureSession(
   config: BridgeConfig,
   api: ApiClient,
   supabase: SupabaseClient,
+  kind: ScanKind = config.scanMode,
 ): Promise<string> {
+  const sessionStateFile = sessionStateFileFor(kind, config.sessionStateFile);
   try {
-    const saved = readFileSync(config.sessionStateFile, "utf8").trim();
+    const saved = readFileSync(sessionStateFile, "utf8").trim();
     if (saved) {
       // Confirm it still exists before trusting it — a direct RLS-gated
       // read, same as the browser's ScanRepository.getSession(); there is
       // no GET-by-id admin endpoint (scan-sessions/[id] only handles PATCH).
+      // Only reused if it scans the same way: an id file left by an older
+      // bridge may belong to a session of another mode.
       const { data, error } = await supabase
         .from("scan_sessions")
-        .select("id")
+        .select("id, scan_mode")
         .eq("id", saved)
         .maybeSingle();
       if (error) throw error;
-      if (data) return saved;
+      if (data && (data as { scan_mode?: string }).scan_mode === kind) return saved;
     }
   } catch {
     /* no saved session yet, or it's gone — fall through and create one */
@@ -132,9 +141,11 @@ export async function ensureSession(
 
   const session = await api.call<{ id: string }>("/api/admin/scan-sessions", {
     method: "POST",
-    body: { scannerName: config.scannerName, sourceType: "scanner_bridge", scanMode: config.scanMode },
+    // labelByMode: "Inventory Scan #N", "Condition Scan #N" or
+    // "Inventory + Condition Scan #N", so the list says which is which.
+    body: { scannerName: config.scannerName, sourceType: "scanner_bridge", scanMode: kind, labelByMode: true },
   });
-  writeFileSync(config.sessionStateFile, session.id, "utf8");
+  writeFileSync(sessionStateFile, session.id, "utf8");
   return session.id;
 }
 
@@ -185,6 +196,7 @@ async function prepareCard(pair: PairedCard, options: UploadOptions): Promise<Pr
       front: pair.front,
       back: pair.back,
       finish: options.finishFor?.(pair) ?? null,
+      ...(options.scanDpi ? { dpi: options.scanDpi } : {}),
     });
     // The face goes up as the scan's front, whichever side of the feeder it was on.
     const faceRaw = local.faceSource === "back" ? pair.back : pair.front;

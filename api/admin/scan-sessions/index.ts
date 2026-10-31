@@ -30,7 +30,19 @@ interface Body {
   scannerName?: string | null;
   sourceType?: SourceType;
   scanMode?: ScanMode;
+  /** The scanner bridge (1.3.0+) asks for a label naming the scan type
+   * ("Inventory Scan #N", …) so its sessions are easy to tell apart. */
+  labelByMode?: boolean;
+  /** Bridge 1.2.0's way of asking for "Condition Scan #N". */
+  purpose?: "condition" | null;
 }
+
+/** Labels for sessions named by their scan type. */
+const MODE_LABEL: Record<ScanMode, string> = {
+  card_matching: "Inventory Scan",
+  condition: "Condition Scan",
+  both: "Inventory + Condition Scan",
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
@@ -48,6 +60,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new HttpError(400, "Invalid scan mode.");
     }
 
+    if (body.purpose !== undefined && body.purpose !== null && body.purpose !== "condition") {
+      throw new HttpError(400, "Invalid session purpose.");
+    }
+    const labelPrefix =
+      body.labelByMode === true ? MODE_LABEL[scanMode] : body.purpose === "condition" ? "Condition Scan" : "Scan Session";
+
     const admin = getSupabaseAdmin();
 
     // A friendly sequential label ("Scan Session #N"). Not a uniqueness
@@ -61,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data, error } = await admin
       .from("scan_sessions")
       .insert({
-        label: `Scan Session #${(count ?? 0) + 1}`,
+        label: `${labelPrefix} #${(count ?? 0) + 1}`,
         created_by: staff.email ?? staff.userId,
         scanner_name: body.scannerName?.trim() || null,
         source_type: sourceType,

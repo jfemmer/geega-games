@@ -79,6 +79,9 @@ export interface PairInput {
   front: ImageInput | null;
   back: ImageInput | null;
   finish: BatchFinish | null;
+  /** The resolution this pair was scanned at, when known (a 600 dpi condition
+   * scan); used when the file itself doesn't say. Defaults to the bridge's. */
+  dpi?: number | null;
 }
 
 export interface PairRecognition {
@@ -141,7 +144,7 @@ export class CardRecognizer {
     if (input.back) sources.push({ source: "back", input: input.back });
     if (sources.length === 0) throw new Error("No scan image to recognize.");
 
-    const found = await Promise.all(sources.map((s) => findCard(s.input, { fallbackDpi: this.deps.fallbackDpi })));
+    const found = await Promise.all(sources.map((s) => findCard(s.input, { fallbackDpi: input.dpi ?? this.deps.fallbackDpi })));
     t = lap("find", t);
 
     // Which side is the face, and which way up? Each (side, way-up)

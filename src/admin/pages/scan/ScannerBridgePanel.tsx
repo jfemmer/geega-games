@@ -17,6 +17,7 @@ import {
   type BridgeProblem,
 } from "../../utils/scannerBridge";
 import type { BadgeTone } from "../../utils/labels";
+import type { ScanRecognitionMode } from "../../types";
 
 // Live view of the LOCAL scanner-bridge process (scanner-bridge/src/index.ts)
 // — a separate Windows program that drives the Ricoh fi-8170 (or watches for
@@ -54,7 +55,12 @@ import type { BadgeTone } from "../../utils/labels";
 // the bridge's scan endpoints, which run NAPS2.Console.exe (TWAIN by
 // default) — no PaperStream IP window; see scanner-bridge/README.md section
 // 7. The Foil / Non-foil switch is sent with each scan and pre-selects the
-// finish for that batch. The "Card recognition" block reports the bridge's
+// finish for that batch. The scan type switch picks what the batch is for
+// (scanner-bridge/src/scanKind.ts): Inventory identifies each card from its
+// front at 300 dpi; Condition grades from both sides at 600 dpi without
+// matching; Inventory + condition does both at 600 dpi. Each type goes into
+// its own session. Bridges before 1.3.0 don't report sessionsByKind, so the
+// switch only shows for ones that can do it. The "Card recognition" block reports the bridge's
 // on-PC recognizer (scanner-bridge/README.md section 8): its card library,
 // build progress and self-test score — or, when it can't run on that PC
 // ("unavailable"), why, with a link to the fix.
@@ -63,6 +69,32 @@ const POLL_MS = 4000;
 
 type BridgeState = "starting" | "watching" | "uploading" | "scanning" | "error";
 type BatchFinish = "nonfoil" | "foil";
+/** The scan types "Scan now" offers — the session scan modes. */
+type ScanKind = ScanRecognitionMode;
+
+const SCAN_KINDS: readonly ScanKind[] = ["card_matching", "condition", "both"];
+
+const SCAN_KIND_COPY: Record<ScanKind, { tab: string; button: string; name: string; hint: (dpi: number) => string }> = {
+  card_matching: {
+    tab: "Inventory",
+    button: "Inventory scan",
+    name: "inventory",
+    hint: (dpi) => `Identifies each card from its front at ${dpi} dpi — the fastest. No grading: set condition in review. Feed cards face up.`,
+  },
+  condition: {
+    tab: "Condition",
+    button: "Condition scan",
+    name: "condition",
+    hint: (dpi) =>
+      `Grades each card from both sides at ${dpi} dpi so wear shows — slower. No matching: match each card with Find Match in review.`,
+  },
+  both: {
+    tab: "Inventory + condition",
+    button: "Inventory + condition scan",
+    name: "inventory + condition",
+    hint: (dpi) => `Identifies and grades each card from both sides at ${dpi} dpi — slower than an inventory scan. Check each suggested grade in review.`,
+  },
+};
 type RecognizerState =
   | "off"
   | "starting"
@@ -129,6 +161,10 @@ interface BridgeStatus {
   } | null;
   batchFinish?: BatchFinish;
   scanDpi?: number;
+  /** Bridges before 1.3.0 don't report these (no scan type switch). */
+  scanKind?: ScanKind | "standard";
+  scanDpiByKind?: Record<ScanKind, number>;
+  sessionsByKind?: Record<ScanKind, string | null>;
   recognizer?: RecognizerStatus;
 }
 
@@ -246,6 +282,7 @@ export function ScannerBridgePanel({
   const [checkingDevices, setCheckingDevices] = useState(false);
   const [deviceCheck, setDeviceCheck] = useState<DeviceCheckResult | null>(null);
   const [finishSaving, setFinishSaving] = useState(false);
+  const [kindSaving, setKindSaving] = useState(false);
   const [libraryBusy, setLibraryBusy] = useState<"update" | "selftest" | null>(null);
 
   const poll = useCallback(async () => {
@@ -277,29 +314,43 @@ export function ScannerBridgePanel({
     return () => window.clearInterval(timer);
   }, [poll]);
 
+  const sessionsByKind = status?.sessionsByKind;
+  const openSessions = sessionsByKind ? SCAN_KINDS.filter((k) => sessionsByKind[k]).length : status?.currentSessionId ? 1 : 0;
   const endSession = useCallback(async () => {
     setEnding(true);
     try {
       const res = await fetch(`${SCANNER_BRIDGE_URL}/session/end`, { method: "POST" });
       if (!res.ok) throw new Error(`Bridge returned ${res.status}`);
-      toast.success("Session ended — the next batch will start a new one.");
+      toast.success(
+        openSessions > 1
+          ? "Sessions ended — the next batches will start new ones."
+          : "Session ended — the next batch will start a new one.",
+      );
       await poll();
     } catch {
       toast.error("Could not reach the scanner bridge to end the session.");
     } finally {
       setEnding(false);
     }
-  }, [poll, toast]);
+  }, [openSessions, poll, toast]);
 
   const batchFinish: BatchFinish = status?.batchFinish ?? "nonfoil";
   const supportsFinish = status?.batchFinish !== undefined;
+  const supportsScanKind =
+    status?.sessionsByKind !== undefined && status.scanDpiByKind !== undefined && SCAN_KINDS.includes(status.scanKind as ScanKind);
+  const scanKind: ScanKind = supportsScanKind ? (status!.scanKind as ScanKind) : "card_matching";
+  const kindDpi = status?.scanDpiByKind?.[scanKind] ?? null;
 
   const startScan = useCallback(async () => {
     setStarting(true);
     try {
+      const body = {
+        ...(supportsFinish ? { batchFinish } : {}),
+        ...(supportsScanKind ? { scanKind } : {}),
+      };
       const reply = await postToBridge<{ ok?: boolean; message?: string }>(
         "/scan/start",
-        supportsFinish ? { batchFinish } : undefined,
+        Object.keys(body).length > 0 ? body : undefined,
       );
       if (reply.status === 409) {
         toast.error("A scan is already running.");
@@ -311,11 +362,11 @@ export function ScannerBridgePanel({
         await poll();
         return;
       }
-      toast.success(
-        batchFinish === "foil"
-          ? "Scan started (foil batch) — feed the cards into the ADF now."
-          : "Scan started — feed the cards into the ADF now.",
-      );
+      const what = [supportsScanKind && kindDpi ? `${kindDpi} dpi` : null, batchFinish === "foil" ? "foil batch" : null]
+        .filter(Boolean)
+        .join(", ");
+      const started = supportsScanKind ? `${SCAN_KIND_COPY[scanKind].button} started` : "Scan started";
+      toast.success(`${started}${what ? ` (${what})` : ""} — feed the cards into the ADF now.`);
       await poll();
     } catch (err) {
       toast.error(
@@ -326,7 +377,7 @@ export function ScannerBridgePanel({
     } finally {
       setStarting(false);
     }
-  }, [batchFinish, supportsFinish, poll, toast]);
+  }, [batchFinish, supportsFinish, scanKind, supportsScanKind, kindDpi, poll, toast]);
 
   const setFinish = useCallback(
     async (next: BatchFinish) => {
@@ -343,6 +394,23 @@ export function ScannerBridgePanel({
       }
     },
     [batchFinish, poll, toast],
+  );
+
+  const setKind = useCallback(
+    async (next: ScanKind) => {
+      if (next === scanKind) return;
+      setKindSaving(true);
+      try {
+        const reply = await postToBridge("/settings", { scanKind: next });
+        if (!reply.ok) throw new Error(`Bridge returned ${reply.status}`);
+        await poll();
+      } catch {
+        toast.error("Could not reach the scanner bridge to change the scan type.");
+      } finally {
+        setKindSaving(false);
+      }
+    },
+    [scanKind, poll, toast],
   );
 
   const updateLibrary = useCallback(async () => {
@@ -461,6 +529,23 @@ export function ScannerBridgePanel({
       )}
 
       <div className="gg-bridge-panel__scannow">
+        {supportsScanKind && (
+          <div className="gg-tabs gg-bridge-panel__finish gg-bridge-panel__kind" role="radiogroup" aria-label="Scan type for this batch">
+            {SCAN_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={scanKind === k}
+                className={`gg-tab ${scanKind === k ? "gg-tab--active" : ""}`}
+                disabled={kindSaving || scanning}
+                onClick={() => void setKind(k)}
+              >
+                {SCAN_KIND_COPY[k].tab}
+              </button>
+            ))}
+          </div>
+        )}
         {supportsFinish && (
           <div className="gg-tabs gg-bridge-panel__finish" role="radiogroup" aria-label="Finish for this batch">
             {(["nonfoil", "foil"] as const).map((f) => (
@@ -492,7 +577,9 @@ export function ScannerBridgePanel({
             ? "The bridge is signing in — Scan now is ready in a moment."
             : status.state === "error"
               ? "Scanning is paused until the problem above is fixed."
-              : `Drives the fi-8170 directly${status.scanDpi ? ` at ${status.scanDpi} dpi` : ""} — no need to open PaperStream IP. Feed cards into the ADF once this starts${supportsFinish ? "; put foils in their own batch with Foil selected" : ""}.`}
+              : supportsScanKind && kindDpi
+                ? `${SCAN_KIND_COPY[scanKind].hint(kindDpi)}${supportsFinish ? " Put foils in their own batch with Foil selected." : ""}`
+                : `Drives the fi-8170 directly${status.scanDpi ? ` at ${status.scanDpi} dpi` : ""} — no need to open PaperStream IP. Feed cards into the ADF once this starts${supportsFinish ? "; put foils in their own batch with Foil selected" : ""}.`}
         </span>
       </div>
 
@@ -522,15 +609,31 @@ export function ScannerBridgePanel({
       )}
 
       <div className="gg-bridge-panel__actions">
-        {status.currentSessionId ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            iconRight="chevronRight"
-            onClick={() => onNavigate(`${ADMIN_BASE}/scanning/${status.currentSessionId}`)}
-          >
-            Review current session
-          </Button>
+        {openSessions > 0 ? (
+          <div className="gg-bridge-panel__sessions">
+            {sessionsByKind ? (
+              SCAN_KINDS.filter((k) => sessionsByKind[k]).map((k) => (
+                <Button
+                  key={k}
+                  variant="secondary"
+                  size="sm"
+                  iconRight="chevronRight"
+                  onClick={() => onNavigate(`${ADMIN_BASE}/scanning/${sessionsByKind[k]}`)}
+                >
+                  Review {SCAN_KIND_COPY[k].name} session
+                </Button>
+              ))
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                iconRight="chevronRight"
+                onClick={() => onNavigate(`${ADMIN_BASE}/scanning/${status.currentSessionId}`)}
+              >
+                Review current session
+              </Button>
+            )}
+          </div>
         ) : (
           <span className="gg-muted">No active session yet — starts on the next batch.</span>
         )}
@@ -538,11 +641,15 @@ export function ScannerBridgePanel({
           variant="ghost"
           size="sm"
           loading={ending}
-          disabled={!status.currentSessionId}
+          disabled={openSessions === 0}
           onClick={endSession}
-          title="The next batch will start a fresh session instead of continuing this one."
+          title={
+            openSessions > 1
+              ? "The next batch of each scan type will start a fresh session."
+              : "The next batch will start a fresh session instead of continuing this one."
+          }
         >
-          End session
+          {openSessions > 1 ? "End sessions" : "End session"}
         </Button>
       </div>
 

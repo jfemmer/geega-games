@@ -2674,6 +2674,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-bridge-panel__actions {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
+.gg-bridge-panel__sessions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gg-bridge-panel__scannow {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--gg-line);
@@ -2816,6 +2817,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 @media (max-width: 520px) {
   .gg-bridge-panel__finish { width: 100%; justify-content: center; }
   .gg-bridge-panel__finish .gg-tab { flex: 1 1 0; min-height: 40px; }
+  .gg-bridge-panel__kind .gg-tab { white-space: normal; justify-content: center; text-align: center; line-height: 1.2; }
   .gg-bridge-recog__actions .gg-btn { flex: 1 1 auto; justify-content: center; }
 }
 
