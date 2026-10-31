@@ -453,7 +453,8 @@ describe("payment and wrapping up", () => {
     await user.type(within(dialog).getByLabelText("Storage location for Sheoldred, the Apocalypse"), "Binder 3");
     repo.importCard.mockResolvedValue(answer(trade));
     await user.click(within(dialog).getByRole("button", { name: "Add 1 to inventory" }));
-    await waitFor(() => expect(repo.importCard).toHaveBeenCalledWith("o1", 8000, "Binder 3"));
+    // At the condition it was traded at, unless staff change it; no stocked line to reprice.
+    await waitFor(() => expect(repo.importCard).toHaveBeenCalledWith("o1", 8000, "Binder 3", { condition: "NM", updateLinePrice: false }));
 
     repo.markCashPaid.mockResolvedValue(answer({ ...trade, cashPaidAt: "2026-10-25T15:00:00Z" }));
     await user.type(within(dialog).getByLabelText("How you paid (optional)"), "Venmo");
@@ -468,6 +469,63 @@ describe("payment and wrapping up", () => {
     await user.type(within(mailBack).getByLabelText("Tracking number (optional)"), "9400 1118 9922 3197 4284 90");
     await user.click(within(mailBack).getByRole("button", { name: "Mark returned and email the customer" }));
     await waitFor(() => expect(repo.markReturned).toHaveBeenCalledWith(TRADE_ID, { carrier: "USPS", trackingNumber: "9400 1118 9922 3197 4284 90" }));
+  });
+
+  it("adds a trade-in at the condition and price staff choose, and says when it joins a line we stock", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "completed",
+      orderId: "order-1",
+      wanted: [wantedItem({ status: "fulfilled" })],
+      offered: [
+        {
+          ...APPROVED[0],
+          inspected: true,
+          receivedQuantity: 2,
+          finalQuantity: 2,
+          finalUnitCents: 8000,
+          disposition: "accepted",
+          stockedLines: [
+            { condition: "NM", quantity: 3, priceCents: 9000, isDeal: false },
+            { condition: "LP", quantity: 1, priceCents: 7000, isDeal: true },
+          ],
+        },
+      ],
+    });
+    const dialog = await openTrade(trade);
+    const row = within(dialog).getByLabelText("Condition for Sheoldred, the Apocalypse").closest("li")!;
+    expect(within(row).getByLabelText("Condition for Sheoldred, the Apocalypse")).toHaveValue("NM");
+    expect(row).toHaveTextContent("Traded as Near Mint");
+    // NM: joins our NM line at $90.00; at $80.00 typed, staff choose whether it keeps $90.00.
+    expect(row).toHaveTextContent("You already stock 3 Near Mint at $90.00. These 2 copies join that line, which keeps $90.00.");
+    const reprice = within(row).getByRole("checkbox", { name: "Change the price of the Sheoldred, the Apocalypse line to $80.00" });
+    expect(reprice).not.toBeChecked();
+    await user.click(reprice);
+    expect(row).toHaveTextContent("and the whole line goes to $80.00.");
+    expect(row).toHaveTextContent("all 5 copies");
+
+    // LP: our LP line is on a deal, so it keeps its price.
+    await user.selectOptions(within(row).getByLabelText("Condition for Sheoldred, the Apocalypse"), "LP");
+    expect(row).toHaveTextContent("You already stock 1 Lightly Played at $70.00. These 2 copies join that line, which is on a deal: it keeps its deal price.");
+    expect(within(row).queryByRole("checkbox")).toBeNull();
+
+    // MP: nothing stocked, a new line at the price typed.
+    await user.selectOptions(within(row).getByLabelText("Condition for Sheoldred, the Apocalypse"), "MP");
+    expect(row).toHaveTextContent("Goes into inventory as a new line, Moderately Played, at the price above.");
+    const price = within(row).getByLabelText("Selling price each for Sheoldred, the Apocalypse");
+    await user.clear(price);
+    await user.type(price, "65");
+    repo.importCard.mockResolvedValue(answer(trade));
+    await user.click(within(row).getByRole("button", { name: "Add 2 to inventory" }));
+    await waitFor(() => expect(repo.importCard).toHaveBeenLastCalledWith("o1", 6500, "", { condition: "MP", updateLinePrice: false }));
+
+    // Back to NM: changing the condition unticks the box, so a price change is never carried over by accident.
+    await user.selectOptions(within(row).getByLabelText("Condition for Sheoldred, the Apocalypse"), "NM");
+    const again = within(row).getByRole("checkbox", { name: "Change the price of the Sheoldred, the Apocalypse line to $65.00" });
+    expect(again).not.toBeChecked();
+    await user.click(again);
+    await user.click(within(row).getByRole("button", { name: "Add 2 to inventory" }));
+    await waitFor(() => expect(repo.importCard).toHaveBeenLastCalledWith("o1", 6500, "", { condition: "NM", updateLinePrice: true }));
   });
 
   it("shows a finished trade's shipping against its cost and the inventory-value difference, both shipments, and records the postage", async () => {

@@ -7,12 +7,14 @@ import { formatCents, formatDateTime } from "../../utils/format";
 import { tradeCenterRepository } from "../../repositories/tradeCenter.supabase";
 import { carrierLabel, trackingUrlFor } from "../../../store/lib/tracking";
 import {
+  CARD_CONDITIONS,
   CONDITION_NAMES,
   LOCAL_PAYMENT_LABELS,
   TRADE_CARRIERS,
   cleanTrackingNumber,
   copiesToReturn,
   printingLabel,
+  type CardConditionCode,
   type StaffTradeOfferCard,
   type TradeCarrier,
 } from "../../../store/lib/tradeCenter";
@@ -170,7 +172,7 @@ function IntoInventory({ trade, busy, run }: Pick<TradePanelProps, "trade" | "bu
       <h3 id="gg-trd-import-title">Add the cards you took to inventory</h3>
       <p className="gg-card-meta">
         {waiting > 0
-          ? "Set each card's selling price. If you already stock that printing in that condition, the copies join that line and keep its price. Cost is recorded as the trade credit paid for them."
+          ? "Check each card's condition and set its selling price, then add it. If you already stock that printing in that condition, the copies join that line: you choose whether it keeps its price or takes yours. Cost is recorded as the trade credit paid for them."
           : "Every card you took is in inventory."}
       </p>
       <ul className="gg-trd-cards">
@@ -184,29 +186,43 @@ function IntoInventory({ trade, busy, run }: Pick<TradePanelProps, "trade" | "bu
 
 function ImportRow({ card, busy, run }: { card: StaffTradeOfferCard } & Pick<TradePanelProps, "busy" | "run">) {
   const toast = useToast();
+  const tradeCondition = card.verifiedCondition ?? card.reportedCondition;
+  const [condition, setCondition] = useState<CardConditionCode>(tradeCondition);
   const [price, setPrice] = useState(centsInput(card.referencePriceCents ?? card.finalUnitCents));
   const [location, setLocation] = useState("");
-  const condition = card.verifiedCondition ?? card.reportedCondition;
+  const [updateLinePrice, setUpdateLinePrice] = useState(false);
   const imported = card.disposition === "imported";
   const key = `import:${card.id}`;
+  const copies = card.finalQuantity ?? 0;
+  const cents = parseUnitCents(price);
+  // The line these copies would join in the chosen condition, if we already stock one.
+  const stocked = card.stockedLines?.find((l) => l.condition === condition) ?? null;
+  const priceDiffers = stocked !== null && cents !== null && cents >= 1 && stocked.priceCents !== cents;
 
   async function add() {
-    const cents = parseUnitCents(price);
     if (cents === null || cents < 1) {
       toast.error("Set a selling price.");
       return;
     }
-    await run(key, () => tradeCenterRepository.importCard(card.id, cents, location.trim()), `${card.cardName} added to inventory.`);
+    await run(
+      key,
+      () =>
+        tradeCenterRepository.importCard(card.id, cents, location.trim(), {
+          condition,
+          updateLinePrice: Boolean(stocked && !stocked.isDeal && priceDiffers && updateLinePrice),
+        }),
+      `${card.cardName} added to inventory.`,
+    );
   }
 
   return (
     <li className="gg-trd-card">
       <div className="gg-trd-card__head">
-        <CardThumb imageUrl={card.imageUrl} alt={card.cardName} />
+        <CardThumb imageUrl={card.imageUrl} alt={card.cardName} foil={card.finish !== "nonfoil"} />
         <div className="gg-trd-card__info">
           <p className="gg-trd-card__name">{card.cardName}</p>
           <p className="gg-trd-card__meta">
-            {[printingLabel(card), CONDITION_NAMES[condition], `× ${card.finalQuantity ?? 0}`].filter(Boolean).join(" · ")}
+            {[printingLabel(card), `Traded as ${CONDITION_NAMES[tradeCondition]}`, `× ${copies}`].filter(Boolean).join(" · ")}
           </p>
           <p className="gg-trd-card__meta">
             Taken at {formatCents(card.finalUnitCents ?? 0)} each
@@ -222,37 +238,130 @@ function ImportRow({ card, busy, run }: { card: StaffTradeOfferCard } & Pick<Tra
         )}
       </div>
       {!imported && (
-        <div className="gg-trd-import">
-          <label className="gg-trd-field">
-            <span>Selling price each</span>
-            <span className="gg-trd-dollar">
+        <>
+          <div className="gg-trd-import">
+            <label className="gg-trd-field">
+              <span>Condition</span>
+              <select
+                className="gg-input"
+                value={condition}
+                aria-label={`Condition for ${card.cardName}`}
+                onChange={(e) => {
+                  setCondition(e.target.value as CardConditionCode);
+                  setUpdateLinePrice(false);
+                }}
+              >
+                {CARD_CONDITIONS.map((code) => (
+                  <option key={code} value={code}>
+                    {CONDITION_NAMES[code]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="gg-trd-field">
+              <span>Selling price each</span>
+              <span className="gg-trd-dollar">
+                <input
+                  className="gg-input"
+                  inputMode="decimal"
+                  value={price}
+                  placeholder="0.00"
+                  aria-label={`Selling price each for ${card.cardName}`}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              </span>
+            </label>
+            <label className="gg-trd-field gg-trd-field--grow">
+              <span>Storage location (optional)</span>
               <input
                 className="gg-input"
-                inputMode="decimal"
-                value={price}
-                placeholder="0.00"
-                aria-label={`Selling price each for ${card.cardName}`}
-                onChange={(e) => setPrice(e.target.value)}
+                value={location}
+                maxLength={120}
+                placeholder="Binder 3"
+                aria-label={`Storage location for ${card.cardName}`}
+                onChange={(e) => setLocation(e.target.value)}
               />
-            </span>
-          </label>
-          <label className="gg-trd-field gg-trd-field--grow">
-            <span>Storage location (optional)</span>
-            <input
-              className="gg-input"
-              value={location}
-              maxLength={120}
-              placeholder="Binder 3"
-              aria-label={`Storage location for ${card.cardName}`}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </label>
-          <Button size="sm" variant="primary" icon="plus" onClick={add} loading={busy === key} disabled={busy !== null}>
-            Add {card.finalQuantity ?? 0} to inventory
-          </Button>
-        </div>
+            </label>
+            <Button size="sm" variant="primary" icon="plus" onClick={add} loading={busy === key} disabled={busy !== null}>
+              Add {copies} to inventory
+            </Button>
+          </div>
+          <StockedNote
+            cardName={card.cardName}
+            copies={copies}
+            condition={condition}
+            stocked={stocked}
+            cents={cents}
+            priceDiffers={priceDiffers}
+            known={card.stockedLines !== undefined}
+            updateLinePrice={updateLinePrice}
+            onUpdateLinePrice={setUpdateLinePrice}
+          />
+        </>
       )}
     </li>
+  );
+}
+
+/** Where the copies go: a new line, or a line we already stock (keeping its price, or taking the new one). */
+function StockedNote({
+  cardName,
+  copies,
+  condition,
+  stocked,
+  cents,
+  priceDiffers,
+  known,
+  updateLinePrice,
+  onUpdateLinePrice,
+}: {
+  cardName: string;
+  copies: number;
+  condition: CardConditionCode;
+  stocked: NonNullable<StaffTradeOfferCard["stockedLines"]>[number] | null;
+  cents: number | null;
+  priceDiffers: boolean;
+  /** False on an older server that doesn't say what's stocked. */
+  known: boolean;
+  updateLinePrice: boolean;
+  onUpdateLinePrice: (next: boolean) => void;
+}) {
+  if (!known) return null;
+  const these = copies === 1 ? "This copy joins" : `These ${copies} copies join`;
+  if (!stocked) {
+    return <p className="gg-card-meta gg-trd-import__note">Goes into inventory as a new line, {CONDITION_NAMES[condition]}, at the price above.</p>;
+  }
+  const linePrice = stocked.priceCents != null ? formatCents(stocked.priceCents) : "no price";
+  const have = `You already stock ${stocked.quantity} ${CONDITION_NAMES[condition]} at ${linePrice}.`;
+  if (stocked.isDeal) {
+    return (
+      <p className="gg-card-meta gg-trd-import__note gg-trd-import__note--stocked">
+        {have} {these} that line, which is on a deal: it keeps its deal price. Change its price in Inventory.
+      </p>
+    );
+  }
+  if (!priceDiffers || cents === null) {
+    return (
+      <p className="gg-card-meta gg-trd-import__note gg-trd-import__note--stocked">
+        {have} {these} that line.
+      </p>
+    );
+  }
+  return (
+    <div className="gg-trd-import__note gg-trd-import__note--stocked">
+      <p className="gg-card-meta">
+        {have} {these} that line{updateLinePrice ? `, and the whole line goes to ${formatCents(cents)}.` : `, which keeps ${linePrice}.`}
+      </p>
+      <label className="gg-check-inline">
+        <input
+          type="checkbox"
+          checked={updateLinePrice}
+          aria-label={`Change the price of the ${cardName} line to ${formatCents(cents)}`}
+          onChange={(e) => onUpdateLinePrice(e.target.checked)}
+        />
+        Change that line&rsquo;s price to {formatCents(cents)} (all {stocked.quantity + copies} copies)
+      </label>
+    </div>
   );
 }
 

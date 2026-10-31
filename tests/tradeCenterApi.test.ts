@@ -2473,8 +2473,57 @@ describe("admin Trades: after the trade (13, 14)", () => {
     expect((await staff.post({ action: "importCard", offerCardId: card.id })).statusCode).toBe(400);
     const res = await staff.post({ action: "importCard", offerCardId: card.id, priceCents: 7499, storageLocation: "Binder 3" });
     expect(res.statusCode).toBe(200);
-    expect(rpcArgs("trade_import_card")[0]).toMatchObject({ p_offer_card_id: card.id, p_price_cents: 7499, p_storage_location: "Binder 3" });
+    // Left out: the trade's condition, and a line we already stock keeps its price.
+    expect(rpcArgs("trade_import_card")[0]).toMatchObject({
+      p_offer_card_id: card.id,
+      p_price_cents: 7499,
+      p_storage_location: "Binder 3",
+      p_condition: null,
+      p_update_line_price: false,
+    });
     expect((state.tables.admin_audit_log[0] as Record<string, unknown>).action).toBe("trade.import_card");
+  });
+
+  it("adds a card at the condition staff choose, changing a stocked line's price only when asked", async () => {
+    const t = tradeRow({ status: "completed" });
+    trades().push(t);
+    const card = offerRow(t.id, { disposition: "accepted", final_quantity: 2 });
+    state.tables.trade_offer_cards.push(card);
+    rpc("trade_import_card", () => ({ data: fakeId(), error: null }));
+    expect((await staff.post({ action: "importCard", offerCardId: card.id, priceCents: 7499, condition: "Mint" })).statusCode).toBe(400);
+    const res = await staff.post({ action: "importCard", offerCardId: card.id, priceCents: 6999, storageLocation: "", condition: "MP", updateLinePrice: true });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_import_card")[0]).toMatchObject({ p_price_cents: 6999, p_condition: "MP", p_update_line_price: true });
+    expect((state.tables.admin_audit_log[0] as Record<string, unknown>).after).toMatchObject({ priceCents: 6999, condition: "MP", updateLinePrice: true });
+  });
+
+  it("shows staff the lines we already stock of each card waiting to go into inventory, in every condition", async () => {
+    const t = tradeRow({ status: "completed" });
+    trades().push(t);
+    const card = offerRow(t.id, { disposition: "accepted", final_quantity: 1 });
+    const done = offerRow(t.id, { disposition: "imported", final_quantity: 1, imported_inventory_item_id: fakeId() });
+    state.tables.trade_offer_cards.push(card, done);
+    const line = (over: Record<string, unknown>) => ({
+      id: fakeId(), card_name: card.card_name, scryfall_id: card.scryfall_id, set_code: card.set_code, collector_number: card.collector_number,
+      finish: card.finish, condition: "NM", quantity: 3, price_cents: 9000, is_deal: false, status: "active", ownership: "business",
+      variant_type: "", language: "en", ...over,
+    });
+    (state.tables.inventory_items as Record<string, unknown>[]).push(
+      line({}),
+      line({ condition: "LP", quantity: 1, price_cents: 7000, is_deal: true }),
+      // Not joined: consigned, another finish, a variant.
+      line({ ownership: "consigned" }),
+      line({ finish: card.finish === "foil" ? "nonfoil" : "foil" }),
+      line({ variant_type: "showcase" }),
+    );
+    const view = (await staff.get({ id: t.id })).body.trade as { offered: { id: string; stockedLines?: unknown }[] };
+    const waiting = view.offered.find((o) => o.id === card.id)!;
+    expect(waiting.stockedLines).toEqual([
+      { condition: "NM", quantity: 3, priceCents: 9000, isDeal: false },
+      { condition: "LP", quantity: 1, priceCents: 7000, isDeal: true },
+    ]);
+    // Already in inventory: nothing to show.
+    expect(view.offered.find((o) => o.id === done.id)!.stockedLines).toBeUndefined();
   });
 
   it("records what shipping our cards cost on a finished trade, for the economics; clears it; not before it's finished", async () => {

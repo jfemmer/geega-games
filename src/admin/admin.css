@@ -3926,6 +3926,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   .gg-trd-foiltag { animation: none; background-position: 50% 50%, 50% 50%; }
 }
 .gg-trd-meet__actions { flex-wrap: wrap; }
+.gg-trd-import__note { margin-top: 8px !important; display: flex; flex-direction: column; gap: 6px; }
+.gg-trd-import__note--stocked { padding: 8px 10px; border-radius: var(--gg-radius-sm); background: var(--gg-surface-2); border: 1px solid var(--gg-line); }
+.gg-trd-import__note--stocked .gg-check-inline { font-size: 0.84rem; }
 .gg-trd-meet__saved { margin-top: -2px; }
 .gg-trd-meet__saved--unsaved { color: #8a5a12 !important; font-weight: 600; }
 .gg-trd-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gg-text-soft); }

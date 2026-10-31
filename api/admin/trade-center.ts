@@ -9,6 +9,7 @@ import {
   UUID_RE,
   bundleAvailability,
   loadWantedTraits,
+  loadStockedLines,
   type WantedCardTraits,
   cleanText,
   confirmDeadline,
@@ -51,6 +52,7 @@ import {
   isOpenTrade,
   isTradeCarrier,
   isTradeStatus,
+  type StockedLine,
   type TradeStatus,
 } from "../../src/store/lib/tradeCenter.js";
 import { addQualifyingHours, excludedDateSet } from "../../src/store/lib/tradeDeadlines.js";
@@ -837,13 +839,14 @@ async function retireOrRecordDeposit(bundle: TradeBundle): Promise<void> {
 async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSettingsRow) {
   const t = bundle.trade;
   const paths = bundle.disputes.flatMap((d) => disputeFilesOf(d.files).map((f) => f.path));
-  const [standing, extensions, consents, availability, links, wantedTraits] = await Promise.all([
+  const [standing, extensions, consents, availability, links, wantedTraits, stockedLines] = await Promise.all([
     customerStanding(admin, t.user_id, settings).catch((): CustomerStanding | null => null),
     admin.from("trade_extensions").select("*").eq("trade_request_id", t.id).order("created_at"),
     admin.from("trade_consents").select("*").eq("trade_request_id", t.id).order("created_at"),
     bundleAvailability(admin, bundle),
     paths.length > 0 ? admin.storage.from(DISPUTE_BUCKET).createSignedUrls(paths, FILE_LINK_SECONDS) : Promise.resolve({ data: [], error: null }),
     loadWantedTraits(admin, bundle).catch(() => new Map<string, WantedCardTraits>()),
+    loadStockedLines(admin, bundle).catch(() => new Map<string, StockedLine[]>()),
   ]);
   const fileUrls = new Map<string, string>();
   for (const l of links.data ?? []) if (l.path && l.signedUrl) fileUrls.set(l.path, l.signedUrl);
@@ -853,6 +856,7 @@ async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSetti
     consents: consents.data ?? [],
     availability,
     wantedTraits,
+    stockedLines,
     fileUrls,
     autoTracked: trackingConnected(),
   });
@@ -1357,6 +1361,16 @@ async function importCard(admin: Admin, staff: StaffContext, body: Record<string
   if (!cardId) throw new HttpError(400, "Which card?");
   const price = wholeNumber(body.priceCents, 1, TRADE_LIMITS.maxEstimateCents);
   if (price === null) throw new HttpError(400, "Set a selling price.");
+  // The condition to stock it as (null: as recorded on the trade), and whether
+  // a line we already stock takes this price (false: it keeps its own).
+  let condition: string | null = null;
+  if (body.condition !== undefined && body.condition !== null) {
+    if (typeof body.condition !== "string" || !(CARD_CONDITIONS as readonly string[]).includes(body.condition)) {
+      throw new HttpError(400, "Choose a condition: NM, LP, MP, HP or DMG.");
+    }
+    condition = body.condition;
+  }
+  const updateLinePrice = body.updateLinePrice === true;
   const { data: card, error: cardErr } = await admin
     .from("trade_offer_cards")
     .select("trade_request_id")
@@ -1369,13 +1383,15 @@ async function importCard(admin: Admin, staff: StaffContext, body: Record<string
     p_price_cents: price,
     p_storage_location: cleanText(body.storageLocation, 120),
     p_actor: staff.email ?? "staff",
+    p_condition: condition,
+    p_update_line_price: updateLinePrice,
   });
   if (error) throw tradeDbError(error, "We couldn't add the card to inventory. Try again.");
   await logAdminAction(admin, staff, {
     action: "trade.import_card",
     resourceType: "trade_request",
     resourceId: card.trade_request_id,
-    after: { offerCardId: cardId, inventoryItemId: data, priceCents: price },
+    after: { offerCardId: cardId, inventoryItemId: data, priceCents: price, condition, updateLinePrice },
   });
   return card.trade_request_id;
 }

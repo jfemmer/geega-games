@@ -22,6 +22,7 @@ const MIGRATIONS = [
   "../supabase/migrations/20261028030000_trade_meet_spot.sql",
   "../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql",
   "../supabase/migrations/20261031030000_trade_meetup_draft.sql",
+  "../supabase/migrations/20261031050000_trade_import_condition_price.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -45,6 +46,7 @@ const users = {
   lou: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   max: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   ned: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  oz: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
 };
 let ring: string;
 let bolt: string;
@@ -378,6 +380,58 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     expect((await complete(id, [], 0)).order_id).toBe(orderId);
     const events = (await all(`select event from public.trade_events where trade_request_id = $1 order by created_at`, [id])).map((e) => e.event);
     expect(events).toEqual(expect.arrayContaining(["met_up", "finalized", "completed"]));
+  });
+
+  it("adds trade-ins at the condition and price staff choose, repricing a line already stocked only when asked", async () => {
+    const ours = await inv("Brainstone", 5, 4000);
+    const id = await start(users.oz, [[ours, 2]], "local");
+    await db.query(`select public.trade_submit($1, $2, null)`, [id, users.oz]);
+    await approve(id);
+    const card = (n: number, name: string) => taken({ scryfall_id: `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${String(n).repeat(12)}`, card_name: name, condition: "LP", unit_cents: 5000 });
+    // $80.00 of ours; $200.00 of theirs: the credit covers it.
+    await complete(id, [card(1, "Alpha"), card(2, "Bravo"), card(3, "Charlie"), card(4, "Delta")], 0);
+    const offers = await all(`select * from public.trade_offer_cards where trade_request_id = $1 order by position`, [id]);
+    const [a, b, c, d] = offers;
+    const stock = (scryfall: string, price: number, deal = false) =>
+      one(
+        `insert into public.inventory_items (scryfall_id, card_name, set_code, collector_number, condition, finish, quantity, price_cents, original_price_cents, is_deal)
+         values ($1, 'x', 'dmu', '107', 'NM', 'nonfoil', 1, $2, $3, $4) returning id`,
+        [scryfall, price, deal ? price + 1000 : null, deal],
+      );
+    const line = (lineId: string) => one(`select quantity, price_cents, condition from public.inventory_items where id = $1`, [lineId]);
+    const importCard = (offerId: string, price: number, condition: string | null, reprice: boolean) =>
+      one(`select public.trade_import_card($1, $2, 'A1', 'jacob', $3, $4) as id`, [offerId, price, condition, reprice]);
+
+    // Alpha: recorded LP, stocked as NM, joining our NM line and keeping its price.
+    const lineA = (await stock(a.scryfall_id, 9000)).id;
+    expect((await importCard(a.id, 8500, "NM", false)).id).toBe(lineA);
+    expect(await line(lineA)).toEqual({ quantity: 2, price_cents: 9000, condition: "NM" });
+    // The trade's record stays as agreed; the choice is in its history.
+    expect((await one(`select verified_condition, disposition from public.trade_offer_cards where id = $1`, [a.id]))).toEqual({ verified_condition: "LP", disposition: "imported" });
+    expect((await one(`select detail from public.trade_events where trade_request_id = $1 and event = 'card_imported' and detail->>'offer_card_id' = $2`, [id, a.id])).detail).toMatchObject({
+      condition: "NM", trade_condition: "LP", price_cents: 8500, joined_existing: true, line_price_updated: false,
+    });
+
+    // Delta: joining our NM line and changing that line's price, when asked.
+    const lineD = (await stock(d.scryfall_id, 2000)).id;
+    expect((await importCard(d.id, 2500, "NM", true)).id).toBe(lineD);
+    expect(await line(lineD)).toEqual({ quantity: 2, price_cents: 2500, condition: "NM" });
+    expect((await one(`select detail from public.trade_events where trade_request_id = $1 and event = 'card_imported' and detail->>'offer_card_id' = $2`, [id, d.id])).detail).toMatchObject({
+      line_price_from: 2000, line_price_updated: true,
+    });
+
+    // Bravo: our NM line is on a deal, so it isn't repriced here; nothing is added until staff choose.
+    const lineB = (await stock(b.scryfall_id, 4000, true)).id;
+    expect((await errorOf(`select public.trade_import_card($1, 7000, 'A1', 'jacob', 'NM', true)`, [b.id]))?.code).toBe("GT010");
+    expect(await line(lineB)).toEqual({ quantity: 1, price_cents: 4000, condition: "NM" });
+    expect((await one(`select disposition from public.trade_offer_cards where id = $1`, [b.id])).disposition).toBe("accepted");
+    expect((await importCard(b.id, 7000, "NM", false)).id).toBe(lineB);
+    expect(await line(lineB)).toEqual({ quantity: 2, price_cents: 4000, condition: "NM" });
+
+    // Charlie: an unknown condition is refused; a new line at the condition and price chosen.
+    expect((await errorOf(`select public.trade_import_card($1, 3000, 'A1', 'jacob', 'Mint', false)`, [c.id]))?.code).toBe("GT010");
+    const lineC = (await importCard(c.id, 3000, "MP", true)).id;
+    expect(await line(lineC)).toEqual({ quantity: 1, price_cents: 3000, condition: "MP" });
   });
 
   it("keeps credit left over as store credit, and can pay it in cash", async () => {
