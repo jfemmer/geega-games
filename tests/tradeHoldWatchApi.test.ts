@@ -145,12 +145,15 @@ describe("the stock-alert worker", () => {
       error: null,
     });
     failSend = true;
+    state.tables.email_deliveries = [{ idempotency_key: "trade-hold-released-r-" + Date.parse("2026-10-01T00:00:00Z"), status: "failed" }];
     const res = await runWorker();
     expect(res.body.held).toEqual({ sent: 0, closed: 1, failed: 1 });
     const by = Object.fromEntries(state.tables.trade_hold_watchers.map((w) => [w.id, w]));
     expect(by.g).toMatchObject({ closed_reason: "gone", notified_at: null });
     expect(by.g.closed_at).toBeTruthy();
     expect(by.r).toMatchObject({ closed_at: null, notified_at: null });
+    // The failed claim is freed, so the next run really sends it.
+    expect(state.tables.email_deliveries).toEqual([]);
   });
 
   it("a restock alert waits while every copy is held (for a trade or anything else)", async () => {

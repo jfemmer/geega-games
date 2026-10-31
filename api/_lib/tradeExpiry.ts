@@ -128,15 +128,61 @@ async function noteDone(admin: Admin, trade: TradeRow, staffAlert: boolean, kind
 // 1. Deposits
 // ---------------------------------------------------------------------------
 
+/** Closes a trade whose deposit wasn't paid by its confirmation deadline (its hold on our cards ends with it). */
+async function closeUnpaidDeposit(admin: Admin, settings: TradeSettingsRow, t: TradeRow): Promise<boolean> {
+  const { data, error } = await admin.rpc("trade_close", {
+    p_trade_id: t.id,
+    p_status: "offer_expired",
+    p_from_statuses: ["awaiting_deposit"],
+    p_reason: "The deposit wasn't paid by the confirmation deadline.",
+    p_fault: null,
+    p_actor_type: "system",
+    p_actor_id: null,
+    p_actor_label: "expiry",
+    p_stage: "deposit",
+  });
+  if (error) {
+    console.error("[tradeExpiry] couldn't close an unpaid deposit", t.id, error.message);
+    return false;
+  }
+  if (Array.isArray(data) && data[0]?.closed) {
+    const bundle = await loadTradeBundle(admin, t.id);
+    if (bundle) await sendTradeCustomerEmail(bundle, settings, { kind: "offer_expired", stage: "deposit" });
+    return true;
+  }
+  return false;
+}
+
 async function reconcileDeposits(admin: Admin, settings: TradeSettingsRow, now: number): Promise<number> {
-  if (!stripeConfigured()) return 0;
   let n = 0;
+  // Our cards are held from when a trade is sent, so a deposit that can
+  // never be paid mustn't hold them forever: with no payment started (or
+  // card payments switched off) there's nothing to wait for once the
+  // confirmation deadline has passed.
+  const stalled = await admin
+    .from("trade_requests")
+    .select("*")
+    .eq("status", "awaiting_deposit")
+    .lt("confirm_by", new Date(now).toISOString())
+    .lt("updated_at", new Date(now - PAYMENT_SETTLE_MS).toISOString())
+    .order("confirm_by")
+    .limit(BATCH);
+  if (stalled.error) throw new Error(stalled.error.message);
+  const stripeOn = stripeConfigured();
+  for (const t of stalled.data ?? []) {
+    if (stripeOn && t.deposit_payment_intent) continue; // checked with Stripe below
+    if (await closeUnpaidDeposit(admin, settings, t)) n += 1;
+  }
+  if (!stripeOn) return n;
+
   const [paying, refunding] = await Promise.all([
     admin
       .from("trade_requests")
       .select("*")
       .eq("status", "awaiting_deposit")
+      .not("deposit_payment_intent", "is", null)
       .lt("updated_at", new Date(now - PAYMENT_SETTLE_MS).toISOString())
+      .order("confirm_by")
       .limit(BATCH),
     admin.from("trade_requests").select("id").eq("deposit_status", "refund_pending").order("updated_at").limit(BATCH),
   ]);
@@ -161,26 +207,7 @@ async function reconcileDeposits(admin: Admin, settings: TradeSettingsRow, now: 
           n += 1;
           continue;
         }
-        const { data, error } = await admin.rpc("trade_close", {
-          p_trade_id: t.id,
-          p_status: "offer_expired",
-          p_from_statuses: ["awaiting_deposit"],
-          p_reason: "The deposit wasn't paid by the confirmation deadline.",
-          p_fault: null,
-          p_actor_type: "system",
-          p_actor_id: null,
-          p_actor_label: "expiry",
-          p_stage: "deposit",
-        });
-        if (error) {
-          console.error("[tradeExpiry] couldn't close an unpaid deposit", t.id, error.message);
-          continue;
-        }
-        if (Array.isArray(data) && data[0]?.closed) {
-          const bundle = await loadTradeBundle(admin, t.id);
-          if (bundle) await sendTradeCustomerEmail(bundle, settings, { kind: "offer_expired", stage: "deposit" });
-          n += 1;
-        }
+        if (await closeUnpaidDeposit(admin, settings, t)) n += 1;
       }
     } catch (err) {
       console.error("[tradeExpiry] deposit check failed", t.id, err);

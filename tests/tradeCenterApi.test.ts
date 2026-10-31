@@ -2825,6 +2825,17 @@ describe("the worker (deadlines, scans, deposits, reminders)", () => {
     expect(emailTypes()).toEqual(expect.arrayContaining(["trade_reserved", "trade_offer_expired", "trade_deposit_refunded"]));
   });
 
+  it("closes a deposit that was never started once its deadline passes, so our cards aren't held forever", async () => {
+    const stuck = approvedTrade({ status: "awaiting_deposit", confirm_by: iso(Date.now() - HOUR), deposit_cents: 2000, deposit_status: "payment_pending", deposit_payment_intent: null, updated_at: iso(Date.now() - 10 * 60_000) });
+    const notYet = approvedTrade({ status: "awaiting_deposit", confirm_by: iso(Date.now() + HOUR), deposit_cents: 2000, deposit_status: "payment_pending", deposit_payment_intent: null, updated_at: iso(Date.now() - 10 * 60_000) });
+    const counts = await runTradeWorker();
+    expect(counts.tradeDepositsReconciled).toBe(1);
+    expect(stuck).toMatchObject({ status: "offer_expired", expired_stage: "deposit" });
+    expect(notYet.status).toBe("awaiting_deposit");
+    expect(emailTypes()).toContain("trade_offer_expired");
+    expect(stripeState.canceled).toEqual([]);
+  });
+
   it("alerts staff about a package in transit too long or gone quiet (nothing is released)", async () => {
     const t = approvedTrade({ status: "in_transit", inbound_tracking: "9400111899223197428490", inbound_accepted_at: iso(Date.now() - 11 * DAY), inbound_last_event_at: iso(Date.now() - 5 * DAY) });
     const counts = await runTradeWorker();

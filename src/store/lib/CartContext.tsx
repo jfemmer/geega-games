@@ -136,6 +136,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [tradeHeld, setTradeHeld] = useState<HeldCopy[]>([]);
   const cartIdRef = useRef<string | null>(null);
   const mergedForUserRef = useRef<string | null>(null);
+  // Whose cart the trade-held notes are about: they don't carry over to the next shopper.
+  const notesForUserRef = useRef<string | null>(null);
 
   // Which of these copies (dropped or cut down in the cart) a trade is
   // holding. Best effort: never blocks the cart.
@@ -327,6 +329,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (authLoading) return;
     let active = true;
     (async () => {
+      if (notesForUserRef.current !== (user?.id ?? null)) {
+        notesForUserRef.current = user?.id ?? null;
+        setTradeHeld([]);
+      }
       if (user) {
         try {
           const { data: cartId } = await supabase.rpc("get_or_create_my_cart");
@@ -366,7 +372,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const items = await fetchItemsByIds([inventoryItemId]);
       const row = items.get(inventoryItemId);
       if (!row || (row.quantity ?? 0) <= 0) {
-        const held = await noteTradeHeld([inventoryItemId]);
+        // Not in the cart, so no "taken out of your cart" note: just say why.
+        const held = (await fetchHeldCopies({ ids: [inventoryItemId] })).filter((c) => c.heldQuantity > 0);
         setError(
           held?.length
             ? `That copy of ${held[0].cardName} is on hold for a pending trade, so it can’t be bought right now.`
@@ -409,7 +416,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         await hydrateGuest();
       }
     },
-    [user, hydrateServer, hydrateGuest, noteTradeHeld],
+    [user, hydrateServer, hydrateGuest],
   );
 
   const setQuantity = useCallback(

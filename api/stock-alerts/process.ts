@@ -50,6 +50,16 @@ export function restockKey(id: string, createdAt: string | null): string {
   return `card-stock-${id}-${(createdAt && Date.parse(createdAt)) || 0}`;
 }
 
+/**
+ * After a failed send: let the next run try again. sendTrackedEmail claims
+ * the key before sending and keeps a failed claim, so retrying under the
+ * same key would be skipped as already sent. Only a failed claim is freed.
+ */
+async function freeFailedKey(db: SupabaseClient, key: string): Promise<void> {
+  const { error } = await db.from("email_deliveries").delete().eq("idempotency_key", key).eq("status", "failed");
+  if (error) console.error("[stock-alerts] couldn't free a failed email for retry", key, error.message);
+}
+
 /** True when some copy of the card can be bought right now. */
 async function cardBuyable(db: SupabaseClient, oracleId: string): Promise<boolean> {
   const { data, error } = await db.rpc("wishlist_card_state", { p_oracle_id: oracleId });
@@ -91,9 +101,10 @@ async function processRestockQueue(db: SupabaseClient): Promise<RestockResult | 
         supportEmail: ServerEnv.replyTo(),
       };
 
+      const key = restockKey(row.id, row.created_at);
       const result = await sendTrackedEmail({
         emailType: "card_back_in_stock",
-        idempotencyKey: restockKey(row.id, row.created_at),
+        idempotencyKey: key,
         to: row.email,
         from: ServerEnv.fromMarketing(),
         replyTo: ServerEnv.replyTo(),
@@ -104,6 +115,7 @@ async function processRestockQueue(db: SupabaseClient): Promise<RestockResult | 
 
       if (result.status === "failed") {
         // Leave notified_at null so a transient send failure retries next run.
+        await freeFailedKey(db, key);
         failed += 1;
       } else {
         await db
@@ -176,9 +188,10 @@ async function processHoldWatchers(db: SupabaseClient): Promise<{ sent: number; 
         logoUrl: logoUrl(),
         supportEmail: ServerEnv.replyTo(),
       };
+      const key = `trade-hold-released-${row.id}-${Date.parse(row.armed_at) || 0}`;
       const result = await sendTrackedEmail({
         emailType: "trade_hold_released",
-        idempotencyKey: `trade-hold-released-${row.id}-${Date.parse(row.armed_at) || 0}`,
+        idempotencyKey: key,
         to: row.email,
         from: ServerEnv.fromMarketing(),
         replyTo: ServerEnv.replyTo(),
@@ -187,6 +200,7 @@ async function processHoldWatchers(db: SupabaseClient): Promise<{ sent: number; 
         text: heldCardReleasedText(emailData),
       });
       if (result.status === "failed") {
+        await freeFailedKey(db, key);
         failed += 1; // stays pending: retried next run
       } else {
         await db.from("trade_hold_watchers").update({ notified_at: new Date().toISOString() }).eq("id", row.id);

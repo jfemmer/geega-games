@@ -279,6 +279,29 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
     check(sysMsg.author_type === "system" && /1 left of the 2 you picked/.test(sysMsg.body), "with a message saying which card and how many are left");
     check((await one(`select public.trade_mark_unavailable($1) as s`, [tOld])).s === null, "marking it again changes nothing");
     await close(tOld, "canceled", ["revision_requested"]);
+
+    // A held copy changed in Inventory while the trade waited for review is caught at approval, not when the trade is finished.
+    const lot = await inv("Ancient Tomb", 2, 4000);
+    const sentFor = async (user: string) => {
+      const id = (await one(`select public.trade_start($1, $2::jsonb, 'Name', $3) as id`, [user, items([lot, 1]), `${user}@x.com`])).id;
+      await one(`select public.trade_save_offer($1, $2, $3::jsonb) as v`, [id, user, JSON.stringify([card()])]);
+      await db.query(`select public.trade_submit($1, $2, null)`, [id, user]);
+      const c = await one(`select id from public.trade_offer_cards where trade_request_id = $1`, [id]);
+      await db.query(`select public.trade_review_cards($1, $2::jsonb, null, 'jacob')`, [id, JSON.stringify([{ id: c.id, review_status: "approved", approved_quantity: 1, approved_unit_cents: 7000 }])]);
+      return id;
+    };
+    const tCut = await sentFor(users.hal);
+    check((await holds(tCut)) === 1, "held from sending");
+    await db.query(`update public.inventory_items set quantity = 0 where id = $1`, [lot]);
+    const cut = await expectError(`select public.trade_approve('${tCut}', now() + interval '2 days', 0, null, null, null, 'jacob')`, "a held copy whose quantity was cut can't be approved", "GT004");
+    check(/Ancient Tomb isn't available/.test(cut?.message ?? ""), "staff are told which card");
+    check((await tradeRow(tCut)).status === "pending_review", "nothing changed");
+    await db.query(`update public.inventory_items set quantity = 2, status = 'archived' where id = $1`, [lot]);
+    await expectError(`select public.trade_approve('${tCut}', now() + interval '2 days', 0, null, null, null, 'jacob')`, "nor one that was archived", "GT004");
+    await db.query(`update public.inventory_items set status = 'active' where id = $1`, [lot]);
+    await db.query(`select public.trade_approve($1, now() + interval '2 days', 0, null, null, null, 'jacob')`, [tCut]);
+    check((await tradeRow(tCut)).status === "awaiting_confirmation" && (await holds(tCut)) === 1, "once it's back, it approves, still held once");
+    await close(tCut, "canceled", ["awaiting_confirmation"]);
   });
 
   it("confirming with no deposit reserves at once and keeps what was agreed", async () => {

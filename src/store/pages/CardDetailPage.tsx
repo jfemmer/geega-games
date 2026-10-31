@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { LISTING_PARAM, cardPageSeo, readListingId, withSelectedFirst } from "../../seo/catalog";
@@ -107,9 +107,14 @@ export default function CardDetailPage({ slug }: { slug: string }) {
 
   // A held copy turned out to be for sale again: refresh what's listed,
   // keeping the page on screen.
+  const slugRef = useRef(slug);
+  useEffect(() => {
+    slugRef.current = slug;
+  }, [slug]);
   async function reloadCard() {
-    const loaded = await loadCard(slug);
-    if (loaded) {
+    const forSlug = slug;
+    const loaded = await loadCard(forSlug);
+    if (loaded && slugRef.current === forSlug) {
       setDetail(loaded.detail);
       setHeld(loaded.held);
     }

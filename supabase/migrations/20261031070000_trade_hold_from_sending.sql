@@ -22,6 +22,10 @@
 -- not sent, approval not confirmed, deposit not paid). A trade waiting for
 -- review has no deadline: it stays held until staff review it.
 --
+-- Approving checks the held lines again (trade_held_problems): a held copy
+-- archived, or its quantity cut below its holds, in Inventory since the
+-- trade was sent is refused (GT004) so staff can take it off first.
+--
 -- Trades sent before this update with cards not held yet get them held when
 -- approved (all or none). trade_confirm and trade_reserve work unchanged:
 -- trade_reserve_core now has nothing to do when every line is already held.
@@ -165,6 +169,38 @@ end;
 $$;
 
 -- 3. Approving holds anything not held yet ---------------------------------------------
+-- Lines held since the trade was sent are checked again when staff approve
+-- it: the hold itself still active, and the copy still for sale in a
+-- quantity that covers every hold on it. A held copy can still be archived or
+-- have its quantity cut in Inventory, and a trade waiting for review can sit
+-- for a while; this catches it before the customer is told to go ahead
+-- (otherwise it only showed when the trade was finished). Same shape as
+-- trade_short_lines.
+create or replace function public.trade_held_problems(p_trade_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path to 'public'
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'card_name', l.card_name, 'wanted', l.quantity,
+           'available', case when i.status = 'active' and r.status = 'active'
+                             then greatest(0, l.quantity - greatest(0, held.total - i.quantity)) else 0 end)
+           order by l.card_name), '[]'::jsonb)
+  from public.trade_request_items l
+  left join public.inventory_reservations r on r.id = l.reservation_id
+  left join public.inventory_items i on i.id = l.inventory_item_id
+  left join lateral (
+    select coalesce(sum(x.quantity), 0)::int as total
+    from public.inventory_reservations x
+    where x.inventory_item_id = l.inventory_item_id and x.status = 'active'
+  ) held on true
+  where l.trade_request_id = p_trade_id
+    and l.status = 'reserved'
+    and (r.id is null or r.status <> 'active' or i.id is null or i.status <> 'active' or held.total > i.quantity);
+$$;
+
 create or replace function public.trade_approve(
   p_trade_id uuid, p_confirm_by timestamptz, p_deposit_cents integer, p_deposit_reason text,
   p_conditions text, p_actor_id uuid, p_actor_label text
@@ -228,7 +264,7 @@ begin
   if not exists (select 1 from public.trade_request_items where trade_request_id = p_trade_id and status in ('requested', 'reserved')) then
     raise exception 'None of our cards are on this trade any more.' using errcode = 'GT010';
   end if;
-  v_short := public.trade_short_lines(p_trade_id);
+  v_short := coalesce(public.trade_short_lines(p_trade_id), '[]'::jsonb) || public.trade_held_problems(p_trade_id);
   if jsonb_array_length(v_short) > 0 then
     raise exception '% isn''t available in that quantity any more. Change our cards on the trade, or ask the customer to.',
       v_short->0->>'card_name' using errcode = 'GT004';
@@ -397,6 +433,8 @@ revoke all on function public.trade_reserve_core(uuid, bigint) from public, anon
 grant execute on function public.trade_reserve_core(uuid, bigint) to service_role;
 revoke all on function public.trade_submit(uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.trade_submit(uuid, uuid, text) to service_role;
+revoke all on function public.trade_held_problems(uuid) from public, anon, authenticated;
+grant execute on function public.trade_held_problems(uuid) to service_role;
 revoke all on function public.trade_approve(uuid, timestamptz, integer, text, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.trade_approve(uuid, timestamptz, integer, text, text, uuid, text) to service_role;
 revoke all on function public.trade_set_wanted(uuid, jsonb, text[], text, uuid, text) from public, anon, authenticated;
