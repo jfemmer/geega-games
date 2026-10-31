@@ -19,6 +19,7 @@ const FOLLOW_UPS = [
   readFileSync(new URL("../supabase/migrations/20261027230000_trade_local_pickup.sql", import.meta.url), "utf8"),
   readFileSync(new URL("../supabase/migrations/20261028010000_trade_local_terms.sql", import.meta.url), "utf8"),
   readFileSync(new URL("../supabase/migrations/20261028030000_trade_meet_spot.sql", import.meta.url), "utf8"),
+  readFileSync(new URL("../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql", import.meta.url), "utf8"),
 ];
 
 /** A row: whatever the query selected. */
