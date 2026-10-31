@@ -29,7 +29,8 @@ function deadline(t: CustomerTradeSummary): string | null {
     case "awaiting_deposit":
       return t.confirmBy ? `Pay the deposit by ${formatDeadline(t.confirmBy)}` : null;
     case "awaiting_shipment":
-      if (t.handoffMethod === "local") return t.shipBy ? `Meet up by ${formatDeadline(t.shipBy)}` : "Let's meet up";
+      // Held until we meet: a local trade has no deadline.
+      if (t.handoffMethod === "local") return "Let's meet up";
       return t.shipBy ? `Ship your cards by ${formatDeadline(t.shipBy)}` : null;
     case "tracking_submitted":
       return "Waiting for the carrier's first scan";

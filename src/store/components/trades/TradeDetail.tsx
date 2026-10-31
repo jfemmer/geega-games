@@ -454,12 +454,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
           )}
 
           {local && status === "awaiting_shipment" && (
-            <LocalMeetupPanel
-              trade={trade}
-              terms={terms}
-              askBusy={busy === "ask"}
-              onAskForTime={(text) => run("ask", () => tradeActions.askForTime(tradeId, text), "Sent. We'll reply in your messages.")}
-            />
+            <LocalMeetupPanel trade={trade} terms={terms} />
           )}
 
           {CONFIRMING.has(status) && !local && (
@@ -739,8 +734,8 @@ function ClosedPanel({
       break;
     case "expired":
       if (trade.handoffMethod === "local") {
-        heading = "The hold on our cards ended";
-        body = `We didn't meet before the hold ended${trade.shipBy ? ` (${formatDeadline(trade.shipBy)})` : ""}, so our cards went back on sale. Nothing was charged, and it doesn't count against you.`;
+        heading = "We stopped holding our cards";
+        body = "We didn't manage to meet, so we stopped holding our cards and put them back on sale. Nothing was charged. Message us if you'd still like to trade.";
         break;
       }
       heading = "Your reservation expired";

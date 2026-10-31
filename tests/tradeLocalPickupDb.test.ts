@@ -291,6 +291,17 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
       { card_name: "Sol Ring", status: "removed", quantity: 1 },
     ]);
     expect((await tradeRow(id)).wanted_total_cents).toBe(4000);
+    // A kept card that has since gone off sale doesn't stop another being taken off.
+    const extra = await inv("Arcane Signet", 3, 4000);
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1], [extra, 2])]);
+    await db.query(`update public.inventory_items set price_cents = 0 where id = $1`, [bolt]);
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1], [extra, 1])]);
+    expect(await held(id)).toBe(2);
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1])]);
+    expect(await held(id)).toBe(1);
+    // Changing that card's quantity still checks it.
+    expect((await errorOf(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 2])]))?.code).toBe("GT004");
+    await db.query(`update public.inventory_items set price_cents = 4000 where id = $1`, [bolt]);
     // Taking the last card off isn't allowed: cancel the trade instead.
     expect((await errorOf(`select public.trade_set_wanted($1, '[]'::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id]))?.code).toBe("GT010");
     await db.query(`select * from public.trade_close($1, 'canceled_by_store', array['awaiting_shipment'], null, null, 'staff', null, 'jacob')`, [id]);
@@ -439,11 +450,16 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     await db.query(`update public.trade_requests set status = 'awaiting_shipment', ship_by = now() - interval '1 minute' where id = $1`, [shipped]);
     expect((await all(`select * from public.trade_expire_due(50, 24, true)`)).map((e) => e.expired_trade_id)).toContain(shipped);
 
+    // The update clears a meetup deadline an older held local trade still carries.
+    await db.query(`update public.trade_requests set ship_by = now() + interval '1 day', ship_by_original = now() + interval '1 day' where id = $1`, [old]);
+    await db.exec(MIGRATIONS[MIGRATIONS.length - 1]);
+    expect(await tradeRow(old)).toMatchObject({ ship_by: null, ship_by_original: null });
+
     // Released early by staff, then brought back: held again, still with no deadline.
     await db.query(`select * from public.trade_close($1, 'expired', array['awaiting_shipment'], 'Released', null, 'staff', null, 'jacob')`, [id]);
     expect(await held(id)).toBe(0);
-    expect((await errorOf(`select * from public.trade_reinstate($1, 'awaiting_shipment', $2::timestamptz, null, true, null, 'jacob')`, [id, iso(Date.now() + 3 * DAY)]))?.code).toBe("GT010");
-    const back = await one(`select * from public.trade_reinstate($1, 'awaiting_shipment', null, null, true, null, 'jacob')`, [id]);
+    // A deadline sent anyway (an older admin page) is ignored.
+    const back = await one(`select * from public.trade_reinstate($1, 'awaiting_shipment', $2::timestamptz, null, true, null, 'jacob')`, [id, iso(Date.now() + 3 * DAY)]);
     expect(back.result).toBe("reinstated");
     expect(await tradeRow(id)).toMatchObject({ status: "awaiting_shipment", ship_by: null });
     expect(await held(id)).toBe(2);

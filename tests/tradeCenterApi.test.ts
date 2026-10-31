@@ -2889,7 +2889,9 @@ describe("local pickup trades", () => {
     const t = localTrade({ user_id: ANN, status: "awaiting_confirmation", confirm_by: iso(Date.now() + 40 * HOUR), approved_at: iso(Date.now() - HOUR) });
     const view = (await ann.get({ id: t.id })).body.trade as { confirmation: Record<string, unknown> };
     expect(view.confirmation).toMatchObject({ local: true, depositCents: 0, shipDays: 7 });
-    expect(view.confirmation.termsText).toMatch(/hold.*7 days/s);
+    // Held until we meet: no number of days.
+    expect(view.confirmation.termsText).toMatch(/holds them for you until we meet/);
+    expect(view.confirmation.termsText).not.toMatch(/7 days/);
     // Local terms don't depend on the deposit terms' version.
     const res = await ann.post({ action: "confirm", tradeId: t.id, acknowledged: true, termsVersion: 1 });
     expect(res.statusCode).toBe(200);
@@ -2935,7 +2937,7 @@ describe("local pickup trades", () => {
     expect(res.statusCode).toBe(200);
     expect(rpcArgs("trade_set_meetup")[0]).toMatchObject({ p_details: "Sat 2 PM, Ballwin library" });
     // Nothing for the customer to confirm: no confirmation deadline.
-    expect(rpcArgs("trade_approve")[0]).toMatchObject({ p_confirm_by: null, p_deposit_cents: 0, p_deposit_reason: null });
+    expect(rpcArgs("trade_approve")[0]).toMatchObject({ p_deposit_cents: 0, p_deposit_reason: null });
     const email = sent.find((e) => e.emailType === "trade_approved");
     expect(email?.subject).toMatch(/our cards are held for you/);
     expect(email?.text).toMatch(/held for you until we meet/);
@@ -3054,12 +3056,13 @@ describe("local pickup trades", () => {
   it("reinstates a released local trade by holding our cards again, with no deadline", async () => {
     const t = localTrade({ user_id: ANN, status: "expired", expired_stage: "shipping", closed_at: iso(Date.now()) });
     rpc("trade_reinstate", (args) => {
-      Object.assign(find(args.p_trade_id), { status: "awaiting_shipment", ship_by: args.p_ship_by });
+      // The database holds a local trade with no deadline, whatever is sent.
+      Object.assign(find(args.p_trade_id), { status: "awaiting_shipment", ship_by: null });
       return { data: [{ result: "reinstated", short_lines: null }], error: null };
     });
     const res = await staff.post({ action: "reinstate", tradeId: t.id, mode: "awaiting_shipment", clearFault: true });
     expect(res.statusCode).toBe(200);
-    expect(rpcArgs("trade_reinstate")[0]).toMatchObject({ p_mode: "awaiting_shipment", p_ship_by: null });
+    expect(rpcArgs("trade_reinstate")[0]).toMatchObject({ p_mode: "awaiting_shipment" });
     expect(find(t.id).ship_by).toBeNull();
   });
 

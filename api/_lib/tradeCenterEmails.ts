@@ -922,12 +922,12 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
     }
 
     case "reserved": {
-      const meetBy = t.ship_by ? formatDeadline(t.ship_by) : null;
+      // Only a trade approved under the old flow is confirmed by the customer; held until we meet, with no deadline.
       return sendCustomer(b, settings, "trade_reserved", `trade-reserved-${t.id}-${t.reserved_at}`, `Trade ${label}: our cards are reserved. Let's meet up`, {
-        previewText: meetBy ? `Our cards are held for you until ${meetBy}.` : "Our cards are held for you until we meet.",
+        previewText: "Our cards are held for you until we meet.",
         heading: "Our cards are reserved for you",
         paragraphs: [
-          `${greet} trade ${label} is confirmed. Our cards are reserved for you and off the shelf${meetBy ? ` until ${meetBy}` : ""}.`,
+          `${greet} trade ${label} is confirmed. Our cards are reserved for you and off the shelf until we meet.`,
           t.meetup_details
             ? "Here's where and when we'll meet. Need a different time? Reply on your trade page."
             : spot
@@ -1152,12 +1152,10 @@ export async function notifyTradeStaff(b: TradeBundle, settings: TradeSettingsRo
         key = `trade:reserved:${t.id}:${t.reserved_at}`;
         title = `Trade confirmed · ${label}`;
         if (handoffOf(t) === "local") {
-          body = `${who} · local pickup · cards held until ${t.ship_by ? formatDeadline(t.ship_by) : "?"}: arrange the meetup`;
+          // Held until it's finished: no deadline.
+          body = `${who} · local pickup · cards held until the trade is finished: arrange the meetup`;
           heading = "A customer confirmed a local pickup trade: arrange the meetup";
-          rows.push(
-            { label: "Hold ends", value: t.ship_by ? formatDeadline(t.ship_by) : "" },
-            { label: "Meetup", value: t.meetup_details ?? "Not set yet: message them on the trade" },
-          );
+          rows.push({ label: "Meetup", value: t.meetup_details ?? "Not set yet: message them on the trade" });
           break;
         }
         body = `${who} · cards reserved${t.deposit_status === "paid" ? ` · ${money(deposit)} deposit paid` : ""} · ship by ${t.ship_by ? formatDeadline(t.ship_by) : "?"}`;

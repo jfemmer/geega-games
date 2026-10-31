@@ -1404,7 +1404,11 @@ describe("local pickup on the storefront", () => {
     });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     const panel = (await screen.findByRole("heading", { name: "Let’s meet up" })).closest("section")!;
-    expect(panel).toHaveTextContent("Our cards are held for you until");
+    // Held until we meet: no deadline (one an older trade carries is ignored), so nothing to ask more time for.
+    expect(panel).toHaveTextContent("Our cards are held for you until we meet.");
+    expect(panel).not.toHaveTextContent("2099");
+    expect(panel).not.toHaveTextContent(/left\)/);
+    expect(within(panel).queryByRole("button", { name: /more time/i })).toBeNull();
     expect(panel).toHaveTextContent("Saturday 2 PM at the Ballwin library");
     expect(panel).toHaveTextContent("The cards you’re trading in");
     expect(screen.getByRole("heading", { level: 2, name: "Reserved: let's meet up" })).toBeInTheDocument();
@@ -1438,12 +1442,13 @@ describe("local pickup on the storefront", () => {
     expect(screen.getByText("Yours: you picked them up when we met.")).toBeInTheDocument();
   });
 
-  it("marks local trades in My Trades, with the meetup deadline", async () => {
+  it("marks local trades in My Trades, held until we meet (no deadline, even one an older trade carries)", async () => {
     world.trades = [customerSummary({ id: "t-l", status: "awaiting_shipment", handoffMethod: "local", shipBy: "2099-01-01T05:59:59Z" })];
     at("/account/trades", <MyTrades />);
     const [link] = await screen.findAllByRole("link", { name: /TR-/ });
     expect(link).toHaveTextContent("Reserved: let's meet up");
-    expect(link).toHaveTextContent("Meet up by");
+    expect(link).toHaveTextContent("Let's meet up");
+    expect(link).not.toHaveTextContent("Meet up by");
     expect(link).toHaveTextContent("· local pickup");
   });
 });

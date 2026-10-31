@@ -15,8 +15,12 @@
 -- Until then the hold only ends when the trade is canceled (by the customer
 -- or the store); trade_expire_due never expires a local trade's hold.
 -- Staff can still take cards off (trade_set_wanted): each goes straight back
--- on sale. A local trade staff released early and then reinstate comes back
--- held the same way, with no deadline (trade_reinstate).
+-- on sale, and a card kept at the same quantity is never re-checked, so one
+-- that has since gone off sale can't block taking another off
+-- (trade_set_wanted, shipped trades too). A local trade staff released early
+-- and then reinstate comes back held the same way, with no deadline
+-- (trade_reinstate). Stored meetup deadlines on held local trades are
+-- cleared.
 --
 -- Local trades approved before this update and still waiting for the
 -- customer's confirmation keep working as before (trade_confirm is
@@ -249,10 +253,8 @@ begin
   if v_trade.status <> 'expired' then
     raise exception 'Only an expired reservation can be reinstated.' using errcode = 'GT009';
   end if;
-  -- A local pickup trade comes back held until it's finished: no deadline.
-  if p_mode = 'awaiting_shipment' and v_trade.handoff_method = 'local' and p_ship_by is not null then
-    raise exception 'A local pickup trade is held until it''s finished: no deadline.' using errcode = 'GT010';
-  end if;
+  -- A local pickup trade comes back held until it's finished: any deadline
+  -- sent (an admin page from before this update) is ignored.
   if p_mode = 'awaiting_shipment' and v_trade.handoff_method <> 'local'
      and (p_ship_by is null or p_ship_by <= now() or p_ship_by > now() + interval '60 days') then
     raise exception 'Give them a new shipping deadline in the next 60 days.' using errcode = 'GT010';
@@ -296,7 +298,8 @@ begin
     return_status = 'none',
     review_flag = null,
     review_flag_at = null,
-    ship_by = case when p_mode = 'awaiting_shipment' then p_ship_by else ship_by end,
+    ship_by = case when p_mode = 'awaiting_shipment' and v_trade.handoff_method = 'local' then null
+                   when p_mode = 'awaiting_shipment' then p_ship_by else ship_by end,
     ship_by_original = case when p_mode = 'awaiting_shipment' and v_trade.handoff_method = 'local' then null else ship_by_original end,
     inbound_accepted_at = case when p_mode = 'in_transit' then p_accepted_at
                                when p_mode = 'received' then coalesce(inbound_accepted_at, now())
@@ -318,10 +321,106 @@ begin
 end;
 $$;
 
--- 4. Only the server may call these -------------------------------------------------
+-- 4. Taking cards off a held trade never trips over the cards that stay ------------
+-- (Shipped and local trades alike: a card kept at the same quantity is left
+-- held as it is; only new or changed cards are checked.)
+create or replace function public.trade_set_wanted(
+  p_trade_id uuid, p_items jsonb, p_statuses text[], p_actor_type text, p_actor_id uuid, p_actor_label text
+) returns integer
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  s public.trade_settings%rowtype;
+  v_trade public.trade_requests%rowtype;
+  v_reserve boolean;
+  v_lines integer;
+  v_total integer;
+  r record;
+begin
+  perform public.trade_require_service_role();
+  select * into s from public.trade_settings where id;
+  select * into v_trade from public.trade_requests where id = p_trade_id for update;
+  if not found then
+    raise exception 'That trade isn''t there.' using errcode = 'GT404';
+  end if;
+  if not (v_trade.status = any (p_statuses)) then
+    raise exception 'The cards on this trade can''t be changed now.' using errcode = 'GT009';
+  end if;
+  if v_trade.status in ('awaiting_trade_list', 'revision_requested') and v_trade.list_due_at is not null and v_trade.list_due_at < now() then
+    raise exception 'The time to update this trade ran out.' using errcode = 'GT012';
+  end if;
+  v_reserve := v_trade.status in ('awaiting_shipment', 'tracking_submitted', 'in_transit', 'received', 'under_inspection');
+  if not v_reserve and v_trade.status not in ('awaiting_trade_list', 'pending_review', 'revision_requested') then
+    raise exception 'The cards on this trade can''t be changed now.' using errcode = 'GT009';
+  end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    raise exception 'Your cards didn''t come through. Try again.' using errcode = 'GT010';
+  end if;
+  select count(distinct e->>'inventory_item_id') into v_lines from jsonb_array_elements(p_items) e;
+  if v_lines = 0 then
+    raise exception 'A trade needs at least one of our cards. Cancel the trade instead.' using errcode = 'GT010';
+  end if;
+  if v_lines > s.max_wanted_lines then
+    raise exception 'A trade can have up to % different cards.', s.max_wanted_lines using errcode = 'GT010';
+  end if;
+
+  -- Lines no longer wanted.
+  for r in
+    select i.id, i.status from public.trade_request_items i
+    where i.trade_request_id = p_trade_id and i.status in ('requested', 'reserved')
+      and i.inventory_item_id not in (select (e->>'inventory_item_id')::uuid from jsonb_array_elements(p_items) e)
+  loop
+    if r.status = 'reserved' then
+      perform public.trade_release_line(r.id, coalesce(p_actor_label, p_actor_type), 'removed');
+    else
+      delete from public.trade_request_items where id = r.id;
+    end if;
+  end loop;
+
+  -- Lines kept, changed or added, in inventory id order.
+  for r in
+    select (e->>'inventory_item_id')::uuid as inv_id, sum((e->>'quantity')::int)::int as qty
+    from jsonb_array_elements(p_items) e
+    group by 1
+    order by 1
+  loop
+    -- A card already held in this quantity is left as it is: re-checking it
+    -- (still on sale, still in stock) would let one stale card block taking
+    -- a different card off the trade.
+    if v_reserve and exists (
+      select 1 from public.trade_request_items i
+      where i.trade_request_id = p_trade_id and i.inventory_item_id = r.inv_id and i.status = 'reserved' and i.quantity = r.qty
+    ) then
+      continue;
+    end if;
+    perform public.trade_put_line(v_trade.id, v_trade.trade_number, r.inv_id, r.qty, v_reserve);
+  end loop;
+
+  v_total := public.trade_recount_wanted(p_trade_id);
+  if s.max_trade_value_cents is not null and v_total > s.max_trade_value_cents then
+    raise exception 'A trade can include up to % of our cards.', to_char(s.max_trade_value_cents / 100.0, 'FM$999,999,990.00') using errcode = 'GT006';
+  end if;
+  perform public.trade_log(p_trade_id, p_actor_type, p_actor_id, p_actor_label, 'wanted_changed', v_trade.status, v_trade.status,
+    jsonb_build_object('wanted_total_cents', v_total, 'reserved', v_reserve));
+  return v_total;
+end;
+$$;
+
+-- 5. Held local trades carry no deadline ---------------------------------------------
+-- A local trade confirmed before this update has a meetup deadline stored;
+-- it no longer means anything, so it's cleared.
+update public.trade_requests
+   set ship_by = null, ship_by_original = null
+ where handoff_method = 'local' and status = 'awaiting_shipment' and ship_by is not null;
+
+-- 6. Only the server may call these -------------------------------------------------
 revoke all on function public.trade_approve(uuid, timestamptz, integer, text, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.trade_approve(uuid, timestamptz, integer, text, text, uuid, text) to service_role;
 revoke all on function public.trade_expire_due(integer, integer, boolean) from public, anon, authenticated;
 grant execute on function public.trade_expire_due(integer, integer, boolean) to service_role;
 revoke all on function public.trade_reinstate(uuid, text, timestamptz, timestamptz, boolean, uuid, text) from public, anon, authenticated;
 grant execute on function public.trade_reinstate(uuid, text, timestamptz, timestamptz, boolean, uuid, text) to service_role;
+revoke all on function public.trade_set_wanted(uuid, jsonb, text[], text, uuid, text) from public, anon, authenticated;
+grant execute on function public.trade_set_wanted(uuid, jsonb, text[], text, uuid, text) to service_role;

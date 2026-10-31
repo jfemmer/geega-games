@@ -229,11 +229,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (handoffOf(t) === "local") {
           // Approving holds our cards at once, until the trade is finished or
           // canceled: the customer doesn't confirm, and there's no deadline.
+          // (The database ignores p_confirm_by for a local trade; it's still
+          // sent so this works with the database before that update too.)
           const meetup = cleanText(body.meetupDetails, 2000);
           const conditions = cleanText(body.conditions, 2000);
           const { error } = await admin.rpc("trade_approve", {
             p_trade_id: tradeId,
-            p_confirm_by: null,
+            p_confirm_by: confirmDeadline(Date.now(), settings),
             p_deposit_cents: 0,
             p_deposit_reason: null,
             p_conditions: conditions,
@@ -410,8 +412,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         let shipBy: string | null = null;
         let acceptedAt: string | null = null;
-        // A local pickup trade comes back held until it's finished: no deadline.
-        if (mode === "awaiting_shipment" && !local) {
+        if (mode === "awaiting_shipment" && local) {
+          // A local pickup trade comes back held until it's finished: the
+          // database ignores this deadline for it (sent so this works with the
+          // database before that update too).
+          shipBy = shipDeadline(Date.now(), settings.local_meet_days, settings);
+        } else if (mode === "awaiting_shipment") {
           const days = wholeNumber(body.shipDays, 1, 30);
           if (days === null) throw new HttpError(400, "Give them 1 to 30 days to ship.");
           shipBy = shipDeadline(Date.now(), days, settings);
