@@ -397,6 +397,8 @@ async function remindAndAlert(admin: Admin, settings: TradeSettingsRow, now: num
           .from("trade_requests")
           .select("*")
           .eq("status", "awaiting_shipment")
+          // A local pickup trade's hold never runs out, so there's nothing to remind them of.
+          .neq("handoff_method", "local")
           .gt("ship_by", iso(now))
           .lte("ship_by", iso(now + shipHours * HOUR))
           .limit(BATCH)

@@ -327,9 +327,7 @@ export function ReservedTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =>
       render: (l) => (
         <span className="gg-card-meta">
           {l.handoffMethod === "local"
-            ? l.shipBy
-              ? `Local pickup: meet by ${formatDeadline(l.shipBy)}`
-              : "Local pickup"
+            ? "Local pickup: held until finished"
             : l.shippedAt
               ? "Shipped: reserved until settled"
               : l.shipBy

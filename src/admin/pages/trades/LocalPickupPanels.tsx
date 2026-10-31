@@ -3,7 +3,6 @@ import { Button } from "../../components/ui/Button";
 import { TextArea, TextField } from "../../components/ui/Field";
 import { Icon } from "../../components/ui/Icon";
 import { useToast } from "../../hooks/useToast";
-import { useNow } from "../../../store/lib/useNow";
 import { formatCents, formatDateTime } from "../../utils/format";
 import { AddTradeCardDrawer, type TradeCardPick } from "../../components/trade/AddTradeCardDrawer";
 import { priceForFinish } from "../../utils/pricing";
@@ -15,7 +14,6 @@ import {
   FINISH_NAMES,
   LOCAL_PAYMENT_LABELS,
   TRADE_LIMITS,
-  formatDeadline,
   meetSpotLine,
   meetSpotMapUrl,
   meetSpotOf,
@@ -25,7 +23,7 @@ import {
   type MeetSpot,
   type StaffTrade,
 } from "../../../store/lib/tradeCenter";
-import { centsInput, confirmByPreview, meetupTotals, quantityOptions } from "./tradeMath";
+import { centsInput, meetupTotals, quantityOptions } from "./tradeMath";
 import { CardThumb } from "./TradeCardBits";
 import type { TradePanelProps } from "./types";
 
@@ -54,14 +52,12 @@ function SpotLine({ spot }: { spot: MeetSpot }) {
 /** Pending review: approve (with where to meet), ask for changes, or reject. */
 export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps) {
   const toast = useToast();
-  const now = useNow();
   const [outcome, setOutcome] = useState<Outcome>("approve");
   const [meetup, setMeetup] = useState(trade.meetupDetails ?? "");
   const spot = meetSpotOf(settings);
   const [conditions, setConditions] = useState("");
   const [revision, setRevision] = useState("");
   const [reason, setReason] = useState("");
-  const confirmBy = confirmByPreview(settings, now);
   const short = trade.wanted.filter((w) => w.status === "requested" && w.available !== null && w.available < w.quantity);
   const bring = valueForCreditCents(trade.wantedTotalCents, trade.creditRatePercent, trade.processingFeeCents);
   // Local pickup never takes a deposit, so a customer you'd normally ask for one gets a mention here.
@@ -72,7 +68,7 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
       await run(
         "approve",
         () => tradeCenterRepository.approve(trade.id, { conditions: conditions.trim(), meetupDetails: meetup.trim() }),
-        "Approved: waiting for the customer to confirm.",
+        "Approved: our cards are held until you finish the trade.",
       );
     } else if (outcome === "revise") {
       if (!revision.trim()) {
@@ -125,9 +121,8 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
         {outcome === "approve" && (
           <div className="gg-trd-decide__body">
             <p className="gg-card-meta">
-              The customer is emailed the approval and has until <strong>{formatDeadline(new Date(confirmBy).toISOString())}</strong> to
-              confirm. Confirming holds our cards for {settings.localMeetDays} day{settings.localMeetDays === 1 ? "" : "s"} (Sundays
-              don&rsquo;t count) for the meetup. No deposit.
+              Approving takes our cards off sale and holds them until you finish or cancel the trade, with no deadline. The customer is
+              emailed that it&rsquo;s approved; there&rsquo;s nothing for them to confirm, and no deposit.
             </p>
             {spot && <SpotLine spot={spot} />}
             <TextArea

@@ -6,9 +6,10 @@ import { STANDINS, UPSERT } from "./helpers/tradeDbStandins";
 // Local pickup trades (supabase/migrations/20261027230000_trade_local_pickup.sql,
 // and their own terms, 20261028010000_trade_local_terms.sql) in PGlite, on top
 // of the Trade Center migration: starting one, sending it without listing
-// their cards, approving it with no review or deposit, confirming, the
-// meetup hold running out, finishing it at the meetup, and local pickup's
-// own rate, minimums and cash payouts, and its meeting spot
+// their cards, approving it with no review or deposit (which holds our cards
+// until it's finished: 20261031010000_trade_local_hold_until_finished.sql),
+// taking cards off while they're held, finishing it at the meetup, and local
+// pickup's own rate, minimums and cash payouts, and its meeting spot
 // (20261028030000_trade_meet_spot.sql).
 // tests/tradeCenterDb.test.ts runs every shipped-trade test with this
 // update in place too.
@@ -19,6 +20,7 @@ const MIGRATIONS = [
   "../supabase/migrations/20261027230000_trade_local_pickup.sql",
   "../supabase/migrations/20261028010000_trade_local_terms.sql",
   "../supabase/migrations/20261028030000_trade_meet_spot.sql",
+  "../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -67,6 +69,8 @@ const start = async (user: string, pairs: [string, number][], method?: string) =
   ).id as string;
 const approve = (id: string, deposit = 0) =>
   db.query(`select public.trade_approve($1, $2::timestamptz, $3, $4, null, null, 'jacob')`, [id, iso(Date.now() + 2 * DAY), deposit, deposit > 0 ? "trade" : null]);
+const held = async (id: string) =>
+  (await one(`select coalesce(sum(quantity), 0)::int as n from public.inventory_reservations where trade_request_id = $1 and status = 'active'`, [id])).n as number;
 const confirm = (id: string, user: string, meetBy = Date.now() + 7 * DAY) =>
   one(`select * from public.trade_confirm($1, $2, 1, 'Local pickup terms', 7, $3::timestamptz, null, null, null)`, [id, user, iso(meetBy)]);
 const complete = (id: string, cards: Row[], paid: number, method: string | null = null, cash = false) =>
@@ -101,7 +105,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
       await db.exec(sql); // safe to run twice
     }
     await db.exec(`insert into auth.users (id, email) values ${Object.entries(users).map(([n, id]) => `('${id}', '${n}@example.com')`).join(", ")}`);
-    await db.exec(`update public.trade_settings set enabled = true`);
+    await db.exec(`update public.trade_settings set enabled = true, max_active_trades = 10`);
     await db.exec(`set test.role = 'service_role'`);
     ring = await inv("Sol Ring", 5, 4000);
     bolt = await inv("Lightning Bolt", 5, 4000);
@@ -228,13 +232,25 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     const id = await start(users.lou, [[ring, 2]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [id, users.lou]);
     expect((await errorOf(`select public.trade_approve($1, $2::timestamptz, 1000, 'trade', null, null, 'jacob')`, [id, iso(Date.now() + DAY)]))?.code).toBe("GT010");
-    await approve(id);
+    // No confirmation deadline needed either: the customer doesn't confirm a local trade.
+    await db.query(`select public.trade_approve($1, null, 0, null, null, null, 'jacob')`, [id]);
     const t = await tradeRow(id);
-    expect(t.status).toBe("awaiting_confirmation");
+    // Approving holds our cards at once, with no deadline: until it's finished or canceled.
+    expect(t.status).toBe("awaiting_shipment");
+    expect(t.reserved_at).not.toBeNull();
+    expect(t.ship_by).toBeNull();
+    expect(t.confirm_by).toBeNull();
     expect(t.approved_value_cents).toBeNull();
     expect(t.deposit_status).toBe("not_required");
+    expect(t.needs_staff).toBe(true);
+    expect(await held(id)).toBe(2);
+    expect((await one(`select public.trade_available($1, null) as n`, [ring])).n).toBe(3);
+    expect((await all(`select status from public.trade_request_items where trade_request_id = $1`, [id])).map((r) => r.status)).toEqual(["reserved"]);
+    expect((await one(`select event, to_status, detail from public.trade_events where trade_request_id = $1 and event = 'approved'`, [id]))).toMatchObject({
+      to_status: "awaiting_shipment",
+      detail: expect.objectContaining({ held_until: "finished" }),
+    });
     expect((await errorOf(`select public.trade_set_deposit($1, 'required', 1000, 'trade', null, 'jacob')`, [id]))?.code).toBe("GT010");
-    await db.query(`select public.trade_set_deposit($1, 'waived', 0, null, null, 'jacob')`, [id]);
 
     // Staff write where to meet.
     await db.query(`select public.trade_set_meetup($1, ' Saturday 2 PM, the library ', null, 'jacob')`, [id]);
@@ -242,14 +258,54 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     await db.query(`select public.trade_set_meetup($1, 'Saturday 2 PM, the library', null, 'jacob')`, [id]);
     expect((await one(`select count(*)::int as n from public.trade_events where trade_request_id = $1 and event = 'meetup_set'`, [id])).n).toBe(1);
 
-    // Confirming reserves our cards until the meetup deadline.
-    const r = await confirm(id, users.lou);
-    expect(r.result).toBe("reserved");
-    const reserved = await tradeRow(id);
-    expect(reserved.status).toBe("awaiting_shipment");
-    expect(reserved.needs_staff).toBe(true);
-    expect((await one(`select public.trade_available($1, null) as n`, [ring])).n).toBe(3);
+    // There's nothing for the customer to confirm.
+    expect((await errorOf(`select * from public.trade_confirm($1, $2, 1, 'Local pickup terms', 7, $3::timestamptz, null, null, null)`, [id, users.lou, iso(Date.now() + 7 * DAY)]))?.code).toBe("GT009");
     await db.exec(`update public.trade_settings set ship_to_line1 = '1 Main St'`);
+  });
+
+  it("holds nothing when one of our cards sold before approval", async () => {
+    const solo = await inv("Mana Crypt", 1, 9000);
+    const id = await start(users.ned, [[solo, 1], [bolt, 1]], "local");
+    await db.query(`select public.trade_submit($1, $2, null)`, [id, users.ned]);
+    await db.query(`update public.inventory_items set quantity = 0 where id = $1`, [solo]);
+    expect((await errorOf(`select public.trade_approve($1, null, 0, null, null, null, 'jacob')`, [id]))?.code).toBe("GT004");
+    expect((await tradeRow(id)).status).toBe("pending_review");
+    expect(await held(id)).toBe(0);
+    await db.query(`select * from public.trade_close($1, 'canceled', array['pending_review'], null, null, 'customer', null, 'x')`, [id]);
+  });
+
+  it("takes cards the customer changed their mind on off a held trade: each goes straight back on sale", async () => {
+    const id = await start(users.ned, [[ring, 1], [bolt, 2]], "local");
+    await db.query(`select public.trade_submit($1, $2, null)`, [id, users.ned]);
+    await approve(id);
+    const freeBolts = (await one(`select public.trade_available($1, null) as n`, [bolt])).n as number;
+    expect(await held(id)).toBe(3);
+
+    // They only want one Lightning Bolt, and no Sol Ring.
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1])]);
+    expect(await held(id)).toBe(1);
+    expect((await one(`select public.trade_available($1, null) as n`, [bolt])).n).toBe(freeBolts + 1);
+    const lines = await all(`select card_name, status, quantity from public.trade_request_items where trade_request_id = $1 order by card_name`, [id]);
+    expect(lines).toEqual([
+      { card_name: "Lightning Bolt", status: "reserved", quantity: 1 },
+      { card_name: "Sol Ring", status: "removed", quantity: 1 },
+    ]);
+    expect((await tradeRow(id)).wanted_total_cents).toBe(4000);
+    // A kept card that has since gone off sale doesn't stop another being taken off.
+    const extra = await inv("Arcane Signet", 3, 4000);
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1], [extra, 2])]);
+    await db.query(`update public.inventory_items set price_cents = 0 where id = $1`, [bolt]);
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1], [extra, 1])]);
+    expect(await held(id)).toBe(2);
+    await db.query(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 1])]);
+    expect(await held(id)).toBe(1);
+    // Changing that card's quantity still checks it.
+    expect((await errorOf(`select public.trade_set_wanted($1, $2::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id, items([bolt, 2])]))?.code).toBe("GT004");
+    await db.query(`update public.inventory_items set price_cents = 4000 where id = $1`, [bolt]);
+    // Taking the last card off isn't allowed: cancel the trade instead.
+    expect((await errorOf(`select public.trade_set_wanted($1, '[]'::jsonb, array['awaiting_shipment'], 'staff', null, 'jacob')`, [id]))?.code).toBe("GT010");
+    await db.query(`select * from public.trade_close($1, 'canceled_by_store', array['awaiting_shipment'], null, null, 'staff', null, 'jacob')`, [id]);
+    expect(await held(id)).toBe(0);
   });
 
   it("refuses a meetup on a shipped trade", async () => {
@@ -260,7 +316,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
   });
 
   it("finishes at the meetup: their cards, the difference paid in person, our cards handed over", async () => {
-    const id = (await one(`select id from public.trade_requests where handoff_method = 'local' and status = 'awaiting_shipment'`)).id as string;
+    const id = (await one(`select id from public.trade_requests where handoff_method = 'local' and status = 'awaiting_shipment' and user_id = $1`, [users.lou])).id as string;
     // Our cards: 2 × $40 = $80. Their cards: $50 + 2 × $10 = $70 → $56 credit at 80%. They pay $24.
     const cards = [taken(), taken({ scryfall_id: null, card_name: "Llanowar Elves", set_code: null, finish: "foil", condition: "NM", quantity: 2, unit_cents: 1000, reference_price_cents: null, note: "binder" })];
     expect((await errorOf(`select public.trade_complete_local($1, $2::jsonb, 2400, null, null, false, null, 'jacob')`, [id, JSON.stringify(cards)]))?.code).toBe("GT010");
@@ -329,7 +385,6 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     const a = await start(users.max, [[bolt, 1]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [a, users.max]);
     await approve(a);
-    await confirm(a, users.max);
     await complete(a, [taken({ unit_cents: 10000 })], 0);
     const ta = await tradeRow(a);
     expect(ta.excess_cents).toBe(4000);
@@ -342,7 +397,6 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     const b = await start(users.ned, [[bolt, 1]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [b, users.ned]);
     await approve(b);
-    await confirm(b, users.ned);
     expect(
       (await errorOf(`select public.trade_complete_local($1, $2::jsonb, 0, null, null, true, null, 'jacob')`, [b, JSON.stringify([taken({ unit_cents: 10000 })])]))
         ?.message,
@@ -361,7 +415,6 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     const id = await start(users.lou, [[bolt, 2]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [id, users.lou]);
     await approve(id);
-    await confirm(id, users.lou);
     await complete(id, [], 8000, "card");
     const t = await tradeRow(id);
     expect(t.status).toBe("completed");
@@ -370,25 +423,50 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     expect((await one(`select count(*)::int as n from public.trade_offer_cards where trade_request_id = $1`, [id])).n).toBe(0);
   });
 
-  it("releases a local hold that runs out, with no fault counted", async () => {
-    const id = await start(users.max, [[ring, 2]], "local");
+  it("never lets a local trade's hold run out, even one confirmed under the old flow", async () => {
+    const signet = await inv("Arcane Signet", 10, 4000);
+    const crypt = await inv("Mind Stone", 10, 4000);
+    const id = await start(users.max, [[signet, 2]], "local");
     await db.query(`select public.trade_submit($1, $2, null)`, [id, users.max]);
     await approve(id);
-    await confirm(id, users.max);
-    await db.query(`update public.trade_requests set ship_by = now() - interval '1 minute' where id = $1`, [id]);
-    const expired = await all(`select * from public.trade_expire_due(50, 24, true)`);
-    expect(expired.map((e) => e.expired_trade_id)).toContain(id);
-    const t = await tradeRow(id);
-    expect(t.status).toBe("expired");
-    expect(t.customer_fault).toBeNull();
-    expect(t.close_reason).toMatch(/didn't meet/);
-    expect(t.return_status).toBe("none");
-    expect((await one(`select count(*)::int as n from public.inventory_reservations where trade_request_id = $1 and status = 'active'`, [id])).n).toBe(0);
+    // A local trade approved before this update, confirmed with a meetup deadline that has passed.
+    const old = await start(users.max, [[crypt, 2]], "local");
+    await db.query(`select public.trade_submit($1, $2, null)`, [old, users.max]);
+    await db.query(`update public.trade_requests set status = 'awaiting_confirmation', confirm_by = now() + interval '1 day' where id = $1`, [old]);
+    await db.query(`update public.trade_request_items set status = 'requested' where trade_request_id = $1`, [old]);
+    expect((await confirm(old, users.max)).result).toBe("reserved");
+    await db.query(`update public.trade_requests set ship_by = now() - interval '1 minute' where id = $1`, [old]);
 
-    // Staff can bring it back with a new meetup deadline.
-    const r = await one(`select * from public.trade_reinstate($1, 'awaiting_shipment', $2::timestamptz, null, true, null, 'jacob')`, [id, iso(Date.now() + 3 * DAY)]);
-    expect(r.result).toBe("reinstated");
+    const expired = (await all(`select * from public.trade_expire_due(50, 24, true)`)).map((e) => e.expired_trade_id);
+    expect(expired).not.toContain(id);
+    expect(expired).not.toContain(old);
     expect((await tradeRow(id)).status).toBe("awaiting_shipment");
+    expect((await tradeRow(old)).status).toBe("awaiting_shipment");
+    expect(await held(id)).toBe(2);
+    expect(await held(old)).toBe(2);
+
+    // A shipped trade past its shipping deadline still expires.
+    const shipped = await start(users.max, [[crypt, 2]]);
+    await db.query(`update public.trade_requests set status = 'awaiting_shipment', ship_by = now() - interval '1 minute' where id = $1`, [shipped]);
+    expect((await all(`select * from public.trade_expire_due(50, 24, true)`)).map((e) => e.expired_trade_id)).toContain(shipped);
+
+    // The update clears a meetup deadline an older held local trade still carries.
+    await db.query(`update public.trade_requests set ship_by = now() + interval '1 day', ship_by_original = now() + interval '1 day' where id = $1`, [old]);
+    await db.exec(MIGRATIONS[MIGRATIONS.length - 1]);
+    expect(await tradeRow(old)).toMatchObject({ ship_by: null, ship_by_original: null });
+
+    // Released early by staff, then brought back: held again, still with no deadline.
+    await db.query(`select * from public.trade_close($1, 'expired', array['awaiting_shipment'], 'Released', null, 'staff', null, 'jacob')`, [id]);
+    expect(await held(id)).toBe(0);
+    // A deadline sent anyway (an older admin page) is ignored.
+    const back = await one(`select * from public.trade_reinstate($1, 'awaiting_shipment', $2::timestamptz, null, true, null, 'jacob')`, [id, iso(Date.now() + 3 * DAY)]);
+    expect(back.result).toBe("reinstated");
+    expect(await tradeRow(id)).toMatchObject({ status: "awaiting_shipment", ship_by: null });
+    expect(await held(id)).toBe(2);
+
+    for (const t of [id, old]) {
+      await db.query(`select * from public.trade_close($1, 'canceled', array['awaiting_shipment'], null, null, 'customer', null, 'x')`, [t]);
+    }
   });
 
   it("only the server can call the new functions", async () => {

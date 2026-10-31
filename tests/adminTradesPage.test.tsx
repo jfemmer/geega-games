@@ -1222,15 +1222,46 @@ describe("local pickup trades", () => {
   it("approves without a card review or deposit, with where to meet", async () => {
     const user = userEvent.setup();
     const trade = staffTrade({ ...LOCAL, status: "pending_review", customerNote: "Weekends work" });
-    repo.approve.mockResolvedValue(answer(staffTrade({ ...LOCAL, status: "awaiting_confirmation" })));
+    repo.approve.mockResolvedValue(answer(staffTrade({ ...LOCAL, status: "awaiting_shipment", shipBy: null })));
     const dialog = await openTrade(trade);
     expect(within(dialog).getByText("Local pickup")).toBeInTheDocument();
     const panel = within(dialog).getByRole("heading", { name: "Review this local pickup trade" }).closest("section")!;
+    expect(panel).toHaveTextContent("Approving takes our cards off sale and holds them until you finish or cancel the trade, with no deadline");
+    expect(panel).not.toHaveTextContent(/to confirm\./);
     expect(panel).toHaveTextContent("about $111.24 at TCG low covers ours at 80%");
     expect(within(dialog).queryByRole("combobox", { name: "Deposit" })).toBeNull();
     await user.type(within(panel).getByLabelText("Where and when to meet (optional)"), "Sat 2 PM, Ballwin library");
     await user.click(within(panel).getByRole("button", { name: "Approve and email the customer" }));
     await waitFor(() => expect(repo.approve).toHaveBeenCalledWith(TRADE_ID, { conditions: "", meetupDetails: "Sat 2 PM, Ballwin library" }));
+    expect(await screen.findByText("Approved: our cards are held until you finish the trade.")).toBeInTheDocument();
+  });
+
+  it("takes a card the customer changed their mind on off a held local trade, back on sale", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      ...LOCAL,
+      status: "awaiting_shipment",
+      shipBy: null,
+      wanted: [
+        wantedItem({ status: "reserved" }),
+        wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Arcane Signet", quantity: 2, unitPriceCents: 450, status: "reserved" }),
+      ],
+    });
+    const dialog = await openTrade(trade);
+    repo.setWanted.mockResolvedValue(answer(trade));
+    const signet = within(dialog).getByText("Arcane Signet", { selector: ".gg-trd-card__name" }).closest("li")!;
+    await user.click(within(signet).getByRole("button", { name: "Take off the trade" }));
+    expect(signet).toHaveTextContent("It goes back on sale.");
+    await user.click(within(signet).getByRole("button", { name: "Take it off" }));
+    await waitFor(() => expect(repo.setWanted).toHaveBeenLastCalledWith(TRADE_ID, [{ inventoryItemId: "i1", quantity: 1 }]));
+    // Or keep fewer of it.
+    await user.selectOptions(within(dialog).getByLabelText("How many Arcane Signet"), "1");
+    await waitFor(() =>
+      expect(repo.setWanted).toHaveBeenLastCalledWith(TRADE_ID, [
+        { inventoryItemId: "i1", quantity: 1 },
+        { inventoryItemId: "i2", quantity: 1 },
+      ]),
+    );
   });
 
   it("finishes at the meetup: the cards taken, what they paid, and the trade complete", async () => {
@@ -1238,7 +1269,7 @@ describe("local pickup trades", () => {
     const trade = staffTrade({
       ...LOCAL,
       status: "awaiting_shipment",
-      shipBy: "2099-01-01T05:59:59.000Z",
+      shipBy: null,
       meetupDetails: "Sat 2 PM, Ballwin library",
       wanted: [wantedItem({ status: "reserved" })],
       // Listed before they switched to local pickup: a starting point.
@@ -1246,7 +1277,10 @@ describe("local pickup trades", () => {
     });
     repo.completeLocal.mockResolvedValue(answer(staffTrade({ ...LOCAL, status: "completed" })));
     const dialog = await openTrade(trade);
-    expect(within(dialog).getByText("Hold ends:")).toBeInTheDocument();
+    // Held until it's finished: no deadline, nothing to extend.
+    expect(within(dialog).queryByText("Hold ends:")).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /Give more time/ })).toBeNull();
+    expect(within(dialog).getByText(/Our cards are held until you finish or cancel this trade/)).toBeInTheDocument();
     expect(within(dialog).getByText("Sat 2 PM, Ballwin library")).toBeInTheDocument();
     const panel = within(dialog).getByRole("heading", { name: "At the meetup" }).closest("section")!;
     // $80.00 of theirs: $64.00 credit against $88.99 of ours, so they pay $24.99.

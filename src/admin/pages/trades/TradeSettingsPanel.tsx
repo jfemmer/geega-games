@@ -479,7 +479,7 @@ function SettingsEditor({
 
       <Group
         title="Local pickup"
-        intro="Customers near you can trade in person: they pick our cards and send the trade without listing theirs. You approve it (no card review, never a deposit), they confirm, and our cards are held while you arrange a meetup in the trade's messages. At the meetup you record the cards you take and any difference they pay, which finishes the trade."
+        intro="Customers near you can trade in person: they pick our cards and send the trade without listing theirs. Approving it (no card review, never a deposit) holds our cards until you finish or cancel the trade, with no deadline, while you arrange a meetup in the trade's messages. If they change their mind about some of our cards, take those off the trade and they go straight back on sale. At the meetup you record the cards you take and any difference they pay, which finishes the trade."
       >
         <label className="gg-check-inline gg-trset__switch">
           <input
@@ -502,7 +502,6 @@ function SettingsEditor({
             onChange={(e) => set({ localPickupArea: e.target.value })}
             hint="As customers read it: “Local pickup in the St. Louis area.”"
           />
-          {numberField("localMeetDays", "days", "After the customer confirms. Sundays and the days below don't count. You can always give more time on the trade.")}
         </div>
         <TextArea
           label="How meetups work"
@@ -587,7 +586,7 @@ function SettingsEditor({
       <Group title="Reminders and alerts">
         <div className="gg-form-grid">
           {numberField("confirmReminderHours", "hours", "0 for no reminder.")}
-          {numberField("shipReminderHours", "hours", "Also reminds local pickup customers before their hold ends. 0 for no reminder.")}
+          {numberField("shipReminderHours", "hours", "0 for no reminder.")}
           {numberField("maxTransitDays", "days")}
           {numberField("stallAlertDays", "days")}
         </div>

@@ -284,6 +284,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!["awaiting_confirmation", "awaiting_deposit", "awaiting_shipment", "tracking_submitted"].includes(status)) {
           throw new HttpError(409, "There's no deadline on this trade to ask about.");
         }
+        // A local pickup trade holds our cards until it's finished: nothing runs out.
+        if (status === "awaiting_shipment" && handoffOf(bundle.trade) === "local") {
+          throw new HttpError(409, "There's no deadline on this trade to ask about. Message us to set a time to meet.");
+        }
         const note = cleanText(body.note, 1000);
         if (!note) throw new HttpError(400, "Tell us how much more time you need, and why.");
         await checkMessageLimit(admin, tradeId);

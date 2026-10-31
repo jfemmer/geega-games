@@ -167,7 +167,9 @@ const EXTENSION_KINDS: Record<string, string> = {
   payment: "paying",
 };
 
-export function eventLabel(event: string): string {
+export function eventLabel(event: string, toStatus: string | null = null): string {
+  // A local pickup trade is held from approval, with nothing for the customer to confirm.
+  if (event === "approved" && toStatus === "awaiting_shipment") return "Approved: our cards are held until the trade is finished";
   return EVENT_LABELS[event] ?? event.replace(/_/g, " ");
 }
 

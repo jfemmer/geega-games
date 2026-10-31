@@ -280,7 +280,7 @@ export function ReleaseReservation({ trade, busy, run }: Pick<TradePanelProps, "
 export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProps) {
   const local = trade.handoffMethod === "local";
   const [mode, setMode] = useState<"awaiting_shipment" | "in_transit" | "received">(trade.receivedAt ? "received" : "awaiting_shipment");
-  const [days, setDays] = useState(String(local ? settings.localMeetDays : (trade.privileges?.shipDays ?? settings.shipDaysNew)));
+  const [days, setDays] = useState(String(trade.privileges?.shipDays ?? settings.shipDaysNew));
   const [at, setAt] = useState(() => localInput(trade.shipment.acceptedAt ? Date.parse(trade.shipment.acceptedAt) : Date.now()));
   const [clearFault, setClearFault] = useState(true);
   const dayCount = Number(days);
@@ -289,10 +289,10 @@ export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProp
 
   return (
     <section className="gg-trd__section gg-trd-step" aria-labelledby="gg-trd-expired-title">
-      <h3 id="gg-trd-expired-title">{local ? "The hold ended" : "Expired reservation"}</h3>
+      <h3 id="gg-trd-expired-title">{local ? "Released before you met" : "Expired reservation"}</h3>
       <p>
         {local
-          ? "The meetup didn't happen before the hold on our cards ended."
+          ? "Our cards were let go before the meetup."
           : trade.expiredStage === "scan"
             ? "Tracking was added but the carrier never scanned it in time."
             : "No tracking number by the deadline."}{" "}
@@ -325,9 +325,10 @@ export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProp
             <option value="received">Received (the package is here)</option>
           </SelectField>
         )}
-        {mode === "awaiting_shipment" && (
+        {local && <p className="gg-card-meta">Our cards are held again until you finish or cancel the trade, with no deadline.</p>}
+        {!local && mode === "awaiting_shipment" && (
           <TextField
-            label={local ? "Days to hold our cards for the meetup" : "Days to ship from now"}
+            label="Days to ship from now"
             inputMode="numeric"
             value={days}
             onChange={(e) => setDays(e.target.value)}
@@ -354,14 +355,14 @@ export function TradeExpiredPanel({ trade, settings, busy, run }: TradePanelProp
             size="sm"
             variant="primary"
             loading={busy === "reinstate"}
-            disabled={busy !== null || (local && mode !== "awaiting_shipment") || (mode === "awaiting_shipment" && !daysOk) || (mode === "in_transit" && atIso === null)}
+            disabled={busy !== null || (local && mode !== "awaiting_shipment") || (!local && mode === "awaiting_shipment" && !daysOk) || (mode === "in_transit" && atIso === null)}
             onClick={() =>
               void run(
                 "reinstate",
                 () =>
                   tradeCenterRepository.reinstate(trade.id, {
                     mode,
-                    ...(mode === "awaiting_shipment" ? { shipDays: dayCount } : {}),
+                    ...(mode === "awaiting_shipment" && !local ? { shipDays: dayCount } : {}),
                     ...(mode === "in_transit" ? { acceptedAt: atIso as string } : {}),
                     clearFault,
                   }),

@@ -2889,7 +2889,9 @@ describe("local pickup trades", () => {
     const t = localTrade({ user_id: ANN, status: "awaiting_confirmation", confirm_by: iso(Date.now() + 40 * HOUR), approved_at: iso(Date.now() - HOUR) });
     const view = (await ann.get({ id: t.id })).body.trade as { confirmation: Record<string, unknown> };
     expect(view.confirmation).toMatchObject({ local: true, depositCents: 0, shipDays: 7 });
-    expect(view.confirmation.termsText).toMatch(/hold.*7 days/s);
+    // Held until we meet: no number of days.
+    expect(view.confirmation.termsText).toMatch(/holds them for you until we meet/);
+    expect(view.confirmation.termsText).not.toMatch(/7 days/);
     // Local terms don't depend on the deposit terms' version.
     const res = await ann.post({ action: "confirm", tradeId: t.id, acknowledged: true, termsVersion: 1 });
     expect(res.statusCode).toBe(200);
@@ -2921,23 +2923,30 @@ describe("local pickup trades", () => {
     expect(sent.find((e) => e.emailType === "trade_canceled")?.text).toMatch(/went back on sale/);
   });
 
-  it("approves a local trade with no deposit and the meetup details, emailing both", async () => {
+  it("approves a local trade with no deposit and the meetup details, holding our cards until it's finished, and emails both", async () => {
     const t = localTrade({ status: "pending_review", wanted_total_cents: 40000 });
     rpc("trade_set_meetup", (args) => {
       find(args.p_trade_id).meetup_details = args.p_details as string;
       return { data: null, error: null };
     });
     rpc("trade_approve", (args) => {
-      Object.assign(find(args.p_trade_id), { status: "awaiting_confirmation", approved_at: iso(Date.now()), confirm_by: args.p_confirm_by });
+      Object.assign(find(args.p_trade_id), { status: "awaiting_shipment", approved_at: iso(Date.now()), reserved_at: iso(Date.now()), confirm_by: null, ship_by: null });
       return { data: 0, error: null };
     });
     const res = await staff.post({ action: "approve", tradeId: t.id, meetupDetails: "Sat 2 PM, Ballwin library", depositOverride: "required" });
     expect(res.statusCode).toBe(200);
     expect(rpcArgs("trade_set_meetup")[0]).toMatchObject({ p_details: "Sat 2 PM, Ballwin library" });
+    // Nothing for the customer to confirm: no confirmation deadline.
     expect(rpcArgs("trade_approve")[0]).toMatchObject({ p_deposit_cents: 0, p_deposit_reason: null });
     const email = sent.find((e) => e.emailType === "trade_approved");
+    expect(email?.subject).toMatch(/our cards are held for you/);
+    expect(email?.text).toMatch(/held for you until we meet/);
+    expect(email?.text).not.toMatch(/confirm/i);
     expect(email?.text).toMatch(/Ballwin library/);
     expect(email?.text).toMatch(/no deposit/i);
+    expect(email?.text).toMatch(/Changed your mind about any of our cards/);
+    // There's no deadline to give more time on.
+    expect((await staff.post({ action: "extend", tradeId: t.id, kind: "shipping", hours: 24 })).statusCode).toBe(409);
     expect((await staff.post({ action: "setDeposit", tradeId: t.id, override: "required" })).statusCode).toBe(409);
   });
 
@@ -3024,21 +3033,37 @@ describe("local pickup trades", () => {
     expect((state.tables.admin_audit_log as { action: string }[]).map((a) => a.action)).toContain("trade.complete_local");
   });
 
-  it("tells the customer when a local hold ends, and reminds them before it does", async () => {
-    const gone = localTrade({ user_id: ANN, status: "expired", expired_stage: "shipping", ship_by: iso(Date.now() - HOUR), closed_at: iso(Date.now()) });
+  it("never reminds a local customer of a hold ending, and tells them when staff stop holding our cards", async () => {
+    // A local trade confirmed under the old flow still has a meetup deadline stored: it's ignored.
     const soon = localTrade({ user_id: ANN, status: "awaiting_shipment", ship_by: iso(Date.now() + 3 * HOUR), meetup_details: "Sat 2 PM, the library" });
-    rpc("trade_expire_due", () => ({
-      data: [{ expired_trade_id: gone.id, expired_trade_number: gone.trade_number, expired_from_status: "awaiting_shipment", expired_stage: "shipping", expired_deposit_status: "not_required" }],
-      error: null,
-    }));
     await runTradeWorker();
-    const expired = sent.find((e) => e.emailType === "trade_reservation_expired");
-    expect(expired?.subject).toMatch(/the hold on our cards ended/);
-    expect(expired?.text).not.toMatch(/proof of shipping/i);
-    const reminder = sent.find((e) => e.emailType === "trade_reminder_ship_by");
-    expect(reminder?.subject).toMatch(/our hold ends/);
-    expect(reminder?.text).toMatch(/Sat 2 PM, the library/);
+    expect(sent.find((e) => e.emailType === "trade_reminder_ship_by")).toBeUndefined();
     expect(soon.status).toBe("awaiting_shipment");
+
+    // Staff release it early: the customer hears that we've stopped holding our cards.
+    rpc("trade_close", (args) => {
+      Object.assign(find(args.p_trade_id), { status: "expired", closed_at: iso(Date.now()), customer_fault: args.p_fault ?? null });
+      return { data: [{ closed: true, deposit_after: "not_required" }], error: null };
+    });
+    const res = await staff.post({ action: "expireNow", tradeId: soon.id, reason: "They stopped answering", countAgainst: false });
+    expect(res.statusCode).toBe(200);
+    const released = sent.find((e) => e.emailType === "trade_reservation_expired");
+    expect(released?.subject).toMatch(/we've stopped holding our cards/);
+    expect(released?.text).toMatch(/doesn't count against you/);
+    expect(released?.text).not.toMatch(/proof of shipping/i);
+  });
+
+  it("reinstates a released local trade by holding our cards again, with no deadline", async () => {
+    const t = localTrade({ user_id: ANN, status: "expired", expired_stage: "shipping", closed_at: iso(Date.now()) });
+    rpc("trade_reinstate", (args) => {
+      // The database holds a local trade with no deadline, whatever is sent.
+      Object.assign(find(args.p_trade_id), { status: "awaiting_shipment", ship_by: null });
+      return { data: [{ result: "reinstated", short_lines: null }], error: null };
+    });
+    const res = await staff.post({ action: "reinstate", tradeId: t.id, mode: "awaiting_shipment", clearFault: true });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_reinstate")[0]).toMatchObject({ p_mode: "awaiting_shipment" });
+    expect(find(t.id).ship_by).toBeNull();
   });
 
   it("lists local pickup trades on their own", async () => {

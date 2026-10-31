@@ -87,7 +87,8 @@ function nextUp(t: StaffTradeSummary): string {
     case "awaiting_deposit":
       return t.confirmBy ? `Confirm by ${formatDeadline(t.confirmBy)}` : "—";
     case "awaiting_shipment":
-      if (t.handoffMethod === "local") return t.shipBy ? `Meet by ${formatDeadline(t.shipBy)}` : "Arrange the meetup";
+      // Held until it's finished: a local trade has no deadline.
+      if (t.handoffMethod === "local") return "Held: arrange the meetup";
       return t.shipBy ? `Ship by ${formatDeadline(t.shipBy)}` : "—";
     case "tracking_submitted":
       return t.shipBy ? `Ship by ${formatDeadline(t.shipBy)}` : "—";

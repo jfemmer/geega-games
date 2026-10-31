@@ -366,12 +366,11 @@ export function meetSpotText(s: Pick<TradeSettingsRow, "local_meet_spot_name" | 
  * with the trade, trade_consents, like the deposit terms of a shipped one).
  */
 export function localPickupTerms(s: TradeSettingsRow): string {
-  const days = s.local_meet_days === 1 ? "1 day" : `${s.local_meet_days} days`;
   const spot = meetSpotText(s);
   return [
     spot
-      ? `Confirming takes our cards off sale and holds them for you for ${days} (Sundays don't count) while we arrange a time to meet at our meeting spot: ${spot}.`
-      : `Confirming takes our cards off sale and holds them for you for ${days} (Sundays don't count) while we arrange a time and place to meet in ${s.local_pickup_area}.`,
+      ? `Confirming takes our cards off sale and holds them for you until we meet, while we arrange a time to meet at our meeting spot: ${spot}.`
+      : `Confirming takes our cards off sale and holds them for you until we meet, while we arrange a time and place to meet in ${s.local_pickup_area}.`,
     `Bring the cards you're trading in. We'll look them over together, value each one at its TCG low for the condition we see, and settle the trade on the spot: any of our cards your trade credit doesn't cover is paid then, in cash or by card, and credit left over is kept as store credit${
       s.local_cash_payout_enabled ? " (or, if you'd rather, paid in cash at a lower rate)" : ""
     }.`,
@@ -913,7 +912,7 @@ export function customerTradeView(
     },
     offered: offers.map((row) => customerOfferView(row, t.status)),
     timeline: events.flatMap((e) => {
-      const label = timelineLabel(e.event, handoffOf(t));
+      const label = timelineLabel(e.event, handoffOf(t), e.to_status);
       return label === undefined ? [] : [{ event: e.event, label, createdAt: e.created_at }];
     }),
     confirmation: extras.confirmation ?? null,

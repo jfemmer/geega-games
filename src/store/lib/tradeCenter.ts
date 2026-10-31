@@ -179,7 +179,7 @@ const LOCAL_STATUS_LABELS: Partial<Record<TradeStatus, string>> = {
   awaiting_shipment: "Reserved: let's meet up",
   completed: "Trade completed",
   canceled: "Canceled",
-  expired: "Hold ended",
+  expired: "No longer held",
 };
 
 const LOCAL_STATUS_NEXT: Partial<Record<TradeStatus, string>> = {
@@ -189,10 +189,10 @@ const LOCAL_STATUS_NEXT: Partial<Record<TradeStatus, string>> = {
   revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
   awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards until we meet.",
   awaiting_shipment:
-    "Our cards are reserved for you. We'll message you to set a time and place to meet: bring the cards you're trading in, and we'll settle the trade there.",
+    "Approved: our cards are held for you until we meet. We'll message you to set a time and place: bring the cards you're trading in, and we'll settle the trade there.",
   completed: "We met up and traded. Thanks for trading with us!",
   canceled: "This trade was canceled. Our cards went back on sale.",
-  expired: "We didn't meet before the hold ended, so our cards went back on sale. Message us, or start a new trade.",
+  expired: "We stopped holding our cards because we didn't manage to meet, so they went back on sale. Message us, or start a new trade.",
 };
 
 /** As staff read them, where a local pickup trade differs. */
@@ -200,7 +200,7 @@ const LOCAL_STATUS_ADMIN_LABELS: Partial<Record<TradeStatus, string>> = {
   awaiting_shipment: "Reserved: meet up",
   completed: "Completed (in person)",
   canceled: "Canceled",
-  expired: "Hold ended",
+  expired: "Released (not met)",
 };
 
 /** A status as customers read it, for this kind of trade. */
@@ -304,11 +304,13 @@ export const TRADE_STEPS = [
   { key: "done", label: "Done" },
 ] as const;
 
-/** The progress bar on a local pickup trade: no shipping, no inspection by mail. */
+/**
+ * The progress bar on a local pickup trade: no shipping, no inspection by
+ * mail, and no confirming (approving holds our cards until we meet).
+ */
 export const LOCAL_TRADE_STEPS = [
   { key: "list", label: "Our cards" },
   { key: "review", label: "Review" },
-  { key: "confirm", label: "Confirm" },
   { key: "meet", label: "Meet up" },
   { key: "done", label: "Done" },
 ] as const;
@@ -325,15 +327,15 @@ export function tradeStepIndexFor(status: TradeStatus, method: TradeHandoffMetho
     case "revision_requested":
       return 0;
     case "pending_review":
-      return 1;
+    // Approved under the old flow, still waiting for the customer to confirm.
     case "awaiting_confirmation":
     case "awaiting_deposit":
-      return 2;
+      return 1;
     case "awaiting_shipment":
-      return 3;
+      return 2;
     case "approved_for_fulfillment":
     case "completed":
-      return 4;
+      return 3;
     default:
       return -1;
   }
@@ -418,17 +420,19 @@ export const CUSTOMER_TIMELINE_LABELS: Readonly<Record<string, string>> = {
 /** History entries that read differently on a local pickup trade. */
 const LOCAL_TIMELINE_LABELS: Readonly<Record<string, string>> = {
   submitted: "You sent your trade for review",
-  approved: "Approved: waiting for your confirmation",
+  approved: "Approved: our cards are held for you until we meet",
   reserved: "Our cards were reserved for you until we meet",
   deadline_extended: "We gave you more time to meet",
   finalized: "Trade complete",
   completed: "You picked up our cards",
-  expired: "The hold on our cards ended",
+  expired: "We stopped holding our cards",
   canceled: "Trade canceled",
 };
 
 /** A history entry as its customer reads it, or undefined for one they don't see. */
-export function timelineLabel(event: string, method: TradeHandoffMethod = "ship"): string | undefined {
+export function timelineLabel(event: string, method: TradeHandoffMethod = "ship", toStatus: string | null = null): string | undefined {
+  // A local trade approved before approval held our cards waited for the customer to confirm.
+  if (method === "local" && event === "approved" && toStatus === "awaiting_confirmation") return "Approved: waiting for your confirmation";
   if (method === "local" && LOCAL_TIMELINE_LABELS[event] !== undefined) return LOCAL_TIMELINE_LABELS[event];
   return CUSTOMER_TIMELINE_LABELS[event];
 }
@@ -572,7 +576,11 @@ export interface TradeTerms {
   localPickupEnabled: boolean;
   /** Where local pickup is offered ("the St. Louis area"). */
   localPickupArea: string;
-  /** Qualifying days our cards are held for the meetup once a local trade is confirmed. */
+  /**
+   * Qualifying days a local trade approved under the old flow (customer confirms)
+   * holds our cards once confirmed. New local trades are held from approval
+   * until they're finished, with no deadline.
+   */
   localMeetDays: number;
   /** How meetups work, for customers choosing local pickup. */
   localPickupDetails: string;

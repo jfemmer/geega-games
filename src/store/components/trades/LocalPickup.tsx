@@ -338,35 +338,18 @@ export function LocalConfirmPanel({
 }
 
 /** Reserved: arranging and getting ready for the meetup. */
-export function LocalMeetupPanel({
-  trade,
-  terms,
-  askBusy,
-  onAskForTime,
-}: {
-  trade: CustomerTrade;
-  terms: TradeTerms | null;
-  askBusy: boolean;
-  onAskForTime: (note: string) => Promise<boolean>;
-}) {
-  const now = useNow();
-  const until = trade.shipBy ? Date.parse(trade.shipBy) : null;
-  const past = until !== null && now > until;
+export function LocalMeetupPanel({ trade, terms }: { trade: CustomerTrade; terms: TradeTerms | null }) {
   const spot = meetSpotOf(terms);
+  // Our cards are held until the trade is finished or canceled: there's no
+  // deadline (a date an older trade still carries is ignored), and so no
+  // asking for more time.
   return (
     <section className="gg-tc-panel gg-tc-meetup" aria-labelledby="gg-tc-meetup-title">
       <h2 id="gg-tc-meetup-title">Let&rsquo;s meet up</h2>
-      {trade.shipBy && until !== null && (
-        <p className={past ? "gg-tc-deadline gg-tc-deadline--past" : "gg-tc-deadline"}>
-          {past ? (
-            <>The hold on our cards ended at {formatDeadline(trade.shipBy)}. Message us if we still need to meet.</>
-          ) : (
-            <>
-              Our cards are held for you until <strong>{formatDeadline(trade.shipBy)}</strong> ({timeLeft(until, now)} left).
-            </>
-          )}
-        </p>
-      )}
+      <p className="gg-tc-deadline">
+        Our cards are held for you until we meet. Changed your mind about one of them, or can&rsquo;t make it? Message us below, or cancel your
+        trade at no cost.
+      </p>
       {spot && <MeetSpotCard spot={spot} />}
       <MeetupDetails
         trade={trade}
@@ -387,7 +370,6 @@ export function LocalMeetupPanel({
         We&rsquo;ll value each of your cards at its TCG low for the condition we see, and {trade.creditRatePercent}% of that is your trade
         credit. You&rsquo;ll see every card and price before anything changes hands, and you can change your mind there.
       </p>
-      {!past && <TradeAskForTime what="meet" busy={askBusy} onAsk={onAskForTime} />}
     </section>
   );
 }
