@@ -67,6 +67,7 @@ const repo = vi.hoisted(() => ({
   message: vi.fn(),
   setMeetup: vi.fn(),
   completeLocal: vi.fn(),
+  saveMeetupDraft: vi.fn(),
 }));
 vi.mock("../src/admin/repositories/tradeCenter.supabase", () => ({ tradeCenterRepository: repo }));
 
@@ -1307,6 +1308,82 @@ describe("local pickup trades", () => {
         cashForExcess: false,
       }),
     );
+  });
+
+  it("saves the TCG lows entered at the meetup, and starts from them next time", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      ...LOCAL,
+      status: "awaiting_shipment",
+      shipBy: null,
+      wanted: [wantedItem({ status: "reserved" })],
+      offered: [staffCard({ id: "o1", quantity: 1, reportedCondition: "NM", estimatedUnitCents: 8000, referencePriceCents: 8000 })],
+    });
+    const dialog = await openTrade(trade);
+    const panel = within(dialog).getByRole("heading", { name: "At the meetup" }).closest("section")!;
+    const save = within(panel).getByRole("button", { name: "Save prices" });
+    expect(panel).toHaveTextContent("Unsaved changes");
+
+    await user.selectOptions(within(panel).getByLabelText("Condition"), "LP");
+    const price = within(panel).getByLabelText("TCG low each for Sheoldred, the Apocalypse");
+    await user.clear(price);
+    await user.type(price, "75.00");
+    const savedAt = "2026-10-31T07:30:00.000Z";
+    repo.saveMeetupDraft.mockResolvedValue(
+      answer({
+        ...trade,
+        meetupDraft: {
+          savedAt,
+          savedBy: "jacob@geega-games.com",
+          cards: [{ scryfallId: null, cardName: "Sheoldred, the Apocalypse", setCode: "DMU", setName: null, collectorNumber: "107", finish: "nonfoil", imageUrl: null, condition: "LP", quantity: 1, unitCents: 7500, referencePriceCents: 8000 }],
+        },
+      }),
+    );
+    await user.click(save);
+    await waitFor(() =>
+      expect(repo.saveMeetupDraft).toHaveBeenCalledWith(TRADE_ID, [
+        expect.objectContaining({ cardName: "Sheoldred, the Apocalypse", condition: "LP", quantity: 1, unitCents: 7500 }),
+      ]),
+    );
+    expect(await within(panel).findByText(/Saved .* by jacob@geega-games\.com/)).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Save prices" })).toBeDisabled();
+    // A change makes it savable again.
+    await user.clear(price);
+    await user.type(price, "70");
+    expect(panel).toHaveTextContent("Unsaved changes");
+    expect(within(panel).getByRole("button", { name: "Save prices" })).toBeEnabled();
+  });
+
+  it("opens the meetup from the saved prices, including a card not priced yet", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      ...LOCAL,
+      status: "awaiting_shipment",
+      shipBy: null,
+      wanted: [wantedItem({ status: "reserved" })],
+      offered: [staffCard({ id: "o1", quantity: 1, reportedCondition: "NM", estimatedUnitCents: 8000, referencePriceCents: 8000 })],
+      meetupDraft: {
+        savedAt: "2026-10-31T07:30:00.000Z",
+        savedBy: "jacob@geega-games.com",
+        cards: [
+          { scryfallId: null, cardName: "Sheoldred, the Apocalypse", setCode: "DMU", setName: null, collectorNumber: "107", finish: "nonfoil", imageUrl: null, condition: "LP", quantity: 1, unitCents: 7500, referencePriceCents: 8000 },
+          { scryfallId: null, cardName: "Llanowar Elves", setCode: "DOM", setName: null, collectorNumber: "168", finish: "foil", imageUrl: null, condition: "NM", quantity: 2, unitCents: null, referencePriceCents: null },
+        ],
+      },
+    });
+    const dialog = await openTrade(trade);
+    const panel = within(dialog).getByRole("heading", { name: "At the meetup" }).closest("section")!;
+    expect(within(panel).getByLabelText("TCG low each for Sheoldred, the Apocalypse")).toHaveValue("75.00");
+    expect(within(panel).getByLabelText("TCG low each for Llanowar Elves")).toHaveValue("");
+    expect(panel).toHaveTextContent(/Saved .* by jacob@geega-games\.com/);
+    expect(within(panel).getByRole("button", { name: "Save prices" })).toBeDisabled();
+    expect(within(panel).getByRole("button", { name: "Finish the trade" })).toBeDisabled();
+
+    // A price that isn't an amount isn't saved.
+    await user.type(within(panel).getByLabelText("TCG low each for Llanowar Elves"), "abc");
+    await user.click(within(panel).getByRole("button", { name: "Save prices" }));
+    expect(await screen.findByText(/Llanowar Elves: enter the TCG low as an amount/)).toBeInTheDocument();
+    expect(repo.saveMeetupDraft).not.toHaveBeenCalled();
   });
 
   it("updates the meetup and releases a hold without counting it against them by default", async () => {

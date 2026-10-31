@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { TextArea, TextField } from "../../components/ui/Field";
 import { Icon } from "../../components/ui/Icon";
@@ -21,6 +21,7 @@ import {
   valueForCreditCents,
   type CardConditionCode,
   type MeetSpot,
+  type MeetupDraft,
   type StaffTrade,
 } from "../../../store/lib/tradeCenter";
 import { centsInput, meetupTotals, quantityOptions } from "./tradeMath";
@@ -301,6 +302,30 @@ function rowsOf(trade: StaffTrade): MeetRow[] {
   }));
 }
 
+/** Rows from the cards and TCG lows saved at the meetup. */
+function rowsFromDraft(draft: MeetupDraft): MeetRow[] {
+  return draft.cards.map((c) => ({
+    key: nextKey(),
+    scryfallId: c.scryfallId,
+    cardName: c.cardName,
+    setCode: c.setCode,
+    setName: c.setName,
+    collectorNumber: c.collectorNumber,
+    finish: c.finish,
+    imageUrl: c.imageUrl,
+    condition: c.condition,
+    quantity: Math.min(Math.max(c.quantity, 1), TRADE_LIMITS.maxQuantity),
+    unit: centsInput(c.unitCents),
+    referencePriceCents: c.referencePriceCents,
+  }));
+}
+
+/** What a set of rows saves as, to tell whether anything changed since the last save. */
+function rowsSignature(rows: MeetRow[]): string {
+  // A valid price compares by amount ("75" and "75.00" are the same); anything else by what's typed.
+  return JSON.stringify(rows.map(({ key: _key, ...rest }) => ({ ...rest, unit: unitCents(rest.unit) ?? rest.unit.trim() })));
+}
+
 function rowFromPick(pick: TradeCardPick): MeetRow {
   const p = pick.printing;
   const reference = priceForFinish(p, pick.finish);
@@ -331,7 +356,10 @@ type PayMethod = "cash" | "card" | "other";
 /** Reserved for the meetup: record the cards taken and what they paid, and finish the trade. */
 export function LocalMeetupPanel({ trade, settings, owner, busy, run }: TradePanelProps) {
   const toast = useToast();
-  const [rows, setRows] = useState<MeetRow[]>(() => rowsOf(trade));
+  // Starts from the cards and TCG lows saved at the meetup, if any.
+  const [rows, setRows] = useState<MeetRow[]>(() => (trade.meetupDraft ? rowsFromDraft(trade.meetupDraft) : rowsOf(trade)));
+  // What was last saved (null: nothing saved yet), to show whether there are unsaved changes.
+  const [savedSignature, setSavedSignature] = useState<string | null>(() => (trade.meetupDraft ? rowsSignature(rows) : null));
   const [adding, setAdding] = useState(false);
   const [method, setMethod] = useState<PayMethod | null>(null);
   const [note, setNote] = useState("");
@@ -357,6 +385,46 @@ export function LocalMeetupPanel({ trade, settings, owner, busy, run }: TradePan
           : null;
 
   const change = (key: string, patch: Partial<MeetRow>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const signature = rowsSignature(rows);
+  const unsaved = savedSignature === null ? rows.length > 0 : signature !== savedSignature;
+  const savedAt = trade.meetupDraft?.savedAt ?? null;
+  const savedBy = trade.meetupDraft?.savedBy ?? null;
+
+  // Leaving the page with prices that aren't saved asks first.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+
+  async function savePrices() {
+    // A typed price that isn't a valid amount can't be saved: say which.
+    const bad = rows.find((r) => r.unit.trim() !== "" && unitCents(r.unit) === null);
+    if (bad) {
+      toast.error(`${bad.cardName}: enter the TCG low as an amount, like 12.50, or leave it blank for now.`);
+      return;
+    }
+    const cards = rows.map((row) => ({
+      scryfallId: row.scryfallId,
+      cardName: row.cardName,
+      setCode: row.setCode,
+      setName: row.setName,
+      collectorNumber: row.collectorNumber,
+      finish: row.finish,
+      imageUrl: row.imageUrl,
+      condition: row.condition,
+      quantity: row.quantity,
+      unitCents: row.unit.trim() === "" ? null : unitCents(row.unit),
+      referencePriceCents: row.referencePriceCents,
+    }));
+    const saved = signature;
+    const ok = await run("saveDraft", () => tradeCenterRepository.saveMeetupDraft(trade.id, cards), "Prices saved.");
+    if (ok) setSavedSignature(saved);
+  }
 
   async function finish() {
     if (blocker) {
@@ -480,11 +548,28 @@ export function LocalMeetupPanel({ trade, settings, owner, busy, run }: TradePan
           ))}
         </ul>
       )}
-      <div className="gg-drawer-actions__buttons">
+      <div className="gg-drawer-actions__buttons gg-trd-meet__actions">
         <Button size="sm" variant="secondary" icon="plus" disabled={busy !== null || rows.length >= settings.maxOfferedLines} onClick={() => setAdding(true)}>
           Add a card they&rsquo;re trading in
         </Button>
+        <Button
+          size="sm"
+          variant={unsaved ? "primary" : "secondary"}
+          icon="check"
+          loading={busy === "saveDraft"}
+          disabled={busy !== null || (!unsaved && savedSignature !== null)}
+          onClick={() => void savePrices()}
+        >
+          Save prices
+        </Button>
       </div>
+      <p className={`gg-card-meta gg-trd-meet__saved${unsaved ? " gg-trd-meet__saved--unsaved" : ""}`} role="status">
+        {unsaved
+          ? "Unsaved changes: save to keep these cards and prices if you close the trade or switch devices."
+          : savedAt
+            ? `Saved ${formatDateTime(savedAt)}${savedBy ? ` by ${savedBy}` : ""}. Only staff see these until you finish the trade.`
+            : "Nothing to save yet."}
+      </p>
       {adding && (
         <AddTradeCardDrawer
           onClose={() => setAdding(false)}

@@ -3925,6 +3925,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .gg-trd-foiltag { animation: none; background-position: 50% 50%, 50% 50%; }
 }
+.gg-trd-meet__actions { flex-wrap: wrap; }
+.gg-trd-meet__saved { margin-top: -2px; }
+.gg-trd-meet__saved--unsaved { color: #8a5a12 !important; font-weight: 600; }
 .gg-trd-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--gg-text-soft); }
 .gg-trd-sort .gg-input { width: auto; padding: 6px 8px; font-size: 0.84rem; min-height: 36px; }
 .gg-trd-cards__group {
