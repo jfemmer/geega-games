@@ -5,6 +5,7 @@ import { Link, useRouter } from "../lib/router";
 import { MEMBER_DISCOUNT_PERCENT, formatCents, memberDiscountCents, qualifiesForFreeShipping } from "../lib/money";
 import { formatReopenDate, useStoreStatus } from "../lib/storeStatus";
 import { FreeShippingNote } from "./FreeShippingNote";
+import TradeHeldNotices from "./TradeHeldNotices";
 
 // Accessible slide-over cart. Focus is trapped while open; Escape closes;
 // the trigger is restored on close. Live cart data comes from CartContext.
@@ -96,6 +97,7 @@ export default function CartDrawer({
               Some items were adjusted to match current availability.
             </p>
           )}
+          <TradeHeldNotices onNavigate={onClose} />
           {loading && <p role="status">Loading your cart…</p>}
           {!loading && lines.length === 0 && (
             <div className="gg-empty">

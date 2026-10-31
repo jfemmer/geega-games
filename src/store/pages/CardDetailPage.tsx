@@ -23,6 +23,8 @@ import { tradeCart } from "../lib/tradeCart";
 import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
 import type { CardDetail } from "../lib/cardDetail";
+import { fetchHeldCopies, heldCopyLabel, type HeldCopy } from "../lib/tradeHolds";
+import TradeHoldNotify from "../components/TradeHoldNotify";
 
 // One indexable page per unique card (grouped by oracle_id across every
 // in-stock printing/condition — see public.get_card_detail), distinct from
@@ -33,11 +35,20 @@ import type { CardDetail } from "../lib/cardDetail";
 // data and the product feed link to it): that copy is listed first,
 // highlighted, and its picture is the one shown.
 
-function priceSummary(detail: CardDetail): string {
-  if (detail.listings.length === 0) return "Currently out of stock";
+function priceSummary(detail: CardDetail, held: HeldCopy[]): string {
+  if (detail.listings.length === 0) return held.length > 0 ? "On hold for a pending trade" : "Currently out of stock";
   return detail.minPriceCents === detail.maxPriceCents
     ? formatCents(detail.minPriceCents)
     : `${formatCents(detail.minPriceCents)} – ${formatCents(detail.maxPriceCents)}`;
+}
+
+/** The card, and its copies a trade is holding that can't be bought. */
+async function loadCard(slug: string): Promise<{ detail: CardDetail; held: HeldCopy[] } | null> {
+  const { data, error } = await supabase.rpc("get_card_detail", { p_slug: slug });
+  if (error || !data) return null;
+  const detail = data as unknown as CardDetail;
+  const copies = await fetchHeldCopies({ oracleId: detail.oracleId });
+  return { detail, held: copies.filter((c) => c.sellableQuantity === 0 && c.heldQuantity > 0) };
 }
 
 export default function CardDetailPage({ slug }: { slug: string }) {
@@ -55,6 +66,9 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [notifyError, setNotifyError] = useState<string | null>(null);
   const [photoRequestFor, setPhotoRequestFor] = useState<string | null>(null);
+  // Copies a trade is holding that can't be bought (all of that line held):
+  // shown with why, and "Notify me if it's released".
+  const [held, setHeld] = useState<HeldCopy[]>([]);
   const { user } = useAuth();
   const selectedId = readListingId(useRouter().query.get(LISTING_PARAM));
 
@@ -63,6 +77,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
     setLoading(true);
     setNotFound(false);
     setDetail(null);
+    setHeld([]);
 
     if (!isSupabaseConfigured) {
       setLoading(false);
@@ -72,13 +87,14 @@ export default function CardDetailPage({ slug }: { slug: string }) {
 
     (async () => {
       try {
-        const { data, error } = await supabase.rpc("get_card_detail", { p_slug: slug });
+        const loaded = await loadCard(slug);
         if (!active) return;
-        if (error || !data) {
+        if (!loaded) {
           setNotFound(true);
           return;
         }
-        setDetail(data as unknown as CardDetail);
+        setDetail(loaded.detail);
+        setHeld(loaded.held);
       } finally {
         if (active) setLoading(false);
       }
@@ -88,6 +104,16 @@ export default function CardDetailPage({ slug }: { slug: string }) {
       active = false;
     };
   }, [slug]);
+
+  // A held copy turned out to be for sale again: refresh what's listed,
+  // keeping the page on screen.
+  async function reloadCard() {
+    const loaded = await loadCard(slug);
+    if (loaded) {
+      setDetail(loaded.detail);
+      setHeld(loaded.held);
+    }
+  }
 
   async function submitNotifyMe(e: React.FormEvent) {
     e.preventDefault();
@@ -142,7 +168,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
 
   const listings = withSelectedFirst(detail.listings, selectedId);
   const hero = listings[0] ?? null;
-  const heroImage = cardHeroImage(hero?.imageUrl ?? null);
+  const heroImage = cardHeroImage(hero?.imageUrl ?? held[0]?.imageUrl ?? null);
 
   return (
     <div className="gg-page gg-card-detail">
@@ -220,7 +246,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
           )}
 
           <div className="gg-card-detail__pricesummary">
-            <strong>{priceSummary(detail)}</strong>
+            <strong>{priceSummary(detail, held)}</strong>
             {detail.listings.length > 0 && (
               <span>
                 {" "}
@@ -230,6 +256,10 @@ export default function CardDetailPage({ slug }: { slug: string }) {
           </div>
         </div>
       </div>
+
+      {held.length > 0 && (
+        <HeldCopies held={held} hasListings={listings.length > 0} onAvailable={() => void reloadCard()} />
+      )}
 
       {listings.length > 0 ? (
         <div className="gg-card-detail__listings">
@@ -392,10 +422,14 @@ export default function CardDetailPage({ slug }: { slug: string }) {
         </div>
       ) : (
         <div className="gg-card-detail__listings">
-          <p>
-            This card is out of stock right now. <Link to="/shop">Browse what&rsquo;s available</Link>{" "}
-            or check back soon.
-          </p>
+          {held.length > 0 ? (
+            <p>Want any copy of {detail.cardName}, not just one held for a trade? We can tell you when we restock it.</p>
+          ) : (
+            <p>
+              This card is out of stock right now. <Link to="/shop">Browse what&rsquo;s available</Link>{" "}
+              or check back soon.
+            </p>
+          )}
           {user ? (
             <SavedForAlerts oracleId={detail.oracleId} cardName={detail.cardName} />
           ) : notifyState === "done" ? (
@@ -433,6 +467,39 @@ export default function CardDetailPage({ slug }: { slug: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Copies a trade is holding, so they can't be bought: says why, and lets the
+ * shopper ask for one email if a copy is released (the trader changes their
+ * mind, or the trade is declined or cancelled).
+ */
+function HeldCopies({ held, hasListings, onAvailable }: { held: HeldCopy[]; hasListings: boolean; onAvailable: () => void }) {
+  const count = held.reduce((n, c) => n + c.heldQuantity, 0);
+  return (
+    <div className="gg-card-detail__listings gg-tradehold" aria-labelledby="gg-tradehold-title">
+      <h2 id="gg-tradehold-title">On hold for a pending trade</h2>
+      <p className="gg-tradehold__why">
+        {hasListings ? (count === 1 ? "Another copy is" : `${count} more copies are`) : count === 1 ? "Our copy is" : `All ${count} of our copies are`}{" "}
+        held for a customer&rsquo;s trade, so {count === 1 ? "it can’t" : "they can’t"} be bought right now. If the
+        trade doesn&rsquo;t go ahead, {count === 1 ? "it goes" : "they go"} back on sale, and we&rsquo;ll email you if you ask.
+      </p>
+      <ul className="gg-card-detail__listinglist">
+        {held.map((c) => (
+          <li key={c.id} className="gg-card-detail__listing gg-tradehold__copy">
+            <span className="gg-card-detail__listingmeta">
+              <span className="gg-card-detail__listingset">{heldCopyLabel(c)}</span>
+              <span className="gg-card-meta">
+                {c.heldQuantity > 1 ? `${c.heldQuantity} held` : "Held"}
+                {c.priceCents != null ? ` · ${formatCents(c.priceCents)}` : ""}
+              </span>
+            </span>
+            <TradeHoldNotify inventoryItemId={c.id} cardName={c.cardName} onAvailable={onAvailable} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
