@@ -7990,3 +7990,76 @@ html {
   .gg-myconsign__sale { grid-template-columns: 1fr; }
   .gg-myconsign__sale .gg-myconsign__cardstatus { grid-column: 1; }
 }
+
+/* ---------------- Copies on hold for a pending trade (card page, cart, checkout) ---------------- */
+.gg-tradehold__why {
+  margin: -0.35rem 0 0.75rem;
+  color: #555;
+  font-size: 0.9rem;
+  max-width: 62ch;
+}
+.gg-tradehold__copy {
+  background: #faf8f3;
+  border-style: dashed;
+}
+.gg-tradehold__copy .gg-card-detail__listingmeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.gg-tradehold__notify {
+  margin-top: 0;
+}
+.gg-tradehold__notify .gg-notify-form__row {
+  max-width: 340px;
+}
+.gg-tradehold__done {
+  margin: 0;
+}
+.gg-tradehold-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  text-align: left;
+}
+.gg-tradehold-notice {
+  position: relative;
+  padding-right: 2.25rem;
+}
+.gg-tradehold-notice__text {
+  margin: 0;
+}
+.gg-tradehold-notice .gg-tradehold__notify {
+  margin-top: 0.5rem;
+}
+.gg-tradehold-notice__close {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+  border-radius: 6px;
+}
+.gg-tradehold-notice__close:focus-visible {
+  outline: 2px solid var(--gg-purple);
+}
+.gg-empty .gg-tradehold-notices {
+  max-width: 560px;
+  margin: 0 auto 1rem;
+}
+@media (max-width: 480px) {
+  .gg-tradehold__copy {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .gg-tradehold__notify .gg-notify-form__row {
+    max-width: none;
+  }
+}

@@ -143,6 +143,18 @@ const MAX_BODY_BYTES = 16 * 1024;
 const GUEST_CHECKOUTS_PER_WINDOW = 8;
 const GUEST_WINDOW_MS = 10 * 60_000;
 
+/**
+ * Which card ran short, from checkout_place_order_core's own words
+ * ("insufficient stock for <card> (sellable 0, need 1)"), so the shopper
+ * isn't left guessing. The cart page then says when a trade is holding it.
+ */
+export function stockConflictMessage(rawMessage: string): string {
+  const name = /insufficient stock for (.+) \(sellable \d+, need \d+\)/i.exec(rawMessage)?.[1]?.trim();
+  return name
+    ? `${name.slice(0, 200)} isn’t available in that quantity any more. We’ve updated your cart: please review it and try again.`
+    : "Some items changed availability. We’ve updated your cart: please review it and try again.";
+}
+
 function checkoutErrorResponse(res: VercelResponse, rawMessage: string) {
   const msg = rawMessage.toLowerCase();
   if (msg.includes("orders paused")) {
@@ -153,11 +165,7 @@ function checkoutErrorResponse(res: VercelResponse, rawMessage: string) {
     });
   }
   if (msg.includes("insufficient stock") || msg.includes("no longer available")) {
-    return sendJson(res, 409, {
-      ok: false,
-      code: "stock_conflict",
-      message: "Some items changed availability. Please review your cart.",
-    });
+    return sendJson(res, 409, { ok: false, code: "stock_conflict", message: stockConflictMessage(rawMessage) });
   }
   if (msg.includes("no price")) {
     return sendJson(res, 409, { ok: false, message: "An item isn’t priced and can’t be purchased." });

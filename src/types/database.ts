@@ -4585,6 +4585,42 @@ export type Database = {
         }
         Relationships: []
       }
+      trade_hold_watchers: {
+        Row: {
+          card_name: string
+          closed_at: string | null
+          closed_reason: string | null
+          created_at: string
+          email: string
+          id: string
+          inventory_item_id: string
+          notified_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          card_name: string
+          closed_at?: string | null
+          closed_reason?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          inventory_item_id: string
+          notified_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          card_name?: string
+          closed_at?: string | null
+          closed_reason?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          inventory_item_id?: string
+          notified_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       trade_messages: {
         Row: {
           author_id: string | null
@@ -6796,6 +6832,37 @@ export type Database = {
           p_trade_id: string
         }
         Returns: string
+      }
+      trade_held_copies: {
+        Args: { p_ids?: string[] | null; p_oracle_id?: string | null }
+        Returns: {
+          card_name: string
+          collector_number: string | null
+          condition: Database["public"]["Enums"]["card_condition"]
+          finish: Database["public"]["Enums"]["card_finish"]
+          held_quantity: number
+          id: string
+          image_url: string | null
+          price_cents: number | null
+          sellable_quantity: number
+          set_code: string | null
+          set_name: string | null
+          variant_type: string | null
+        }[]
+      }
+      trade_hold_watchers_due: {
+        Args: { p_limit?: number }
+        Returns: {
+          armed_at: string
+          card_name: string
+          condition: Database["public"]["Enums"]["card_condition"] | null
+          email: string
+          finish: Database["public"]["Enums"]["card_finish"] | null
+          id: string
+          inventory_item_id: string
+          set_name: string | null
+          state: string
+        }[]
       }
       trade_import_card: {
         Args: {

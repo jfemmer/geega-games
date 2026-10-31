@@ -53,11 +53,11 @@ import type { TradePanelProps } from "./types";
 
 /** What staff do next, by status. */
 const STAFF_NEXT: Record<TradeStatus, string> = {
-  awaiting_trade_list: "The customer is still building their trade. Nothing is reserved.",
-  pending_review: "Review each card below, then approve the trade, ask for changes, or reject it.",
-  revision_requested: "Waiting for the customer to change their trade. Nothing is reserved.",
-  awaiting_confirmation: "Approved. Waiting for the customer to confirm (and pay any deposit). Nothing is reserved yet.",
-  awaiting_deposit: "The customer confirmed and is paying the deposit. Our cards are reserved the moment it goes through.",
+  awaiting_trade_list: "The customer is still building their trade. Nothing is held until they send it.",
+  pending_review: "Our cards are held for this trade. Review each card below, then approve the trade, ask for changes, or reject it (rejecting puts our cards back on sale).",
+  revision_requested: "Waiting for the customer to change their trade. Our cards stay held; any they add are held, any they take off go back on sale.",
+  awaiting_confirmation: "Approved. Our cards are held while the customer confirms (and pays any deposit). If they don't in time, the trade closes and they go back on sale.",
+  awaiting_deposit: "The customer confirmed and is paying the deposit. Our cards stay held; the shipping deadline starts once it goes through.",
   awaiting_shipment: "Our cards are reserved. Waiting for the customer to ship and add tracking.",
   tracking_submitted: "Tracking added. Waiting for the carrier's first scan.",
   in_transit: "Shipped in time and on its way. Mark it received when it arrives.",
@@ -67,8 +67,8 @@ const STAFF_NEXT: Record<TradeStatus, string> = {
   awaiting_payment: "Accepted. Waiting for the customer to pay by card: any of our cards the credit doesn't cover, and shipping.",
   approved_for_fulfillment: "Finished. Pack and ship their order, and add the cards you took to inventory.",
   completed: "Complete: their order shipped.",
-  rejected: "Rejected before it was confirmed. Nothing was reserved.",
-  offer_expired: "Closed: not sent or confirmed in time. Nothing was reserved.",
+  rejected: "Rejected before it was confirmed. Our cards went back on sale.",
+  offer_expired: "Closed: not sent or confirmed in time. Any of our cards held for it went back on sale.",
   canceled: "Canceled by the customer. Our cards were released.",
   expired: "The reservation expired and our cards were released.",
   canceled_after_shipment: "The customer canceled after shipping, with no penalty.",
@@ -78,9 +78,9 @@ const STAFF_NEXT: Record<TradeStatus, string> = {
 
 /** What staff do next on a local pickup trade, where it differs. */
 const LOCAL_STAFF_NEXT: Partial<Record<TradeStatus, string>> = {
-  awaiting_trade_list: "The customer is still picking our cards. Nothing is reserved. Their cards are valued when you meet.",
-  pending_review: "Local pickup: approve it (no card review, no deposit), ask for changes, or reject it.",
-  awaiting_confirmation: "Approved. Waiting for the customer to confirm. Nothing is reserved yet.",
+  awaiting_trade_list: "The customer is still picking our cards. Nothing is held until they send it. Their cards are valued when you meet.",
+  pending_review: "Local pickup: our cards are held for it. Approve it (no card review, no deposit) to keep them held until you meet, ask for changes, or reject it.",
+  awaiting_confirmation: "Approved. Our cards are held while the customer confirms.",
   awaiting_shipment:
     "Our cards are held until you finish or cancel this trade. Agree on a time and place in the messages, then record their cards below when you meet. If they change their mind about one of our cards, take it off under Our cards: it goes straight back on sale.",
   completed: "Complete: traded in person. Add the cards you took to inventory.",
@@ -544,13 +544,13 @@ function ConfirmationPanel({ trade, busy, run }: TradePanelProps) {
         {trade.handoffMethod === "local" ? (
           <>
             Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see our cards and how long we&rsquo;ll hold them,
-            tick the box and confirm (no deposit). Our cards stay on sale until then.
+            tick the box and confirm (no deposit). Our cards stay held until then.
           </>
         ) : (
           <>
             Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see the cards, both deadlines and the deposit
             terms, tick the box and confirm{trade.deposit.cents > 0 ? `, paying the ${formatCents(trade.deposit.cents)} deposit` : ""}. Our
-            cards stay on sale until then.
+            cards stay held until then; if the deadline passes, the trade closes and they go back on sale.
           </>
         )}
       </p>
@@ -1201,7 +1201,7 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
   );
 }
 
-/** Before the trade is confirmed: nothing is held and nothing paid (an unpaid deposit payment is canceled). */
+/** Before the trade is confirmed: nothing paid (an unpaid deposit payment is canceled); rejecting puts our held cards back on sale. */
 function RejectSection({ trade, busy, run }: TradePanelProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");

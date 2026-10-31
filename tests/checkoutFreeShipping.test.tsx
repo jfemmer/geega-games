@@ -25,6 +25,8 @@ vi.mock("../src/store/lib/AuthContext", () => ({
 
 vi.mock("../src/store/lib/CartContext", () => ({
   useCart: () => ({
+    tradeHeld: [],
+    dismissTradeHeld: () => {},
     lines: [
       {
         inventoryItemId: "inv-1",

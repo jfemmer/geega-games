@@ -113,7 +113,7 @@ function faqItems(t: TradeTerms | null): { question: string; answer: string }[] 
     },
     {
       question: "When are the cards I picked reserved for me?",
-      answer: `When you confirm your approved trade. While you build your trade and while we review it, our cards stay on sale. Once we approve it you have ${confirmHours} to confirm (Sundays don't count). If a card sells before you confirm, we'll tell you and you can pick another.`,
+      answer: `When you send your trade. While you build it, our cards stay on sale; once you send it, we hold them for you, so no one else can buy them while we review it. Once we approve it you have ${confirmHours} to confirm (Sundays don't count), and they stay held. If the trade is declined, canceled or not confirmed in time, they go back on sale.`,
     },
     {
       question: "How long do I have to ship my cards?",
@@ -177,7 +177,7 @@ export default function TradeCardsPage() {
   useSEO({
     title: "Trade Your Magic Cards for Cards You Want | Geega Games",
     description:
-      "Trade your Magic: The Gathering cards for singles from Geega Games. We price your cards at TCG low and you get trade credit toward the cards you pick; once your trade is approved and confirmed, we reserve them for you.",
+      "Trade your Magic: The Gathering cards for singles from Geega Games. We price your cards at TCG low and you get trade credit toward the cards you pick; we hold them for you from the moment you send your trade.",
     path: TRADE_CENTER_PATH,
     jsonLd: [breadcrumbJsonLd([{ name: "Trade cards", path: TRADE_CENTER_PATH }]), faqJsonLd(faq)],
   });
@@ -332,8 +332,8 @@ export default function TradeCardsPage() {
                   {starting ? "Starting…" : user ? "Start my trade" : "Sign in to start my trade"}
                 </button>
                 <p className="gg-tc-line__meta">
-                  Starting a trade doesn&rsquo;t reserve these yet: they stay on sale until we&rsquo;ve approved your trade and you confirm
-                  it.{method === "local" ? " Then we hold them while we set up a time to meet." : ""}
+                  Starting a trade doesn&rsquo;t hold these yet: they stay on sale until you send your trade for review. Then we hold
+                  them for you{method === "local" ? ", and once we approve it, until we meet" : " while we review it and you confirm"}.
                 </p>
               </>
             ) : (

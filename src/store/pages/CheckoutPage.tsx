@@ -23,6 +23,7 @@ import { formatReopenDate, refreshStoreStatus, useStoreStatus } from "../lib/sto
 import { ShippingMethodPicker } from "../components/ShippingMethodPicker";
 import { UsStateSelect } from "../components/UsStateSelect";
 import { useReveal } from "../lib/useReveal";
+import TradeHeldNotices from "../components/TradeHeldNotices";
 import {
   SHIPS_TO_SUMMARY,
   SHIP_TO_COUNTRY,
@@ -534,6 +535,14 @@ export default function CheckoutPage() {
         // The server's own words: which part of the address it can't ship to.
         throw new Error(body.message);
       }
+      if (body?.code === "stock_conflict") {
+        // Bring the cart up to date (that's what drops the card and, when a
+        // trade is holding it, says so), then say which card it was.
+        await refresh();
+        throw new Error(
+          typeof body.message === "string" && body.message ? body.message : friendlyCheckoutError("stock_conflict"),
+        );
+      }
       throw new Error(friendlyCheckoutError(body?.message || ""));
     }
 
@@ -568,7 +577,10 @@ export default function CheckoutPage() {
       p_ship_postal_code: to.postalCode,
       p_ship_country: to.country,
     });
-    if (rpcError) throw new Error(friendlyCheckoutError(rpcError.message));
+    if (rpcError) {
+      if (/insufficient stock|no longer available/i.test(rpcError.message)) await refresh();
+      throw new Error(friendlyCheckoutError(rpcError.message));
+    }
     const result = Array.isArray(data) ? data[0] : data;
     if (!result) throw new Error("Order could not be created.");
 
@@ -749,6 +761,7 @@ export default function CheckoutPage() {
     return (
       <div className="gg-page gg-empty">
         <h1>Your cart is empty</h1>
+        <TradeHeldNotices />
         <Link to="/shop" className="gg-btn">
           Browse singles
         </Link>
@@ -764,6 +777,7 @@ export default function CheckoutPage() {
           {error}
         </div>
       )}
+      <TradeHeldNotices />
 
       <div className="gg-checkout-layout">
         <div>

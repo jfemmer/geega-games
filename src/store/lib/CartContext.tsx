@@ -21,6 +21,7 @@ import {
   planCartMerge,
   type GuestCartLine,
 } from "./guestCart";
+import { fetchHeldCopies, type HeldCopy } from "./tradeHolds";
 
 // Unified cart across guest (localStorage) and authenticated (Supabase) states.
 // Every displayed line carries the item's CURRENT sellable stock so the UI can
@@ -58,6 +59,13 @@ type CartContextValue = {
   error: string | null;
   /** True if any line was clamped/dropped on the last stock revalidation. */
   stockAdjusted: boolean;
+  /**
+   * Cart lines taken out (or cut down) because a trade is holding those
+   * copies: shown with why, and "Notify me if it's released". Kept until
+   * dismissed, since the line itself has gone from the cart.
+   */
+  tradeHeld: HeldCopy[];
+  dismissTradeHeld: (inventoryItemId: string) => void;
   addItem: (inventoryItemId: string, qty?: number) => Promise<void>;
   setQuantity: (inventoryItemId: string, qty: number) => Promise<void>;
   removeItem: (inventoryItemId: string) => Promise<void>;
@@ -125,8 +133,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stockAdjusted, setStockAdjusted] = useState(false);
+  const [tradeHeld, setTradeHeld] = useState<HeldCopy[]>([]);
   const cartIdRef = useRef<string | null>(null);
   const mergedForUserRef = useRef<string | null>(null);
+  // Whose cart the trade-held notes are about: they don't carry over to the next shopper.
+  const notesForUserRef = useRef<string | null>(null);
+
+  // Which of these copies (dropped or cut down in the cart) a trade is
+  // holding. Best effort: never blocks the cart.
+  const noteTradeHeld = useCallback(async (ids: string[]) => {
+    if (!ids.length) return;
+    const held = (await fetchHeldCopies({ ids })).filter((c) => c.heldQuantity > 0);
+    if (!held.length) return;
+    setTradeHeld((cur) => {
+      const byId = new Map(cur.map((c) => [c.id, c]));
+      for (const c of held) byId.set(c.id, c);
+      return Array.from(byId.values());
+    });
+    return held;
+  }, []);
+
+  const dismissTradeHeld = useCallback((inventoryItemId: string) => {
+    setTradeHeld((cur) => cur.filter((c) => c.id !== inventoryItemId));
+  }, []);
 
   // ---- Guest cart hydration (logged out) ------------------------------------
   const hydrateGuest = useCallback(async () => {
@@ -140,19 +169,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       const items = await fetchItemsByIds(guest.map((l) => l.inventoryItemId));
       let adjusted = false;
+      const affected: string[] = [];
       const next: CartLine[] = [];
       for (const g of guest) {
         const row = items.get(g.inventoryItemId);
         if (!row || (row.quantity ?? 0) <= 0) {
           adjusted = true;
+          affected.push(g.inventoryItemId);
           continue;
         }
         const line = buildLine(row, g.quantity);
-        if (line.quantity < g.quantity) adjusted = true;
+        if (line.quantity < g.quantity) {
+          adjusted = true;
+          affected.push(g.inventoryItemId);
+        }
         next.push(line);
       }
       setLines(next);
       setStockAdjusted(adjusted);
+      void noteTradeHeld(affected);
       // Persist the possibly-clamped guest cart back.
       writeGuestCart(
         next.map((l) => ({
@@ -165,7 +200,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [noteTradeHeld]);
 
   // ---- Server cart hydration (logged in) ------------------------------------
   const hydrateServer = useCallback(async () => {
@@ -190,11 +225,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }[];
       const items = await fetchItemsByIds(rows.map((r) => r.inventory_item_id));
       let adjusted = false;
+      const affected: string[] = [];
       const next: CartLine[] = [];
       for (const r of rows) {
         const row = items.get(r.inventory_item_id);
         if (!row || (row.quantity ?? 0) <= 0) {
           adjusted = true;
+          affected.push(r.inventory_item_id);
           // prune unavailable line from the server cart
           await supabase
             .from("cart_items")
@@ -206,6 +243,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const line = buildLine(row, r.quantity);
         if (line.quantity < r.quantity) {
           adjusted = true;
+          affected.push(r.inventory_item_id);
           await supabase
             .from("cart_items")
             .update({ quantity: line.quantity })
@@ -216,12 +254,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       setLines(next);
       setStockAdjusted(adjusted);
+      void noteTradeHeld(affected);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load your cart.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [noteTradeHeld]);
 
   // ---- Merge guest cart into server cart on sign-in -------------------------
   const mergeGuestCart = useCallback(async (cartId: string) => {
@@ -290,6 +329,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (authLoading) return;
     let active = true;
     (async () => {
+      if (notesForUserRef.current !== (user?.id ?? null)) {
+        notesForUserRef.current = user?.id ?? null;
+        setTradeHeld([]);
+      }
       if (user) {
         try {
           const { data: cartId } = await supabase.rpc("get_or_create_my_cart");
@@ -329,7 +372,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const items = await fetchItemsByIds([inventoryItemId]);
       const row = items.get(inventoryItemId);
       if (!row || (row.quantity ?? 0) <= 0) {
-        setError("That item just sold out.");
+        // Not in the cart, so no "taken out of your cart" note: just say why.
+        const held = (await fetchHeldCopies({ ids: [inventoryItemId] })).filter((c) => c.heldQuantity > 0);
+        setError(
+          held?.length
+            ? `That copy of ${held[0].cardName} is on hold for a pending trade, so it can’t be bought right now.`
+            : "That item just sold out.",
+        );
         return;
       }
       const sellable = Math.max(0, row.quantity ?? 0);
@@ -447,6 +496,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clearGuestCart();
       setLines([]);
     }
+    setTradeHeld([]);
   }, [user, hydrateServer]);
 
   const refresh = useCallback(async () => {
@@ -483,6 +533,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       stockAdjusted,
+      tradeHeld,
+      dismissTradeHeld,
       addItem,
       setQuantity,
       removeItem,
@@ -498,6 +550,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       stockAdjusted,
+      tradeHeld,
+      dismissTradeHeld,
       addItem,
       setQuantity,
       removeItem,
