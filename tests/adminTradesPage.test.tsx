@@ -599,6 +599,34 @@ describe("everything else on a trade", () => {
     window.localStorage.removeItem("gg-trade-wanted-sort");
   });
 
+  it("makes foils stand out: the shimmer over the picture and a Foil tag, and nothing on non-foils", async () => {
+    const trade = staffTrade({
+      status: "awaiting_shipment",
+      offered: APPROVED,
+      wanted: [
+        wantedItem({ id: "w1", cardName: "The One Ring", imageUrl: "https://cards.scryfall.io/normal/front/a/b/ring.jpg?1" }),
+        wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Arcane Signet", finish: "foil", imageUrl: "https://cards.scryfall.io/normal/front/c/d/signet.jpg?1" }),
+        wantedItem({ id: "w3", inventoryItemId: "i3", cardName: "Sol Ring", finish: "etched", imageUrl: null }),
+      ],
+    });
+    const dialog = await openTrade(trade);
+    const row = (name: string) => within(dialog).getByText(name, { selector: ".gg-trd-card__name" }).closest("li")!;
+
+    expect(row("The One Ring")).not.toHaveClass("gg-trd-card--foil");
+    expect(row("The One Ring").querySelector(".gg-card-foil-shimmer")).toBeNull();
+    expect(row("The One Ring").querySelector(".gg-trd-foiltag")).toBeNull();
+
+    expect(row("Arcane Signet")).toHaveClass("gg-trd-card--foil");
+    expect(row("Arcane Signet").querySelector(".gg-card-foil-shimmer")).not.toBeNull();
+    expect(row("Arcane Signet").querySelector(".gg-trd-foiltag")).toHaveTextContent("Foil");
+    // The picture still enlarges under the shimmer.
+    expect(within(row("Arcane Signet")).getByRole("img", { name: "Arcane Signet" })).toBeInTheDocument();
+
+    // Etched, with no picture: still tagged, still shimmering.
+    expect(row("Sol Ring").querySelector(".gg-trd-foiltag")).toHaveTextContent("Etched foil");
+    expect(row("Sol Ring").querySelector(".gg-card-foil-shimmer")).not.toBeNull();
+  });
+
   it("shows a card's picture larger on hover", async () => {
     const user = userEvent.setup();
     const trade = staffTrade({

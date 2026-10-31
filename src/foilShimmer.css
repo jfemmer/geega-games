@@ -1,0 +1,76 @@
+/* ==========================================================================
+   Foil shimmer — shared by the storefront's card grid (store.css adds its
+   hover and frame rules) and the admin (trade lists, admin.css).
+
+   Two layers sweep diagonally across a card picture: a rainbow foil band and
+   a narrower white glint. The moving glint is what makes foils noticeable at
+   a glance in a list; the rainbow band gives it the foil color. Put a
+   <span class="gg-card-foil-shimmer" aria-hidden="true"> over the picture,
+   inside a positioned box that clips it (.gg-foil-frame does that).
+   ========================================================================== */
+
+.gg-foil-frame {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.gg-card-foil-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  mix-blend-mode: screen;
+  opacity: .62;
+  background:
+    linear-gradient(
+      112deg,
+      transparent 42%,
+      rgba(255, 255, 255, .6) 49%,
+      transparent 56%
+    ),
+    linear-gradient(
+      112deg,
+      transparent 0%,
+      rgba(255, 74, 190, .26) 16%,
+      rgba(88, 220, 255, .36) 31%,
+      rgba(255, 247, 145, .40) 46%,
+      rgba(180, 92, 255, .37) 61%,
+      rgba(72, 235, 188, .28) 76%,
+      transparent 91%
+    );
+  /* 3× the card, and positions kept within 0–100%, so the gradient image
+     always covers the whole card while it slides. Anything else lets an edge
+     of the image cross the card, which shows as a hard seam in the sweep. */
+  background-size: 300% 300%, 300% 300%;
+  background-position: 0% 0%, 10% 10%;
+  filter: saturate(1.15);
+  animation: gg-foil-shimmer 4.2s ease-in-out infinite;
+}
+
+@keyframes gg-foil-shimmer {
+  0%,
+  100% {
+    background-position: 0% 0%, 10% 10%;
+  }
+  50% {
+    background-position: 100% 100%, 90% 90%;
+  }
+}
+
+/* No hover on touch screens, so the resting state carries a little more. */
+@media (hover: none), (pointer: coarse) {
+  .gg-card-foil-shimmer {
+    opacity: .72;
+    animation-duration: 3.6s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gg-card-foil-shimmer {
+    animation: none;
+    background-position: 50% 50%, 50% 50%;
+    opacity: .5;
+  }
+}

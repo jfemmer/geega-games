@@ -12,7 +12,6 @@ import { useNow } from "../../../store/lib/useNow";
 import {
   CLOSED_TRADE_STATUSES,
   CONDITION_NAMES,
-  FINISH_NAMES,
   STAFF_CANCELABLE_STATUSES,
   STAFF_REJECTABLE_STATUSES,
   STAFF_WANTED_STATUSES,
@@ -32,7 +31,7 @@ import { carrierLabel, trackingUrlFor } from "../../../store/lib/tracking";
 import { ORDER_STATUS_LABELS, type OrderStatus } from "../../../store/lib/orderStatus";
 import { CUSTOMER_FAULT_LABELS, REVIEW_FLAG_LABELS, TRADE_STATUS_TONE, customerEmailNote } from "./tradeLabels";
 import { centsInput, extendedDeadline, parseUnitCents, pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
-import { CardThumb, OfferCardHead } from "./TradeCardBits";
+import { CardThumb, FoilTag, OfferCardHead } from "./TradeCardBits";
 import { colorGroupOf, isWantedSort, loadWantedSort, saveWantedSort, sortWanted, WANTED_SORTS, type WantedSort } from "./tradeCardSort";
 import { TradeReviewPanel } from "./TradeReviewPanel";
 import { TradeInspectionPanel } from "./TradeInspectionPanel";
@@ -1115,15 +1114,16 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
                     {group}
                   </li>
                 )}
-              <li className="gg-trd-card">
+              <li className={`gg-trd-card${w.finish !== "nonfoil" ? " gg-trd-card--foil" : ""}`}>
                 <div className="gg-trd-card__head">
-                  <CardThumb imageUrl={w.imageUrl} alt={w.cardName} />
+                  <CardThumb imageUrl={w.imageUrl} alt={w.cardName} foil={w.finish !== "nonfoil"} />
                   <div className="gg-trd-card__info">
-                    <p className="gg-trd-card__name">{w.cardName}</p>
+                    <p className="gg-trd-card__name">
+                      {w.cardName}
+                      <FoilTag finish={w.finish} />
+                    </p>
                     <p className="gg-trd-card__meta">
-                      {[line, CONDITION_NAMES[w.condition as keyof typeof CONDITION_NAMES] ?? w.condition, w.finish !== "nonfoil" ? FINISH_NAMES[w.finish] ?? w.finish : null]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {[line, CONDITION_NAMES[w.condition as keyof typeof CONDITION_NAMES] ?? w.condition].filter(Boolean).join(" · ")}
                     </p>
                     <p className="gg-trd-card__meta">
                       {formatCents(w.unitPriceCents)} each ·{" "}
