@@ -227,12 +227,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case "approve": {
         if (handoffOf(t) === "local") {
+          // Approving holds our cards at once, until the trade is finished or
+          // canceled: the customer doesn't confirm, and there's no deadline.
           const meetup = cleanText(body.meetupDetails, 2000);
-          const confirmBy = confirmDeadline(Date.now(), settings);
           const conditions = cleanText(body.conditions, 2000);
           const { error } = await admin.rpc("trade_approve", {
             p_trade_id: tradeId,
-            p_confirm_by: confirmBy,
+            p_confirm_by: null,
             p_deposit_cents: 0,
             p_deposit_reason: null,
             p_conditions: conditions,
@@ -244,7 +245,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const set = await admin.rpc("trade_set_meetup", { p_trade_id: tradeId, p_details: meetup, ...actor });
             if (set.error) console.error("[admin/trade-center] meetup not saved after approval", tradeId, set.error.message);
           }
-          await audit("approve", { confirmBy, handoffMethod: "local", conditions, meetup });
+          await audit("approve", { handoffMethod: "local", heldUntil: "finished", conditions, meetup });
           customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "approved" });
           break;
         }
@@ -323,6 +324,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "extend": {
         const kind = body.kind === "list" || body.kind === "confirmation" || body.kind === "shipping" || body.kind === "payment" ? body.kind : null;
         if (!kind) throw new HttpError(400, "Which deadline?");
+        if (kind === "shipping" && handoffOf(t) === "local") {
+          throw new HttpError(409, "A local pickup trade holds our cards until it's finished: there's no deadline to extend.");
+        }
         const hours = wholeNumber(body.hours, 1, 720);
         if (hours === null) throw new HttpError(400, "Extend by 1 to 720 hours.");
         const current =
@@ -400,14 +404,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "reinstate": {
         const mode = body.mode === "awaiting_shipment" || body.mode === "in_transit" || body.mode === "received" ? body.mode : null;
         if (!mode) throw new HttpError(400, "Reinstate how?");
-        if (handoffOf(t) === "local" && mode !== "awaiting_shipment") {
-          throw new HttpError(400, "A local pickup trade is reinstated with a new meetup deadline.");
+        const local = handoffOf(t) === "local";
+        if (local && mode !== "awaiting_shipment") {
+          throw new HttpError(400, "A local pickup trade is reinstated by holding our cards again.");
         }
         let shipBy: string | null = null;
         let acceptedAt: string | null = null;
-        if (mode === "awaiting_shipment") {
+        // A local pickup trade comes back held until it's finished: no deadline.
+        if (mode === "awaiting_shipment" && !local) {
           const days = wholeNumber(body.shipDays, 1, 30);
-          if (days === null) throw new HttpError(400, handoffOf(t) === "local" ? "Hold our cards 1 to 30 days." : "Give them 1 to 30 days to ship.");
+          if (days === null) throw new HttpError(400, "Give them 1 to 30 days to ship.");
           shipBy = shipDeadline(Date.now(), days, settings);
         }
         if (mode === "in_transit") acceptedAt = readTime(body.acceptedAt, "When did the carrier accept it?");

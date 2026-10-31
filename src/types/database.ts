@@ -6673,7 +6673,7 @@ export type Database = {
           p_actor_id: string | null
           p_actor_label: string | null
           p_conditions: string | null
-          p_confirm_by: string
+          p_confirm_by: string | null
           p_deposit_cents: number
           p_deposit_reason: string | null
           p_trade_id: string

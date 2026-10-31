@@ -129,14 +129,19 @@ function localSteps(base: TradeTerms): Step[] {
     },
     {
       title: "We review your trade.",
-      body: <>We check that our cards are available and email you as soon as your trade is approved.</>,
-    },
-    {
-      title: "Confirm your trade.",
       body: (
         <>
-          Confirm within {confirmWindow(t)}, and we&rsquo;ll hold our cards for you for {plural(t.localMeetDays, "day")} while we
-          schedule a time to meet {where}. Sundays don&rsquo;t count, and no deposit is required.
+          We check that our cards are available and email you as soon as your trade is approved. Approving takes our cards off sale and
+          holds them for you until we meet: there&rsquo;s nothing to confirm, and no deposit.
+        </>
+      ),
+    },
+    {
+      title: "We set up the meetup.",
+      body: (
+        <>
+          We message you on your trade page to schedule a time to meet {where}. Changed your mind about one of our cards? Tell us and we&rsquo;ll
+          take it off. Can&rsquo;t make it? Cancel at no cost so we can put our cards back on sale.
         </>
       ),
     },

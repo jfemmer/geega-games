@@ -81,10 +81,11 @@ const LOCAL_STAFF_NEXT: Partial<Record<TradeStatus, string>> = {
   awaiting_trade_list: "The customer is still picking our cards. Nothing is reserved. Their cards are valued when you meet.",
   pending_review: "Local pickup: approve it (no card review, no deposit), ask for changes, or reject it.",
   awaiting_confirmation: "Approved. Waiting for the customer to confirm. Nothing is reserved yet.",
-  awaiting_shipment: "Our cards are held for the meetup. Agree on a time and place in the messages, then record their cards below when you meet.",
+  awaiting_shipment:
+    "Our cards are held until you finish or cancel this trade. Agree on a time and place in the messages, then record their cards below when you meet. If they change their mind about one of our cards, take it off under Our cards: it goes straight back on sale.",
   completed: "Complete: traded in person. Add the cards you took to inventory.",
   canceled: "Canceled by the customer. Our cards went back on sale.",
-  expired: "The hold ended before you met. Our cards went back on sale.",
+  expired: "Released before you met. Our cards went back on sale.",
 };
 
 /** The deadline that's running, by status, and the kind of extension that moves it. */
@@ -99,8 +100,10 @@ function runningDeadline(trade: StaffTrade): { label: string; at: string | null;
       return { label: "Confirm by", at: trade.confirmBy, original: trade.confirmByOriginal, kind: "confirmation" };
     case "awaiting_shipment":
     case "tracking_submitted":
+      // A local pickup trade holds our cards until it's finished: no deadline.
+      if (trade.handoffMethod === "local") return null;
       return {
-        label: trade.handoffMethod === "local" ? "Hold ends" : "Ship by",
+        label: "Ship by",
         at: trade.shipBy,
         original: trade.shipByOriginal,
         kind: "shipping",

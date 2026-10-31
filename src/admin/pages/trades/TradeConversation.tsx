@@ -84,7 +84,7 @@ export function TradeHistory({ trade }: Pick<TradePanelProps, "trade">) {
               <li key={e.id}>
                 <span className="gg-trd-history__when">{formatDateTime(e.createdAt)}</span>
                 <span className="gg-trd-history__what">
-                  <strong>{eventLabel(e.event)}</strong>
+                  <strong>{eventLabel(e.event, e.toStatus)}</strong>
                   <span className="gg-card-meta">
                     {" "}
                     · {actorLabel(e)}

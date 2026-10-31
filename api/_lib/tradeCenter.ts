@@ -913,7 +913,7 @@ export function customerTradeView(
     },
     offered: offers.map((row) => customerOfferView(row, t.status)),
     timeline: events.flatMap((e) => {
-      const label = timelineLabel(e.event, handoffOf(t));
+      const label = timelineLabel(e.event, handoffOf(t), e.to_status);
       return label === undefined ? [] : [{ event: e.event, label, createdAt: e.created_at }];
     }),
     confirmation: extras.confirmation ?? null,

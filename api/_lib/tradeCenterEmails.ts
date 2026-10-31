@@ -879,7 +879,7 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
         heading: "We got your trade",
         paragraphs: [
           `${greet} thanks! We're reviewing trade ${label}, a local pickup in ${area}, and will email you as soon as we've decided.`,
-          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, you'll confirm your trade to reserve them until we meet.",
+          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, we hold them for you until we meet.",
           `Bring the cards you're trading in when we meet: we'll value each one at its TCG low for the condition we see, and ${credit} of that is your trade credit toward our cards.`,
         ],
         rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }],
@@ -887,20 +887,37 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
       });
 
     case "approved": {
-      const confirmBy = t.confirm_by ? formatDeadline(t.confirm_by) : null;
-      return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: confirm by ${confirmBy ?? "soon"}`, {
-        previewText: confirmBy ? `Confirm your trade by ${confirmBy} to reserve our cards until we meet.` : "Confirm your trade to reserve our cards.",
+      // A trade approved before holds started at approval still waits for the customer to confirm it.
+      if (t.status === "awaiting_confirmation") {
+        const confirmBy = t.confirm_by ? formatDeadline(t.confirm_by) : null;
+        return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: confirm by ${confirmBy ?? "soon"}`, {
+          previewText: confirmBy ? `Confirm your trade by ${confirmBy} to reserve our cards until we meet.` : "Confirm your trade to reserve our cards.",
+          heading: "Your trade is approved",
+          paragraphs: [
+            `${greet} good news: we've approved trade ${label}, a local pickup in ${area}.`,
+            confirmBy ? `Confirm it by ${confirmBy} on your trade page to hold our cards until we meet. There's no deposit.` : "Confirm it on your trade page to hold our cards until we meet.",
+          ],
+          note: [meetupNote(b), t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null].filter(Boolean).join("\n\n") || null,
+          rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }, ...spotRows],
+          button: { href: url, label: "Confirm your trade" },
+        });
+      }
+      return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: our cards are held for you`, {
+        previewText: "We've approved your trade and are holding our cards for you until we meet.",
         heading: "Your trade is approved",
         paragraphs: [
-          `${greet} good news: we've approved trade ${label}, a local pickup in ${area}.`,
-          confirmBy
-            ? `Confirm it by ${confirmBy} (${hoursPhrase(settings.confirmation_hours)}, not counting Sundays). Confirming holds our cards for you for ${daysPhrase(settings.local_meet_days)} while we meet. There's no deposit.`
-            : "Confirm it on your trade page to hold our cards until we meet.",
-          "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
+          `${greet} good news: we've approved trade ${label}, a local pickup in ${area}. Our cards are off the shelf and held for you until we meet. There's no deposit.`,
+          t.meetup_details
+            ? "Here's where and when we'll meet. Need a different time? Reply on your trade page."
+            : spot
+              ? `We'll message you on your trade page to set a time to meet at our meeting spot, ${spot}. Reply there with times that work for you.`
+              : "We'll message you on your trade page to set a time and a public place to meet. Reply there with times that work for you.",
+          `Bring the cards you're trading in. We'll value each one at its TCG low for the condition we see, and ${credit} of that is your credit toward our cards. Anything it doesn't cover is paid when we meet, in cash or by card; credit left over stays in your account.`,
+          "Changed your mind about any of our cards? Tell us on your trade page and we'll take them off. Can't make it? Cancel your trade so we can put our cards back on sale. Canceling costs nothing.",
         ],
-        note: [meetupNote(b), t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null].filter(Boolean).join("\n\n") || null,
+        note: [meetupNote(b) ?? settings.local_pickup_details, t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null].filter(Boolean).join("\n\n") || null,
         rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }, ...spotRows],
-        button: { href: url, label: "Confirm your trade" },
+        button: { href: url, label: "Message us about the meetup" },
       });
     }
 
@@ -992,12 +1009,15 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
     }
 
     case "expired":
-      return sendCustomer(b, settings, "trade_reservation_expired", `trade-expired-${t.id}-${t.closed_at}`, `Trade ${label}: the hold on our cards ended`, {
+      // A local trade's hold doesn't run out on its own any more: this is staff letting it go.
+      return sendCustomer(b, settings, "trade_reservation_expired", `trade-expired-${t.id}-${t.closed_at}`, `Trade ${label}: we've stopped holding our cards`, {
         previewText: "Our cards went back on sale. Message us if you'd still like to trade.",
-        heading: "The hold on our cards ended",
+        heading: "We've stopped holding our cards",
         paragraphs: [
-          `${greet} we didn't meet for trade ${label} before the hold ended${t.ship_by ? ` (${formatDeadline(t.ship_by)})` : ""}, so our cards went back on sale.`,
-          "Nothing was charged, and it doesn't count against you. If you'd still like to trade, message us on your trade page or start a new trade.",
+          `${greet} we didn't manage to meet for trade ${label}, so we've stopped holding our cards and put them back on sale.`,
+          t.customer_fault
+            ? "Nothing was charged. If you'd still like to trade, message us on your trade page or start a new trade."
+            : "Nothing was charged, and it doesn't count against you. If you'd still like to trade, message us on your trade page or start a new trade.",
         ],
         button: view,
       });

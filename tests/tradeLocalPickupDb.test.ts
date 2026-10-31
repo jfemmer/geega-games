@@ -439,6 +439,15 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     await db.query(`update public.trade_requests set status = 'awaiting_shipment', ship_by = now() - interval '1 minute' where id = $1`, [shipped]);
     expect((await all(`select * from public.trade_expire_due(50, 24, true)`)).map((e) => e.expired_trade_id)).toContain(shipped);
 
+    // Released early by staff, then brought back: held again, still with no deadline.
+    await db.query(`select * from public.trade_close($1, 'expired', array['awaiting_shipment'], 'Released', null, 'staff', null, 'jacob')`, [id]);
+    expect(await held(id)).toBe(0);
+    expect((await errorOf(`select * from public.trade_reinstate($1, 'awaiting_shipment', $2::timestamptz, null, true, null, 'jacob')`, [id, iso(Date.now() + 3 * DAY)]))?.code).toBe("GT010");
+    const back = await one(`select * from public.trade_reinstate($1, 'awaiting_shipment', null, null, true, null, 'jacob')`, [id]);
+    expect(back.result).toBe("reinstated");
+    expect(await tradeRow(id)).toMatchObject({ status: "awaiting_shipment", ship_by: null });
+    expect(await held(id)).toBe(2);
+
     for (const t of [id, old]) {
       await db.query(`select * from public.trade_close($1, 'canceled', array['awaiting_shipment'], null, null, 'customer', null, 'x')`, [t]);
     }

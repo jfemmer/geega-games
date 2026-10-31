@@ -15,7 +15,8 @@
 -- Until then the hold only ends when the trade is canceled (by the customer
 -- or the store); trade_expire_due never expires a local trade's hold.
 -- Staff can still take cards off (trade_set_wanted): each goes straight back
--- on sale.
+-- on sale. A local trade staff released early and then reinstate comes back
+-- held the same way, with no deadline (trade_reinstate).
 --
 -- Local trades approved before this update and still waiting for the
 -- customer's confirmation keep working as before (trade_confirm is
@@ -219,8 +220,108 @@ end;
 $$;
 
 
--- 3. Only the server may call these -------------------------------------------------
+-- 3. Reinstating a local trade holds our cards again, with no deadline ---------------
+create or replace function public.trade_reinstate(
+  p_trade_id uuid, p_mode text, p_ship_by timestamptz, p_accepted_at timestamptz, p_clear_fault boolean,
+  p_actor_id uuid, p_actor_label text
+) returns table (result text, short_lines jsonb)
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+declare
+  v_trade public.trade_requests%rowtype;
+  v_short jsonb := '[]'::jsonb;
+  v_free integer;
+  v_inv public.inventory_items%rowtype;
+  v_res_id uuid;
+  v_dep text;
+  r record;
+begin
+  perform public.trade_require_service_role();
+  if p_mode not in ('awaiting_shipment', 'in_transit', 'received') then
+    raise exception 'Unknown way to reinstate: %', p_mode using errcode = 'GT010';
+  end if;
+  select * into v_trade from public.trade_requests where id = p_trade_id for update;
+  if not found then
+    raise exception 'That trade isn''t there.' using errcode = 'GT404';
+  end if;
+  if v_trade.status <> 'expired' then
+    raise exception 'Only an expired reservation can be reinstated.' using errcode = 'GT009';
+  end if;
+  -- A local pickup trade comes back held until it's finished: no deadline.
+  if p_mode = 'awaiting_shipment' and v_trade.handoff_method = 'local' and p_ship_by is not null then
+    raise exception 'A local pickup trade is held until it''s finished: no deadline.' using errcode = 'GT010';
+  end if;
+  if p_mode = 'awaiting_shipment' and v_trade.handoff_method <> 'local'
+     and (p_ship_by is null or p_ship_by <= now() or p_ship_by > now() + interval '60 days') then
+    raise exception 'Give them a new shipping deadline in the next 60 days.' using errcode = 'GT010';
+  end if;
+  if p_mode = 'in_transit' and (p_accepted_at is null or p_accepted_at > now() + interval '5 minutes') then
+    raise exception 'When did the carrier accept it?' using errcode = 'GT010';
+  end if;
+
+  for r in select i.* from public.trade_request_items i
+           where i.trade_request_id = p_trade_id and i.status = 'released' order by i.inventory_item_id loop
+    select * into v_inv from public.inventory_items where id = r.inventory_item_id for update;
+    v_free := public.trade_available(r.inventory_item_id, p_trade_id);
+    if v_free < r.quantity then
+      v_short := v_short || jsonb_build_array(jsonb_build_object(
+        'item_id', r.id, 'inventory_item_id', r.inventory_item_id, 'card_name', r.card_name,
+        'wanted', r.quantity, 'available', v_free));
+    end if;
+  end loop;
+  if jsonb_array_length(v_short) > 0 then
+    return query select 'unavailable'::text, v_short;
+    return;
+  end if;
+  for r in select i.* from public.trade_request_items i
+           where i.trade_request_id = p_trade_id and i.status = 'released' order by i.inventory_item_id loop
+    insert into public.inventory_reservations (inventory_item_id, customer_id, quantity, note, reserved_by, trade_request_id)
+    values (r.inventory_item_id, null, r.quantity, 'Trade TR-' || v_trade.trade_number, 'trade', p_trade_id)
+    returning id into v_res_id;
+    update public.trade_request_items set status = 'reserved', reservation_id = v_res_id where id = r.id;
+  end loop;
+
+  v_dep := case
+    when v_trade.deposit_status in ('forfeiture_review', 'paid') and p_mode = 'awaiting_shipment' then 'paid'
+    when v_trade.deposit_status in ('forfeiture_review', 'paid') then 'refund_pending'
+    else v_trade.deposit_status
+  end;
+  update public.trade_requests set
+    status = p_mode,
+    closed_at = null,
+    close_reason = null,
+    expired_stage = null,
+    return_status = 'none',
+    review_flag = null,
+    review_flag_at = null,
+    ship_by = case when p_mode = 'awaiting_shipment' then p_ship_by else ship_by end,
+    ship_by_original = case when p_mode = 'awaiting_shipment' and v_trade.handoff_method = 'local' then null else ship_by_original end,
+    inbound_accepted_at = case when p_mode = 'in_transit' then p_accepted_at
+                               when p_mode = 'received' then coalesce(inbound_accepted_at, now())
+                               else inbound_accepted_at end,
+    inbound_acceptance_source = case when p_mode = 'in_transit' then 'staff'
+                                     when p_mode = 'received' then coalesce(inbound_acceptance_source, 'received')
+                                     else inbound_acceptance_source end,
+    shipped_on_time = case when p_mode in ('in_transit', 'received') then true else shipped_on_time end,
+    received_at = case when p_mode = 'received' then now() else received_at end,
+    customer_fault = case when coalesce(p_clear_fault, false) then null else customer_fault end,
+    fault_at = case when coalesce(p_clear_fault, false) then null else fault_at end,
+    deposit_status = v_dep,
+    deposit_refund_requested_at = case when v_dep = 'refund_pending' and v_trade.deposit_status <> 'refund_pending' then now() else deposit_refund_requested_at end
+  where id = p_trade_id;
+  perform public.trade_log(p_trade_id, 'staff', p_actor_id, p_actor_label, 'reinstated', 'expired', p_mode,
+    jsonb_build_object('mode', p_mode, 'ship_by', p_ship_by, 'accepted_at', p_accepted_at,
+                       'fault_cleared', coalesce(p_clear_fault, false), 'deposit_from', v_trade.deposit_status, 'deposit_to', v_dep));
+  return query select 'reinstated'::text, null::jsonb;
+end;
+$$;
+
+-- 4. Only the server may call these -------------------------------------------------
 revoke all on function public.trade_approve(uuid, timestamptz, integer, text, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.trade_approve(uuid, timestamptz, integer, text, text, uuid, text) to service_role;
 revoke all on function public.trade_expire_due(integer, integer, boolean) from public, anon, authenticated;
 grant execute on function public.trade_expire_due(integer, integer, boolean) to service_role;
+revoke all on function public.trade_reinstate(uuid, text, timestamptz, timestamptz, boolean, uuid, text) from public, anon, authenticated;
+grant execute on function public.trade_reinstate(uuid, text, timestamptz, timestamptz, boolean, uuid, text) to service_role;

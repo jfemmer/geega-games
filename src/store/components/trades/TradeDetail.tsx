@@ -322,7 +322,11 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
   ];
 
   const oursIntro = editable
-    ? "These stay on sale until you confirm your approved trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
+    ? local
+      ? "These stay on sale until we approve your trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
+      : "These stay on sale until you confirm your approved trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
+    : local && status === "pending_review"
+      ? "Not reserved yet: they stay on sale until we approve your trade. Then we hold them for you until we meet."
     : status === "pending_review" || CONFIRMING.has(status)
       ? `Not reserved yet: they stay on sale until you confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""}.`
       : local && status === "awaiting_shipment"
@@ -364,7 +368,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       </button>
       <p className="gg-tc-line__meta">
         {local ? (
-          <>Once we approve your trade you&rsquo;ll confirm it, and then we&rsquo;ll set up where and when to meet.</>
+          <>Once we approve your trade, we hold our cards for you and set up where and when to meet.</>
         ) : (
           <>
             Don&rsquo;t mail anything yet. Once we approve your trade you&rsquo;ll confirm it, and then we&rsquo;ll tell you where to send your

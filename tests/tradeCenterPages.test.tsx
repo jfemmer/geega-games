@@ -219,8 +219,8 @@ describe("the Trade Cards page (1)", () => {
     expect(within(panel).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Choose our cards. Add singles from our shop to your trade cart. There’s no shipping.",
       "Select local pickup. Choose Local pickup in your trade summary and submit your trade. You don’t need to list your cards in advance, though you’re welcome to add a note about what you plan to bring.",
-      "We review your trade. We check that our cards are available and email you as soon as your trade is approved.",
-      "Confirm your trade. Confirm within 2 days, and we’ll hold our cards for you for 7 days while we schedule a time to meet in the St. Louis area. Sundays don’t count, and no deposit is required.",
+      "We review your trade. We check that our cards are available and email you as soon as your trade is approved. Approving takes our cards off sale and holds them for you until we meet: there’s nothing to confirm, and no deposit.",
+      "We set up the meetup. We message you on your trade page to schedule a time to meet in the St. Louis area. Changed your mind about one of our cards? Tell us and we’ll take it off. Can’t make it? Cancel at no cost so we can put our cards back on sale.",
       "Meet and settle. Bring your cards: staples valued at $15 or more each at TCG low. We review each card together, price it at its TCG low for its condition, and you receive 80% as trade credit. Pay any remaining balance in cash or by card, or keep leftover credit for a future order. You leave with our cards the same day.",
     ]);
     // Cards are graded together in person: no age table for local pickup.
@@ -1353,7 +1353,10 @@ describe("local pickup on the storefront", () => {
     expect(screen.getByText(/Bring them when we meet/)).toBeInTheDocument();
     expect(screen.queryByText("Add the cards you're trading in.")).toBeNull();
     const steps = screen.getByRole("list", { name: "Trade progress" });
-    expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Our cards", "Review", "Confirm", "Meet up", "Done"]);
+    expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Our cards", "Review", "Meet up", "Done"]);
+    // Nothing to confirm on a local trade: approving holds our cards.
+    expect(screen.getByText(/These stay on sale until we approve your trade/)).toBeInTheDocument();
+    expect(screen.getByText(/Once we approve your trade, we hold our cards for you and set up where and when to meet/)).toBeInTheDocument();
     const balance = screen.getByRole("region", { name: "Your trade" });
     expect(balance).toHaveTextContent("Local pickup");
     expect(balance).toHaveTextContent("Your cards to bring");
