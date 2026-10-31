@@ -30,6 +30,21 @@ describe("the seasonal logo", () => {
     expect(siteLogoSrc(new Date("2027-03-15T17:00:00Z"))).toBe(STANDARD_LOGO);
   });
 
+  it("shows the Christmas logo from Dec 1 through Christmas Day in St. Louis (standard time, UTC-6)", () => {
+    expect(siteLogoSrc(new Date("2026-12-01T05:59:00Z"))).toBe(STANDARD_LOGO);
+    expect(siteLogoSrc(new Date("2026-12-01T06:00:00Z"))).toBe("/logo-christmas.png");
+    expect(siteLogoSrc(new Date("2026-12-15T18:00:00Z"))).toBe("/logo-christmas.png");
+    // 11:59 pm on Christmas Day is still Christmas; Dec 26 is back to standard.
+    expect(siteLogoSrc(new Date("2026-12-26T05:59:00Z"))).toBe("/logo-christmas.png");
+    expect(siteLogoSrc(new Date("2026-12-26T06:00:00Z"))).toBe(STANDARD_LOGO);
+    expect(siteLogoSrc(new Date("2026-12-31T18:00:00Z"))).toBe(STANDARD_LOGO);
+    expect(siteLogoSrc(new Date("2027-12-10T18:00:00Z"))).toBe("/logo-christmas.png");
+  });
+
+  it("shows the standard logo the rest of November", () => {
+    expect(siteLogoSrc(new Date("2026-11-30T18:00:00Z"))).toBe(STANDARD_LOGO);
+  });
+
   it("reads the month in store time across the daylight-saving change", () => {
     // Nov 1, 2026 is still daylight time; Dec 1 is standard time (UTC-6).
     expect(storeMonth(new Date("2026-12-01T05:30:00Z"))).toBe(11);
