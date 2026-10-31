@@ -567,6 +567,55 @@ describe("everything else on a trade", () => {
     await waitFor(() => expect(repo.setWanted).toHaveBeenLastCalledWith(TRADE_ID, [{ inventoryItemId: "i2", quantity: 2 }]));
   });
 
+  it("sorts our cards by name or by color, under color headings, and remembers the choice", async () => {
+    window.localStorage.removeItem("gg-trade-wanted-sort");
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "awaiting_shipment",
+      offered: APPROVED,
+      wanted: [
+        wantedItem({ id: "w1", inventoryItemId: "i1", cardName: "Sol Ring", colors: [], typeLine: "Artifact" }),
+        wantedItem({ id: "w2", inventoryItemId: "i2", cardName: "Lightning Bolt", colors: ["R"], typeLine: "Instant" }),
+        wantedItem({ id: "w3", inventoryItemId: "i3", cardName: "Counterspell", colors: ["U"], typeLine: "Instant" }),
+        wantedItem({ id: "w4", inventoryItemId: "i4", cardName: "Abrupt Decay", colors: ["B", "G"], typeLine: "Instant" }),
+      ],
+    });
+    const dialog = await openTrade(trade);
+    const ours = within(dialog).getByRole("heading", { name: /Our cards/ }).closest("section")!;
+    const names = () => within(ours).getAllByRole("listitem").filter((li) => li.classList.contains("gg-trd-card")).map((li) => li.querySelector(".gg-trd-card__name")!.textContent);
+    const headings = () => Array.from(ours.querySelectorAll(".gg-trd-cards__group")).map((h) => h.textContent);
+
+    // The trade's own order first.
+    expect(names()).toEqual(["Sol Ring", "Lightning Bolt", "Counterspell", "Abrupt Decay"]);
+    expect(headings()).toEqual([]);
+
+    await user.selectOptions(within(ours).getByLabelText("Sort by"), "Name (A–Z)");
+    expect(names()).toEqual(["Abrupt Decay", "Counterspell", "Lightning Bolt", "Sol Ring"]);
+
+    await user.selectOptions(within(ours).getByLabelText("Sort by"), "Color");
+    expect(names()).toEqual(["Counterspell", "Lightning Bolt", "Abrupt Decay", "Sol Ring"]);
+    expect(headings()).toEqual(["Blue", "Red", "Multicolor", "Colorless"]);
+    expect(window.localStorage.getItem("gg-trade-wanted-sort")).toBe("color");
+    window.localStorage.removeItem("gg-trade-wanted-sort");
+  });
+
+  it("shows a card's picture larger on hover", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "awaiting_shipment",
+      offered: APPROVED,
+      wanted: [wantedItem({ imageUrl: "https://cards.scryfall.io/normal/front/a/b/ring.jpg?1" })],
+    });
+    const dialog = await openTrade(trade);
+    const thumb = within(dialog).getByRole("img", { name: "The One Ring" });
+    expect(thumb).toHaveAttribute("src", "https://cards.scryfall.io/small/front/a/b/ring.jpg?1");
+    await user.hover(thumb);
+    const big = await screen.findByRole("img", { name: "The One Ring, enlarged" });
+    expect(big.querySelector("img")).toHaveAttribute("src", "https://cards.scryfall.io/large/front/a/b/ring.jpg?1");
+    await user.unhover(thumb);
+    await waitFor(() => expect(screen.queryByRole("img", { name: "The One Ring, enlarged" })).toBeNull());
+  });
+
   it("gives more time on the running deadline, noting when the customer asked", async () => {
     const user = userEvent.setup();
     const trade = staffTrade({ status: "awaiting_shipment", offered: APPROVED, shipBy: "2099-10-30T19:00:00Z", shipByOriginal: "2099-10-29T19:00:00Z" });

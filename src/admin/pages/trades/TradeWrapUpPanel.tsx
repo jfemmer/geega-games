@@ -202,7 +202,7 @@ function ImportRow({ card, busy, run }: { card: StaffTradeOfferCard } & Pick<Tra
   return (
     <li className="gg-trd-card">
       <div className="gg-trd-card__head">
-        <CardThumb imageUrl={card.imageUrl} />
+        <CardThumb imageUrl={card.imageUrl} alt={card.cardName} />
         <div className="gg-trd-card__info">
           <p className="gg-trd-card__name">{card.cardName}</p>
           <p className="gg-trd-card__meta">

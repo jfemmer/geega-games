@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -33,6 +33,7 @@ import { ORDER_STATUS_LABELS, type OrderStatus } from "../../../store/lib/orderS
 import { CUSTOMER_FAULT_LABELS, REVIEW_FLAG_LABELS, TRADE_STATUS_TONE, customerEmailNote } from "./tradeLabels";
 import { centsInput, extendedDeadline, parseUnitCents, pendingAdjustment, quantityOptions, tradeMoney } from "./tradeMath";
 import { CardThumb, OfferCardHead } from "./TradeCardBits";
+import { colorGroupOf, isWantedSort, loadWantedSort, saveWantedSort, sortWanted, WANTED_SORTS, type WantedSort } from "./tradeCardSort";
 import { TradeReviewPanel } from "./TradeReviewPanel";
 import { TradeInspectionPanel } from "./TradeInspectionPanel";
 import { MailBack, TradeWrapUpPanel } from "./TradeWrapUpPanel";
@@ -1052,6 +1053,13 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
   const onTrade = trade.wanted.filter((w) => w.status === "requested" || w.status === "reserved" || w.status === "fulfilled");
   const offTrade = trade.wanted.filter((w) => w.status === "released" || w.status === "removed");
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [sort, setSort] = useState<WantedSort>(loadWantedSort);
+  const sorted = sortWanted(onTrade, sort);
+
+  function changeSort(next: WantedSort) {
+    setSort(next);
+    saveWantedSort(next);
+  }
 
   async function save(lineId: string, quantity: number) {
     const items = onTrade
@@ -1068,19 +1076,48 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
 
   return (
     <section className="gg-trd__section">
-      <h3>Our cards ({onTrade.reduce((n, w) => n + w.quantity, 0)})</h3>
+      <div className="gg-trd__sectionhead">
+        <h3>Our cards ({onTrade.reduce((n, w) => n + w.quantity, 0)})</h3>
+        {onTrade.length > 1 && (
+          <label className="gg-trd-sort">
+            <span>Sort by</span>
+            <select
+              className="gg-input"
+              value={sort}
+              onChange={(e) => {
+                if (isWantedSort(e.target.value)) changeSort(e.target.value);
+              }}
+            >
+              {WANTED_SORTS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       {onTrade.length === 0 ? (
         <p className="gg-card-meta">None of our cards are on this trade any more.</p>
       ) : (
         <ul className="gg-trd-cards">
-          {onTrade.map((w) => {
+          {sorted.map((w, i) => {
+            // Sorted by color: a heading where each color group starts.
+            const group = sort === "color" ? colorGroupOf(w).label : null;
+            const newGroup = group !== null && (i === 0 || colorGroupOf(sorted[i - 1]).label !== group);
             const line = [w.setCode?.toUpperCase(), w.collectorNumber ? `#${w.collectorNumber}` : null].filter(Boolean).join(" ");
             const canEdit = editable && (w.status === "reserved" || w.status === "requested") && Boolean(w.inventoryItemId);
             const short = w.status === "requested" && w.available !== null && w.available < w.quantity;
             return (
-              <li key={w.id} className="gg-trd-card">
+              <Fragment key={w.id}>
+                {newGroup && (
+                  <li className="gg-trd-cards__group">
+                    {group}
+                  </li>
+                )}
+              <li className="gg-trd-card">
                 <div className="gg-trd-card__head">
-                  <CardThumb imageUrl={w.imageUrl} />
+                  <CardThumb imageUrl={w.imageUrl} alt={w.cardName} />
                   <div className="gg-trd-card__info">
                     <p className="gg-trd-card__name">{w.cardName}</p>
                     <p className="gg-trd-card__meta">
@@ -1141,6 +1178,7 @@ function OurCards({ trade, busy, run }: Pick<TradePanelProps, "trade" | "busy" |
                   </div>
                 )}
               </li>
+              </Fragment>
             );
           })}
         </ul>

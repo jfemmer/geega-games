@@ -411,7 +411,7 @@ export function LocalMeetupPanel({ trade, settings, owner, busy, run }: TradePan
           {priced.map(({ row, cents }) => (
             <li key={row.key} className="gg-trd-card">
               <div className="gg-trd-card__head">
-                <CardThumb imageUrl={row.imageUrl} />
+                <CardThumb imageUrl={row.imageUrl} alt={row.cardName} />
                 <div className="gg-trd-card__info">
                   <p className="gg-trd-card__name">{row.cardName}</p>
                   <p className="gg-trd-card__meta">

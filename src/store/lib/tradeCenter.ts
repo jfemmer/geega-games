@@ -962,6 +962,10 @@ export interface TradeWantedItem {
   status: "requested" | "reserved" | "released" | "removed" | "fulfilled";
   /** How many are free right now (for a trade that isn't reserved yet); null when it doesn't matter. */
   available: number | null;
+  /** The card's colors, WUBRG letters (from our inventory). Staff view only, for sorting; absent or null when unknown. */
+  colors?: string[] | null;
+  /** The card's type line (from our inventory), so lands sort apart from colorless cards. Staff view only. */
+  typeLine?: string | null;
 }
 
 /** One of the customer's cards on a trade, as the customer sees it. */

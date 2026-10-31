@@ -8,6 +8,8 @@ import {
   DISPUTE_BUCKET,
   UUID_RE,
   bundleAvailability,
+  loadWantedTraits,
+  type WantedCardTraits,
   cleanText,
   confirmDeadline,
   customerStanding,
@@ -799,12 +801,13 @@ async function retireOrRecordDeposit(bundle: TradeBundle): Promise<void> {
 async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSettingsRow) {
   const t = bundle.trade;
   const paths = bundle.disputes.flatMap((d) => disputeFilesOf(d.files).map((f) => f.path));
-  const [standing, extensions, consents, availability, links] = await Promise.all([
+  const [standing, extensions, consents, availability, links, wantedTraits] = await Promise.all([
     customerStanding(admin, t.user_id, settings).catch((): CustomerStanding | null => null),
     admin.from("trade_extensions").select("*").eq("trade_request_id", t.id).order("created_at"),
     admin.from("trade_consents").select("*").eq("trade_request_id", t.id).order("created_at"),
     bundleAvailability(admin, bundle),
     paths.length > 0 ? admin.storage.from(DISPUTE_BUCKET).createSignedUrls(paths, FILE_LINK_SECONDS) : Promise.resolve({ data: [], error: null }),
+    loadWantedTraits(admin, bundle).catch(() => new Map<string, WantedCardTraits>()),
   ]);
   const fileUrls = new Map<string, string>();
   for (const l of links.data ?? []) if (l.path && l.signedUrl) fileUrls.set(l.path, l.signedUrl);
@@ -813,6 +816,7 @@ async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSetti
     extensions: extensions.data ?? [],
     consents: consents.data ?? [],
     availability,
+    wantedTraits,
     fileUrls,
     autoTracked: trackingConnected(),
   });

@@ -1901,6 +1901,29 @@ describe("admin Trades: the list, the views and a trade", () => {
     // Over the abandonment limit: back to the new-customer window, with a deposit on every trade.
     expect(trade.privileges).toMatchObject({ reliabilityDeposit: true, shipDays: 3 });
   });
+
+  it("sends staff each of our cards' colors and type line, for sorting; the customer's view has neither", async () => {
+    const inv = state.tables.inventory_items as Record<string, unknown>[];
+    Object.assign(inv.find((i) => i.id === RING)!, { colors: [], type_line: "Legendary Artifact" });
+    Object.assign(inv.find((i) => i.id === SIGNET)!, { colors: [], type_line: "Artifact" });
+    const t = tradeRow({ status: "pending_review", submitted_at: iso(Date.now() - HOUR) });
+    trades().push(t);
+    state.tables.trade_request_items.push(
+      itemRow(t.id),
+      itemRow(t.id, { inventory_item_id: SIGNET, card_name: "Arcane Signet", quantity: 2 }),
+      // An inventory line that's since gone: colors unknown.
+      itemRow(t.id, { inventory_item_id: null, card_name: "Old card" }),
+    );
+    const staffView = (await staff.get({ id: t.id })).body.trade as { wanted: { cardName: string; colors: string[] | null; typeLine: string | null }[] };
+    expect(staffView.wanted.map((w) => [w.cardName, w.colors, w.typeLine])).toEqual([
+      ["The One Ring", [], "Legendary Artifact"],
+      ["Arcane Signet", [], "Artifact"],
+      ["Old card", null, null],
+    ]);
+
+    const customerView = (await ann.get({ id: t.id })).body.trade as { wanted: Record<string, unknown>[] };
+    expect(customerView.wanted.every((w) => !("colors" in w) && !("typeLine" in w))).toBe(true);
+  });
 });
 
 describe("admin Trades: review and approval (4, 5)", () => {
