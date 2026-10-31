@@ -1269,6 +1269,29 @@ export type TradeReviewFlag = "late_acceptance" | "early_scan" | "tracking_check
 export type TradeCustomerFault = "canceled_while_reserved" | "missed_deadline" | "late_shipment";
 
 /** A trade, as staff see it: everything. */
+/** One card in a local meetup draft: staff's working list of the customer's cards, saved before finishing. */
+export interface MeetupDraftCard {
+  scryfallId: string | null;
+  cardName: string;
+  setCode: string | null;
+  setName: string | null;
+  collectorNumber: string | null;
+  finish: string;
+  imageUrl: string | null;
+  condition: CardConditionCode;
+  quantity: number;
+  /** Each copy's TCG low; null when it isn't priced yet. */
+  unitCents: number | null;
+  referencePriceCents: number | null;
+}
+
+/** The cards and TCG lows staff saved at a local meetup (staff only; the customer never sees it). */
+export interface MeetupDraft {
+  cards: MeetupDraftCard[];
+  savedAt: string;
+  savedBy: string | null;
+}
+
 export interface StaffTrade extends Omit<CustomerTrade, "offered" | "timeline" | "deposit" | "disputes"> {
   userId: string;
   customerName: string | null;
@@ -1305,6 +1328,8 @@ export interface StaffTrade extends Omit<CustomerTrade, "offered" | "timeline" |
   /** What shipping our cards cost: a label bought through EasyPost (on the order), or what staff recorded. */
   orderPostageCents: number | null;
   outboundPostageCents: number | null;
+  /** Local pickup: the cards and TCG lows saved at the meetup, or null when none are saved. Older servers don't send it. */
+  meetupDraft?: MeetupDraft | null;
 }
 
 /** A row in admin Trades. */

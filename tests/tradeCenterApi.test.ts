@@ -3066,6 +3066,45 @@ describe("local pickup trades", () => {
     expect(find(t.id).ship_by).toBeNull();
   });
 
+  it("saves the cards and TCG lows entered at the meetup (staff only, a card may be unpriced), never for the customer to see", async () => {
+    const t = localTrade({ user_id: ANN, status: "awaiting_shipment", ship_by: null });
+    const cards = [
+      { scryfallId: null, cardName: "Sheoldred, the Apocalypse", setCode: "dmu", collectorNumber: "107", finish: "nonfoil", condition: "LP", quantity: 1, unitCents: 7500, referencePriceCents: 8000 },
+      { scryfallId: null, cardName: "Llanowar Elves", setCode: "dom", collectorNumber: "168", finish: "foil", condition: "NM", quantity: 2, unitCents: null, referencePriceCents: null },
+    ];
+    // Staff, not just the owner, can save.
+    const res = await staff.post({ action: "saveMeetupDraft", tradeId: t.id, cards });
+    expect(res.statusCode).toBe(200);
+    const row = find(t.id) as unknown as Record<string, unknown>;
+    expect(row.meetup_draft).toEqual([
+      expect.objectContaining({ card_name: "Sheoldred, the Apocalypse", condition: "LP", quantity: 1, unit_cents: 7500 }),
+      expect.objectContaining({ card_name: "Llanowar Elves", finish: "foil", quantity: 2, unit_cents: null }),
+    ]);
+    expect(row.meetup_draft_saved_by).toBe("pat@geega-games.com");
+    // Nothing else about the trade changes.
+    expect(row.status).toBe("awaiting_shipment");
+    // (Only the customer-record read that sending the trade back always does.)
+    expect(rpcCalls.map((c) => c.name)).toEqual(["trade_customer_stats"]);
+
+    // Staff see it on the trade; the customer doesn't.
+    const view = (await staff.get({ id: t.id })).body.trade as { meetupDraft: { cards: { cardName: string; unitCents: number | null }[]; savedBy: string } };
+    expect(view.meetupDraft.cards.map((c) => [c.cardName, c.unitCents])).toEqual([
+      ["Sheoldred, the Apocalypse", 7500],
+      ["Llanowar Elves", null],
+    ]);
+    expect(view.meetupDraft.savedBy).toBe("pat@geega-games.com");
+    const mine = JSON.stringify((await ann.get({ id: t.id })).body);
+    expect(mine).not.toMatch(/meetupDraft|meetup_draft|7500/);
+
+    // A price that isn't one, a missing condition, and the wrong kind of trade are refused.
+    expect((await staff.post({ action: "saveMeetupDraft", tradeId: t.id, cards: [{ ...cards[0], unitCents: -5 }] })).statusCode).toBe(400);
+    expect((await staff.post({ action: "saveMeetupDraft", tradeId: t.id, cards: [{ ...cards[0], condition: "Mint" }] })).statusCode).toBe(400);
+    const waiting = localTrade({ status: "pending_review" });
+    expect((await staff.post({ action: "saveMeetupDraft", tradeId: waiting.id, cards })).statusCode).toBe(409);
+    const shipped = approvedTrade();
+    expect((await staff.post({ action: "saveMeetupDraft", tradeId: shipped.id, cards })).statusCode).toBe(409);
+  });
+
   it("lists local pickup trades on their own", async () => {
     localTrade({ status: "pending_review" });
     approvedTrade();

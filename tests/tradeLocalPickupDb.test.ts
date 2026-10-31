@@ -21,6 +21,7 @@ const MIGRATIONS = [
   "../supabase/migrations/20261028010000_trade_local_terms.sql",
   "../supabase/migrations/20261028030000_trade_meet_spot.sql",
   "../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql",
+  "../supabase/migrations/20261031030000_trade_meetup_draft.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -452,7 +453,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
 
     // The update clears a meetup deadline an older held local trade still carries.
     await db.query(`update public.trade_requests set ship_by = now() + interval '1 day', ship_by_original = now() + interval '1 day' where id = $1`, [old]);
-    await db.exec(MIGRATIONS[MIGRATIONS.length - 1]);
+    await db.exec(MIGRATIONS.find((sql) => sql.includes("holds our cards from approval until")) as string);
     expect(await tradeRow(old)).toMatchObject({ ship_by: null, ship_by_original: null });
 
     // Released early by staff, then brought back: held again, still with no deadline.
@@ -467,6 +468,16 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
     for (const t of [id, old]) {
       await db.query(`select * from public.trade_close($1, 'canceled', array['awaiting_shipment'], null, null, 'customer', null, 'x')`, [t]);
     }
+  });
+
+  it("keeps a meetup draft on the trade: a list of cards, or nothing", async () => {
+    const id = await start(users.ned, [[ring, 2]], "local");
+    const draft = JSON.stringify([{ card_name: "Sol Ring", condition: "NM", quantity: 1, unit_cents: null }]);
+    await db.query(`update public.trade_requests set meetup_draft = $2::jsonb, meetup_draft_saved_at = now(), meetup_draft_saved_by = 'jacob' where id = $1`, [id, draft]);
+    expect((await tradeRow(id)).meetup_draft).toEqual(JSON.parse(draft));
+    expect((await errorOf(`update public.trade_requests set meetup_draft = '{"a":1}'::jsonb where id = $1`, [id]))?.code).toBe("23514");
+    await db.query(`update public.trade_requests set meetup_draft = null where id = $1`, [id]);
+    await db.query(`select * from public.trade_close($1, 'canceled', array['awaiting_trade_list'], null, null, 'customer', null, 'x')`, [id]);
   });
 
   it("only the server can call the new functions", async () => {
