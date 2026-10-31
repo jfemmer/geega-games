@@ -10,6 +10,7 @@ import {
   type CatalogSort,
 } from "../lib/useCatalog";
 import { formatCents } from "../lib/money";
+import { siteLogoSrc } from "../lib/siteLogo";
 import KioskProductCard from "../components/KioskProductCard";
 import CatalogFiltersPanel from "../components/CatalogFiltersPanel";
 
@@ -421,7 +422,7 @@ export default function KioskPage() {
 function KioskTopBar() {
   return (
     <div className="gg-kiosk-topbar">
-      <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />
+      <img className="gg-logo" src={siteLogoSrc()} alt="Geega Games" width={600} height={480} />
       <div>
         <h1>Find your cards</h1>
         <p className="gg-card-meta">

@@ -10,6 +10,7 @@ import {
   type CatalogSort,
 } from "../lib/useCatalog";
 import { formatCents } from "../lib/money";
+import { siteLogoSrc } from "../lib/siteLogo";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
 import KioskProductCard from "../components/KioskProductCard";
 import PriceCell from "../components/YardSalePriceCell";
@@ -656,7 +657,7 @@ function YardSaleTopBar({ status, offer = true }: { status: YardSaleStatus | nul
   const discount = status?.active && offer ? status.discountPercent : 0;
   return (
     <header className="gg-kiosk-topbar gg-yard-topbar">
-      <img className="gg-logo" src="/logo.png" alt="Geega Games" width={600} height={480} />
+      <img className="gg-logo" src={siteLogoSrc()} alt="Geega Games" width={600} height={480} />
       <div className="gg-yard-topbar__text">
         <h1>Yard sale cards</h1>
         {status?.active && (
