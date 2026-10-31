@@ -1031,7 +1031,7 @@ describe("their cards: priced by the server (3, 7)", () => {
     expect(rpcArgs("trade_submit")[0]).toMatchObject({ p_trade_id: tradeId, p_user_id: ANN, p_note: "Shipping from Ohio" });
     expect(emailTypes()).toEqual(["trade_submitted", "trade_staff_submitted"]);
     expect(sent[0].to).toBe("ann@example.com");
-    expect(sent[0].text).toContain("Our cards aren't reserved yet");
+    expect(sent[0].text).toContain("Our cards are held for you while we review, so no one else can buy them.");
     expect(sent[0].text).toContain("Please don't mail anything yet");
   });
 
@@ -1151,7 +1151,7 @@ describe("confirming an approved trade (6, 7)", () => {
     const t = approvedTrade({ deposit_cents: 2000, deposit_status: "payment_pending" });
     const res = await ann.post({ action: "confirm", tradeId: t.id, acknowledged: true, termsVersion: 3 });
     expect(res.statusCode).toBe(200);
-    expect(res.body.notice).toContain("sold before you confirmed");
+    expect(res.body.notice).toContain("sold before they were held for you");
     expect(res.body).not.toHaveProperty("clientSecret");
     expect(stripeState.canceled).toEqual(["pi_test1"]);
     expect(t.status).toBe("revision_requested");
@@ -1996,7 +1996,7 @@ describe("admin Trades: review and approval (4, 5)", () => {
     expect(email.text).toContain("We priced your cards at TCG low:");
     expect(email.text).toContain("When they arrive we check each card's condition, so the final value can go up or down.");
     expect(email.text).toContain("No deposit is needed for this trade.");
-    expect(email.text).toContain("Until you confirm, our cards stay on sale.");
+    expect(email.text).toContain("Our cards are held for you until then, so no one else can buy them.");
     // No mailing address before the trade is confirmed.
     expect(email.text).not.toContain("100 Test Ave");
   });

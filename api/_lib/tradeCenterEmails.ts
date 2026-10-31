@@ -278,7 +278,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         heading: "We got your trade",
         paragraphs: [
           `${greet} thanks! We're reviewing trade ${label} and will email you as soon as we've decided.`,
-          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, you'll confirm your trade to reserve them.",
+          "Our cards are held for you while we review, so no one else can buy them. Once we approve, you'll confirm your trade to keep them.",
           "Please don't mail anything yet: we'll send the address and packing instructions once your cards are reserved.",
         ],
         quote: comparisonBlock(
@@ -319,7 +319,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           previewText: "Update your selection and send the trade again.",
           heading: "Some of our cards sold before your trade was confirmed",
           paragraphs: [
-            `${greet} our cards stay on sale until a trade is confirmed, and some on trade ${label} sold in the meantime, so we can't reserve your trade as it was approved.`,
+            `${greet} some of our cards on trade ${label} sold before they were held for you, so we can't reserve your trade as it was approved.`,
             email.refund
               ? `Nothing was reserved, and your ${money(deposit)} deposit is being refunded in full.`
               : "Nothing was reserved or charged.",
@@ -338,17 +338,17 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       const credit = tradeCreditCents(value, t.credit_rate_percent, t.processing_fee_cents);
       const confirmBy = t.confirm_by ? formatDeadline(t.confirm_by) : null;
       return sendCustomer(b, settings, "trade_approved", `trade-approved-${t.id}-${t.approved_at}`, `Trade ${label} is approved: confirm by ${confirmBy ?? "soon"}`, {
-        previewText: confirmBy ? `Confirm your trade by ${confirmBy} to reserve our cards.` : "Confirm your trade to reserve our cards.",
+        previewText: confirmBy ? `Confirm your trade by ${confirmBy} to keep our cards.` : "Confirm your trade to keep our cards.",
         heading: "Your trade is approved",
         paragraphs: [
           `${greet} good news: we've approved trade ${label}. We priced your cards at TCG low: ${money(value)}, or ${money(credit)} in trade credit. When they arrive we check each card's condition, so the final value can go up or down.`,
           confirmBy
             ? `You have until ${confirmBy} to confirm it: ${hoursPhrase(settings.confirmation_hours)}, not counting Sundays. If it isn't confirmed by then, the approval expires.`
-            : "Confirm it on your trade page to reserve our cards.",
+            : "Confirm it on your trade page to keep our cards.",
           t.deposit_cents > 0
             ? `Confirming takes a refundable ${money(t.deposit_cents)} deposit. It's refunded in full once the carrier accepts your package by your shipping deadline, and you never lose it for declining an offer after your cards arrive.`
             : "No deposit is needed for this trade.",
-          "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
+          "Our cards are held for you until then, so no one else can buy them. If the approval expires, they go back on sale.",
         ],
         note: t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null,
         rows: clipRows(
@@ -637,10 +637,10 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
             ? "the changes weren't sent in time"
             : "the trade wasn't sent in time";
       return sendCustomer(b, settings, "trade_offer_expired", `trade-offer-expired-${t.id}`, `Trade ${label} has closed`, {
-        previewText: "Nothing was reserved or charged.",
+        previewText: "Nothing was charged.",
         heading: "Your trade has closed",
         paragraphs: [
-          `${greet} trade ${label} closed because ${why}. Nothing was reserved or charged.`,
+          `${greet} trade ${label} closed because ${why}. ${email.stage === "confirmation" || email.stage === "deposit" || email.stage === "revision" ? "Our cards held for it went back on sale, and nothing was charged." : "Nothing was held or charged."}`,
           "If you'd still like to trade, start a new one: our cards may still be available.",
         ],
         button: view,
@@ -671,7 +671,11 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         heading: "Your trade is canceled",
         paragraphs: [
           `${greet} as you asked, we've canceled trade ${label}.`,
-          t.reserved_at ? "We've released the reservation on our cards." : "Nothing of ours was reserved.",
+          t.reserved_at
+            ? "We've released the reservation on our cards."
+            : t.submitted_at
+              ? "Our cards held for it went back on sale."
+              : "Nothing of ours was held.",
           ...(t.deposit_status === "forfeiture_review"
             ? [`Because the trade was canceled after our cards were reserved, your ${money(deposit)} deposit may be kept under the cancellation terms. A person reviews it first, and we'll email you either way.`]
             : []),
@@ -725,7 +729,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         heading: "We couldn't accept this trade",
         paragraphs: [`${greet} we're sorry, but we can't accept trade ${label}.`],
         note: email.reason,
-        closing: ["Nothing was reserved or charged. You're welcome to start a new trade anytime."],
+        closing: ["Our cards held for it went back on sale, and nothing was charged. You're welcome to start a new trade anytime."],
         button: view,
       });
 
@@ -818,7 +822,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           previewText: "Your approval expires if it isn't confirmed.",
           heading: "Confirm your trade soon",
           paragraphs: [
-            `${greet} trade ${label} is approved and waiting for you. Confirm it by ${formatDeadline(t.confirm_by)} to reserve our cards, or the approval expires.`,
+            `${greet} trade ${label} is approved and our cards are held for you. Confirm it by ${formatDeadline(t.confirm_by)} to keep them, or the approval expires and they go back on sale.`,
             t.deposit_cents > 0 ? `Confirming takes a refundable ${money(t.deposit_cents)} deposit.` : "No deposit is needed.",
           ],
           button: { href: url, label: "Confirm your trade" },
@@ -879,7 +883,7 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
         heading: "We got your trade",
         paragraphs: [
           `${greet} thanks! We're reviewing trade ${label}, a local pickup in ${area}, and will email you as soon as we've decided.`,
-          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, we hold them for you until we meet.",
+          "Our cards are held for you while we review, so no one else can buy them, and once we approve, until we meet.",
           `Bring the cards you're trading in when we meet: we'll value each one at its TCG low for the condition we see, and ${credit} of that is your trade credit toward our cards.`,
         ],
         rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }],
@@ -1028,7 +1032,7 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
         heading: "Your trade is canceled",
         paragraphs: [
           `${greet} as you asked, we've canceled trade ${label}.`,
-          t.reserved_at ? "Our cards went back on sale. Nothing was charged." : "Nothing of ours was reserved, and nothing was charged.",
+          t.reserved_at || t.submitted_at ? "Our cards went back on sale. Nothing was charged." : "Nothing of ours was held, and nothing was charged.",
         ],
         button: view,
       });

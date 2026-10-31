@@ -51,7 +51,7 @@ import { HandoffChoice, LocalBalance, LocalConfirmPanel, LocalMeetupPanel, Local
 
 // Account → Trades → one trade: everything about it in one place, changing
 // with where it stands. While the customer builds their list: our cards
-// (still on sale: nothing is reserved yet), their cards (search, paste or
+// (on sale until the trade is sent, then held for it), their cards (search, paste or
 // CSV, each priced by the server), the running total, and "Send for
 // review" (once our cards reach the trade minimum; the bar under our cards
 // shows how far they are from it and from free shipping). Then the review,
@@ -321,14 +321,23 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       : []),
   ];
 
+  // Our cards are held from when the trade is sent (a trade sent before that
+  // still has lines that are only requested, so go by the lines).
+  const heldNow = trade.wanted.some((w) => w.status === "reserved");
   const oursIntro = editable
-    ? local
-      ? "These stay on sale until we approve your trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
-      : "These stay on sale until you confirm your approved trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
+    ? heldNow
+      ? "Held for you while you make changes: a card you add is held as soon as you save it, and one you take off goes back on sale. Prices are our regular prices, set when each card was added."
+      : "These stay on sale until you send your trade: then we hold them for you, so no one else can buy them while we review it. Prices are our regular prices, set when each card was added."
+    : !heldNow && (status === "pending_review" || CONFIRMING.has(status))
+      ? local && status === "pending_review"
+        ? "Not held yet: we hold them for you once we approve your trade, until we meet."
+        : `Not held yet: we hold them for you once you confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""}.`
     : local && status === "pending_review"
-      ? "Not reserved yet: they stay on sale until we approve your trade. Then we hold them for you until we meet."
-    : status === "pending_review" || CONFIRMING.has(status)
-      ? `Not reserved yet: they stay on sale until you confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""}.`
+      ? "Held for you while we review your trade, and once we approve it, until we meet."
+    : status === "pending_review"
+      ? "Held for you while we review your trade: no one else can buy them."
+    : CONFIRMING.has(status)
+      ? `Held for you until your confirmation deadline. Confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""} in time to keep them.`
       : local && status === "awaiting_shipment"
         ? "Reserved for you until we meet."
         : status === "awaiting_shipment" || status === "tracking_submitted"
@@ -368,11 +377,11 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       </button>
       <p className="gg-tc-line__meta">
         {local ? (
-          <>Once we approve your trade, we hold our cards for you and set up where and when to meet.</>
+          <>Sending it holds our cards for you. Once we approve your trade, we set up where and when to meet.</>
         ) : (
           <>
-            Don&rsquo;t mail anything yet. Once we approve your trade you&rsquo;ll confirm it, and then we&rsquo;ll tell you where to send your
-            cards.
+            Sending it holds our cards for you. Don&rsquo;t mail anything yet: once we approve your trade you&rsquo;ll confirm it, and then
+            we&rsquo;ll tell you where to send your cards.
           </>
         )}
       </p>
@@ -822,9 +831,11 @@ function CancelTrade({
       ? `Our cards are reserved for you. Canceling now, before you ship, means your ${formatCents(d.paidCents ?? d.cents)} deposit may be kept under the cancellation terms you agreed to; a person reviews every case first. It also counts against future trades.`
       : "Our cards are reserved for you and go back on sale if you cancel. Canceling after confirming counts against future trades, and may mean a deposit next time.";
   } else if (status === "awaiting_deposit") {
-    explanation = "Your deposit hasn't been paid, so canceling costs nothing. Our cards stay on sale.";
+    explanation = "Your deposit hasn't been paid, so canceling costs nothing. Our cards go back on sale.";
+  } else if (status === "awaiting_trade_list") {
+    explanation = "Nothing is held or charged yet, so canceling costs nothing.";
   } else {
-    explanation = "Nothing is reserved or charged yet, so canceling costs nothing.";
+    explanation = "Nothing is charged yet, so canceling costs nothing. Our cards held for your trade go back on sale.";
   }
 
   if (!open) {

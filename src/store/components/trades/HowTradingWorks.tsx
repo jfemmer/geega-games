@@ -65,8 +65,8 @@ function shippedSteps(t: TradeTerms | null): Step[] {
       title: "We review your trade.",
       body: (
         <>
-          We price each card at its TCG low (the lowest listed price on TCGplayer) for its condition, and email you as soon as your trade
-          is approved.
+          Once you send it, our cards are held for you, so no one else can buy them while we review. We price each card at its TCG low
+          (the lowest listed price on TCGplayer) for its condition, and email you as soon as your trade is approved.
         </>
       ),
     },
@@ -74,7 +74,7 @@ function shippedSteps(t: TradeTerms | null): Step[] {
       title: "Confirm and ship.",
       body: (
         <>
-          {t ? `Confirm within ${confirmWindow(t)} to reserve our cards` : "Confirm your trade to reserve our cards"}
+          {t ? `Confirm within ${confirmWindow(t)} to keep our cards` : "Confirm your trade to keep our cards"}
           {t?.depositsEnabled ? `; trades of ${moneyShort(t.depositThresholdCents)} or more require a refundable deposit` : ""}. Then
           ship your cards with tracking{t ? ` within ${plural(t.shipDaysNew, "day")}` : ""}. Sundays don&rsquo;t count toward either
           deadline.
@@ -131,8 +131,8 @@ function localSteps(base: TradeTerms): Step[] {
       title: "We review your trade.",
       body: (
         <>
-          We check that our cards are available and email you as soon as your trade is approved. Approving takes our cards off sale and
-          holds them for you until we meet: there&rsquo;s nothing to confirm, and no deposit.
+          Sending it takes our cards off sale and holds them for you while we review, and once we approve, until we meet: there&rsquo;s
+          nothing to confirm, and no deposit. We email you as soon as your trade is approved.
         </>
       ),
     },

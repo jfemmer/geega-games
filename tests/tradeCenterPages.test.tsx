@@ -198,8 +198,8 @@ describe("the Trade Cards page (1)", () => {
     // $79.99 of our cards at 80% trade credit takes $99.99 of theirs, at TCG low.
     expect(within(summary).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, trade in $99.99 of your cards at TCG low");
     expect(summary).toHaveTextContent("At 80% trade credit. Trade in less and pay the rest by card, or more and keep the extra as store credit.");
-    // Starting doesn't reserve anything.
-    expect(summary).toHaveTextContent("Starting a trade doesn’t reserve these yet");
+    // Starting holds nothing: sending does.
+    expect(summary).toHaveTextContent("Starting a trade doesn’t hold these yet: they stay on sale until you send your trade for review.");
 
     await user.click(within(summary).getByRole("button", { name: "Start my trade" }));
     await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-trade"));
@@ -219,7 +219,7 @@ describe("the Trade Cards page (1)", () => {
     expect(within(panel).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Choose our cards. Add singles from our shop to your trade cart. There’s no shipping.",
       "Select local pickup. Choose Local pickup in your trade summary and submit your trade. You don’t need to list your cards in advance, though you’re welcome to add a note about what you plan to bring.",
-      "We review your trade. We check that our cards are available and email you as soon as your trade is approved. Approving takes our cards off sale and holds them for you until we meet: there’s nothing to confirm, and no deposit.",
+      "We review your trade. Sending it takes our cards off sale and holds them for you while we review, and once we approve, until we meet: there’s nothing to confirm, and no deposit. We email you as soon as your trade is approved.",
       "We set up the meetup. We message you on your trade page to schedule a time to meet in the St. Louis area. Changed your mind about one of our cards? Tell us and we’ll take it off. Can’t make it? Cancel at no cost so we can put our cards back on sale.",
       "Meet and settle. Bring your cards: staples valued at $15 or more each at TCG low. We review each card together, price it at its TCG low for its condition, and you receive 80% as trade credit. Pay any remaining balance in cash or by card, or keep leftover credit for a future order. You leave with our cards the same day.",
     ]);
@@ -247,8 +247,8 @@ describe("the Trade Cards page (1)", () => {
     expect(steps).toEqual([
       "Choose our cards. Add singles from our shop to your trade cart. Shipping is free on $200 or more of our cards.",
       "Submit your trade list. Start your trade, then add the cards you’re trading in by searching for each one or pasting a list. We accept staples valued at $15 or more each at TCG low. Each card’s condition is assigned from its printing’s age, and you’ll see an estimated value as you go.",
-      "We review your trade. We price each card at its TCG low (the lowest listed price on TCGplayer) for its condition, and email you as soon as your trade is approved.",
-      "Confirm and ship. Confirm within 2 days to reserve our cards; trades of $300 or more require a refundable deposit. Then ship your cards with tracking within 3 days. Sundays don’t count toward either deadline.",
+      "We review your trade. Once you send it, our cards are held for you, so no one else can buy them while we review. We price each card at its TCG low (the lowest listed price on TCGplayer) for its condition, and email you as soon as your trade is approved.",
+      "Confirm and ship. Confirm within 2 days to keep our cards; trades of $300 or more require a refundable deposit. Then ship your cards with tracking within 3 days. Sundays don’t count toward either deadline.",
       "We inspect your cards. When your cards arrive, we verify each one’s condition. A card’s value may go up or down, and every change is itemized with the reason.",
       "Accept your final offer. You receive 80% of your cards’ final TCG low as trade credit. Pay any remaining balance by card or keep leftover credit for a future order, and we ship our cards to you. If you decline, we return your cards with no penalty.",
     ]);
@@ -554,7 +554,7 @@ describe("a trade's page", () => {
     const send = await screen.findByRole("button", { name: "Send for review" });
     expect(send).toBeDisabled();
     expect(screen.getByText(/Send it for review by/)).toHaveTextContent("or it closes.");
-    expect(screen.getByText(/These stay on sale until you confirm your approved trade, so they aren't reserved yet/)).toBeInTheDocument();
+    expect(screen.getByText(/These stay on sale until you send your trade: then we hold them for you/)).toBeInTheDocument();
     expect(screen.getByText("Take off the card we can't accept.")).toBeInTheDocument();
     expect(screen.getByText(/Under our \$15\.00 minimum per card/)).toBeInTheDocument();
 
@@ -753,6 +753,28 @@ describe("a trade's page", () => {
     expect(await screen.findByRole("button", { name: "Send for review" })).toBeDisabled();
     expect(screen.getByText("Only 1 left: lower the quantity")).toBeInTheDocument();
     expect(screen.getByText("One of our cards has fewer copies left than you picked.")).toBeInTheDocument();
+  });
+
+  it("a sent trade says our cards are held for the customer, through review and confirming", async () => {
+    const held = customerTrade().wanted.map((w) => ({ ...w, status: "reserved" as const }));
+    world.trade = customerTrade({ status: "pending_review", wanted: held });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    expect(await screen.findByText("Held for you while we review your trade: no one else can buy them.")).toBeInTheDocument();
+    expect(screen.getByText(/Our cards are held for you meanwhile/)).toBeInTheDocument();
+    cleanup();
+
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      approvedValueCents: 8000,
+      confirmBy: "2099-01-03T20:00:00.000Z",
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z", shipByIfConfirmedNow: "2099-01-06T20:00:00.000Z" }),
+      wanted: held,
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    expect(panel).toHaveTextContent("Our cards are held for you until then.");
+    expect(panel).not.toHaveTextContent("stay on sale");
+    expect(screen.getByText("Held for you until your confirmation deadline. Confirm in time to keep them.")).toBeInTheDocument();
   });
 
   it("confirms an approved trade with no deposit once the box is ticked, agreeing to the terms version shown (6)", async () => {
@@ -1069,7 +1091,7 @@ describe("a trade's page", () => {
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     await user.click(await screen.findByRole("button", { name: "Cancel this trade" }));
     const form = screen.getByRole("heading", { name: "Cancel this trade?" }).closest("form")!;
-    expect(form).toHaveTextContent("Nothing is reserved or charged yet, so canceling costs nothing.");
+    expect(form).toHaveTextContent("Nothing is charged yet, so canceling costs nothing. Our cards held for your trade go back on sale.");
     expect(within(form).queryByRole("checkbox")).toBeNull();
     await user.click(within(form).getByRole("button", { name: "Yes, cancel my trade" }));
     await waitFor(() => expect(world.posts).toHaveLength(1));
@@ -1268,7 +1290,7 @@ describe("local pickup on the storefront", () => {
     expect(summary).toHaveTextContent("Meet us in the St. Louis area");
     expect(summary).toHaveTextContent("ShippingYou pick our cards up when we meetNone");
     expect(within(summary).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, bring about $99.99 of your cards at TCG low");
-    expect(summary).toHaveTextContent("Then we hold them while we set up a time to meet.");
+    expect(summary).toHaveTextContent("Then we hold them for you, and once we approve it, until we meet.");
     // The FAQ answers it too.
     expect(screen.getByText("Can I trade in person?")).toBeInTheDocument();
 
@@ -1355,8 +1377,8 @@ describe("local pickup on the storefront", () => {
     const steps = screen.getByRole("list", { name: "Trade progress" });
     expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Our cards", "Review", "Meet up", "Done"]);
     // Nothing to confirm on a local trade: approving holds our cards.
-    expect(screen.getByText(/These stay on sale until we approve your trade/)).toBeInTheDocument();
-    expect(screen.getByText(/Once we approve your trade, we hold our cards for you and set up where and when to meet/)).toBeInTheDocument();
+    expect(screen.getByText(/These stay on sale until you send your trade: then we hold them for you/)).toBeInTheDocument();
+    expect(screen.getByText(/Sending it holds our cards for you\. Once we approve your trade, we set up where and when to meet/)).toBeInTheDocument();
     const balance = screen.getByRole("region", { name: "Your trade" });
     expect(balance).toHaveTextContent("Local pickup");
     expect(balance).toHaveTextContent("Your cards to bring");

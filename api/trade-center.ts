@@ -681,7 +681,7 @@ async function afterUnavailable(
   await sendTradeCustomerEmail(fresh, settings, { kind: "cards_unavailable", short, refund: false });
   await notifyTradeStaff(fresh, settings, { kind: "cards_unavailable" });
   return await sendFresh(res, admin, settings, tradeId, userId, {
-    notice: "Some of our cards on this trade sold before you confirmed. Nothing was reserved or charged: update your selection and send the trade again.",
+    notice: "Some of our cards on this trade sold before they were held for you. Nothing was charged: update your selection and send the trade again.",
   });
 }
 

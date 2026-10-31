@@ -150,11 +150,11 @@ export const TRADE_STATUS_ADMIN_LABELS: Record<TradeStatus, string> = {
 /** What happens next, in the customer's words, for each status. */
 export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
   awaiting_trade_list:
-    "Add the cards you're trading in and send your trade for review. Our cards aren't reserved yet: they stay on sale until your trade is confirmed.",
-  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards aren't reserved yet.",
-  revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
-  awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards.",
-  awaiting_deposit: "Pay the refundable deposit to reserve our cards. Nothing is reserved until it goes through.",
+    "Add the cards you're trading in and send your trade for review. Once you send it, we hold our cards for you: no one else can buy them while we review it.",
+  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards are held for you meanwhile.",
+  revision_requested: "We need a change before we can approve your trade. Update it and send it again. Our cards are still held for you.",
+  awaiting_confirmation: "Your trade is approved, and our cards are held for you. Confirm it before the deadline to keep them.",
+  awaiting_deposit: "Pay the refundable deposit before the deadline to keep our cards. We're holding them for you until then.",
   awaiting_shipment: "Our cards are reserved for you. Ship your cards and add the tracking number before the deadline.",
   tracking_submitted: "We have your tracking number. Your shipment counts once the carrier scans the package.",
   in_transit: "The carrier has your package. We'll email you when it arrives.",
@@ -165,7 +165,7 @@ export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
   approved_for_fulfillment: "Your trade is done. We're packing your new cards.",
   completed: "Your new cards have shipped.",
   rejected: "We couldn't accept this trade.",
-  offer_expired: "This trade wasn't sent or confirmed in time, so it closed. Nothing was reserved or charged.",
+  offer_expired: "This trade wasn't sent or confirmed in time, so it closed. Any of our cards held for it went back on sale, and nothing was charged.",
   canceled: "This trade was canceled before shipping. Our cards were released.",
   expired: "Your cards weren't shipped by the deadline, so our cards were released.",
   canceled_after_shipment: "You canceled after shipping, with no penalty. We'll mail your cards back.",
@@ -184,10 +184,10 @@ const LOCAL_STATUS_LABELS: Partial<Record<TradeStatus, string>> = {
 
 const LOCAL_STATUS_NEXT: Partial<Record<TradeStatus, string>> = {
   awaiting_trade_list:
-    "Pick our cards and send your trade for review. You don't need to list your cards: bring them when we meet. Our cards aren't reserved yet.",
-  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards aren't reserved yet.",
-  revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
-  awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards until we meet.",
+    "Pick our cards and send your trade for review. You don't need to list your cards: bring them when we meet. Once you send it, we hold our cards for you.",
+  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards are held for you meanwhile.",
+  revision_requested: "We need a change before we can approve your trade. Update it and send it again. Our cards are still held for you.",
+  awaiting_confirmation: "Your trade is approved, and our cards are held for you. Confirm it before the deadline to keep them until we meet.",
   awaiting_shipment:
     "Approved: our cards are held for you until we meet. We'll message you to set a time and place: bring the cards you're trading in, and we'll settle the trade there.",
   completed: "We met up and traded. Thanks for trading with us!",
@@ -273,7 +273,7 @@ export const STAFF_WANTED_STATUSES: readonly TradeStatus[] = [
   "under_inspection",
 ];
 
-/** Staff can reject: before the trade is confirmed (nothing held, nothing paid). */
+/** Staff can reject: before the trade is confirmed (nothing paid; any of our cards held for it go back on sale). */
 export const STAFF_REJECTABLE_STATUSES: readonly TradeStatus[] = [
   "awaiting_trade_list",
   "pending_review",
