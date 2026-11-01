@@ -5,7 +5,10 @@ import {
   ageConditionTiers,
   type SellDefaultCondition,
 } from "../lib/sellTypes";
-import { GOOGLE_REVIEW_URL, MAX_DRIVE_HOURS } from "../../seo/site";
+import { GOOGLE_REVIEW_URL, HUB_CITY, MAX_DRIVE_HOURS } from "../../seo/site";
+import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
+import { TRADE_IN_PATH } from "../lib/tradeCenter";
+import { moneyShort } from "../lib/tradeShipping";
 import {
   SELL_AREAS,
   ST_LOUIS_PATH,
@@ -667,6 +670,71 @@ export function SellCtaSection({
       ) : (
         formLink
       )}
+    </section>
+  );
+}
+
+/**
+ * How our one-offer approach relates to a buylist, for sellers who search
+ * "mtg buylist": the word they use, and the honest difference.
+ */
+export function BuylistCompareSection() {
+  return (
+    <section className="gg-collect-section">
+      <h2>How our offers compare to an MTG buylist</h2>
+      <p className="gg-collect-lead">
+        A buylist pays a posted price per card, for the cards on the list, and you look up, sort
+        and ship each one yourself. We do the looking up: send the whole lot, sorted or not, and
+        get one offer that covers everything in it, bulk included.
+      </p>
+      <div className="gg-collect-grid">
+        <div className="gg-collect-card">
+          <h3>Priced from what cards sell for now</h3>
+          <p>
+            Each card&rsquo;s offer comes from its current market price, how fast it sells and its
+            condition, the same inputs a buylist price is built from.
+          </p>
+        </div>
+        <div className="gg-collect-card">
+          <h3>Nothing is &ldquo;not on the list&rdquo;</h3>
+          <p>
+            Buylists skip the cards they don&rsquo;t need. A collection offer takes the old rares,
+            the bulk and the half-built decks along with the staples.
+          </p>
+        </div>
+        <div className="gg-collect-card">
+          <h3>Credit pays more, here and there</h3>
+          <p>
+            Most buylists add a bonus for store credit; ours is {STORE_CREDIT_BONUS_PERCENT}% on any
+            offer. Trading staples in for singles instead?{" "}
+            <Link to={TRADE_IN_PATH}>Trade-ins pay {ADVERTISED_TRADE_TERMS.creditRatePercent}% of TCG low</Link> in credit.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * One short block pointing sellers who'd rather swap cards than cash out to
+ * the trade-in page, on every sell page.
+ */
+export function TradeInCallout() {
+  const rate = ADVERTISED_TRADE_TERMS.creditRatePercent;
+  return (
+    <section className="gg-collect-section gg-tradein-callout">
+      <h2>Rather trade than sell? Trade in staples for {rate}% store credit</h2>
+      <p className="gg-collect-lead">
+        Swap the staples you don&rsquo;t play for singles you want: we credit {rate}% of each
+        card&rsquo;s TCG low toward any card in our shop, by mail or at a meetup in {HUB_CITY}.
+        Cards worth {moneyShort(ADVERTISED_TRADE_TERMS.minCardValueCents)}+ each; whole collections and
+        bulk are better sold, with the {STORE_CREDIT_BONUS_PERCENT}% credit bonus.
+      </p>
+      <div className="gg-collect-hero-actions">
+        <Link to={TRADE_IN_PATH} className="gg-btn gg-btn-ghost">
+          How trade-ins work
+        </Link>
+      </div>
     </section>
   );
 }

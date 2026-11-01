@@ -60,10 +60,13 @@ function isValidEmail(email: string): boolean {
 
 export default function SellPage() {
   useSEO({
-    title: "Sell MTG Cards Online — Get an Offer | Geega Games",
+    title: "Start your offer: list your Magic cards | Geega Games",
     description:
-      "List your Magic: The Gathering cards or describe your collection and get an offer. Ship from anywhere in the US, or meet up — we're based in St. Louis and travel about 6 hours for collections.",
+      "List your Magic: The Gathering cards one by one, or describe your collection, and get a free offer from Geega Games.",
     path: "/sell",
+    // The form step, not a landing page: /sell-my-collection is the page that
+    // ranks for "sell Magic cards", and two pages on one search split it.
+    noIndex: true,
   });
 
   const { user } = useAuth();

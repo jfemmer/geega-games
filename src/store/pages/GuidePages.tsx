@@ -3,6 +3,9 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { NotFoundPage } from "./StaticPages";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
+import { TRADE_IN_PATH } from "../lib/tradeCenter";
+import { moneyShort } from "../lib/tradeShipping";
 import { GUIDES, findGuide, guidePath, type GuideMeta, type GuideTopic } from "../../seo/guides";
 import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { SELL_HUB_PATH } from "../lib/partnerTypes";
@@ -530,6 +533,10 @@ function WhereToSellMagicGuide() {
           <strong>A big, mixed or unsorted collection:</strong> a collection buyer, who makes one
           offer on everything.
         </li>
+        <li>
+          <strong>Staples you&rsquo;d swap for other cards anyway:</strong> a trade-in, where credit
+          usually beats any cash offer.
+        </li>
       </ul>
 
       <h2>1. Sell it yourself on TCGplayer</h2>
@@ -585,6 +592,23 @@ function WhereToSellMagicGuide() {
         <Link to={ST_LOUIS_PATH}>St. Louis</Link>, or — for a collection — we&rsquo;ll drive to you,
         up to about {MAX_DRIVE_HOURS} hours away. We pay by PayPal Goods &amp; Services or in store
         credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
+      </p>
+
+      <h2>6. Trade them in for store credit</h2>
+      <p>
+        If you&rsquo;d spend the money on other Magic cards anyway, a trade-in usually beats every
+        option above. Buyers can pay more in credit than in cash because the credit comes back to
+        them as a sale, so most buylists add a bonus for credit, commonly 25&ndash;30% on top of
+        their cash price. A card they buy for $60 cash becomes about $75&ndash;$80 in credit.
+      </p>
+      <p>
+        Our trade-in program credits <strong>{ADVERTISED_TRADE_TERMS.creditRatePercent}% of TCG low</strong>{" "}
+        (TCGplayer&rsquo;s lowest listed price) for every staple we take, toward any single in our
+        shop: that $100 card is worth ${ADVERTISED_TRADE_TERMS.creditRatePercent} of our cards. It&rsquo;s for
+        cards worth {moneyShort(ADVERTISED_TRADE_TERMS.minCardValueCents)} or more each, by mail or at a
+        meetup in St. Louis, and you pick the cards you want first. Bulk and whole collections are
+        better sold, with the {STORE_CREDIT_BONUS_PERCENT}% credit bonus.{" "}
+        <Link to={TRADE_IN_PATH}>How trade-ins work</Link>.
       </p>
 
       <h2>Whichever you choose</h2>

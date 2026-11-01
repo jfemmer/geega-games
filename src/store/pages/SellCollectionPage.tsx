@@ -2,7 +2,9 @@ import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { SUPPORT_EMAIL } from "./StaticPages";
 import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import {
+  BuylistCompareSection,
   CreditBonusBadge,
   FaqSection,
   HeroPoints,
@@ -13,6 +15,7 @@ import {
   SellerReviewsSection,
   ShopRatingLine,
   StickySellCta,
+  TradeInCallout,
   TravelAreasSection,
   NoSurprisesSection,
   TrustSection,
@@ -132,7 +135,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Where can I sell my Magic cards?",
     answer:
-      "You have five main options. List them yourself on TCGplayer or eBay (the most money per card, but roughly 13% or more in fees plus all the listing and shipping work). Sell to an online buylist (quick, but you look up and ship every card yourself). Sell to a local game store (fast, but many only buy what they need). Or sell everything at once to a collection buyer like us — one offer for the whole lot, sorted or not, by mail or in person. Our Where to sell Magic cards guide compares them in detail.",
+      `You have six main options. List them yourself on TCGplayer or eBay (the most money per card, but roughly 13% or more in fees plus all the listing and shipping work). Sell to an online buylist (quick, but you look up and ship every card yourself). Sell to a local game store (fast, but many only buy what they need). Trade staples in for store credit (we credit ${ADVERTISED_TRADE_TERMS.creditRatePercent}% of TCG low toward any singles in our shop). Or sell everything at once to a collection buyer like us — one offer for the whole lot, sorted or not, by mail or in person. Our Where to sell Magic cards guide compares them in detail.`,
   },
 ];
 
@@ -155,8 +158,10 @@ const JSON_LD = [
 
 export default function SellCollectionPage() {
   useSEO({
-    title: "Sell Magic Cards & MTG Collections — We Buy by Mail or In Person | Geega Games",
-    description: `Get a free offer on your Magic: The Gathering cards — one card or a whole collection, unsorted is fine. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we'll drive to you (about ${MAX_DRIVE_HOURS} hours).`,
+    // Under 60 characters before the brand, with the one thing competitors
+    // don't say (the credit bonus) in it.
+    title: `Sell Magic Cards: Free Offer, +${STORE_CREDIT_BONUS_PERCENT}% in Store Credit | Geega Games`,
+    description: `Get a free offer on your Magic: The Gathering cards, one card or a whole unsorted collection. Paid by PayPal, or store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we drive to you.`,
     path: "/sell-my-collection",
     jsonLd: JSON_LD,
   });
@@ -168,7 +173,8 @@ export default function SellCollectionPage() {
         <p className="gg-collect-hero-sub">
           Binders you haven&rsquo;t opened in years, boxes from a basement or an estate, or a few
           valuable singles. Ship them from anywhere in the US, meet up with us in {HUB_CITY}, or
-          we&rsquo;ll drive to you — no sorting or pricing needed.
+          we&rsquo;ll drive to you — no sorting or pricing needed. You&rsquo;re paid by PayPal, or in
+          store credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
         </p>
         <HeroPoints points={HERO_POINTS} />
         <CreditBonusBadge />
@@ -284,6 +290,8 @@ export default function SellCollectionPage() {
 
       <WhatWeBuySection />
 
+      <BuylistCompareSection />
+
       <PricesMoveSection />
 
       <div id="areas">
@@ -291,6 +299,8 @@ export default function SellCollectionPage() {
       </div>
 
       <PartnerCategoriesSection />
+
+      <TradeInCallout />
 
       <SellerGuidesSection />
 

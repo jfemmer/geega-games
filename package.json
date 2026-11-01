@@ -25,6 +25,7 @@
     "@stripe/stripe-js": "^9.16.0",
     "@stripe/terminal-js": "^0.26.0",
     "@supabase/supabase-js": "^2.112.4",
+    "@vercel/analytics": "^1.6.1",
     "pdf-lib": "1.17.1",
     "qrcode-generator": "2.0.4",
     "react": "^19.2.8",

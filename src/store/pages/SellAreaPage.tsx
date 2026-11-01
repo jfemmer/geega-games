@@ -13,6 +13,7 @@ import {
   MeetupHowItWorks,
   SellCtaSection,
   SellerGuidesSection,
+  TradeInCallout,
   WhatWeBuySection,
 } from "../components/SellLandingSections";
 import {
@@ -169,6 +170,8 @@ function SellArea({ area }: { area: SellArea }) {
         </p>
         <AreaLinks exclude={area.slug} />
       </section>
+
+      <TradeInCallout />
 
       <SellerGuidesSection />
 

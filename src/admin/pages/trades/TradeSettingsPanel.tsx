@@ -10,6 +10,7 @@ import { SHIP_FROM } from "../../../store/lib/shipFrom";
 import { US_REGIONS } from "../../../store/lib/usAddress";
 import { CARD_CONDITIONS, CONDITION_NAMES, formatDeadline, formatUsd, meetSpotMapUrl, type TradeSettings } from "../../../store/lib/tradeCenter";
 import { addQualifyingDays, addQualifyingHours } from "../../../store/lib/tradeDeadlines";
+import { advertisedMismatches } from "../../../store/lib/tradeAdvertised";
 import {
   NUMBER_LABELS,
   formOf,
@@ -216,6 +217,13 @@ function SettingsEditor({
         title="Credit and card values"
         intro="What the Trade Cards page advertises, and how each card is valued. The credit rate, minimum card value and cash payouts here are for shipped trades: local pickup has its own, below."
       >
+        {advertisedMismatches(saved).length > 0 && (
+          <p className="gg-card-meta gg-trset__advertised">
+            <strong>The website's trade-in page states different numbers.</strong> Its static copy (what Google reads) is built from
+            src/store/lib/tradeAdvertised.ts; update it to match and redeploy, or customers see one rate before the page loads and another
+            after. Differences: {advertisedMismatches(saved).join("; ")}.
+          </p>
+        )}
         <div className="gg-form-grid">
           {numberField("creditRatePercent", "%", "Store credit per $1 of card value. Advertised on the Trade Cards page.")}
           {moneyField("minCardValueCents", "Minimum card value", "Per card, at its market price in the customer's condition. Cards under it can't be added.")}

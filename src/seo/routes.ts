@@ -18,6 +18,7 @@ import { GUIDES, guidePath } from "./guides.js";
 import { REFERRAL_PAGES } from "./referralPages.js";
 import { FOR_STORES_PATH, REFERRAL_PARTNERS_PATH, SELL_HUB_PATH } from "../store/lib/partnerTypes.js";
 import { SELL_AREAS, ST_LOUIS_PATH, sellAreaPath } from "./sellAreas.js";
+import { TRADE_IN_PATH } from "../store/lib/tradeCenter.js";
 
 export type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -41,15 +42,19 @@ const COLLECTION_SORTING = "2026-10-17";
 // 2026-10-27: the two-step "Get a free offer" form (sell pages), the visitor
 // statistics paragraph (privacy), and who runs Geega Games and Marvel (about).
 const OCT_27 = "2026-10-27";
+// 2026-11-01: the trade-in landing page, the credit offer in the sell page's
+// title and opening, and trade-in as an option in the where-to-sell guide.
+const TRADE_IN = "2026-11-01";
 
 const STATIC_ROUTES: SeoRoute[] = [
   // 2026-10-05: the email-list signup replaced the launch notice.
-  { path: "/", changefreq: "daily", priority: "1.0", lastmod: "2026-10-05" },
+  // 2026-11-01: the trade-in section.
+  { path: "/", changefreq: "daily", priority: "1.0", lastmod: TRADE_IN },
   { path: "/shop", changefreq: "daily", priority: "0.9" },
   { path: "/shop/sets", changefreq: "weekly", priority: "0.7" },
-  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: OCT_27 },
-  { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: OCT_27 },
-  { path: "/sell", changefreq: "monthly", priority: "0.7" },
+  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: TRADE_IN },
+  { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: TRADE_IN },
+  { path: TRADE_IN_PATH, changefreq: "monthly", priority: "0.9", lastmod: TRADE_IN },
   { path: SELL_HUB_PATH, changefreq: "monthly", priority: "0.8", lastmod: PARTNER_PROGRAM },
   { path: FOR_STORES_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: REFERRAL_PARTNERS_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
