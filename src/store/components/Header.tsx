@@ -10,7 +10,7 @@ import StorewideSaleBanner from "./StorewideSaleBanner";
 import OrdersPausedBanner from "./OrdersPausedBanner";
 import { useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCartCount, useTradeCart } from "../lib/tradeCart";
-import { TRADE_CENTER_PATH } from "../lib/tradeCenter";
+import { TRADE_CENTER_PATH, TRADE_IN_PATH } from "../lib/tradeCenter";
 import { siteLogoSrc } from "../lib/siteLogo";
 
 const SUGGEST_DEBOUNCE_MS = 200;
@@ -303,8 +303,11 @@ export default function Header() {
         <Link to="/shop?deals=1" className="gg-nav-deals">
           Deals & Specials
         </Link>
-        {tradeTerms?.enabled && (
-          <Link to={TRADE_CENTER_PATH} className="gg-nav-trade">
+        {/* Always in the markup (search engines read the prerendered page, where the
+            terms haven't loaded): the landing page explains trading; with cards in
+            the trade cart, the link goes straight to the cart. */}
+        {tradeTerms?.enabled !== false && (
+          <Link to={tradeCount > 0 ? TRADE_CENTER_PATH : TRADE_IN_PATH} className="gg-nav-trade">
             Trade Cards
             {tradeCount > 0 && (
               <span className="gg-nav-trade__count" aria-label={`, ${tradeCount} in your trade`}>

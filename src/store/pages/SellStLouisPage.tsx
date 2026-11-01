@@ -7,6 +7,7 @@ import {
   MeetupSafetySection,
   SellCtaSection,
   SellerGuidesSection,
+  TradeInCallout,
   StickySellCta,
   TravelAreasSection,
   NoSurprisesSection,
@@ -215,6 +216,8 @@ export default function SellStLouisPage() {
       <PartnerCategoriesSection />
 
       <TravelAreasSection heading="Outside St. Louis? We travel about 6 hours for collections" exclude="st-louis" />
+
+      <TradeInCallout />
 
       <SellerGuidesSection alsoTopics={["st_louis"]} />
 

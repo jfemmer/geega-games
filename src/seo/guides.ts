@@ -84,11 +84,11 @@ export const GUIDES: GuideMeta[] = [
     heading: "Where to sell Magic: The Gathering cards",
     title: "Where to Sell Magic Cards: Every Option Compared | Geega Games",
     description:
-      "TCGplayer, eBay, buylists, local game stores or a collection buyer? The real 2026 fees, how much work each takes, and which fits what you're selling.",
+      "TCGplayer, eBay, buylists, local game stores, a collection buyer or a trade-in for store credit? The real 2026 fees, how much work each takes, and which fits what you're selling.",
     summary:
-      "TCGplayer vs. eBay vs. buylists vs. a local store vs. a collection buyer — the actual fees, the work involved, and which option fits what you have.",
+      "TCGplayer vs. eBay vs. buylists vs. a local store vs. a collection buyer vs. a trade-in — the actual fees, the work involved, and which option fits what you have.",
     published: "2026-09-25",
-    updated: "2026-09-25",
+    updated: "2026-11-01",
   },
   {
     slug: "are-my-old-pokemon-cards-worth-anything",

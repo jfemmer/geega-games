@@ -4094,6 +4094,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-trset__switch input { margin-top: 3px; flex: 0 0 auto; }
 .gg-trset__pause { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--gg-radius-sm); background: var(--gg-surface-2); border: 1px solid var(--gg-line); }
 .gg-trset__pause p { margin: 0; font-size: 0.9rem; }
+.gg-trset__advertised { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--gg-radius-sm); background: color-mix(in srgb, var(--gg-warning, #f59e0b) 12%, var(--gg-surface-2)); border: 1px solid color-mix(in srgb, var(--gg-warning, #f59e0b) 45%, var(--gg-line)); }
 .gg-trset__pause .gg-btn { align-self: flex-start; }
 .gg-trset__label { margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--gg-text); }
 .gg-trset__conditions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-items: end; }

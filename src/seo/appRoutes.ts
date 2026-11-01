@@ -24,6 +24,9 @@ export const APP_SHELL_ROUTES = [
   "/reset-password",
   "/checkout",
   "/track-order",
+  // 2026-11-01: the card-by-card sell form, no longer a ranking page: it was
+  // competing with /sell-my-collection for the same searches.
+  "/sell",
   "/sell/offer",
   "/collection-sorting/quote",
   "/trade",

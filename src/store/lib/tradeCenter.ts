@@ -17,6 +17,8 @@ import type { TrackingScan } from "./tradeTracking.js";
 import { DEFAULT_SHIPPING_TERMS, tradeShippingCents, type ShippingTerms } from "./tradeShipping.js";
 
 export const TRADE_CENTER_PATH = "/trade-cards";
+/** The trade-in landing page: what trading is and the rate, prerendered for search (TradeInPage). */
+export const TRADE_IN_PATH = "/trade-in-magic-cards";
 export const MY_TRADES_PATH = "/account/trades";
 export const TRADE_CENTER_API = "/api/trade-center";
 export const ADMIN_TRADE_CENTER_API = "/api/admin/trade-center";

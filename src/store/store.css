@@ -6903,6 +6903,8 @@ html {
 .gg-tc-table thead th { font-size: 0.8rem; color: #6d6575; font-weight: 600; }
 .gg-tc-table td:not(:first-child),
 .gg-tc-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gg-tc-table--text td:not(:last-child),
+.gg-tc-table--text th:not(:last-child) { text-align: left; white-space: normal; }
 .gg-tc-table td .gg-tc-line__name,
 .gg-tc-table td .gg-tc-line__meta { display: block; }
 .gg-tc-table__changed td { background: #fffaf0; }
