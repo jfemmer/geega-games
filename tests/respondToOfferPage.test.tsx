@@ -36,7 +36,11 @@ vi.mock("../src/supabase", () => ({
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
-const { default: App } = await import("../src/App");
+const { default: App, preloadRoute } = await import("../src/App");
+
+// Pages load on demand; the site loads the page's code before showing it
+// (src/main.tsx), so the tests do too.
+await Promise.all([preloadRoute("/sell/offer")]);
 
 function goTo(path: string) {
   window.history.pushState({}, "", path);
@@ -145,15 +149,15 @@ describe("/sell/offer route", () => {
     expect(await screen.findByText(/you accepted our offer/i)).toBeInTheDocument();
   });
 
-  it("offers store credit worth 20% more, asking a signed-out seller to use an account", async () => {
-    offerLookupResponse = { data: OFFER_NOT_COUNTERABLE, error: null };
+  it("offers the store credit staff set with the offer, asking a signed-out seller to use an account", async () => {
+    offerLookupResponse = { data: { ...OFFER_NOT_COUNTERABLE, credit_offer_cents: 40000 }, error: null };
     goTo("/sell/offer?ref=GG-S-100042&email=jordan%40example.com");
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /accept offer/i }));
-    const credit = await screen.findByRole("radio", { name: /in store credit/i });
+    const credit = await screen.findByRole("radio", { name: /\$400\.00 in store credit/i });
     expect(credit).toBeChecked();
-    expect(screen.getByText(/\+20%/)).toBeInTheDocument();
+    expect(screen.queryByText(/\+20%/)).toBeNull();
     expect(screen.getByRole("link", { name: /create a free account/i })).toHaveAttribute(
       "href",
       expect.stringContaining("/signup?next="),
@@ -162,6 +166,15 @@ describe("/sell/offer route", () => {
     expect(screen.queryByRole("button", { name: /accept as store credit/i })).toBeNull();
     const posted = fetchMock.mock.calls.some(([url]) => String(url).includes("/api/sell/respond-to-offer"));
     expect(posted).toBe(false);
+  });
+
+  it("keeps an offer sent before credit amounts existed at PayPal + 20% in store credit", async () => {
+    offerLookupResponse = { data: OFFER_NOT_COUNTERABLE, error: null };
+    goTo("/sell/offer?ref=GG-S-100042&email=jordan%40example.com");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /accept offer/i }));
+    expect(await screen.findByRole("radio", { name: /\$420\.00 in store credit/i })).toBeChecked();
   });
 
   it("lets an eligible seller submit a counter-offer, converting dollars to cents", async () => {

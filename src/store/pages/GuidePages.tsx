@@ -597,7 +597,7 @@ function WhereToSellMagicGuide() {
       <p>
         That&rsquo;s what we do. Ship from anywhere in the US, meet up with us in{" "}
         <Link to={ST_LOUIS_PATH}>St. Louis</Link>, or — for a collection — we&rsquo;ll drive to you,
-        up to about {MAX_DRIVE_HOURS} hours away. On singles we pay {PAYOUT_SUMMARY} (PayPal
+        up to about {MAX_DRIVE_HOURS} hours away. On singles you ship to us we pay {PAYOUT_SUMMARY} (PayPal
         Goods &amp; Services, never Friends &amp; Family), and you get an offer within{" "}
         {OFFER_REPLY_HOURS} hours.
       </p>
@@ -1191,8 +1191,8 @@ function FairOfferGuide() {
 
       <h2>The prices everyone measures against</h2>
       <p>
-        Almost every Magic offer in the US starts from TCGplayer, the biggest marketplace for
-        singles. Two of its numbers matter:
+        Most Magic buyers in the US price from TCGplayer, the biggest marketplace for singles. Two
+        of its numbers matter:
       </p>
       <ul>
         <li>
@@ -1237,8 +1237,7 @@ function FairOfferGuide() {
         card&rsquo;s price, with more on offer if you take store credit, because credit costs a
         store less than cash. That&rsquo;s the range sellers report most often in Magic forums and
         community guides; it varies by store, by card and by how fast the card sells.
-        Offers well under half on cards worth more than a few dollars are what most people call a
-        lowball.
+        Whatever the number, a fair buyer can tell you how they reached it.
       </p>
       <p>
         Bulk is different. Commons and uncommons worth a few cents each are priced by the thousand,
@@ -1249,8 +1248,7 @@ function FairOfferGuide() {
 
       <h2>Signs an offer is a lowball</h2>
       <ul>
-        <li>The buyer won&rsquo;t say which prices they started from.</li>
-        <li>One lump number for a collection with clearly valuable cards, and no breakdown on request.</li>
+        <li>The buyer won&rsquo;t say which prices they started from, or how they got from there to the offer.</li>
         <li>Pressure to decide on the spot, or a price that &ldquo;expires&rdquo; in minutes.</li>
         <li>A lower offer after the cards arrive, with no list of which cards changed and why.</li>
         <li>A request to be paid by PayPal Friends &amp; Family, which gives you no protection.</li>

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { pagesReady, renderPage } from "../src/prerender";
+import { pagesReady, renderPage, routeModuleFor } from "../src/prerender";
 import { seoRoutes } from "../src/seo/routes";
 import { SITE_JSON_LD } from "../src/seo/site";
 
@@ -228,5 +228,16 @@ describe("build-time prerender", () => {
     expect(html).toContain("Signs an offer is a lowball");
     expect(html).toContain('href="/sell-my-collection"');
     expect(renderPage("/guides").html).toContain('href="/guides/fair-offer-for-magic-cards"');
+  });
+
+  // scripts/prerender.ts adds a modulepreload for each page's chunk from these
+  // source paths; a wrong path would fail the build there, this fails first.
+  it("knows the source module of every prerendered page", () => {
+    for (const { path } of seoRoutes()) {
+      const src = routeModuleFor(path);
+      expect(src, path).toMatch(/^src\/store\/pages\/\w+\.tsx$/);
+      expect(existsSync(src as string), `${path}: ${src}`).toBe(true);
+    }
+    expect(routeModuleFor("/kiosk")).toBe("src/store/pages/KioskPage.tsx");
   });
 });

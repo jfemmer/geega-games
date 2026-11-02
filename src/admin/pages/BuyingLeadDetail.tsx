@@ -26,6 +26,8 @@ import {
   TRANSACTION_PREFERENCE_LABELS,
 } from "../utils/labels";
 import type { BuyingLeadDetail, BuyingLeadPriority, BuyingLeadStatus } from "../types";
+import { creditToIssueCents, offeredCreditCents } from "../../store/lib/sellTypes";
+import { CREDIT_MIN_LABEL, SINGLES_CREDIT_PERCENT, SINGLES_PAYPAL_MAX_PERCENT } from "../../store/lib/buyTerms";
 
 // "offer_made" is deliberately absent — it's only ever reached through the
 // Send Offer action below, which actually emails the seller the amount.
@@ -71,6 +73,7 @@ export function BuyingLeadDetailDrawer({
   const [savingField, setSavingField] = useState<string | null>(null);
   const [internalNotes, setInternalNotes] = useState(lead?.internalNotes ?? "");
   const [offerInput, setOfferInput] = useState(dollarsFromCents(lead?.offerValueCents ?? null));
+  const [creditInput, setCreditInput] = useState(dollarsFromCents(lead?.creditOfferCents ?? null));
   const [purchaseInput, setPurchaseInput] = useState(dollarsFromCents(lead?.purchaseAmountCents ?? null));
 
   // This drawer stays mounted across leads (no `key` in BuyingLeadsPage), so
@@ -83,6 +86,7 @@ export function BuyingLeadDetailDrawer({
   useEffect(() => {
     setInternalNotes(lead?.internalNotes ?? "");
     setOfferInput(dollarsFromCents(lead?.offerValueCents ?? null));
+    setCreditInput(dollarsFromCents(lead?.creditOfferCents ?? null));
     setPurchaseInput(dollarsFromCents(lead?.purchaseAmountCents ?? null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id]);
@@ -108,18 +112,27 @@ export function BuyingLeadDetailDrawer({
   const handleSendOffer = () => {
     const cents = centsFromDollars(offerInput);
     if (cents == null || cents <= 0) {
-      toast.error("Enter a valid offer amount first.");
+      toast.error("Enter a valid PayPal offer amount first.");
+      return;
+    }
+    const creditCents = centsFromDollars(creditInput);
+    if (creditCents == null || creditCents <= 0) {
+      toast.error("Enter the store-credit offer amount too.");
       return;
     }
     const sellerName = `${lead.firstName} ${lead.lastName}`.trim() || "the seller";
     if (
       !window.confirm(
-        `Send an offer of ${formatCents(cents)} to ${sellerName}? This emails them immediately.`,
+        `Send ${sellerName} an offer of ${formatCents(cents)} by PayPal or ${formatCents(creditCents)} in store credit? This emails them immediately.`,
       )
     ) {
       return;
     }
-    void run("sendOffer", () => buyingLeadsRepository.sendOffer(lead.id, cents), "Offer sent to the seller.");
+    void run(
+      "sendOffer",
+      () => buyingLeadsRepository.sendOffer(lead.id, cents, creditCents),
+      "Offer sent to the seller.",
+    );
   };
 
   return (
@@ -377,12 +390,20 @@ export function BuyingLeadDetailDrawer({
 
           <div className="gg-form-grid">
             <TextField
-              label="Offer amount (USD)"
+              label="PayPal offer (USD)"
               type="number"
               min={0}
               step="0.01"
               value={offerInput}
               onChange={(e) => setOfferInput(e.target.value)}
+            />
+            <TextField
+              label="Store credit offer (USD)"
+              type="number"
+              min={0}
+              step="0.01"
+              value={creditInput}
+              onChange={(e) => setCreditInput(e.target.value)}
             />
             <TextField
               label="Final purchase amount (USD, internal)"
@@ -433,13 +454,19 @@ export function BuyingLeadDetailDrawer({
           </div>
           {lead.offerSentAt ? (
             <p className="gg-card-meta">
-              Offer of {formatCents(lead.offerValueCents ?? 0)} emailed to the seller on{" "}
-              {formatDateTime(lead.offerSentAt)}.
+              Offer of {formatCents(lead.offerValueCents ?? 0)} by PayPal or{" "}
+              {formatCents(
+                offeredCreditCents(lead.offerValueCents ?? 0, lead.creditOfferCents, lead.storeCreditBonusPercent),
+              )}{" "}
+              in store credit emailed to the seller on {formatDateTime(lead.offerSentAt)}.
             </p>
           ) : (
             <p className="gg-card-meta">
-              &ldquo;Save offer&rdquo; only jots down a private number — nothing reaches the
-              seller until you click &ldquo;Send offer to seller.&rdquo;
+              The site&rsquo;s published rates: up to {SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by
+              PayPal on shipped singles, and {SINGLES_CREDIT_PERCENT}% of TCG low in store credit on
+              singles worth {CREDIT_MIN_LABEL}+. &ldquo;Save offer&rdquo; only jots down a private
+              PayPal number — nothing reaches the seller until you click &ldquo;Send offer to
+              seller,&rdquo; which needs both amounts.
             </p>
           )}
           {lead.offerResponse && (
@@ -461,7 +488,9 @@ export function BuyingLeadDetailDrawer({
               <div>
                 {lead.offerResponse === "accepted" &&
                   (lead.payoutMethod === "store_credit"
-                    ? `Seller accepted — paid as store credit (+${lead.storeCreditBonusPercent ?? 20}%).`
+                    ? `Seller accepted — paid as store credit (${formatCents(
+                        offeredCreditCents(lead.offerValueCents ?? 0, lead.creditOfferCents, lead.storeCreditBonusPercent),
+                      )}).`
                     : "Seller accepted — paid via PayPal.")}
                 {lead.offerResponse === "declined" && "Seller declined this offer."}
                 {lead.offerResponse === "countered" &&
@@ -489,16 +518,12 @@ export function BuyingLeadDetailDrawer({
                 ) : (
                   <>
                     Marking this lead <strong>Completed</strong> adds{" "}
-                    {formatCents(
-                      Math.round(
-                        ((lead.purchaseAmountCents ?? lead.offerValueCents ?? 0) *
-                          (100 + (lead.storeCreditBonusPercent ?? 20))) /
-                          100,
-                      ),
-                    )}{" "}
-                    store credit to the seller&rsquo;s account automatically (the purchase amount, or
-                    the offer if none is set, +{lead.storeCreditBonusPercent ?? 20}%). No PayPal
-                    payment is needed.
+                    {formatCents(creditToIssueCents(lead))} store credit to the seller&rsquo;s account
+                    automatically.{" "}
+                    {lead.creditOfferCents != null
+                      ? "That's the store credit offered, scaled to the final purchase amount if you set one that differs from the PayPal offer."
+                      : `This offer was sent before credit amounts existed: the purchase amount (or the offer, if none is set) +${lead.storeCreditBonusPercent ?? 20}%.`}{" "}
+                    No PayPal payment is needed.
                   </>
                 )}
               </div>

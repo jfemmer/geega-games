@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Storefront, preloadAllPages } from "./App";
+import { Storefront, preloadAllPages, routeModuleFor } from "./App";
+
+export { routeModuleFor };
 import { SITE } from "./siteConfig";
 import { collectSEO, type PageSEO } from "./store/lib/useSEO";
 

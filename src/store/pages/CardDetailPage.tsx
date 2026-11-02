@@ -5,7 +5,7 @@ import { LISTING_PARAM, cardPageSeo, readListingId, withSelectedFirst } from "..
 import { useCart } from "../lib/CartContext";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import { CARD_HERO_SIZES, cardHeroImage } from "../lib/cardImages";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { MEMBER_DISCOUNT_PERCENT, formatCents } from "../lib/money";
 import { SITE } from "../../siteConfig";
 import { CONDITION_LABELS } from "../lib/conditionLabels";

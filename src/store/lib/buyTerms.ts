@@ -9,11 +9,13 @@
 //   * An offer within 24 hours of a submission.
 //
 // Change a number here and every page follows. Don't add a claim (a bulk rate,
-// a meetup rate, a credit rate under $20) without the owner confirming it.
+// a meetup rate, a credit rate under $20, which way the tiers run) without the
+// owner confirming it. The rates are for singles shipped to us: keep "shipped"
+// next to them wherever the copy also talks about meetups or bulk.
 //
-// Note: the offer flow (RespondToOfferPage, /api/sell/respond-to-offer and the
-// sell_submissions credit trigger) still issues credit as the PayPal offer +
-// STORE_CREDIT_BONUS_PERCENT (sellTypes.ts). That is a separate change.
+// Offers carry both amounts, worked out by staff from these rates: the PayPal
+// amount and the store-credit amount (sell_submissions.credit_offer_cents,
+// migration 20261102120000). Offers sent before that keep PayPal + 20%.
 
 /** Highest share of TCG low paid by PayPal Goods & Services for singles shipped to us. */
 export const SINGLES_PAYPAL_MAX_PERCENT = 70;
@@ -32,8 +34,8 @@ const creditMin = `$${CREDIT_MIN_CARD_CENTS / 100}`;
 /** "up to 70% of TCG low by PayPal, or 80% in store credit on singles worth $20+" */
 export const PAYOUT_SUMMARY = `up to ${SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by PayPal, or ${SINGLES_CREDIT_PERCENT}% in store credit on singles worth ${creditMin}+`;
 
-/** "80% in store credit on singles worth $20+" */
-export const CREDIT_SUMMARY = `${SINGLES_CREDIT_PERCENT}% of TCG low in store credit on singles worth ${creditMin}+`;
+/** "80% of TCG low on singles worth $20+ shipped to us" — read as "store credit: …". */
+export const CREDIT_SUMMARY = `${SINGLES_CREDIT_PERCENT}% of TCG low on singles worth ${creditMin}+ shipped to us`;
 
 /** "Offer within 24 hours" */
 export const OFFER_PROMISE = `Offer within ${OFFER_REPLY_HOURS} hours`;

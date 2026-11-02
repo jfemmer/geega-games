@@ -6,7 +6,7 @@ import { useCart } from "../lib/CartContext";
 import { Link, useRouter, matchRoute } from "../lib/router";
 import { formatCents, orderShippingText } from "../lib/money";
 import { cardDetailPath } from "../lib/cardSlug";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { MyDecksSection } from "./MyDecksPage";

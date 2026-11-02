@@ -102,7 +102,7 @@ export function TrustSection() {
           <h3>Protected payment</h3>
           <p>
             PayPal Goods &amp; Services, protected for both of us, or store credit on a free Geega
-            Games account: {CREDIT_SUMMARY}. We never ask you to use Friends &amp; Family.
+            Games account ({CREDIT_SUMMARY}). We never ask you to use Friends &amp; Family.
           </p>
         </div>
         <div className="gg-collect-card">
@@ -399,9 +399,9 @@ export function HowWePriceSection() {
     <section className="gg-collect-section gg-collect-pricing" id="how-we-price">
       <h2>How we price your cards</h2>
       <p className="gg-collect-lead">
-        Every offer starts from <strong>TCG low</strong>: the lowest current price for that card
-        and condition on TCGplayer, the number most sellers already check. Here&rsquo;s what we pay
-        on singles you ship to us.
+        Every single is priced from its <strong>TCG low</strong>: the lowest current price for that
+        card and condition on TCGplayer, the number most sellers already check. Here&rsquo;s what
+        we pay on singles you ship to us.
       </p>
       <div className="gg-collect-grid gg-collect-grid--2">
         <div className="gg-collect-card gg-pricing-rate">
@@ -756,8 +756,8 @@ export function BuylistCompareSection() {
         <div className="gg-collect-card">
           <h3>Credit pays more, here and there</h3>
           <p>
-            Most buylists pay more in store credit; ours is {CREDIT_SUMMARY}, against up to{" "}
-            {SINGLES_PAYPAL_MAX_PERCENT}% by PayPal. Trading staples in for singles instead?{" "}
+            Most buylists pay more in store credit, and so do we: {CREDIT_SUMMARY}, against up
+            to {SINGLES_PAYPAL_MAX_PERCENT}% by PayPal. Trading staples in for singles instead?{" "}
             <Link to={TRADE_IN_PATH}>Trade-ins pay {ADVERTISED_TRADE_TERMS.creditRatePercent}% of TCG low</Link> in credit.
           </p>
         </div>

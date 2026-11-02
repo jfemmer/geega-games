@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Button, Heading, Hr, Link, Section, Text } from "@react-email/components";
 import { BaseLayout, brand } from "./BaseLayout.js";
-import { STORE_CREDIT_BONUS_PERCENT, storeCreditValueCents } from "../../../src/store/lib/sellTypes.js";
 
 // Loosely-typed createElement wrapper: React Email components type `children`
 // as required, which the variadic createElement overload does not always satisfy.
@@ -27,7 +26,10 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 export type SellSubmissionOfferEmailData = {
   firstName: string | null;
   referenceNumber: string;
+  /** Paid by PayPal Goods & Services. */
   offerValueCents: number;
+  /** Paid in store credit instead, if the seller picks that; set by staff with the offer. */
+  creditOfferCents: number;
   /** Deep link to the public /sell/offer page, ref + email pre-filled — see sellSubmissionEmails.ts. */
   responseUrl: string;
   siteUrl: string;
@@ -59,6 +61,9 @@ export function SellSubmissionOffer(data: SellSubmissionOfferEmailData) {
       { key: "offer", style: offerBox },
       h(Text, { key: "l", style: offerLabel }, "Our offer"),
       h(Text, { key: "v", style: offerValue }, money(data.offerValueCents)),
+      h(Text, { key: "pp", style: offerLabel }, "by PayPal, or"),
+      h(Text, { key: "c", style: offerValue }, money(data.creditOfferCents)),
+      h(Text, { key: "cl", style: offerLabel }, "in store credit"),
     ),
     h(
       Text,
@@ -73,7 +78,7 @@ export function SellSubmissionOffer(data: SellSubmissionOfferEmailData) {
     h(
       Text,
       { key: "body3", style: p },
-      `When you accept, choose how you're paid: ${money(data.offerValueCents)} via PayPal Goods & Services, or ${money(storeCreditValueCents(data.offerValueCents))} in Geega Games store credit — ${STORE_CREDIT_BONUS_PERCENT}% more. Some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.`,
+      `When you accept, choose how you're paid: ${money(data.offerValueCents)} via PayPal Goods & Services, or ${money(data.creditOfferCents)} in Geega Games store credit. Some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.`,
     ),
     h(
       Section,
@@ -104,12 +109,12 @@ export function sellSubmissionOfferText(d: SellSubmissionOfferEmailData): string
     greeting,
     "After reviewing what you submitted, here's what we're able to offer:",
     "",
-    `Offer: ${money(d.offerValueCents)}`,
+    `Offer: ${money(d.offerValueCents)} by PayPal, or ${money(d.creditOfferCents)} in store credit`,
     "",
     "You can accept, decline, or respond right on our site — no rush, and no obligation either way:",
     d.responseUrl,
     "",
-    `When you accept, choose how you're paid: ${money(d.offerValueCents)} via PayPal Goods & Services, or ${money(storeCreditValueCents(d.offerValueCents))} in Geega Games store credit — ${STORE_CREDIT_BONUS_PERCENT}% more. Some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.`,
+    `When you accept, choose how you're paid: ${money(d.offerValueCents)} via PayPal Goods & Services, or ${money(d.creditOfferCents)} in Geega Games store credit. Some collections ship to us for inspection before payment goes out. Prefer email? Just reply here instead.`,
     "",
     `Reference number: ${d.referenceNumber}`,
     "",

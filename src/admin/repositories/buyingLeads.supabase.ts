@@ -166,6 +166,7 @@ export const buyingLeadsRepository = {
       internalNotes: row.internal_notes,
       referralSource: row.referral_source,
       offerValueCents: row.offer_value_cents,
+      creditOfferCents: row.credit_offer_cents,
       offerSentAt: row.offer_sent_at,
       offerResponse: row.offer_response,
       counterOfferCents: row.counter_offer_cents,
@@ -217,10 +218,10 @@ export const buyingLeadsRepository = {
     await adminFetch(`/api/admin/sell-submissions/${id}`, { method: "PATCH", body: { offerValueCents } });
   },
   /** Actually sends the offer to the seller (see send-offer.ts) — distinct from setOfferValueCents, which only saves a private note. */
-  async sendOffer(id: string, offerValueCents: number): Promise<void> {
+  async sendOffer(id: string, offerValueCents: number, creditOfferCents: number): Promise<void> {
     await adminFetch(`/api/admin/sell-submissions/${id}/send-offer`, {
       method: "POST",
-      body: { offerValueCents },
+      body: { offerValueCents, creditOfferCents },
     });
   },
   async setPurchaseAmountCents(id: string, purchaseAmountCents: number | null): Promise<void> {

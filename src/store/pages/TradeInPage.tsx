@@ -1,7 +1,7 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { formatCents } from "../lib/money";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { FaqSection, ShopRatingLine } from "../components/SellLandingSections";
 import { useTradeTerms } from "../lib/tradeCenterApi";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
@@ -278,7 +278,7 @@ export default function TradeInPage() {
           <div className="gg-collect-card">
             <h3>Sell: PayPal or store credit</h3>
             <p>
-              For whole collections, bulk and anything unsorted. We make one offer on the lot within {OFFER_REPLY_HOURS} hours: {PAYOUT_SUMMARY}.{" "}
+              For whole collections, bulk and anything unsorted. We make one offer on the lot within {OFFER_REPLY_HOURS} hours, paid by PayPal or store credit; on singles you ship to us we pay {PAYOUT_SUMMARY}.{" "}
               <Link to="/sell-my-collection">Get a free offer</Link>.
             </p>
           </div>

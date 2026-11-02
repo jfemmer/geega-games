@@ -12,7 +12,7 @@ import {
   type TradeCardPrinting,
   type TradeView,
 } from "../lib/trades";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 
 // A confirmed trade, for the customer (/trade?t=…): the link staff text or
 // email from Admin → Trade Evaluator. Every card on both sides with its

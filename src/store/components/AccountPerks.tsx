@@ -1,7 +1,7 @@
 import { useAuth } from "../lib/AuthContext";
 import { Link } from "../lib/router";
 import { Icon, type StoreIconName } from "./Icon";
-import { CREDIT_SUMMARY, SINGLES_CREDIT_PERCENT } from "../lib/buyTerms";
+import { CREDIT_MIN_LABEL, SINGLES_CREDIT_PERCENT } from "../lib/buyTerms";
 import { MEMBER_DISCOUNT_PERCENT } from "../lib/money";
 
 // What a free account actually unlocks. Every line here must describe a
@@ -32,8 +32,8 @@ const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
   },
   {
     icon: "tag",
-    title: `Sell cards for ${SINGLES_CREDIT_PERCENT}% in store credit`,
-    body: `Follow every sell submission, and take your payout in store credit: ${CREDIT_SUMMARY}.`,
+    title: "Sell cards for store credit",
+    body: `Follow every sell submission, and take your payout in store credit: ${SINGLES_CREDIT_PERCENT}% of TCG low on singles worth ${CREDIT_MIN_LABEL}+ shipped to us.`,
   },
 ];
 

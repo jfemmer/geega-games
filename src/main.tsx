@@ -18,17 +18,22 @@ const isAdmin = window.location.pathname.startsWith("/admin");
 if (!isAdmin && import.meta.env.PROD) injectAnalytics();
 
 // A deploy renames the code files, so a tab opened before it can ask for a page
-// that no longer exists. Reload once to pick up the new build instead of
-// showing an error; the session flag stops a reload loop if the file is
-// really missing.
-const RELOAD_FLAG = "gg_chunk_reload";
+// that no longer exists. Reload to pick up the new build instead of showing an
+// error. The timestamp stops a reload loop when a file is really missing (a
+// second failure within a minute shows the error instead), while a later
+// deploy in the same tab still gets its reload.
+const RELOAD_AT_KEY = "gg_chunk_reload_at";
+const RELOAD_LOOP_MS = 60_000;
 window.addEventListener("vite:preloadError", (event) => {
   try {
-    if (sessionStorage.getItem(RELOAD_FLAG)) return;
-    sessionStorage.setItem(RELOAD_FLAG, "1");
+    const last = Number(sessionStorage.getItem(RELOAD_AT_KEY) ?? 0);
+    if (Date.now() - last < RELOAD_LOOP_MS) return;
+    sessionStorage.setItem(RELOAD_AT_KEY, String(Date.now()));
   } catch {
     return;
   }
+  // Vite then resolves the failed import to undefined; lazyPage waits for the
+  // reload instead of showing an error.
   event.preventDefault();
   window.location.reload();
 });

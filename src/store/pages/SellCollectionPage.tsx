@@ -1,6 +1,6 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import {
   CREDIT_MIN_LABEL,
   OFFER_PROMISE,
@@ -170,7 +170,7 @@ export default function SellCollectionPage() {
     // promises (an offer within 24 hours). The H1 says the same, so Google's
     // title rewrites draw from matching words.
     title: `Sell Magic Cards & MTG Collections: Offer in ${OFFER_REPLY_HOURS} Hours | Geega Games`,
-    description: `A free offer within ${OFFER_REPLY_HOURS} hours on your Magic cards, from one single to a whole unsorted collection. Up to ${SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by PayPal, ${SINGLES_CREDIT_PERCENT}% in credit on ${CREDIT_MIN_LABEL}+ singles.`,
+    description: `A free offer within ${OFFER_REPLY_HOURS} hours on your Magic cards, one single or a whole collection. Shipped singles: up to ${SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by PayPal, ${SINGLES_CREDIT_PERCENT}% in credit at ${CREDIT_MIN_LABEL}+.`,
     path: "/sell-my-collection",
     jsonLd: JSON_LD,
   });

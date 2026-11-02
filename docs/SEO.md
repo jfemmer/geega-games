@@ -465,12 +465,13 @@ quote them from there, never type them into copy.
   steps, FAQ, the form's thank-you message and the confirmation email.
 - **Still open:** meetup rates (the copy says "shipped to us" for that reason),
   the credit rate under $20, and bulk rates. Don't publish any until confirmed.
-- **Not changed yet: the offer flow.** `RespondToOfferPage`,
-  `/api/sell/respond-to-offer`, the offer email and the `sell_submissions`
-  credit trigger still issue credit as the PayPal offer +
-  `STORE_CREDIT_BONUS_PERCENT` (20%). Making them follow the new terms
-  (80% on $20+ singles) is a separate change: it needs per-card credit, not one
-  bonus on the whole offer.
+- **Offers carry both amounts.** Staff enter a PayPal amount and a store-credit
+  amount when sending an offer (admin lead drawer → `send-offer`), worked out
+  from these rates. The offer email and `/sell/offer` show both, and the credit
+  trigger issues the credit amount offered (scaled if the final purchase amount
+  differs). Offers sent before 2026-11-02 keep PayPal + 20%
+  (`sell_submissions.credit_offer_cents`, migration 20261102120000;
+  `creditToIssueCents` in `sellTypes.ts` mirrors the trigger).
 - **Main sell page title:** "Sell Magic Cards & MTG Collections: Offer in 24
   Hours". It carries "mtg" and "collection", the words most seller searches
   use, and the H1 matches so Google's title rewrites draw from the same words.
@@ -480,7 +481,9 @@ quote them from there, never type them into copy.
   scrolls away instead of staying pinned; the "Get my free offer" bar stays.
 - **Speed:** every storefront page is its own chunk (`src/store/lib/lazyPage.tsx`);
   the main bundle went from 1.27 MB to 300 KB. `src/main.tsx` preloads the
-  current page before mounting so the prerendered HTML never flashes blank.
+  current page before mounting so the prerendered HTML never flashes blank,
+  and each prerendered page carries `modulepreload` links for its own chunk
+  (from the Vite manifest, which the prerender deletes afterwards).
 - **New guide:** `/guides/fair-offer-for-magic-cards` ("what's a fair offer",
   lowball signs, how to check an offer).
 

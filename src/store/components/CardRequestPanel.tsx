@@ -5,7 +5,7 @@ import { useWishlist } from "../lib/WishlistContext";
 import { searchSellPrintings } from "../lib/sellApi";
 import { cardDetailPath } from "../lib/cardSlug";
 import { distinctCards, inStockOracleIds, type RequestableCard } from "../lib/cardRequest";
-import { SUPPORT_EMAIL } from "../pages/StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 
 // "Can't find it?" under a shop search that found nothing. The card is looked
 // up with the same public card search as Sell Your Cards, which also finds

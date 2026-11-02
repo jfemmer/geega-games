@@ -6,7 +6,7 @@ import { useSEO } from "../lib/useSEO";
 import { formatCents } from "../lib/money";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import SortingQuoteTable from "../components/sorting/SortingQuoteTable";
 import { ShippingInfoNotice } from "../components/sorting/SortingPolicy";
 import {
