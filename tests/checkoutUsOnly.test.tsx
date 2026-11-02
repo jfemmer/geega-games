@@ -31,8 +31,18 @@ vi.mock("../src/supabase", () => ({
     from: (table: string) => {
       if (table !== "addresses") throw new Error(`unexpected table ${table}`);
       return {
+        // Like RLS for a staff account: every customer's address is readable,
+        // so checkout must ask for the shopper's own (rows without a user_id
+        // are member-1's).
         select: () => ({
-          order: () => ({ order: async () => ({ data: world.savedAddresses, error: null }) }),
+          eq: (column: string, value: unknown) => ({
+            order: () => ({
+              order: async () => ({
+                data: world.savedAddresses.filter((r) => (r[column] ?? "member-1") === value),
+                error: null,
+              }),
+            }),
+          }),
         }),
         insert: async (row: Record<string, unknown>) => {
           world.insertedAddresses.push(row);
