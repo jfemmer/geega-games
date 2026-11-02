@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "../../../supabase";
+import { useAuth } from "../../lib/AuthContext";
 import { formatCents } from "../../lib/money";
 import { UsStateSelect } from "../UsStateSelect";
 import { shippingLabel } from "../../lib/tradeShipping";
@@ -237,15 +238,20 @@ function AcceptForm({
   onAccept: (shipTo: { addressId: string } | { address: TradeShipToInput }) => Promise<boolean>;
   onCancel: () => void;
 }) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [saved, setSaved] = useState<SavedAddress[] | null>(null);
   const [choice, setChoice] = useState<string>("new");
   const [address, setAddress] = useState<TradeShipToInput>({ name: "", line1: "", line2: "", city: "", state: "", postalCode: "" });
 
   useEffect(() => {
+    if (!userId) return;
     let cancelled = false;
     supabase
       .from("addresses")
       .select("id, label, recipient, line1, line2, city, state, postal_code, is_default")
+      // Own addresses only (RLS also lets staff read everyone's).
+      .eq("user_id", userId)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true })
       .then(({ data }) => {
@@ -257,7 +263,7 @@ function AcceptForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userId]);
 
   function submit(e: FormEvent) {
     e.preventDefault();

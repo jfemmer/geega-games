@@ -84,6 +84,8 @@ export function useSavedAddresses(userId: string | null): { addresses: SavedAddr
     supabase
       .from("addresses")
       .select("id, label, recipient, line1, line2, city, state, postal_code, country, is_default")
+      // Own addresses only (RLS also lets staff read everyone's).
+      .eq("user_id", userId)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {

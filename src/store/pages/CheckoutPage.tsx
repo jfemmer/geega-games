@@ -306,6 +306,10 @@ export default function CheckoutPage() {
     supabase
       .from("addresses")
       .select("id, recipient, line1, line2, city, state, postal_code, country")
+      // Own addresses only. RLS also lets staff read every customer's, so
+      // without this a staff account could be offered (and auto-select) a
+      // customer's address at checkout.
+      .eq("user_id", user.id)
       // Secondary sort so ties among non-default (or, in principle, among
       // multiple default) addresses have a deterministic, meaningful order
       // instead of whatever arbitrary order Postgres happens to return —

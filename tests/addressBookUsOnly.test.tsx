@@ -24,8 +24,18 @@ vi.mock("../src/supabase", () => ({
     from: (table: string) => {
       if (table !== "addresses") throw new Error(`unexpected table ${table}`);
       return {
+        // Like RLS for a staff account: every customer's address is readable,
+        // so the page must ask for its own (rows without a user_id are
+        // member-1's).
         select: () => ({
-          order: () => ({ order: async () => ({ data: world.rows, error: null }) }),
+          eq: (column: string, value: unknown) => ({
+            order: () => ({
+              order: async () => ({
+                data: world.rows.filter((r) => (r[column] ?? "member-1") === value),
+                error: null,
+              }),
+            }),
+          }),
         }),
         insert: async (row: Record<string, unknown>) => {
           world.inserted.push(row);
@@ -234,5 +244,21 @@ describe("editing an address saved before the change", () => {
 
     await waitFor(() => expect(world.updated).toHaveLength(1));
     expect(world.updated[0].row).toMatchObject({ city: "New York", state: "NY", postal_code: "10001", country: "US" });
+  });
+});
+
+describe("whose addresses are listed", () => {
+  // A staff account can read every customer's address (RLS: own OR
+  // is_staff()), so the address book must ask for the signed-in person's own
+  // and never list a customer's address on someone else's account.
+  it("shows only the signed-in person's own addresses, even to staff", async () => {
+    world.rows = [
+      legacyAddress({ id: "addr-mine", user_id: "member-1", recipient: "Jacob", state: "MO" }),
+      legacyAddress({ id: "addr-customer", user_id: "customer-2", recipient: "Some Customer", state: "MO" }),
+    ];
+    render(<AccountPage />);
+
+    expect(await screen.findByText(/Jacob/)).toBeInTheDocument();
+    expect(screen.queryByText(/Some Customer/)).toBeNull();
   });
 });

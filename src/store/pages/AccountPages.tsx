@@ -464,6 +464,8 @@ function DashboardSection() {
         supabase
           .from("addresses")
           .select("id, label, recipient, line1, line2, city, state, postal_code, is_default")
+          // Own addresses only (RLS also lets staff read everyone's).
+          .eq("user_id", user.id)
           .order("is_default", { ascending: false })
           .order("created_at", { ascending: true })
           .limit(1)
@@ -1153,17 +1155,22 @@ type OrderItem = {
 };
 
 function OrderDetailSection({ orderId }: { orderId: string }) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       const { data: o, error: oErr } = await supabase
         .from("orders")
         .select("*")
         .eq("id", orderId)
+        // Own orders only (RLS also lets staff read everyone's).
+        .eq("user_id", userId)
         .maybeSingle();
       if (oErr) {
         setError(oErr.message);
@@ -1185,7 +1192,7 @@ function OrderDetailSection({ orderId }: { orderId: string }) {
       setItems((it ?? []) as OrderItem[]);
       setLoading(false);
     })();
-  }, [orderId]);
+  }, [orderId, userId]);
 
   if (loading) return <p>Loading order…</p>;
   if (error)
@@ -1382,6 +1389,8 @@ type Address = {
 const EMPTY_ADDRESS: Partial<Address> = { country: SHIP_TO_COUNTRY };
 
 function AddressesSection() {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Address> | null>(null);
@@ -1393,9 +1402,13 @@ function AddressesSection() {
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
+    if (!userId) return [] as Address[];
     const { data, error } = await supabase
       .from("addresses")
       .select("*")
+      // Own addresses only. RLS also lets staff read every customer's, so
+      // without this a staff account's address book listed all of them.
+      .eq("user_id", userId)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true });
     if (error) setError(error.message);
@@ -1406,7 +1419,7 @@ function AddressesSection() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userId]);
 
   const save = async () => {
     if (!editing) return;
