@@ -38,6 +38,7 @@ import { expectedPages, routingProblems, type VercelRoutingConfig } from "./verc
 interface PrerenderModule {
   siteUrl: string;
   renderPage: (path: string) => { html: string; seo: PageSEO | null };
+  pagesReady: Promise<void>;
 }
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -76,7 +77,8 @@ async function main(): Promise<void> {
   const moduleScript = /<script type="module"[^>]*src="\/assets\/[^"]+"[^>]*><\/script>/.exec(template)?.[0];
   if (!moduleScript) throw new Error("dist/index.html has no built module script — did `vite build` run?");
 
-  const { renderPage, siteUrl } = (await import(pathToFileURL(SSR_ENTRY).href)) as PrerenderModule;
+  const { renderPage, siteUrl, pagesReady } = (await import(pathToFileURL(SSR_ENTRY).href)) as PrerenderModule;
+  await pagesReady;
 
   // The neutral shell first: vercel.json serves it for every app-only page
   // and the catalog function builds on it, so it must exist even if a route

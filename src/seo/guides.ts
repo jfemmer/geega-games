@@ -64,7 +64,7 @@ export const GUIDES: GuideMeta[] = [
     summary:
       "Found boxes of Magic cards in an estate, attic or closet? What to do first, what never to throw away, and how to sell without getting taken advantage of.",
     published: "2026-09-25",
-    updated: "2026-09-25",
+    updated: "2026-11-02",
   },
   {
     slug: "how-to-sell-bulk-magic-cards",
@@ -79,6 +79,18 @@ export const GUIDES: GuideMeta[] = [
     updated: "2026-09-25",
   },
   {
+    slug: "fair-offer-for-magic-cards",
+    topic: "mtg",
+    heading: "What's a fair offer for my Magic cards?",
+    title: "What's a Fair Offer for MTG Cards? How Buyers Price | Geega Games",
+    description:
+      "How Magic: The Gathering card buyers work out an offer, what TCG low and market price mean, why every buyer pays under market, the signs of a lowball offer, and how to check one yourself.",
+    summary:
+      "How buyers turn TCGplayer prices into an offer, why no one pays full market, what a lowball looks like, and a five-minute way to check any offer you get.",
+    published: "2026-11-02",
+    updated: "2026-11-02",
+  },
+  {
     slug: "where-to-sell-magic-cards",
     topic: "mtg",
     heading: "Where to sell Magic: The Gathering cards",
@@ -88,7 +100,7 @@ export const GUIDES: GuideMeta[] = [
     summary:
       "TCGplayer vs. eBay vs. buylists vs. a local store vs. a collection buyer vs. a trade-in — the actual fees, the work involved, and which option fits what you have.",
     published: "2026-09-25",
-    updated: "2026-11-01",
+    updated: "2026-11-02",
   },
   {
     slug: "are-my-old-pokemon-cards-worth-anything",

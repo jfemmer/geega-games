@@ -8,7 +8,13 @@ import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import { tradeFaqItems } from "../lib/tradeFaq";
 import { CARD_CONDITIONS, CONDITION_NAMES, TRADE_CENTER_PATH, TRADE_IN_PATH, type TradeTerms } from "../lib/tradeCenter";
 import { moneyShort, requiredValueCents } from "../lib/tradeShipping";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import {
+  CREDIT_MIN_LABEL,
+  OFFER_REPLY_HOURS,
+  PAYOUT_SUMMARY,
+  SINGLES_CREDIT_PERCENT,
+  SINGLES_PAYPAL_MAX_PERCENT,
+} from "../lib/buyTerms";
 import { HUB_CITY, ORGANIZATION_ID, breadcrumbJsonLd, faqJsonLd, serviceAreaServed } from "../../seo/site";
 
 // The trade-in landing page (/trade-in-magic-cards): what trading cards in
@@ -177,8 +183,13 @@ export default function TradeInPage() {
               </tr>
               <tr>
                 <th scope="row">Sell to Geega Games, take store credit</th>
-                <td>Our cash offer plus {STORE_CREDIT_BONUS_PERCENT}% in credit</td>
-                <td>Offer + {STORE_CREDIT_BONUS_PERCENT}%</td>
+                <td>{SINGLES_CREDIT_PERCENT}% of TCG low in credit, on singles worth {CREDIT_MIN_LABEL}+</td>
+                <td>${SINGLES_CREDIT_PERCENT}</td>
+              </tr>
+              <tr>
+                <th scope="row">Sell to Geega Games, take PayPal</th>
+                <td>Up to {SINGLES_PAYPAL_MAX_PERCENT}% of TCG low, tiered by the card&rsquo;s price</td>
+                <td>Up to ${SINGLES_PAYPAL_MAX_PERCENT}</td>
               </tr>
               <tr>
                 <th scope="row">Online buylist, cash</th>
@@ -230,8 +241,8 @@ export default function TradeInPage() {
             <h3>Not bulk</h3>
             <p>
               Commons, uncommons and cards under {moneyShort(t.minCardValueCents)} aren&rsquo;t taken in trade. Selling a whole collection,
-              bulk included? <Link to="/sell-my-collection">Get a free offer</Link> instead; it pays cash or store credit worth{" "}
-              {STORE_CREDIT_BONUS_PERCENT}% more.
+              bulk included? <Link to="/sell-my-collection">Get a free offer</Link> instead, paid by PayPal or in
+              store credit.
             </p>
           </div>
         </div>
@@ -265,10 +276,10 @@ export default function TradeInPage() {
             </p>
           </div>
           <div className="gg-collect-card">
-            <h3>Sell: a cash offer, or {STORE_CREDIT_BONUS_PERCENT}% more in credit</h3>
+            <h3>Sell: PayPal or store credit</h3>
             <p>
-              For whole collections, bulk and anything unsorted. We make one offer on the lot and you choose PayPal or store credit worth{" "}
-              {STORE_CREDIT_BONUS_PERCENT}% more. <Link to="/sell-my-collection">Get a free offer</Link>.
+              For whole collections, bulk and anything unsorted. We make one offer on the lot within {OFFER_REPLY_HOURS} hours: {PAYOUT_SUMMARY}.{" "}
+              <Link to="/sell-my-collection">Get a free offer</Link>.
             </p>
           </div>
         </div>

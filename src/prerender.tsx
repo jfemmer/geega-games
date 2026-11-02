@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Storefront } from "./App";
+import { Storefront, preloadAllPages } from "./App";
 import { SITE } from "./siteConfig";
 import { collectSEO, type PageSEO } from "./store/lib/useSEO";
 
@@ -12,6 +12,13 @@ import { collectSEO, type PageSEO } from "./store/lib/useSEO";
 // mounts with createRoot (not hydrateRoot), which simply replaces this markup
 // on load — so a difference in signed-in/cart state can never cause a
 // hydration mismatch, and visitors see identical markup before and after.
+
+/**
+ * Pages load on demand (src/store/lib/lazyPage.tsx), and renderToStaticMarkup
+ * can't wait for code to load, so every page is loaded before any is rendered.
+ * scripts/prerender.ts awaits this before calling renderPage.
+ */
+export const pagesReady: Promise<void> = preloadAllPages();
 
 /** The origin useSEO builds canonical URLs from, so the static HTML matches what the app sets. */
 export const siteUrl = SITE.url;

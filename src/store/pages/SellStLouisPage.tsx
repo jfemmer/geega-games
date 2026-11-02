@@ -18,7 +18,7 @@ import {
   WhatWeBuySection,
 } from "../components/SellLandingSections";
 import QuickPhotoQuote from "../components/QuickPhotoQuote";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { CREDIT_MIN_LABEL, SINGLES_CREDIT_PERCENT, SINGLES_PAYPAL_MAX_PERCENT } from "../lib/buyTerms";
 import {
   ST_LOUIS_DAY_TRIPS,
   ST_LOUIS_MEETUP_AREAS,
@@ -65,7 +65,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   },
   {
     question: "How do you pay?",
-    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount.`,
+    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit. On singles you ship to us we pay up to ${SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by PayPal, or ${SINGLES_CREDIT_PERCENT}% of TCG low in store credit on singles worth ${CREDIT_MIN_LABEL} or more.`,
   },
   {
     question: "Do my cards need to be sorted or priced first?",
@@ -121,7 +121,7 @@ export default function SellStLouisPage() {
   });
 
   return (
-    <div className="gg-page">
+    <div className="gg-page gg-sell-landing">
       <nav className="gg-breadcrumbs" aria-label="Breadcrumb">
         <Link to="/sell-my-collection">Sell your collection</Link> <span aria-hidden="true">/</span>{" "}
         <span>St. Louis, MO</span>

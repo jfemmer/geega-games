@@ -11,56 +11,83 @@ import { CartProvider } from "./store/lib/CartContext";
 import { WishlistProvider } from "./store/lib/WishlistContext";
 import Header from "./store/components/Header";
 import SignupNudge from "./store/components/SignupNudge";
-import ShopPage from "./store/pages/ShopPage";
-import ShopSetsPage from "./store/pages/ShopSetsPage";
-import ShopSetPage from "./store/pages/ShopSetPage";
-import CardDetailPage from "./store/pages/CardDetailPage";
-import ShopPicksPage from "./store/pages/ShopPicksPage";
-import {
-  LoginPage,
-  SignupPage,
-  ForgotPasswordPage,
-  ResetPasswordPage,
-} from "./store/pages/AuthPages";
-import {
-  HomePage,
-  ConditionGuidePage,
-  ShippingPage,
-  ReturnsPage,
-  ContactPage,
-  AboutPage,
-  NotFoundPage,
-} from "./store/pages/StaticPages";
-import { PrivacyPage } from "./store/pages/PrivacyPage";
-import { TermsPage } from "./store/pages/TermsPage";
-import CheckoutPage from "./store/pages/CheckoutPage";
-import SellPage from "./store/pages/SellPage";
-import SellCollectionPage from "./store/pages/SellCollectionPage";
-import SellStLouisPage from "./store/pages/SellStLouisPage";
-import SellAreaPage from "./store/pages/SellAreaPage";
-import { GuidePage, GuidesIndexPage } from "./store/pages/GuidePages";
-import SellReferralPage from "./store/pages/SellReferralPage";
-import { ForStoresPage, ReferralPartnersPage, SellHubPage } from "./store/pages/PartnerProgramPages";
+import { Suspense, type ReactElement } from "react";
+import { lazyPage, type LazyPage } from "./store/lib/lazyPage";
 import { FOR_STORES_PATH, REFERRAL_PARTNERS_PATH, SELL_HUB_PATH } from "./store/lib/partnerTypes";
 import { REFERRAL_PAGES } from "./seo/referralPages";
 import { ST_LOUIS_PATH } from "./seo/sellAreas";
-import { AccountPage } from "./store/pages/AccountPages";
-import TrackOrderPage from "./store/pages/TrackOrderPage";
-import RespondToOfferPage from "./store/pages/RespondToOfferPage";
-import CollectionSortingPage from "./store/pages/CollectionSortingPage";
-import SortingQuotePage from "./store/pages/SortingQuotePage";
-import TradeSummaryPage from "./store/pages/TradeSummaryPage";
 import { TRADE_PATH } from "./store/lib/trades";
-import TradeCardsPage from "./store/pages/TradeCardsPage";
-import TradeInPage from "./store/pages/TradeInPage";
 import { TRADE_CENTER_PATH, TRADE_IN_PATH } from "./store/lib/tradeCenter";
-import KioskPage from "./store/pages/KioskPage";
-import YardSalePage from "./store/pages/YardSalePage";
-import ConsignSignPage from "./store/pages/ConsignSignPage";
 
-function Routes() {
-  const { path } = useRouter();
+// Every page is its own chunk (see src/store/lib/lazyPage.tsx), so a visitor
+// downloads the page they opened, not the whole store.
+const ShopPage = lazyPage(() => import("./store/pages/ShopPage"));
+const ShopSetsPage = lazyPage(() => import("./store/pages/ShopSetsPage"));
+const ShopSetPage = lazyPage(() => import("./store/pages/ShopSetPage"));
+const CardDetailPage = lazyPage(() => import("./store/pages/CardDetailPage"));
+const ShopPicksPage = lazyPage(() => import("./store/pages/ShopPicksPage"));
+const LoginPage = lazyPage(() => import("./store/pages/AuthPages").then((m) => ({ default: m.LoginPage })));
+const SignupPage = lazyPage(() => import("./store/pages/AuthPages").then((m) => ({ default: m.SignupPage })));
+const ForgotPasswordPage = lazyPage(() =>
+  import("./store/pages/AuthPages").then((m) => ({ default: m.ForgotPasswordPage })),
+);
+const ResetPasswordPage = lazyPage(() =>
+  import("./store/pages/AuthPages").then((m) => ({ default: m.ResetPasswordPage })),
+);
+const HomePage = lazyPage(() => import("./store/pages/StaticPages").then((m) => ({ default: m.HomePage })));
+const ConditionGuidePage = lazyPage(() =>
+  import("./store/pages/StaticPages").then((m) => ({ default: m.ConditionGuidePage })),
+);
+const ShippingPage = lazyPage(() => import("./store/pages/StaticPages").then((m) => ({ default: m.ShippingPage })));
+const ReturnsPage = lazyPage(() => import("./store/pages/StaticPages").then((m) => ({ default: m.ReturnsPage })));
+const ContactPage = lazyPage(() => import("./store/pages/StaticPages").then((m) => ({ default: m.ContactPage })));
+const AboutPage = lazyPage(() => import("./store/pages/StaticPages").then((m) => ({ default: m.AboutPage })));
+const NotFoundPage = lazyPage(() => import("./store/pages/StaticPages").then((m) => ({ default: m.NotFoundPage })));
+const PrivacyPage = lazyPage(() => import("./store/pages/PrivacyPage").then((m) => ({ default: m.PrivacyPage })));
+const TermsPage = lazyPage(() => import("./store/pages/TermsPage").then((m) => ({ default: m.TermsPage })));
+const CheckoutPage = lazyPage(() => import("./store/pages/CheckoutPage"));
+const SellPage = lazyPage(() => import("./store/pages/SellPage"));
+const SellCollectionPage = lazyPage(() => import("./store/pages/SellCollectionPage"));
+const SellStLouisPage = lazyPage(() => import("./store/pages/SellStLouisPage"));
+const SellAreaPage = lazyPage(() => import("./store/pages/SellAreaPage"));
+const GuidePage = lazyPage(() => import("./store/pages/GuidePages").then((m) => ({ default: m.GuidePage })));
+const GuidesIndexPage = lazyPage(() =>
+  import("./store/pages/GuidePages").then((m) => ({ default: m.GuidesIndexPage })),
+);
+const SellReferralPage = lazyPage(() => import("./store/pages/SellReferralPage"));
+const ForStoresPage = lazyPage(() =>
+  import("./store/pages/PartnerProgramPages").then((m) => ({ default: m.ForStoresPage })),
+);
+const ReferralPartnersPage = lazyPage(() =>
+  import("./store/pages/PartnerProgramPages").then((m) => ({ default: m.ReferralPartnersPage })),
+);
+const SellHubPage = lazyPage(() =>
+  import("./store/pages/PartnerProgramPages").then((m) => ({ default: m.SellHubPage })),
+);
+const AccountPage = lazyPage(() => import("./store/pages/AccountPages").then((m) => ({ default: m.AccountPage })));
+const TrackOrderPage = lazyPage(() => import("./store/pages/TrackOrderPage"));
+const RespondToOfferPage = lazyPage(() => import("./store/pages/RespondToOfferPage"));
+const CollectionSortingPage = lazyPage(() => import("./store/pages/CollectionSortingPage"));
+const SortingQuotePage = lazyPage(() => import("./store/pages/SortingQuotePage"));
+const TradeSummaryPage = lazyPage(() => import("./store/pages/TradeSummaryPage"));
+const TradeCardsPage = lazyPage(() => import("./store/pages/TradeCardsPage"));
+const TradeInPage = lazyPage(() => import("./store/pages/TradeInPage"));
+const KioskPage = lazyPage(() => import("./store/pages/KioskPage"));
+const YardSalePage = lazyPage(() => import("./store/pages/YardSalePage"));
+const ConsignSignPage = lazyPage(() => import("./store/pages/ConsignSignPage"));
 
+const ALL_PAGES: LazyPage<never>[] = [
+  ShopPage, ShopSetsPage, ShopSetPage, CardDetailPage, ShopPicksPage, LoginPage, SignupPage,
+  ForgotPasswordPage, ResetPasswordPage, HomePage, ConditionGuidePage, ShippingPage, ReturnsPage,
+  ContactPage, AboutPage, NotFoundPage, PrivacyPage, TermsPage, CheckoutPage, SellPage,
+  SellCollectionPage, SellStLouisPage, SellAreaPage, GuidePage, GuidesIndexPage, SellReferralPage,
+  ForStoresPage, ReferralPartnersPage, SellHubPage, AccountPage, TrackOrderPage, RespondToOfferPage,
+  CollectionSortingPage, SortingQuotePage, TradeSummaryPage, TradeCardsPage, TradeInPage, KioskPage,
+  YardSalePage, ConsignSignPage,
+] as LazyPage<never>[];
+
+/** The page element for a storefront path (kiosk and yard sale aside). */
+function routeFor(path: string): ReactElement {
   if (path === "/" || path === "") return <HomePage />;
   if (path === "/shop") return <ShopPage />;
   if (path === "/shop/sets") return <ShopSetsPage />;
@@ -108,19 +135,43 @@ function Routes() {
   return <NotFoundPage />;
 }
 
+function Routes() {
+  const { path } = useRouter();
+  return routeFor(path);
+}
+
+/** Standalone pages that render without the storefront chrome (see App). */
+function standaloneFor(pathname: string): ReactElement | null {
+  if (pathname === "/kiosk") return <KioskPage />;
+  if (pathname === "/yard-sale") return <YardSalePage />;
+  return null;
+}
+
+/**
+ * Load the code of the page at `pathname` before the first render, so the
+ * prerendered HTML stays on screen until the real page can replace it
+ * (src/main.tsx). Never rejects: a failed load is retried when React renders it.
+ */
+export function preloadRoute(pathname: string): Promise<void> {
+  const element = standaloneFor(pathname) ?? routeFor(pathname);
+  const page = element.type as Partial<LazyPage<never>>;
+  return page.preload ? page.preload().catch(() => undefined) : Promise.resolve();
+}
+
+/** Load every page's code: the build-time prerender renders them all synchronously. */
+export function preloadAllPages(): Promise<void> {
+  return Promise.all(ALL_PAGES.map((page) => page.preload())).then(() => undefined);
+}
+
 export default function App() {
   // The in-store kiosk is deliberately standalone: no signed-in account, no
   // cart, no header/footer chrome — just the kiosk experience on whatever
   // computer in the shop has this URL open, so a customer's kiosk session
   // can never touch or be confused with someone else's account/cart.
-  if (window.location.pathname === "/kiosk") {
-    return <KioskPage />;
-  }
   // The yard sale page (the QR code at our yard sale) is standalone the same
   // way: shoppers' phones send a pickup list, never touch a cart or checkout.
-  if (window.location.pathname === "/yard-sale") {
-    return <YardSalePage />;
-  }
+  const standalone = standaloneFor(window.location.pathname);
+  if (standalone) return <Suspense fallback={null}>{standalone}</Suspense>;
 
   return <Storefront />;
 }
@@ -144,7 +195,10 @@ export function Storefront({ initialPath }: { initialPath?: string }) {
               </a>
               <Header />
               <main id="main">
-                <Routes />
+                {/* Covers moving to a page whose code hasn't loaded yet. */}
+                <Suspense fallback={<div className="gg-page gg-page-loading" aria-busy="true" />}>
+                  <Routes />
+                </Suspense>
               </main>
               <Footer />
               <SignupNudge />

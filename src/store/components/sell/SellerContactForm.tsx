@@ -1,5 +1,5 @@
+import { CREDIT_SUMMARY } from "../../lib/buyTerms";
 import {
-  STORE_CREDIT_BONUS_PERCENT,
   SELL_TRANSACTION_PREFERENCE_OPTIONS,
   type SellContactInfo,
 } from "../../lib/sellTypes";
@@ -145,8 +145,8 @@ export function SellerContactForm({
 
       <div className="gg-alert gg-alert-warn" role="note">
         <strong>How we pay.</strong> Your choice when you accept our offer:{" "}
-        <strong>store credit worth {STORE_CREDIT_BONUS_PERCENT}% more</strong> (held on a free
-        Geega Games account), or <strong>PayPal Goods &amp; Services</strong> — never Friends
+        <strong>store credit</strong> ({CREDIT_SUMMARY}, held on a free Geega Games account),
+        or <strong>PayPal Goods &amp; Services</strong> — never Friends
         &amp; Family, since Goods &amp; Services includes protections for both of us.
         For some collections, especially larger or higher-value ones, we may ask you to ship the
         collection to us for inspection and authentication before payment is sent, rather than

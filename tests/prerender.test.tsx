@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { renderPage } from "../src/prerender";
+import { beforeAll, describe, expect, it } from "vitest";
+import { pagesReady, renderPage } from "../src/prerender";
 import { seoRoutes } from "../src/seo/routes";
 import { SITE_JSON_LD } from "../src/seo/site";
+
+// Pages load on demand; the prerender renders them only once all are loaded.
+beforeAll(() => pagesReady, 60_000);
 
 // Runs in vitest's default node environment — no window, no document — which
 // is exactly the build-time prerender's situation. If any storefront page,
@@ -195,5 +198,35 @@ describe("build-time prerender", () => {
     expect(renderPage("/sell-video-games").html).toContain(
       'href="/guides/are-my-old-video-games-worth-money"',
     );
+  });
+
+  // The owner's confirmed payout terms (src/store/lib/buyTerms.ts, 2026-11-02).
+  it("states the payout rates and the 24-hour promise on the main sell page", () => {
+    const { html, seo } = renderPage("/sell-my-collection");
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(seo?.title).toBe("Sell Magic Cards & MTG Collections: Offer in 24 Hours | Geega Games");
+    expect(text).toContain("Sell your Magic: The Gathering cards or collection");
+    expect(text).toContain("How we price your cards");
+    expect(text).toContain("Up to 70%");
+    expect(text).toContain("of TCG low, in store credit");
+    expect(text).toContain("singles worth $20 or more");
+    expect(text).toContain("An offer within 24 hours");
+    // The pricing box sits before the form it explains.
+    expect(html.indexOf('id="how-we-price"')).toBeLessThan(html.indexOf('id="quick-quote"'));
+  });
+
+  it("no longer promises \"20% more\" in store credit on any page", () => {
+    for (const { path } of seoRoutes()) {
+      const text = renderPage(path).html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      expect(text, path).not.toMatch(/20% more|\+20%|credit bonus/i);
+    }
+  });
+
+  it("publishes the fair-offer guide and links it from the guides index", () => {
+    const { html, seo } = renderPage("/guides/fair-offer-for-magic-cards");
+    expect(seo?.title).toContain("Fair Offer for MTG Cards");
+    expect(html).toContain("Signs an offer is a lowball");
+    expect(html).toContain('href="/sell-my-collection"');
+    expect(renderPage("/guides").html).toContain('href="/guides/fair-offer-for-magic-cards"');
   });
 });
