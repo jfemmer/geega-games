@@ -277,6 +277,7 @@ export async function sendSellSubmissionStatusUpdate(
 export async function sendSellSubmissionOffer(
   submissionId: string,
   offerValueCents: number,
+  creditOfferCents: number,
 ): Promise<SendEmailResult | { status: "skipped"; reason: string }> {
   const db = getSupabaseAdmin();
 
@@ -297,6 +298,7 @@ export async function sendSellSubmissionOffer(
     firstName: submission.first_name,
     referenceNumber: submission.reference_number,
     offerValueCents,
+    creditOfferCents,
     responseUrl,
     siteUrl: siteUrl(),
     logoUrl: logoUrl(),
@@ -305,7 +307,8 @@ export async function sendSellSubmissionOffer(
 
   return sendTrackedEmail({
     emailType: "sell_submission_offer",
-    idempotencyKey: `sell-submission-offer-${submission.id}-${offerValueCents}`,
+    // Both amounts: a re-sent offer that only changes the credit is a new offer.
+    idempotencyKey: `sell-submission-offer-${submission.id}-${offerValueCents}-${creditOfferCents}`,
     to: submission.email,
     from: ServerEnv.fromOrders(),
     replyTo: ServerEnv.replyTo(),

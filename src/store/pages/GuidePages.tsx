@@ -2,7 +2,13 @@ import type { ReactNode } from "react";
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { NotFoundPage } from "./StaticPages";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import {
+  CREDIT_MIN_LABEL,
+  OFFER_REPLY_HOURS,
+  PAYOUT_SUMMARY,
+  SINGLES_CREDIT_PERCENT,
+  SINGLES_PAYPAL_MAX_PERCENT,
+} from "../lib/buyTerms";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import { TRADE_IN_PATH } from "../lib/tradeCenter";
 import { moneyShort } from "../lib/tradeShipping";
@@ -18,9 +24,10 @@ import { MAX_DRIVE_HOURS, ORGANIZATION_ID, absoluteUrl, breadcrumbJsonLd } from 
 // which is where most sellers start. Metadata is in src/seo/guides.ts; each
 // guide's `topic` decides which sell page its call-to-action points to.
 //
-// Keep every factual claim here verifiable: no card prices, no payout
-// percentages (owner's rule). Anything that can change (marketplace fees,
-// grading costs) is dated in the text — re-check it when you bump `updated`.
+// Keep every factual claim here verifiable: no card prices, and our own payout
+// rates only from src/store/lib/buyTerms.ts (the owner's confirmed numbers).
+// Anything that can change (marketplace fees, grading costs) is dated in the
+// text — re-check it when you bump `updated`.
 
 const TOPIC_HEADINGS: Record<GuideTopic, string> = {
   st_louis: "Selling in St. Louis",
@@ -407,7 +414,7 @@ function InheritedCollectionGuide() {
         </li>
         <li>
           Use a payment method with protection. We pay by PayPal Goods &amp; Services (never Friends
-          &amp; Family) or store credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
+          &amp; Family) or in store credit.
         </li>
         <li>For a collection with clearly high-value cards, a second opinion is always reasonable.</li>
       </ul>
@@ -590,8 +597,9 @@ function WhereToSellMagicGuide() {
       <p>
         That&rsquo;s what we do. Ship from anywhere in the US, meet up with us in{" "}
         <Link to={ST_LOUIS_PATH}>St. Louis</Link>, or — for a collection — we&rsquo;ll drive to you,
-        up to about {MAX_DRIVE_HOURS} hours away. We pay by PayPal Goods &amp; Services or in store
-        credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
+        up to about {MAX_DRIVE_HOURS} hours away. On singles you ship to us we pay {PAYOUT_SUMMARY} (PayPal
+        Goods &amp; Services, never Friends &amp; Family), and you get an offer within{" "}
+        {OFFER_REPLY_HOURS} hours.
       </p>
 
       <h2>6. Trade them in for store credit</h2>
@@ -607,7 +615,7 @@ function WhereToSellMagicGuide() {
         shop: that $100 card is worth ${ADVERTISED_TRADE_TERMS.creditRatePercent} of our cards. It&rsquo;s for
         cards worth {moneyShort(ADVERTISED_TRADE_TERMS.minCardValueCents)} or more each, by mail or at a
         meetup in St. Louis, and you pick the cards you want first. Bulk and whole collections are
-        better sold, with the {STORE_CREDIT_BONUS_PERCENT}% credit bonus.{" "}
+        better sold, for PayPal or store credit.{" "}
         <Link to={TRADE_IN_PATH}>How trade-ins work</Link>.
       </p>
 
@@ -1170,7 +1178,109 @@ function StLouisWhereToSellGuide() {
   );
 }
 
+function FairOfferGuide() {
+  return (
+    <>
+      <p>
+        A fair offer on Magic: The Gathering cards is measured against what those cards sell for
+        right now, and it will always be less than that. A buyer has to resell every card, paying
+        fees and shipping and waiting for each sale, so the question isn&rsquo;t whether an offer
+        is under market. It&rsquo;s how far under, and whether the buyer can show you how they got
+        there.
+      </p>
+
+      <h2>The prices everyone measures against</h2>
+      <p>
+        Most Magic buyers in the US price from TCGplayer, the biggest marketplace for singles. Two
+        of its numbers matter:
+      </p>
+      <ul>
+        <li>
+          <strong>TCG low</strong>: the lowest price a seller is currently asking for that card in
+          that condition. It moves whenever someone lists a cheaper copy.
+        </li>
+        <li>
+          <strong>Market price</strong>: worked out from recent completed sales, so it reflects what
+          buyers actually paid.
+        </li>
+      </ul>
+      <p>
+        Both depend on the exact printing and condition. The same card can be worth a few cents in
+        one set and many dollars in another, and a heavily played copy sells for well under a
+        near-mint one. Asking prices on eBay or Facebook aren&rsquo;t sales: look at sold listings,
+        or you&rsquo;ll expect more than anyone pays.
+      </p>
+
+      <h2>Why no buyer pays full market</h2>
+      <ul>
+        <li>
+          <strong>Selling fees.</strong> Marketplace and payment fees take roughly 13% or more of
+          each sale (as of November 2026), before shipping supplies.
+        </li>
+        <li>
+          <strong>Time.</strong> Some cards sell in a day; others sit for months. The buyer pays you
+          today for money they&rsquo;ll see later.
+        </li>
+        <li>
+          <strong>Condition risk.</strong> A card graded near-mint in a photo can turn out to be
+          played, and the buyer carries that loss.
+        </li>
+        <li>
+          <strong>Price swings.</strong> Reprints and bans can cut a card&rsquo;s price after
+          it&rsquo;s been bought.
+        </li>
+      </ul>
+
+      <h2>What sellers usually get</h2>
+      <p>
+        Cash offers from stores and buyers usually land somewhere around half to two-thirds of a
+        card&rsquo;s price, with more on offer if you take store credit, because credit costs a
+        store less than cash. That&rsquo;s the range sellers report most often in Magic forums and
+        community guides; it varies by store, by card and by how fast the card sells.
+        Whatever the number, a fair buyer can tell you how they reached it.
+      </p>
+      <p>
+        Bulk is different. Commons and uncommons worth a few cents each are priced by the thousand,
+        not by the card, so judge a bulk offer per thousand cards. Our{" "}
+        <Link to={guidePath("how-to-sell-bulk-magic-cards")}>bulk guide</Link> covers what to pull
+        out first.
+      </p>
+
+      <h2>Signs an offer is a lowball</h2>
+      <ul>
+        <li>The buyer won&rsquo;t say which prices they started from, or how they got from there to the offer.</li>
+        <li>Pressure to decide on the spot, or a price that &ldquo;expires&rdquo; in minutes.</li>
+        <li>A lower offer after the cards arrive, with no list of which cards changed and why.</li>
+        <li>A request to be paid by PayPal Friends &amp; Family, which gives you no protection.</li>
+      </ul>
+
+      <h2>Check any offer in five minutes</h2>
+      <ol>
+        <li>
+          Find your 10 or so most valuable cards. In many collections, a handful of cards carries
+          much of the value. Our <Link to={guidePath("how-much-is-my-mtg-collection-worth")}>collection worth
+          guide</Link> shows how to spot them.
+        </li>
+        <li>Look each one up on TCGplayer, in its real condition, and note TCG low and market price.</li>
+        <li>Add them up, and compare the total with the offer for those cards.</li>
+        <li>Ask the buyer how they priced them. A fair buyer can tell you card by card.</li>
+      </ol>
+
+      <h2>How we price</h2>
+      <p>
+        We start from TCG low too. On singles you ship to us we pay up to{" "}
+        {SINGLES_PAYPAL_MAX_PERCENT}% of it by PayPal Goods &amp; Services, on a tier scale set by
+        each card&rsquo;s price, or {SINGLES_CREDIT_PERCENT}% in store credit on singles worth{" "}
+        {CREDIT_MIN_LABEL} or more. Send a few photos and you get an offer within{" "}
+        {OFFER_REPLY_HOURS} hours. If anything changes when we see the cards, we show you which
+        cards and why, and you can still say no. <Link to="/sell-my-collection">Get a free offer</Link>.
+      </p>
+    </>
+  );
+}
+
 const GUIDE_BODIES: Record<string, () => ReactNode> = {
+  "fair-offer-for-magic-cards": FairOfferGuide,
   "where-to-sell-cards-in-st-louis": StLouisWhereToSellGuide,
   "how-much-is-my-mtg-collection-worth": CollectionWorthGuide,
   "inherited-magic-card-collection": InheritedCollectionGuide,

@@ -107,7 +107,7 @@ export default function SellReferralPage({ category }: { category: ReferralCateg
   const others = REFERRAL_PAGES.filter((p) => p.category !== category);
 
   return (
-    <div className="gg-page">
+    <div className="gg-page gg-sell-landing">
       <section className="gg-collect-hero">
         <h1>{page.heading}</h1>
         <p className="gg-collect-hero-sub">{page.intro}</p>

@@ -6,14 +6,14 @@ import { useCart } from "../lib/CartContext";
 import { Link, useRouter, matchRoute } from "../lib/router";
 import { formatCents, orderShippingText } from "../lib/money";
 import { cardDetailPath } from "../lib/cardSlug";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { trackingUrlFor, carrierLabel } from "../lib/tracking";
 import { isStripeConfigured } from "../lib/stripeClient";
 import { MyDecksSection } from "./MyDecksPage";
 import MySortingRequests from "../components/sorting/MySortingRequests";
 import MyTrades from "../components/trades/MyTrades";
 import TradeDetail from "../components/trades/TradeDetail";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { CREDIT_SUMMARY } from "../lib/buyTerms";
 import { SELLER_REFERRAL_REWARD_CENTS, SELL_HUB_PATH } from "../lib/partnerTypes";
 import { PRODUCTION_ORIGIN } from "../../seo/site";
 import { UsStateSelect } from "../components/UsStateSelect";
@@ -1664,8 +1664,8 @@ function StoreCreditSection() {
         Store credit is applied at checkout. Balances are managed by Geega Games.
       </p>
       <p className="gg-card-meta" style={{ marginTop: "0.75rem" }}>
-        <strong>Earn more:</strong> sell us your cards and take store credit instead of PayPal
-        — you get {STORE_CREDIT_BONUS_PERCENT}% more.{" "}
+        <strong>Earn more:</strong> sell us your cards and take store credit instead of PayPal:{" "}
+        {CREDIT_SUMMARY}.{" "}
         <Link to="/sell">Sell your cards</Link>
       </p>
       <p className="gg-card-meta" style={{ marginTop: "0.5rem" }}>

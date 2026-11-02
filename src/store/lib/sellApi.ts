@@ -219,6 +219,8 @@ export interface SellOfferLookup {
   reference_number: string;
   first_name: string | null;
   offer_value_cents: number;
+  /** Store credit offered alongside the PayPal amount; null on offers sent before 2026-11-02. */
+  credit_offer_cents?: number | null;
   offer_sent_at: string;
   offer_response: "accepted" | "declined" | "countered" | null;
   counter_offer_cents: number | null;

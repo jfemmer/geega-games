@@ -152,15 +152,55 @@ export const SELL_COLLECTION_SIZE_OPTIONS: { value: string; label: string }[] = 
 // collection. Both consumers import this rather than each keeping their own
 // copy of the threshold.
 /**
- * Sellers who take store credit instead of PayPal get this much more. One
- * source of truth for the storefront copy and /api/sell/respond-to-offer,
- * which snapshots it onto the submission when the offer is accepted (so a
- * later change never alters what a seller was promised).
+ * LEGACY: offers sent before 2026-11-02 carried one amount, and store credit
+ * was that amount plus this percentage. Staff now set the store-credit amount
+ * on each offer (sell_submissions.credit_offer_cents, migration
+ * 20261102120000); this only still applies to offers with no credit amount,
+ * so nothing a seller was already promised changes. Don't quote it in copy:
+ * the published rates are in buyTerms.ts.
  */
 export const STORE_CREDIT_BONUS_PERCENT = 20;
 
 export function storeCreditValueCents(payoutCents: number, bonusPercent = STORE_CREDIT_BONUS_PERCENT): number {
   return Math.round((payoutCents * (100 + bonusPercent)) / 100);
+}
+
+/**
+ * The store credit a seller was offered: the amount staff set with the offer,
+ * or, for an offer sent before credit amounts existed, the PayPal amount plus
+ * the (snapshotted) bonus.
+ */
+export function offeredCreditCents(
+  offerValueCents: number,
+  creditOfferCents: number | null | undefined,
+  bonusPercent?: number | null,
+): number {
+  if (creditOfferCents != null) return creditOfferCents;
+  return storeCreditValueCents(offerValueCents, bonusPercent ?? STORE_CREDIT_BONUS_PERCENT);
+}
+
+/**
+ * The store credit issued when a store-credit lead is completed. Mirrors the
+ * sell_submission_issue_store_credit trigger exactly (keep them in step): the
+ * credit offered, scaled by purchase/offer when staff settled on a different
+ * PayPal-equivalent amount after inspection; legacy offers add the bonus to
+ * the purchase amount (or the offer).
+ */
+export function creditToIssueCents(lead: {
+  offerValueCents: number | null;
+  creditOfferCents: number | null;
+  purchaseAmountCents: number | null;
+  storeCreditBonusPercent: number | null;
+}): number {
+  const { offerValueCents, creditOfferCents, purchaseAmountCents, storeCreditBonusPercent } = lead;
+  if (creditOfferCents != null) {
+    if (purchaseAmountCents != null && offerValueCents != null && offerValueCents > 0) {
+      return Math.round((creditOfferCents * purchaseAmountCents) / offerValueCents);
+    }
+    return creditOfferCents;
+  }
+  const base = purchaseAmountCents ?? offerValueCents ?? 0;
+  return base > 0 ? storeCreditValueCents(base, storeCreditBonusPercent ?? STORE_CREDIT_BONUS_PERCENT) : 0;
 }
 
 export const LARGE_SELL_COLLECTION_SIZES: ReadonlySet<string> = new Set([

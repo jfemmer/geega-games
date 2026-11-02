@@ -79,7 +79,7 @@ function SellArea({ area }: { area: SellArea }) {
     .filter((a): a is SellArea => Boolean(a));
 
   return (
-    <div className="gg-page">
+    <div className="gg-page gg-sell-landing">
       <nav className="gg-breadcrumbs" aria-label="Breadcrumb">
         <Link to="/sell-my-collection">Sell your collection</Link> <span aria-hidden="true">/</span>{" "}
         <span>{label}</span>

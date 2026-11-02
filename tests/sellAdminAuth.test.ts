@@ -145,7 +145,14 @@ describe("POST /api/admin/sell-submissions/:id/send-offer — staff-only", () =>
 
   it("rejects a missing or non-positive offer amount even from staff", async () => {
     state.user = { id: "u1", app_metadata: { role: "staff" } };
-    for (const bad of [{}, { offerValueCents: 0 }, { offerValueCents: -100 }]) {
+    for (const bad of [
+      {},
+      { offerValueCents: 0, creditOfferCents: 40000 },
+      { offerValueCents: -100, creditOfferCents: 40000 },
+      // Every offer now carries both amounts (migration 20261102120000).
+      { offerValueCents: 35000 },
+      { offerValueCents: 35000, creditOfferCents: 0 },
+    ]) {
       const { req, res } = makeReqRes(bad, { authorization: "Bearer sometoken" }, "POST");
       await sendOfferHandler(req as never, res as never);
       expect(res.statusCode).toBe(400);
@@ -156,20 +163,24 @@ describe("POST /api/admin/sell-submissions/:id/send-offer — staff-only", () =>
   it("records the amount, flips status to offer_made, and stamps offer_sent_at for a verified staff user", async () => {
     state.user = { id: "u1", app_metadata: { role: "staff" } };
     const { req, res } = makeReqRes(
-      { offerValueCents: 35000 },
+      { offerValueCents: 35000, creditOfferCents: 40000 },
       { authorization: "Bearer sometoken" },
       "POST",
     );
     await sendOfferHandler(req as never, res as never);
     expect(res.statusCode).toBe(200);
-    expect(state.updated).toMatchObject({ offer_value_cents: 35000, status: "offer_made" });
+    expect(state.updated).toMatchObject({
+      offer_value_cents: 35000,
+      credit_offer_cents: 40000,
+      status: "offer_made",
+    });
     expect(state.updated?.offer_sent_at).toBeTruthy();
   });
 
   it("resets any prior offer_response/counter_offer_cents/offer_responded_at on every send — a stale response to a PRIOR offer must never look like a response to this new one", async () => {
     state.user = { id: "u1", app_metadata: { role: "staff" } };
     const { req, res } = makeReqRes(
-      { offerValueCents: 42000 },
+      { offerValueCents: 42000, creditOfferCents: 48000 },
       { authorization: "Bearer sometoken" },
       "POST",
     );

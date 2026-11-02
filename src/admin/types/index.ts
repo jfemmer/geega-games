@@ -1315,7 +1315,10 @@ export interface BuyingLeadDetail extends BuyingLeadSummary {
   notes: string | null;
   internalNotes: string | null;
   referralSource: string | null;
+  /** The offer's PayPal amount. */
   offerValueCents: number | null;
+  /** The store-credit amount sent with the offer; null on offers sent before 2026-11-02 (credit = PayPal + bonus). */
+  creditOfferCents: number | null;
   /** When staff actually sent offerValueCents to the seller via Send Offer. Null means it's still just a private note. */
   offerSentAt: string | null;
   /** How the seller responded on the public /sell/offer page. Reset to null whenever a new offer is sent — see send-offer.ts. */
@@ -1323,7 +1326,7 @@ export interface BuyingLeadDetail extends BuyingLeadSummary {
   /** The seller's counter amount — set only when offerResponse === "countered". */
   counterOfferCents: number | null;
   offerRespondedAt: string | null;
-  /** Seller's payout choice at acceptance. store_credit = offer + bonus, issued automatically on "completed". */
+  /** Seller's payout choice at acceptance. store_credit is issued automatically on "completed" (creditToIssueCents). */
   payoutMethod: "paypal" | "store_credit" | null;
   storeCreditBonusPercent: number | null;
   /** Store credit actually issued (set when the lead is marked completed). */

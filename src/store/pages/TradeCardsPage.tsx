@@ -4,7 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import { useSEO } from "../lib/useSEO";
 import { formatCents } from "../lib/money";
 import { authLinkWithReturn } from "../lib/authRedirect";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { FaqSection } from "../components/SellLandingSections";
 import { TradeWantedList } from "../components/trades/TradeWantedList";
 import { TradeShippingProgress } from "../components/trades/TradeShippingProgress";

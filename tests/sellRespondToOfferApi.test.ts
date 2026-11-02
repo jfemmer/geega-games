@@ -373,7 +373,15 @@ describe("store-credit payout", () => {
     expect(bad.statusCode).toBe(401);
   });
 
-  it("links the submission to the signed-in seller and snapshots the 20% bonus", async () => {
+  it("takes the store credit staff set with the offer, with no bonus snapshot", async () => {
+    state.submission = { ...BASE_SUBMISSION, credit_offer_cents: 40000 };
+    const res = await invokeWithToken({ ...accept, payoutMethod: "store_credit" }, "good-token");
+    expect(res.statusCode).toBe(200);
+    expect(state.lastUpdate).toMatchObject({ payout_method: "store_credit", user_id: "user-9" });
+    expect(state.lastUpdate).not.toHaveProperty("store_credit_bonus_percent");
+  });
+
+  it("links the submission to the signed-in seller and snapshots the 20% bonus on an offer sent before credit amounts", async () => {
     const res = await invokeWithToken({ ...accept, payoutMethod: "store_credit" }, "good-token");
     expect(res.statusCode).toBe(200);
     expect(state.lastUpdate).toMatchObject({

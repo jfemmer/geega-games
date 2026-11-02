@@ -43,8 +43,10 @@ type SellSubmissionUpdate = Database["public"]["Tables"]["sell_submissions"]["Up
 //   - payoutMethod (accepted only): "paypal" (default) or "store_credit".
 //     Store credit needs an account to hold it, so it requires the seller's
 //     Supabase access token; the submission is linked to that account (or
-//     must already belong to it). The bonus percent is snapshotted now, and
-//     the credit itself is issued by the DB when staff mark it completed
+//     must already belong to it). The credit amount was set by staff with
+//     the offer (credit_offer_cents); only an offer sent before credit
+//     amounts existed snapshots the legacy bonus percent instead. The credit
+//     itself is issued by the DB when staff mark it completed
 //     (sell_submission_issue_store_credit).
 
 const RATE_LIMIT_PER_WINDOW = 10;
@@ -90,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: submission, error } = await admin
       .from("sell_submissions")
       .select(
-        "id, email, user_id, reference_number, offer_value_cents, offer_sent_at, offer_responded_at, total_cards, collection_size",
+        "id, email, user_id, reference_number, offer_value_cents, credit_offer_cents, offer_sent_at, offer_responded_at, total_cards, collection_size",
       )
       // reference_number is always generated as GG-S-<seq> (uppercase, see
       // the sell_submissions migration) and email is normalized lowercase at
@@ -154,7 +156,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           throw new HttpError(403, "This submission is linked to a different account. Sign in to that account to take store credit.");
         }
         update.user_id = userId;
-        update.store_credit_bonus_percent = STORE_CREDIT_BONUS_PERCENT;
+        // Legacy offers only (no credit amount): keep the bonus they were sent with.
+        if (submission.credit_offer_cents == null) {
+          update.store_credit_bonus_percent = STORE_CREDIT_BONUS_PERCENT;
+        }
       }
     }
 

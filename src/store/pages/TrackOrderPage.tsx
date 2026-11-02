@@ -3,7 +3,7 @@ import { Link, useRouter } from "../lib/router";
 import { supabase } from "../../supabase";
 import { formatCents, orderShippingText } from "../lib/money";
 import { isStripeConfigured } from "../lib/stripeClient";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { useSEO } from "../lib/useSEO";
 import {
   StatusBadge,

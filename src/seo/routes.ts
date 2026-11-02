@@ -33,7 +33,7 @@ export interface SeoRoute {
 // lastmod: only when the page's own content meaningfully changed (Google uses
 // it once it's consistently accurate), and /api/indexnow pings Bing about
 // pages whose lastmod is recent — so bump it when you change a page.
-const SEO_REFRESH = "2026-09-26";
+// 2026-09-26: the SEO refresh (area pages, guides index).
 // 2026-10-11: the partner program — partner stores, three new categories,
 // the referral fee said plainly on every partner-store page.
 const PARTNER_PROGRAM = "2026-10-11";
@@ -44,22 +44,24 @@ const COLLECTION_SORTING = "2026-10-17";
 const OCT_27 = "2026-10-27";
 // 2026-11-01: the trade-in landing page, the credit offer in the sell page's
 // title and opening, and trade-in as an option in the where-to-sell guide.
-const TRADE_IN = "2026-11-01";
+// 2026-11-02: published payout rates and the 24-hour offer promise on the sell
+// pages, the new sell page title, and the "fair offer" guide in /guides.
+const PAYOUT_RATES = "2026-11-02";
 
 const STATIC_ROUTES: SeoRoute[] = [
   // 2026-10-05: the email-list signup replaced the launch notice.
-  // 2026-11-01: the trade-in section.
-  { path: "/", changefreq: "daily", priority: "1.0", lastmod: TRADE_IN },
+  // 2026-11-01: the trade-in section. 2026-11-02: its store-credit line.
+  { path: "/", changefreq: "daily", priority: "1.0", lastmod: PAYOUT_RATES },
   { path: "/shop", changefreq: "daily", priority: "0.9" },
   { path: "/shop/sets", changefreq: "weekly", priority: "0.7" },
-  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: TRADE_IN },
-  { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: TRADE_IN },
-  { path: TRADE_IN_PATH, changefreq: "monthly", priority: "0.9", lastmod: TRADE_IN },
+  { path: "/sell-my-collection", changefreq: "weekly", priority: "0.9", lastmod: PAYOUT_RATES },
+  { path: ST_LOUIS_PATH, changefreq: "monthly", priority: "0.9", lastmod: PAYOUT_RATES },
+  { path: TRADE_IN_PATH, changefreq: "monthly", priority: "0.9", lastmod: PAYOUT_RATES },
   { path: SELL_HUB_PATH, changefreq: "monthly", priority: "0.8", lastmod: PARTNER_PROGRAM },
   { path: FOR_STORES_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: REFERRAL_PARTNERS_PATH, changefreq: "monthly", priority: "0.5", lastmod: PARTNER_PROGRAM },
   { path: "/collection-sorting", changefreq: "monthly", priority: "0.7", lastmod: COLLECTION_SORTING },
-  { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: SEO_REFRESH },
+  { path: "/guides", changefreq: "monthly", priority: "0.6", lastmod: PAYOUT_RATES },
   { path: "/about", changefreq: "monthly", priority: "0.5", lastmod: OCT_27 },
   { path: "/condition-guide", changefreq: "monthly", priority: "0.4", lastmod: "2026-09-26" },
   // 2026-10-17: shipping for collection sorting (shipping in, return shipping in the quote).
@@ -77,7 +79,8 @@ export function seoRoutes(): SeoRoute[] {
       path: sellAreaPath(area.slug),
       changefreq: "monthly" as const,
       priority: "0.7",
-      lastmod: SEO_REFRESH,
+      // 2026-11-02: the payout-rate badge in each area page's opening.
+      lastmod: PAYOUT_RATES,
     })),
     ...REFERRAL_PAGES.map((page) => ({
       path: page.path,

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useRouter } from "../lib/router";
 import { useAuth } from "../lib/AuthContext";
-import { STORE_CREDIT_BONUS_PERCENT, storeCreditValueCents } from "../lib/sellTypes";
+import { STORE_CREDIT_BONUS_PERCENT, offeredCreditCents } from "../lib/sellTypes";
 import { formatCents } from "../lib/money";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { useSEO } from "../lib/useSEO";
 import { lookupSellOffer, respondToSellOffer, type SellOfferLookup } from "../lib/sellApi";
 
@@ -131,7 +131,7 @@ export default function RespondToOfferPage() {
         offer_responded_at: new Date().toISOString(),
         payout_method: response === "accepted" ? payout ?? "paypal" : offer.payout_method,
         store_credit_bonus_percent:
-          response === "accepted" && payout === "store_credit"
+          response === "accepted" && payout === "store_credit" && offer.credit_offer_cents == null
             ? STORE_CREDIT_BONUS_PERCENT
             : offer.store_credit_bonus_percent,
       });
@@ -157,9 +157,10 @@ export default function RespondToOfferPage() {
     const greeting = offer.first_name ? `Hi ${offer.first_name},` : "Hi there,";
 
     if (offer.offer_response) {
-      const creditCents = storeCreditValueCents(
+      const creditCents = offeredCreditCents(
         offer.offer_value_cents,
-        offer.store_credit_bonus_percent ?? STORE_CREDIT_BONUS_PERCENT,
+        offer.credit_offer_cents,
+        offer.store_credit_bonus_percent,
       );
       const respondedCopy: Record<"accepted" | "declined" | "countered", string> = {
         accepted:
@@ -226,6 +227,13 @@ export default function RespondToOfferPage() {
           <p style={{ color: "#fff", fontSize: "2rem", fontWeight: 700, margin: 0 }}>
             {money(offer.offer_value_cents)}
           </p>
+          <p style={{ color: "#e7e0f2", margin: "4px 0 0" }}>
+            by PayPal, or{" "}
+            <strong style={{ color: "#fff" }}>
+              {money(offeredCreditCents(offer.offer_value_cents, offer.credit_offer_cents, offer.store_credit_bonus_percent))}
+            </strong>{" "}
+            in store credit
+          </p>
         </div>
 
         {submitError && (
@@ -277,9 +285,9 @@ export default function RespondToOfferPage() {
               />
               <span>
                 <strong>
-                  {money(storeCreditValueCents(offer.offer_value_cents))} in store credit
-                </strong>{" "}
-                <span className="gg-badge">+{STORE_CREDIT_BONUS_PERCENT}%</span>
+                  {money(offeredCreditCents(offer.offer_value_cents, offer.credit_offer_cents))} in
+                  store credit
+                </strong>
                 <span className="gg-card-meta" style={{ display: "block" }}>
                   Spend it on any singles in our shop. Added to your Geega Games account when
                   the purchase is completed.

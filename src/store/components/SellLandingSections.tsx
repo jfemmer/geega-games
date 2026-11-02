@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
+import { ageConditionTiers, type SellDefaultCondition } from "../lib/sellTypes";
 import {
-  STORE_CREDIT_BONUS_PERCENT,
-  ageConditionTiers,
-  type SellDefaultCondition,
-} from "../lib/sellTypes";
+  CREDIT_MIN_LABEL,
+  CREDIT_SUMMARY,
+  OFFER_REPLY_HOURS,
+  SINGLES_CREDIT_PERCENT,
+  SINGLES_PAYPAL_MAX_PERCENT,
+} from "../lib/buyTerms";
 import { GOOGLE_REVIEW_URL, HUB_CITY, MAX_DRIVE_HOURS } from "../../seo/site";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import { TRADE_IN_PATH } from "../lib/tradeCenter";
@@ -31,8 +34,9 @@ import {
 // lives on the pages themselves; only genuinely identical facts (what we buy,
 // how we pay, where we travel) are shared here.
 //
-// Owner's content rule: no payout-percentage or turnaround promises. The one
-// approved number is the store-credit bonus (STORE_CREDIT_BONUS_PERCENT).
+// Owner's content rule: only numbers the owner has confirmed. Payout rates and
+// the reply-time promise live in src/store/lib/buyTerms.ts (confirmed
+// 2026-11-02); quote them from there, never type them into the copy.
 //
 // Several sections here came out of seller research (2026-09-25): what makes
 // people pick a buyer is protected payment, no pressure, fair condition
@@ -97,10 +101,8 @@ export function TrustSection() {
         <div className="gg-collect-card">
           <h3>Protected payment</h3>
           <p>
-            PayPal Goods &amp; Services, protected for both of us, or store credit worth{" "}
-            {STORE_CREDIT_BONUS_PERCENT}% more on a free Geega Games account (a $100 PayPal offer
-            becomes ${100 + STORE_CREDIT_BONUS_PERCENT} in credit). We never ask you to use Friends
-            &amp; Family.
+            PayPal Goods &amp; Services, protected for both of us, or store credit on a free Geega
+            Games account ({CREDIT_SUMMARY}). We never ask you to use Friends &amp; Family.
           </p>
         </div>
         <div className="gg-collect-card">
@@ -376,12 +378,61 @@ export function NoSurprisesSection() {
   );
 }
 
-/** Store-credit bonus, surfaced near the top of the Magic sell pages. */
+/** The payout rates in one line, near the top of the Magic sell pages. */
 export function CreditBonusBadge() {
   return (
     <p className="gg-credit-badge">
-      Take store credit and get <strong>{STORE_CREDIT_BONUS_PERCENT}% more</strong>
+      Singles shipped to us: up to <strong>{SINGLES_PAYPAL_MAX_PERCENT}% of TCG low</strong> by PayPal, or{" "}
+      <strong>{SINGLES_CREDIT_PERCENT}% in store credit</strong> at {CREDIT_MIN_LABEL}+
     </p>
+  );
+}
+
+/**
+ * How offers are priced, stated plainly: the number sellers measure every
+ * offer against (TCG low), what we pay, and when they'll hear back. No local
+ * competitor publishes this, and "how did you get that number?" is sellers'
+ * biggest worry. Rates come from buyTerms.ts; the tiers aren't published.
+ */
+export function HowWePriceSection() {
+  return (
+    <section className="gg-collect-section gg-collect-pricing" id="how-we-price">
+      <h2>How we price your cards</h2>
+      <p className="gg-collect-lead">
+        Every single is priced from its <strong>TCG low</strong>: the lowest current price for that
+        card and condition on TCGplayer, the number most sellers already check. Here&rsquo;s what
+        we pay on singles you ship to us.
+      </p>
+      <div className="gg-collect-grid gg-collect-grid--2">
+        <div className="gg-collect-card gg-pricing-rate">
+          <p className="gg-pricing-figure">Up to {SINGLES_PAYPAL_MAX_PERCENT}%</p>
+          <h3>of TCG low, by PayPal</h3>
+          <p>
+            Paid by PayPal Goods &amp; Services. The rate depends on each card&rsquo;s price, on a
+            set tier scale.
+          </p>
+        </div>
+        <div className="gg-collect-card gg-pricing-rate">
+          <p className="gg-pricing-figure">{SINGLES_CREDIT_PERCENT}%</p>
+          <h3>of TCG low, in store credit</h3>
+          <p>
+            On singles worth {CREDIT_MIN_LABEL} or more, if you&rsquo;d rather have credit to spend
+            on any singles in our shop.
+          </p>
+        </div>
+      </div>
+      <ul className="gg-pricing-notes">
+        <li>
+          <strong>An offer within {OFFER_REPLY_HOURS} hours</strong> of sending your photos, or a
+          few questions if we need a closer look.
+        </li>
+        <li>
+          Condition counts: we price each card at the condition it&rsquo;s really in, and if that
+          changes your offer when we see the cards, we show you which cards and why.
+        </li>
+        <li>One offer on the whole lot, and no obligation to take it.</li>
+      </ul>
+    </section>
   );
 }
 
@@ -705,8 +756,8 @@ export function BuylistCompareSection() {
         <div className="gg-collect-card">
           <h3>Credit pays more, here and there</h3>
           <p>
-            Most buylists add a bonus for store credit; ours is {STORE_CREDIT_BONUS_PERCENT}% on any
-            offer. Trading staples in for singles instead?{" "}
+            Most buylists pay more in store credit, and so do we: {CREDIT_SUMMARY}, against up
+            to {SINGLES_PAYPAL_MAX_PERCENT}% by PayPal. Trading staples in for singles instead?{" "}
             <Link to={TRADE_IN_PATH}>Trade-ins pay {ADVERTISED_TRADE_TERMS.creditRatePercent}% of TCG low</Link> in credit.
           </p>
         </div>
@@ -728,7 +779,7 @@ export function TradeInCallout() {
         Swap the staples you don&rsquo;t play for singles you want: we credit {rate}% of each
         card&rsquo;s TCG low toward any card in our shop, by mail or at a meetup in {HUB_CITY}.
         Cards worth {moneyShort(ADVERTISED_TRADE_TERMS.minCardValueCents)}+ each; whole collections and
-        bulk are better sold, with the {STORE_CREDIT_BONUS_PERCENT}% credit bonus.
+        bulk are better sold, for PayPal or store credit.
       </p>
       <div className="gg-collect-hero-actions">
         <Link to={TRADE_IN_PATH} className="gg-btn gg-btn-ghost">

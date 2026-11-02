@@ -23,7 +23,7 @@ import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import { TRADE_IN_PATH } from "../lib/tradeCenter";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { CREDIT_SUMMARY } from "../lib/buyTerms";
 import { SHIPPING, formatCents, formatCentsShort } from "../lib/money";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
 import { SHIPS_TO_SUMMARY } from "../lib/usAddress";
@@ -36,9 +36,8 @@ import {
   SORTING_SHIPPING_NOTICE,
 } from "../lib/sortingService";
 
-export const SUPPORT_EMAIL =
-  (import.meta.env.VITE_SUPPORT_EMAIL as string | undefined) ??
-  "support@geega-games.com";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
+export { SUPPORT_EMAIL };
 
 export function HomePage() {
   useSEO({
@@ -93,8 +92,8 @@ export function HomePage() {
         <p className="gg-collect-lead">
           Swap your Magic: The Gathering staples for the singles you want. We credit{" "}
           {ADVERTISED_TRADE_TERMS.creditRatePercent}% of each card&rsquo;s TCG low toward any card in the shop,
-          by mail from anywhere in the US or at a meetup in St. Louis. Selling instead? Take store
-          credit on any offer and get {STORE_CREDIT_BONUS_PERCENT}% more.
+          by mail from anywhere in the US or at a meetup in St. Louis. Selling instead? Store credit pays{" "}
+          {CREDIT_SUMMARY}.
         </p>
         <div className="gg-collect-hero-actions">
           <Link to={TRADE_IN_PATH} className="gg-btn gg-btn-ghost">

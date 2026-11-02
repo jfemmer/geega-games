@@ -1,13 +1,20 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
-import { SUPPORT_EMAIL } from "./StaticPages";
-import { STORE_CREDIT_BONUS_PERCENT } from "../lib/sellTypes";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
+import {
+  CREDIT_MIN_LABEL,
+  OFFER_PROMISE,
+  OFFER_REPLY_HOURS,
+  SINGLES_CREDIT_PERCENT,
+  SINGLES_PAYPAL_MAX_PERCENT,
+} from "../lib/buyTerms";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import {
   BuylistCompareSection,
   CreditBonusBadge,
   FaqSection,
   HeroPoints,
+  HowWePriceSection,
   PartnerCategoriesSection,
   PricesMoveSection,
   SellCtaSection,
@@ -41,12 +48,9 @@ import {
 // have their own pages (/sell-magic-cards/st-louis and /sell-magic-cards/:area),
 // all linked from here.
 //
-// Content rule from the business owner: no payout-percentage or fixed-
-// turnaround claims anywhere on this page — those aren't finalized, and
-// promising a number here would be a claim we can't back up at checkout time.
-// One approved exception (2026-09-25): the store-credit BONUS relative to
-// the PayPal offer (STORE_CREDIT_BONUS_PERCENT), which the offer page and
-// /api/sell/respond-to-offer actually honor.
+// Content rule from the business owner: only numbers the owner has confirmed.
+// The payout rates and the 24-hour offer promise (confirmed 2026-11-02) come
+// from src/store/lib/buyTerms.ts; never type a rate or a turnaround here.
 //
 // Order and wording follow seller research (2026-09-27): the promises and
 // the steps come before the form, the worries sellers raise most (payment,
@@ -56,7 +60,7 @@ import {
 const CTA_LABEL = "Get my free offer";
 
 const HERO_POINTS = [
-  "Free offer — no obligation to sell",
+  `${OFFER_PROMISE} — free, no obligation to sell`,
   "Unsorted, bulk or inherited is fine",
   "Paid by PayPal Goods & Services, protected for both of us",
   "Any change to your offer, explained card by card",
@@ -67,12 +71,15 @@ const HERO_POINTS = [
 const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "How do you pay?",
-    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more than the PayPal amount (a $100 PayPal offer becomes $${100 + STORE_CREDIT_BONUS_PERCENT} in credit). Store credit is saved to a free account and works on any singles in our shop.`,
+    answer: `Your choice when you accept our offer: PayPal Goods & Services, or Geega Games store credit. On singles you ship to us we pay up to ${SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by PayPal, or ${SINGLES_CREDIT_PERCENT}% of TCG low in store credit on singles worth ${CREDIT_MIN_LABEL} or more. Store credit is saved to a free account and works on any singles in our shop.`,
   },
   {
     question: "How do you decide what to offer?",
-    answer:
-      "We look at what each card is selling for right now, how quickly it sells and what condition it's in, then make one offer on the whole lot. Until we see the cards in person, we go by a starting condition based on each card's age.",
+    answer: `Each card starts from its TCG low: the lowest current price for that card and condition on TCGplayer. We pay up to ${SINGLES_PAYPAL_MAX_PERCENT}% of it by PayPal on a tier scale set by the card's price, or ${SINGLES_CREDIT_PERCENT}% in store credit on singles worth ${CREDIT_MIN_LABEL}+, and add it up into one offer on the whole lot. Until we see the cards in person, we go by a starting condition based on each card's age.`,
+  },
+  {
+    question: "How soon will I get an offer?",
+    answer: `Within ${OFFER_REPLY_HOURS} hours of sending the form. If the photos don't show enough to price something, we'll reply with a few questions instead, in the same time.`,
   },
   {
     question: "What if my cards are in better or worse condition than I thought?",
@@ -158,23 +165,25 @@ const JSON_LD = [
 
 export default function SellCollectionPage() {
   useSEO({
-    // Under 60 characters before the brand, with the one thing competitors
-    // don't say (the credit bonus) in it.
-    title: `Sell Magic Cards: Free Offer, +${STORE_CREDIT_BONUS_PERCENT}% in Store Credit | Geega Games`,
-    description: `Get a free offer on your Magic: The Gathering cards, one card or a whole unsorted collection. Paid by PayPal, or store credit worth ${STORE_CREDIT_BONUS_PERCENT}% more. Ship from anywhere in the US, meet up in ${HUB_CITY}, or we drive to you.`,
+    // Under 60 characters before the brand: the words sellers search
+    // ("magic cards", "mtg collection") and the one thing no local competitor
+    // promises (an offer within 24 hours). The H1 says the same, so Google's
+    // title rewrites draw from matching words.
+    title: `Sell Magic Cards & MTG Collections: Offer in ${OFFER_REPLY_HOURS} Hours | Geega Games`,
+    description: `A free offer within ${OFFER_REPLY_HOURS} hours on your Magic cards, one single or a whole collection. Shipped singles: up to ${SINGLES_PAYPAL_MAX_PERCENT}% of TCG low by PayPal, ${SINGLES_CREDIT_PERCENT}% in credit at ${CREDIT_MIN_LABEL}+.`,
     path: "/sell-my-collection",
     jsonLd: JSON_LD,
   });
 
   return (
-    <div className="gg-page">
+    <div className="gg-page gg-sell-landing">
       <section className="gg-collect-hero">
-        <h1>Sell your Magic cards — one card or a whole collection</h1>
+        <h1>Sell your Magic: The Gathering cards or collection</h1>
         <p className="gg-collect-hero-sub">
-          Binders you haven&rsquo;t opened in years, boxes from a basement or an estate, or a few
-          valuable singles. Ship them from anywhere in the US, meet up with us in {HUB_CITY}, or
-          we&rsquo;ll drive to you — no sorting or pricing needed. You&rsquo;re paid by PayPal, or in
-          store credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
+          Binders you haven&rsquo;t opened in years, boxes from a basement or an estate, a stack of
+          MTG bulk, or a few valuable singles. Send a few photos and get an offer within{" "}
+          {OFFER_REPLY_HOURS} hours. Ship from anywhere in the US, meet up with us in {HUB_CITY}, or
+          we&rsquo;ll drive to you — no sorting or pricing needed.
         </p>
         <HeroPoints points={HERO_POINTS} />
         <CreditBonusBadge />
@@ -197,8 +206,8 @@ export default function SellCollectionPage() {
             one. &ldquo;Not sure&rdquo; is a fine answer to anything.
           </li>
           <li>
-            <strong>Get your offer.</strong> One offer on the whole lot — free, and with no
-            obligation.
+            <strong>Get your offer within {OFFER_REPLY_HOURS} hours.</strong> One offer on the whole
+            lot — free, and with no obligation.
           </li>
           <li>
             <strong>Ship it or meet up.</strong> Ship from anywhere in the US, meet us in {HUB_CITY},
@@ -207,17 +216,19 @@ export default function SellCollectionPage() {
           <li>
             <strong>Get paid.</strong> We check every card; if your offer changes, we tell you which
             cards and why, and you still decide. Then choose PayPal Goods &amp; Services or store
-            credit worth {STORE_CREDIT_BONUS_PERCENT}% more.
+            credit (<a href="#how-we-price">how we price</a>).
           </li>
         </ol>
       </section>
+
+      <HowWePriceSection />
 
       <section className="gg-collect-section" id="quick-quote">
         <h2>Get a free offer from a few photos</h2>
         <p className="gg-collect-lead">
           Tell us what you have in a few taps, then add photos if you like — binder pages, box tops,
-          anything that looks valuable — and where to send your offer. We&rsquo;ll reply with an offer
-          or a few questions. No card-by-card list needed.
+          anything that looks valuable — and where to send your offer. We&rsquo;ll reply within{" "}
+          {OFFER_REPLY_HOURS} hours with an offer or a few questions. No card-by-card list needed.
         </p>
         <div className="gg-referral-card">
           <QuickPhotoQuote />

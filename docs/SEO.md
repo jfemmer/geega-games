@@ -6,7 +6,7 @@ cards: nationwide by mail, locally in St. Louis, and in person within about a
 targets, and the off-site work that decides local rankings. The site can't
 handle that off-site part on its own.
 
-_Last updated: 2026-09-25_
+_Last updated: 2026-11-02_
 
 ---
 
@@ -450,8 +450,42 @@ answer those worries in plain words:
   - "Pays very competitively" is now the approved wording, "buys very
     competitively".
 
-Before adding claims, remember the content rule: no payout percentages, and no
-turnaround or reply-time promises, until the owner confirms them (section 6).
+Before adding claims, remember the content rule: only numbers the owner has
+confirmed. The confirmed ones live in `src/store/lib/buyTerms.ts` (see below);
+quote them from there, never type them into copy.
+
+### Published rates and reply time (owner, 2026-11-02)
+
+- **Rates** (`src/store/lib/buyTerms.ts`): singles shipped to us, up to 70% of
+  TCG low by PayPal Goods & Services, on a tier scale set by each card's price
+  (the tiers aren't published); store credit 80% of TCG low on singles worth
+  $20+. "Store credit worth 20% more" is gone from every marketing page, and
+  `tests/prerender.test.tsx` fails if it comes back.
+- **Reply time:** an offer within 24 hours, in the sell page title, opening,
+  steps, FAQ, the form's thank-you message and the confirmation email.
+- **Still open:** meetup rates (the copy says "shipped to us" for that reason),
+  the credit rate under $20, and bulk rates. Don't publish any until confirmed.
+- **Offers carry both amounts.** Staff enter a PayPal amount and a store-credit
+  amount when sending an offer (admin lead drawer → `send-offer`), worked out
+  from these rates. The offer email and `/sell/offer` show both, and the credit
+  trigger issues the credit amount offered (scaled if the final purchase amount
+  differs). Offers sent before 2026-11-02 keep PayPal + 20%
+  (`sell_submissions.credit_offer_cents`, migration 20261102120000;
+  `creditToIssueCents` in `sellTypes.ts` mirrors the trigger).
+- **Main sell page title:** "Sell Magic Cards & MTG Collections: Offer in 24
+  Hours". It carries "mtg" and "collection", the words most seller searches
+  use, and the H1 matches so Google's title rewrites draw from the same words.
+- **"How we price your cards"** (`HowWePriceSection`) sits right above the
+  photo form on `/sell-my-collection`.
+- **Phones:** on the sell landing pages (`.gg-sell-landing`) the store header
+  scrolls away instead of staying pinned; the "Get my free offer" bar stays.
+- **Speed:** every storefront page is its own chunk (`src/store/lib/lazyPage.tsx`);
+  the main bundle went from 1.27 MB to 300 KB. `src/main.tsx` preloads the
+  current page before mounting so the prerendered HTML never flashes blank,
+  and each prerendered page carries `modulepreload` links for its own chunk
+  (from the Vite manifest, which the prerender deletes afterwards).
+- **New guide:** `/guides/fair-offer-for-magic-cards` ("what's a fair offer",
+  lowball signs, how to check an offer).
 
 ## 5. Content backlog (one new guide every 2–4 weeks)
 
@@ -500,9 +534,9 @@ These change what the pages should say. Update the copy once they're settled:
 - **PayPal fee:** PayPal usually charges the person *receiving* a Goods &
   Services payment, which here is the seller. The where-to-sell guide says a
   collection buyer means "no fees". Either cover the fee or disclose it.
-- **Reply time and payment timing (Magic):** both Card Kingdom and Star City
-  Games publish these. If you have a typical reply time, it's one of the
-  strongest things the page could add.
+- **Payment timing (Magic):** both Card Kingdom and Star City Games publish
+  when they pay. The reply time (24 hours) is now published; payment timing
+  isn't yet.
 - **The buying partner:** these would be the most persuasive additions to the
   referral pages, but only the partner can confirm them:
   - how they pay (cash at meetups?) and how fast;

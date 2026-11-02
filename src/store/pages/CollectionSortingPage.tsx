@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSEO } from "../lib/useSEO";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 import { FaqSection, HeroPoints } from "../components/SellLandingSections";
 import SortingCalculator from "../components/sorting/SortingCalculator";
 import { EMPTY_SORTING_PLAN, type SortingPlan } from "../lib/sortingForm";

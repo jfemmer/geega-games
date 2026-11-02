@@ -144,7 +144,11 @@ vi.mock("../src/supabase", () => ({
 
 // Imported dynamically so it resolves strictly after the mock above is
 // registered, regardless of any import-hoisting subtleties.
-const { default: App } = await import("../src/App");
+const { default: App, preloadRoute } = await import("../src/App");
+
+// Pages load on demand; the site loads the page's code before showing it
+// (src/main.tsx), so the tests do too.
+await Promise.all([preloadRoute("/"), preloadRoute("/shop")]);
 
 function goTo(path: string) {
   window.history.pushState({}, "", path);

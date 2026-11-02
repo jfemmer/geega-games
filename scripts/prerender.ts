@@ -26,7 +26,7 @@
 //
 // Fails the build (non-zero exit) rather than ship a partial or broken site.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { seoRoutes } from "../src/seo/routes.js";
@@ -38,6 +38,38 @@ import { expectedPages, routingProblems, type VercelRoutingConfig } from "./verc
 interface PrerenderModule {
   siteUrl: string;
   renderPage: (path: string) => { html: string; seo: PageSEO | null };
+  pagesReady: Promise<void>;
+  routeModuleFor: (path: string) => string | null;
+}
+
+/** The parts of a Vite manifest entry used here. */
+interface ManifestChunk {
+  file: string;
+  imports?: string[];
+}
+type ViteManifest = Record<string, ManifestChunk>;
+
+/**
+ * <link rel="modulepreload"> tags for a page's own chunk and the chunks it
+ * imports, so the browser fetches the page's code alongside the main bundle
+ * instead of only after it runs (pages load on demand: src/store/lib/
+ * lazyPage.tsx). Files the template already preloads are skipped.
+ */
+function pageModulePreloads(manifest: ViteManifest, src: string, template: string): string {
+  const entry = manifest[src];
+  if (!entry) throw new Error(`No chunk for ${src} in the Vite manifest — is its lazyPage source path right?`);
+  const files = new Set<string>();
+  const visit = (key: string) => {
+    const chunk = manifest[key];
+    if (!chunk || files.has(chunk.file)) return;
+    files.add(chunk.file);
+    for (const dep of chunk.imports ?? []) visit(dep);
+  };
+  visit(src);
+  return [...files]
+    .filter((file) => !template.includes(`/${file}"`))
+    .map((file) => `<link rel="modulepreload" crossorigin href="/${file}">`)
+    .join("\n");
 }
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -76,7 +108,16 @@ async function main(): Promise<void> {
   const moduleScript = /<script type="module"[^>]*src="\/assets\/[^"]+"[^>]*><\/script>/.exec(template)?.[0];
   if (!moduleScript) throw new Error("dist/index.html has no built module script — did `vite build` run?");
 
-  const { renderPage, siteUrl } = (await import(pathToFileURL(SSR_ENTRY).href)) as PrerenderModule;
+  const { renderPage, siteUrl, pagesReady, routeModuleFor } = (await import(
+    pathToFileURL(SSR_ENTRY).href
+  )) as PrerenderModule;
+  await pagesReady;
+  const manifestFile = join(DIST, ".vite", "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8")) as ViteManifest;
+  const preloadsFor = (path: string): string => {
+    const src = routeModuleFor(path);
+    return src ? pageModulePreloads(manifest, src, template) : "";
+  };
 
   // The neutral shell first: vercel.json serves it for every app-only page
   // and the catalog function builds on it, so it must exist even if a route
@@ -92,7 +133,11 @@ async function main(): Promise<void> {
   }
   await writePage(
     join(DIST, "404.html"),
-    fillTemplate(template, renderSeoHead(notFound.seo, { noIndex: true }), notFound.html),
+    fillTemplate(
+      template,
+      `${renderSeoHead(notFound.seo, { noIndex: true })}\n${preloadsFor("/__not-found__")}`,
+      notFound.html,
+    ),
   );
 
   const failures: string[] = [];
@@ -121,9 +166,16 @@ async function main(): Promise<void> {
         : undefined;
     await writePage(
       outputFile(route.path),
-      fillTemplate(template, renderSeoHead(seo, { origin: siteUrl, verification }), html),
+      fillTemplate(
+        template,
+        `${renderSeoHead(seo, { origin: siteUrl, verification })}\n${preloadsFor(route.path)}`,
+        html,
+      ),
     );
   }
+
+  // The manifest was only needed here; don't publish the build's file map.
+  await rm(join(DIST, ".vite"), { recursive: true, force: true });
 
   if (failures.length) {
     throw new Error(`Prerender failed for ${failures.length} route(s):\n  ${failures.join("\n  ")}`);

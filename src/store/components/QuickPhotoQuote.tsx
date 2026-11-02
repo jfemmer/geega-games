@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { OFFER_REPLY_HOURS } from "../lib/buyTerms";
 import { CollectionPhotoUpload, MAX_PHOTO_BYTES } from "./sell/CollectionPhotoUpload";
 import { submitSellForm, uploadSellPhoto } from "../lib/sellApi";
 import { rememberClaim } from "../lib/guestClaims";
@@ -229,8 +230,8 @@ export default function QuickPhotoQuote({ defaultHandoff = "not_sure" }: { defau
         <ol className="gg-referral-next">
           <li>We look over your photos and notes.</li>
           <li>
-            We reply {CONTACT_PHRASE[contactMethod]} with an offer, or with a few questions if we need
-            a closer look.
+            Within {OFFER_REPLY_HOURS} hours, we reply {CONTACT_PHRASE[contactMethod]} with an offer, or
+            with a few questions if we need a closer look.
           </li>
           <li>If you accept, we set up shipping or a meetup — whichever works for you.</li>
         </ol>

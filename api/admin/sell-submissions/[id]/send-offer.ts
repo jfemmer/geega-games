@@ -24,9 +24,24 @@ import { sendSellSubmissionOffer } from "../../../_lib/sellSubmissionEmails.js";
 // THIS one. Without this reset, a seller who countered offer #1 would find
 // the public /sell/offer page permanently showing "you already responded"
 // even after staff sent a brand-new offer #2.
+//
+// Every offer carries two amounts (migration 20261102120000): the PayPal
+// amount (offerValueCents) and the store-credit amount (creditOfferCents),
+// both worked out by staff from the published rates (src/store/lib/
+// buyTerms.ts). The seller picks one when they accept, and the credit amount
+// is what the DB issues if they pick store credit.
 
 interface Body {
   offerValueCents?: unknown;
+  creditOfferCents?: unknown;
+}
+
+/** The largest offer this endpoint takes: a typo guard, not a business limit. */
+const MAX_OFFER_CENTS = 100_000_000;
+
+function positiveCents(value: unknown): number | null {
+  const cents = Math.round(Number(value));
+  return Number.isFinite(cents) && cents > 0 && cents <= MAX_OFFER_CENTS ? cents : null;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -37,9 +52,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!id) throw new HttpError(400, "Submission id is required.");
 
     const body = (await readJsonBody(req)) as Body;
-    const offerValueCents = Math.round(Number(body.offerValueCents));
-    if (!Number.isFinite(offerValueCents) || offerValueCents <= 0) {
-      throw new HttpError(400, "A positive offer amount is required.");
+    const offerValueCents = positiveCents(body.offerValueCents);
+    if (offerValueCents == null) {
+      throw new HttpError(400, "A positive PayPal offer amount is required.");
+    }
+    const creditOfferCents = positiveCents(body.creditOfferCents);
+    if (creditOfferCents == null) {
+      throw new HttpError(400, "A positive store-credit offer amount is required.");
     }
 
     const admin = getSupabaseAdmin();
@@ -48,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from("sell_submissions")
       .update({
         offer_value_cents: offerValueCents,
+        credit_offer_cents: creditOfferCents,
         status: "offer_made",
         offer_sent_at: now,
         offer_response: null,
@@ -63,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The submission is already updated either way — an email failure here
     // must not roll that back or block staff from seeing the new status.
     try {
-      await sendSellSubmissionOffer(id, offerValueCents);
+      await sendSellSubmissionOffer(id, offerValueCents, creditOfferCents);
     } catch (mailErr) {
       console.error("[admin/sell-submissions/send-offer] email failed", mailErr);
     }

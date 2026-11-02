@@ -1,6 +1,6 @@
 import { Link } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
-import { SUPPORT_EMAIL } from "./StaticPages";
+import { SUPPORT_EMAIL } from "../lib/supportEmail";
 
 const EFFECTIVE_DATE = "October 27, 2026";
 

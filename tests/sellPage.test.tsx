@@ -39,7 +39,11 @@ vi.stubGlobal("fetch", fetchMock);
 URL.createObjectURL = vi.fn(() => "blob:mock-url");
 URL.revokeObjectURL = vi.fn();
 
-const { default: App } = await import("../src/App");
+const { default: App, preloadRoute } = await import("../src/App");
+
+// Pages load on demand; the site loads the page's code before showing it
+// (src/main.tsx), so the tests do too.
+await Promise.all([preloadRoute("/sell")]);
 
 function goTo(path: string) {
   window.history.pushState({}, "", path);

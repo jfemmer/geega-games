@@ -3802,6 +3802,7 @@ export type Database = {
             | Database["public"]["Enums"]["sell_offer_response"]
             | null
           offer_sent_at: string | null
+          credit_offer_cents: number | null
           offer_value_cents: number | null
           payout_method: string | null
           store_credit_bonus_percent: number | null
@@ -3857,6 +3858,7 @@ export type Database = {
             | Database["public"]["Enums"]["sell_offer_response"]
             | null
           offer_sent_at?: string | null
+          credit_offer_cents?: number | null
           offer_value_cents?: number | null
           payout_method?: string | null
           store_credit_bonus_percent?: number | null
@@ -3912,6 +3914,7 @@ export type Database = {
             | Database["public"]["Enums"]["sell_offer_response"]
             | null
           offer_sent_at?: string | null
+          credit_offer_cents?: number | null
           offer_value_cents?: number | null
           payout_method?: string | null
           store_credit_bonus_percent?: number | null
