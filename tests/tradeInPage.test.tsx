@@ -27,7 +27,7 @@ describe("the trade-in landing page", () => {
     const rate = ADVERTISED_TRADE_TERMS.creditRatePercent;
     expect(html).toContain(`Trade in your Magic cards for ${rate}% of TCG low in store credit`);
     expect(html).toContain(`${rate}% of TCG low`);
-    expect(html).toContain("$10 or more each");
+    expect(html).toContain("$15 or more each");
     expect(html).toContain("Trades start at <strong>$125</strong>");
     // 80% of $125 needs $156.25 of their cards.
     expect(html).toContain("$156.25");
