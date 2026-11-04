@@ -459,12 +459,12 @@ quote them from there, never type them into copy.
 - **Rates** (`src/store/lib/buyTerms.ts`): singles shipped to us, up to 70% of
   TCG low by PayPal Goods & Services, on a tier scale set by each card's price
   (the tiers aren't published); store credit 80% of TCG low on singles worth
-  $20+. "Store credit worth 20% more" is gone from every marketing page, and
+  $15+ (lowered from $20 on 2026-11-04). "Store credit worth 20% more" is gone from every marketing page, and
   `tests/prerender.test.tsx` fails if it comes back.
 - **Reply time:** an offer within 24 hours, in the sell page title, opening,
   steps, FAQ, the form's thank-you message and the confirmation email.
 - **Still open:** meetup rates (the copy says "shipped to us" for that reason),
-  the credit rate under $20, and bulk rates. Don't publish any until confirmed.
+  the credit rate under $15, and bulk rates. Don't publish any until confirmed.
 - **Offers carry both amounts.** Staff enter a PayPal amount and a store-credit
   amount when sending an offer (admin lead drawer → `send-offer`), worked out
   from these rates. The offer email and `/sell/offer` show both, and the credit
