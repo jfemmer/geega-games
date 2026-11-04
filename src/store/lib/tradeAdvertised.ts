@@ -19,7 +19,7 @@ export const ADVERTISED_TRADE_TERMS: TradeTerms = {
   paused: false,
   pauseMessage: "We're not taking new trades right now. Trades already underway carry on as normal.",
   creditRatePercent: 80,
-  minCardValueCents: 1000,
+  minCardValueCents: 1500,
   conditionPercents: { NM: 100, LP: 90, MP: 75, HP: 60, DMG: 40 },
   draftDays: 14,
   revisionHours: 168,
@@ -71,7 +71,7 @@ export const ADVERTISED_TRADE_TERMS: TradeTerms = {
   localMeetSpotName: "Schnuck's at Olive and Mason",
   localMeetSpotAddress: "12756 Olive Blvd St. Louis, MO 63141",
   localCreditRatePercent: 80,
-  localMinCardValueCents: 1000,
+  localMinCardValueCents: 1500,
   localMinTradeValueCents: 10000,
   localCashPayoutEnabled: false,
 };
