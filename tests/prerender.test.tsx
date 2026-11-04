@@ -209,7 +209,7 @@ describe("build-time prerender", () => {
     expect(text).toContain("How we price your cards");
     expect(text).toContain("Up to 70%");
     expect(text).toContain("of TCG low, in store credit");
-    expect(text).toContain("singles worth $20 or more");
+    expect(text).toContain("singles worth $15 or more");
     expect(text).toContain("An offer within 24 hours");
     // The pricing box sits before the form it explains.
     expect(html.indexOf('id="how-we-price"')).toBeLessThan(html.indexOf('id="quick-quote"'));
