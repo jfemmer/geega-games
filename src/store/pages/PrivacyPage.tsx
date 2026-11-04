@@ -278,7 +278,8 @@ export function PrivacyPage() {
         sent to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
       </p>
       <p className="gg-card-meta">
-        Geega Games LLC — [insert registered business address before publishing to the public].
+        Geega Games LLC · St. Louis, Missouri, United States ·{" "}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
       </p>
     </div>
   );
