@@ -60,6 +60,16 @@ export function isListCopyOf(copy: Pick<CatalogEntry, "cn">, original: Pick<Cata
 const SEARCH_K = 40;
 /** A side whose best match pixel-checks at least this well is the face, the right way up. */
 const ORIENTATION_CONFIDENT = 0.6;
+/**
+ * Scryfall's picture of the standard Magic card back, fetched (and cached)
+ * like any reference image. Scanning both sides means every ordinary card
+ * comes with this on its other side.
+ */
+export const CARD_BACK_URL = "https://backs.scryfall.io/normal/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg";
+/** A side pixel-checking at least this well against the card back is the card back... */
+export const CARD_BACK_LIKENESS = 0.5;
+/** ...as long as it looks that much more like the card back than the other side does. */
+export const CARD_BACK_MARGIN = 0.2;
 const VERIFY_TOP = 10;
 const VERIFY_MAX = 18;
 const RESULT_CANDIDATES = 6;
@@ -147,6 +157,19 @@ export class CardRecognizer {
     const found = await Promise.all(sources.map((s) => findCard(s.input, { fallbackDpi: input.dpi ?? this.deps.fallbackDpi })));
     t = lap("find", t);
 
+    // The Magic card back is never the face. Matching both sides against the
+    // library isn't enough to rule it out: a few printings have a face that
+    // looks just like it (Mystery Booster 2's playtest double-faced cards,
+    // such as Plant a Sapling // Fully-Grown Treefolk), and the card back
+    // matched one of those better than the real face matched its printing,
+    // so staff were asked to identify the back. With one side clearly the
+    // card back, only the other side is identified. When neither (or both)
+    // look like it — a double-faced card, or no reference to compare with —
+    // both sides are tried as before.
+    const cardBackSide = found.length > 1 ? await this.cardBackSide(found.map((f) => f.image)) : null;
+    const faceSides = found.map((_, side) => side).filter((side) => side !== cardBackSide);
+    t = lap("cardBack", t);
+
     // Which side is the face, and which way up? Each (side, way-up)
     // combination is fingerprinted, searched, and pixel-checked against its
     // best library match: the face, the right way up, matches its printing
@@ -177,11 +200,11 @@ export class CardRecognizer {
       combos.push(...added);
     };
     const orientStart = performance.now();
-    await tryCombos(found.map((_, side) => ({ side, flip: false })));
+    await tryCombos(faceSides.map((side) => ({ side, flip: false })));
     const convincing = combos.filter((c) => c.check >= ORIENTATION_CONFIDENT);
     if (convincing.length === 0) {
-      await tryCombos(found.map((_, side) => ({ side, flip: true })));
-    } else if (found.length > 1) {
+      await tryCombos(faceSides.map((side) => ({ side, flip: true })));
+    } else if (faceSides.length > 1) {
       // Upright face found. If it's a double-faced printing, its other face
       // may have come through upside down on the other side — check that way too.
       const face = convincing.reduce((a, b) => (b.check > a.check ? b : a));
@@ -199,7 +222,10 @@ export class CardRecognizer {
     const best = combos.reduce((a, b) => (rank(b) > rank(a) ? b : a));
     let faceCombo = best;
     let otherCombo: Combo | null = null;
-    if (found.length > 1) {
+    if (cardBackSide !== null) {
+      // Not searched: it's the card back, uploaded as the scan's back.
+      otherCombo = { side: cardBackSide, flip: false, image: found[cardBackSide].image, hits: [], views: null, check: -1 };
+    } else if (found.length > 1) {
       const otherSide = combos.filter((c) => c.side !== best.side);
       otherCombo = otherSide.reduce((a, b) => (rank(b) > rank(a) ? b : a));
     }
@@ -432,6 +458,24 @@ export class CardRecognizer {
     return { result, frontJpeg, backJpeg, faceSource };
   }
 
+  /** Which of the two sides is the Magic card back (either way up), or null when it can't be told. */
+  private async cardBackSide(images: RgbImage[]): Promise<number | null> {
+    if (images.length !== 2) return null;
+    const ref = await this.deps.references.views(CARD_BACK_URL);
+    if (!ref) return null;
+    const likeness = await Promise.all(
+      images.map(async (image) => {
+        const scores = await Promise.all(
+          [image, rotate180Rgb(image)].map(async (way) =>
+            compareCards(makeViews(toGray(await resizeRgb(way, VERIFY_WIDTH, VERIFY_HEIGHT))), ref).score,
+          ),
+        );
+        return Math.max(...scores);
+      }),
+    );
+    return pickCardBackSide(likeness);
+  }
+
   private entryAt(row: number | undefined): CatalogEntry | null {
     return row === undefined ? null : (this.deps.library.entries[row] ?? null);
   }
@@ -443,4 +487,18 @@ function round3(v: number): number {
 
 function dedupe(list: string[]): string[] {
   return [...new Set(list)];
+}
+
+/**
+ * Given how much each side of a scan looks like the Magic card back (its
+ * pixel-check score), which side is the card back: the one that looks like it
+ * well enough and clearly more than the other side. Null when neither does
+ * (a double-faced card) or it's too close to call (both sides are tried).
+ */
+export function pickCardBackSide(likeness: number[]): number | null {
+  if (likeness.length !== 2 || likeness.some((v) => !Number.isFinite(v))) return null;
+  const side = likeness[1] > likeness[0] ? 1 : 0;
+  const top = likeness[side];
+  const other = likeness[1 - side];
+  return top >= CARD_BACK_LIKENESS && top - other >= CARD_BACK_MARGIN ? side : null;
 }

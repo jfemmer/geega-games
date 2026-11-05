@@ -127,6 +127,19 @@ export async function fakeScan(p: SyntheticPrinting, options: ScanOptions = {}):
 }
 
 /** The Magic card back stand-in: no card-face structure at all. */
+const CARD_BACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="630" height="880" viewBox="0 0 63 88">
+  <rect width="63" height="88" rx="3" fill="#2a1a0e"/>
+  <ellipse cx="31.5" cy="44" rx="24" ry="36" fill="#6b4423"/>
+  <ellipse cx="31.5" cy="44" rx="15" ry="26" fill="#3d2614"/>
+  <circle cx="31.5" cy="25" r="4" fill="#e8d36b"/><circle cx="22" cy="44" r="4" fill="#3467a8"/>
+  <circle cx="41" cy="44" r="4" fill="#a83434"/><circle cx="27" cy="62" r="4" fill="#222"/><circle cx="36" cy="62" r="4" fill="#2f7a3a"/>
+</svg>`;
+
+/** The card back as a reference image (Scryfall's picture of it: just the card, no scanner background). */
+export async function renderCardBack(width = 488, height = 680): Promise<Buffer> {
+  return sharp(Buffer.from(CARD_BACK_SVG)).resize(width, height, { fit: "fill" }).flatten({ background: "#ffffff" }).jpeg({ quality: 92 }).toBuffer();
+}
+
 export async function fakeCardBack(): Promise<Buffer> {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="630" height="880" viewBox="0 0 63 88">
   <rect width="63" height="88" rx="3" fill="#2a1a0e"/>

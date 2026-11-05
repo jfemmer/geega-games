@@ -52,7 +52,7 @@ async function setup(paths: StoredPaths | null, images: Record<string, Buffer>) 
 }
 
 describe("rerunStoredScan", () => {
-  it("recognizes the stored images again and posts the answer, without swapping the stored files", async () => {
+  it("recognizes the stored images again, and has the server swap them when the face is on the stored back", async () => {
     const straightened = await renderCard({ id: "x", name: "X", set: "AAA", cn: "1", art: 1, symbol: 0 }, 744, 1039);
     const raw = await renderCard({ id: "x", name: "X", set: "AAA", cn: "1", art: 1, symbol: 0 }, 900, 1200);
     const { supabase, api, calls } = await setup({ front_image_path: "S/front.jpg", back_image_path: "S/back.tiff" }, {
@@ -66,14 +66,39 @@ describe("rerunStoredScan", () => {
       faceSource: "back" as const,
     }));
     const outcome = await rerunStoredScan(scanId, { supabase, api, recognizer: { recognizePair } as unknown as CardRecognizer });
-    expect(outcome).toEqual({ ok: true, status: 200, message: "Re-recognized on the scanner PC." });
+    expect(outcome).toEqual({
+      ok: true,
+      status: 200,
+      message: "Re-recognized on the scanner PC. The card's face was on the back image, so the two images were swapped.",
+    });
     expect(recognizePair).toHaveBeenCalledWith({ front: straightened, back: raw, finish: null });
     expect(calls).toHaveLength(1);
     expect(calls[0].path).toBe(`/api/admin/scans/${scanId}/recognize`);
-    const local = (calls[0].body as { local: LocalRecognitionResult }).local;
-    expect(local.sidesSwapped).toBe(false);
-    expect(local.straightened).toEqual({ front: true, back: false });
-    expect(local.warnings.join(" ")).toMatch(/looks like the card's back/);
+    const body = calls[0].body as { local: LocalRecognitionResult; swapSides?: boolean };
+    expect(body.swapSides).toBe(true);
+    expect(body.local.sidesSwapped).toBe(false);
+    // Each image keeps its own straightened flag, now on the other side.
+    expect(body.local.straightened).toEqual({ front: false, back: true });
+    expect(body.local.warnings.join(" ")).not.toMatch(/looks like the card's back/);
+  });
+
+  it("leaves the stored images alone when the face is already the front", async () => {
+    const card = await renderCard({ id: "x", name: "X", set: "AAA", cn: "1", art: 1, symbol: 0 }, 744, 1039);
+    const { supabase, api, calls } = await setup({ front_image_path: "S/front.jpg", back_image_path: "S/back.jpg" }, { "S/front.jpg": card, "S/back.jpg": card });
+    const recognizePair = vi.fn(async () => ({ result: result(), frontJpeg: null, backJpeg: null, faceSource: "front" as const }));
+    const outcome = await rerunStoredScan(scanId, { supabase, api, recognizer: { recognizePair } as unknown as CardRecognizer });
+    expect(outcome.message).toBe("Re-recognized on the scanner PC.");
+    expect((calls[0].body as { swapSides?: boolean }).swapSides).toBeUndefined();
+  });
+
+  it("only warns when there's no second image to swap with", async () => {
+    const card = await renderCard({ id: "x", name: "X", set: "AAA", cn: "1", art: 1, symbol: 0 }, 744, 1039);
+    const { supabase, api, calls } = await setup({ front_image_path: "S/front.jpg", back_image_path: null }, { "S/front.jpg": card });
+    const recognizePair = vi.fn(async () => ({ result: result({ sidesSwapped: true }), frontJpeg: null, backJpeg: null, faceSource: "back" as const }));
+    await rerunStoredScan(scanId, { supabase, api, recognizer: { recognizePair } as unknown as CardRecognizer });
+    const body = calls[0].body as { local: LocalRecognitionResult; swapSides?: boolean };
+    expect(body.swapSides).toBeUndefined();
+    expect(body.local.warnings.join(" ")).toMatch(/looks like the card's back/);
   });
 
   it("uses which images were straightened as recorded at first recognition", async () => {

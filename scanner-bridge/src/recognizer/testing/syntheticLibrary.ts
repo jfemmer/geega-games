@@ -3,11 +3,12 @@ import { fileURLToPath } from "node:url";
 import { createOnnxEmbedder, type ImageEmbedder } from "../embedder.js";
 import { decodeFit, decodeGray } from "../image.js";
 import { LIBRARY_FORMAT, type Library } from "../indexStore.js";
+import { CARD_BACK_URL } from "../recognizer.js";
 import type { ReferenceProvider } from "../referenceImages.js";
 import type { CatalogEntry } from "../types.js";
 import { quantize, VectorIndex } from "../vectorIndex.js";
 import { makeViews, VERIFY_HEIGHT, VERIFY_WIDTH } from "../verify.js";
-import { renderCard, type SyntheticPrinting } from "./syntheticCards.js";
+import { renderCard, renderCardBack, type SyntheticPrinting } from "./syntheticCards.js";
 
 // A small in-memory card library for tests: synthetic printings rendered as
 // Scryfall-style "normal" and "large" images, fingerprinted with the tiny
@@ -35,15 +36,18 @@ export interface SyntheticLibrary {
 export async function buildSyntheticLibrary(
   printings: SyntheticPrinting[],
   embedder: ImageEmbedder,
-  extraFaces: { of: string; face: SyntheticPrinting }[] = [],
+  /** Other faces of double-faced printings; "card back" draws one that looks like the Magic card back (Mystery Booster 2's playtest cards). */
+  extraFaces: { of: string; face: SyntheticPrinting | "card back" }[] = [],
+  options: { serveCardBack?: boolean } = {},
 ): Promise<SyntheticLibrary> {
   const images = new Map<string, Buffer>();
   const fetches = new Map<string, number>();
   const entries: CatalogEntry[] = [];
-  const add = async (owner: SyntheticPrinting, face: number, look: SyntheticPrinting) => {
+  const add = async (owner: SyntheticPrinting, face: number, look: SyntheticPrinting | "card back") => {
     const url = normalUrl(owner, face);
-    images.set(url, await renderCard(look, 488, 680));
-    images.set(url.replace("/normal/", "/large/"), await renderCard(look, 672, 936));
+    const render = (w: number, h: number) => (look === "card back" ? renderCardBack(w, h) : renderCard(look, w, h));
+    images.set(url, await render(488, 680));
+    images.set(url.replace("/normal/", "/large/"), await render(672, 936));
     entries.push({
       id: owner.id,
       face,
@@ -51,7 +55,7 @@ export async function buildSyntheticLibrary(
       set: owner.set,
       cn: owner.cn,
       lang: "en",
-      ill: `ill-${look.art}`,
+      ill: look === "card back" ? `ill-back-${owner.id}` : `ill-${look.art}`,
       img: url,
       finishes: ["nonfoil", "foil"],
       layout: extraFaces.some((f) => f.of === owner.id) ? "transform" : "normal",
@@ -83,6 +87,8 @@ export async function buildSyntheticLibrary(
     entries,
     index: new VectorIndex(dims, flat, scales),
   };
+  // Scryfall's picture of the Magic card back, as the recognizer fetches it.
+  if (options.serveCardBack ?? true) images.set(CARD_BACK_URL, await renderCardBack());
   const fetch = (url: string) => {
     fetches.set(url, (fetches.get(url) ?? 0) + 1);
     return images.get(url) ?? null;

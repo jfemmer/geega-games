@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { createPaddleTextReader, type TextReader } from "./collectorOcr.js";
 import type { ImageEmbedder } from "./embedder.js";
 import { ocrModelPaths } from "./modelFiles.js";
-import { CardRecognizer } from "./recognizer.js";
+import { CardRecognizer, pickCardBackSide } from "./recognizer.js";
 import { fakeCardBack, fakeScan, renderCard, type SyntheticPrinting } from "./testing/syntheticCards.js";
 import { buildSyntheticLibrary, normalUrl, tinyEmbedder, type SyntheticLibrary } from "./testing/syntheticLibrary.js";
 
@@ -121,13 +121,66 @@ describe("CardRecognizer.recognizePair", () => {
     const r2 = new CardRecognizer({ embedder: counting, library: lib.library, references: lib.references, reader, fallbackDpi: 300 });
     const upright = await r2.recognizePair({ front: await fakeScan(bolt, { angle: 1 }), back, finish: null });
     expect(upright.result).toMatchObject({ decision: "sure", orientation: 0 });
-    expect(fingerprinted).toBe(2);
+    // Only the face: the other side is the card back, which isn't searched.
+    expect(fingerprinted).toBe(1);
     fingerprinted = 0;
     const upsideDown = await r2.recognizePair({ front: await fakeScan(bolt, { angle: 1, upsideDown: true }), back, finish: null });
     expect(upsideDown.result).toMatchObject({ decision: "sure", orientation: 180 });
     expect(upsideDown.result.candidates[0].scryfallId).toBe(bolt.id);
-    expect(fingerprinted).toBe(4);
+    expect(fingerprinted).toBe(2);
   }, 30_000);
+
+  describe("the Magic card back", () => {
+    // Mystery Booster 2's playtest double-faced cards (Plant a Sapling //
+    // Fully-Grown Treefolk) have a face that looks just like the card back.
+    // A scan's card back matched that face better than the real face matched
+    // its printing, so the back was "identified" and staff asked to match it.
+    const playtest: SyntheticPrinting = { id: id(20), name: "Plant a Test // Grown Test", set: "MB2", cn: "582", art: 66, symbol: 2 };
+    let backLib: SyntheticLibrary;
+    beforeAll(async () => {
+      backLib = await buildSyntheticLibrary([bolt, ocean, playtest], embedder, [{ of: playtest.id, face: "card back" }]);
+    }, 60_000);
+    const withBackLib = (references = backLib.references) =>
+      new CardRecognizer({ embedder, library: backLib.library, references, reader, fallbackDpi: 300 });
+
+    it("is never identified as the card's face, even when a printing's face looks just like it", async () => {
+      const r = withBackLib();
+      for (const scan of [
+        { front: await fakeScan(ocean, { angle: 1 }), back },
+        { front: back, back: await fakeScan(ocean, { angle: 1 }) },
+        { front: back, back: await fakeScan(ocean, { angle: 2, upsideDown: true }) },
+      ]) {
+        const out = await r.recognizePair({ ...scan, finish: null });
+        expect(out.result.decision).toBe("sure");
+        expect(out.result.candidates[0].scryfallId).toBe(ocean.id);
+        expect(out.faceSource).toBe(scan.front === back ? "back" : "front");
+        expect(out.result.sidesSwapped).toBe(scan.front === back);
+        expect(out.backJpeg).not.toBeNull();
+      }
+    }, 60_000);
+
+    it("without the card back's picture, both sides are tried as before", async () => {
+      const noBack = await buildSyntheticLibrary([bolt, ocean], embedder, [], { serveCardBack: false });
+      const r = new CardRecognizer({ embedder, library: noBack.library, references: noBack.references, reader, fallbackDpi: 300 });
+      const out = await r.recognizePair({ front: back, back: await fakeScan(bolt, { angle: 1 }), finish: null });
+      expect(out.result).toMatchObject({ decision: "sure", sidesSwapped: true });
+      expect(out.result.candidates[0].scryfallId).toBe(bolt.id);
+    }, 30_000);
+  });
+
+  describe("pickCardBackSide", () => {
+    it("picks the side that clearly looks like the card back", () => {
+      expect(pickCardBackSide([0.12, 0.81])).toBe(1);
+      expect(pickCardBackSide([0.9, 0.2])).toBe(0);
+    });
+    it("picks neither for a double-faced card, a close call, or a single side", () => {
+      expect(pickCardBackSide([0.2, 0.25])).toBeNull(); // two faces
+      expect(pickCardBackSide([0.6, 0.55])).toBeNull(); // too close to call
+      expect(pickCardBackSide([0.45, 0.1])).toBeNull(); // not enough like the card back
+      expect(pickCardBackSide([0.9])).toBeNull();
+      expect(pickCardBackSide([Number.NaN, 0.9])).toBeNull();
+    });
+  });
 
   it("finds a double-faced card's other face even when it came through upside down", async () => {
     const r = await recognizer.recognizePair({

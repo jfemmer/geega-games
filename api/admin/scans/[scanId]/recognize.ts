@@ -99,6 +99,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // forms. parseLocalRecognition caps every field on its own.
     const body = await readJsonBody(req, MAX_RECOGNIZE_BODY_BYTES);
     const local = body.local !== undefined ? parseLocalRecognition(body.local) : null;
+    // A re-run on the scanner PC found the card's face on the stored back
+    // image (the card back had been taken for the face): swap the stored
+    // images so the face shows as the front. Only with a scanner-PC result.
+    const swapSides = local !== null && body.swapSides === true;
 
     const admin = getSupabaseAdmin();
     const { data: scan, error: scanErr } = await admin
@@ -108,6 +112,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .maybeSingle();
     if (scanErr) throw new HttpError(500, "Could not load the scan.");
     if (!scan) throw new HttpError(404, "Scan not found.");
+    if (swapSides && scan.front_image_path && scan.back_image_path) {
+      const swapped = {
+        front_image_path: scan.back_image_path,
+        back_image_path: scan.front_image_path,
+        front_preview_path: scan.back_preview_path,
+        back_preview_path: scan.front_preview_path,
+      };
+      const { error: swapErr } = await admin.from("card_scans").update(swapped).eq("id", scanId);
+      if (swapErr) throw new HttpError(500, "Could not swap the scan's images.");
+      Object.assign(scan, swapped);
+    }
 
     const sessionRow = Array.isArray(scan.scan_sessions) ? scan.scan_sessions[0] : scan.scan_sessions;
     const scanMode: Database["public"]["Enums"]["scan_recognition_mode"] = sessionRow?.scan_mode ?? "both";
