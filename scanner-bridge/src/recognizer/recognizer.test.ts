@@ -121,13 +121,12 @@ describe("CardRecognizer.recognizePair", () => {
     const r2 = new CardRecognizer({ embedder: counting, library: lib.library, references: lib.references, reader, fallbackDpi: 300 });
     const upright = await r2.recognizePair({ front: await fakeScan(bolt, { angle: 1 }), back, finish: null });
     expect(upright.result).toMatchObject({ decision: "sure", orientation: 0 });
-    // Only the face: the other side is the card back, which isn't searched.
-    expect(fingerprinted).toBe(1);
+    expect(fingerprinted).toBe(2);
     fingerprinted = 0;
     const upsideDown = await r2.recognizePair({ front: await fakeScan(bolt, { angle: 1, upsideDown: true }), back, finish: null });
     expect(upsideDown.result).toMatchObject({ decision: "sure", orientation: 180 });
     expect(upsideDown.result.candidates[0].scryfallId).toBe(bolt.id);
-    expect(fingerprinted).toBe(2);
+    expect(fingerprinted).toBe(4);
   }, 30_000);
 
   describe("the Magic card back", () => {
@@ -159,26 +158,42 @@ describe("CardRecognizer.recognizePair", () => {
       }
     }, 60_000);
 
-    it("without the card back's picture, both sides are tried as before", async () => {
+    it("without the card back's picture, the known look-alikes still count as the card back", async () => {
+      // Mystery Booster 2's Plant a Sapling // Fully-Grown Treefolk, by its real Scryfall id.
+      const sapling: SyntheticPrinting = { ...playtest, id: "062bb64d-b256-48c9-8159-8146bc0549ef" };
+      const known = await buildSyntheticLibrary([bolt, ocean, sapling], embedder, [{ of: sapling.id, face: "card back" }], { serveCardBack: false });
+      const r = new CardRecognizer({ embedder, library: known.library, references: known.references, reader, fallbackDpi: 300 });
+      for (const scan of [
+        { front: await fakeScan(ocean, { angle: 1 }), back },
+        { front: back, back: await fakeScan(ocean, { angle: 2, upsideDown: true }) },
+      ]) {
+        const out = await r.recognizePair({ ...scan, finish: null });
+        expect(out.result.decision).toBe("sure");
+        expect(out.result.candidates[0].scryfallId).toBe(ocean.id);
+        expect(out.faceSource).toBe(scan.front === back ? "back" : "front");
+      }
+    }, 60_000);
+
+    it("a plain card whose back matches nothing like the card back is found as before, either side first", async () => {
       const noBack = await buildSyntheticLibrary([bolt, ocean], embedder, [], { serveCardBack: false });
       const r = new CardRecognizer({ embedder, library: noBack.library, references: noBack.references, reader, fallbackDpi: 300 });
       const out = await r.recognizePair({ front: back, back: await fakeScan(bolt, { angle: 1 }), finish: null });
       expect(out.result).toMatchObject({ decision: "sure", sidesSwapped: true });
       expect(out.result.candidates[0].scryfallId).toBe(bolt.id);
+      const upright = await withBackLib().recognizePair({ front: await fakeScan(bolt, { angle: 1 }), back, finish: null });
+      expect(upright.result).toMatchObject({ decision: "sure", sidesSwapped: false, orientation: 0 });
     }, 30_000);
   });
 
   describe("pickCardBackSide", () => {
-    it("picks the side that clearly looks like the card back", () => {
-      expect(pickCardBackSide([0.12, 0.81])).toBe(1);
-      expect(pickCardBackSide([0.9, 0.2])).toBe(0);
+    it("picks the only side whose best match is a card-back look-alike", () => {
+      expect(pickCardBackSide([false, true])).toBe(1);
+      expect(pickCardBackSide([true, false])).toBe(0);
     });
-    it("picks neither for a double-faced card, a close call, or a single side", () => {
-      expect(pickCardBackSide([0.2, 0.25])).toBeNull(); // two faces
-      expect(pickCardBackSide([0.6, 0.55])).toBeNull(); // too close to call
-      expect(pickCardBackSide([0.45, 0.1])).toBeNull(); // not enough like the card back
-      expect(pickCardBackSide([0.9])).toBeNull();
-      expect(pickCardBackSide([Number.NaN, 0.9])).toBeNull();
+    it("picks neither when no side, or both, matched a look-alike, or there's one side", () => {
+      expect(pickCardBackSide([false, false])).toBeNull();
+      expect(pickCardBackSide([true, true])).toBeNull();
+      expect(pickCardBackSide([true])).toBeNull();
     });
   });
 
