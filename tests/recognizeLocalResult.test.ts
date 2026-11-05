@@ -185,6 +185,28 @@ describe("POST /api/admin/scans/:id/recognize with a scanner-PC result", () => {
     expect(state.files["session-1/1-front-x-scan_1.jpg.preview.png"]).toBeDefined();
   });
 
+  it("swaps the stored images when a re-run found the face on the stored back", async () => {
+    Object.assign(scan(), { front_preview_path: "f.preview.png", back_preview_path: null });
+    const res = await post({ local: local({ sidesSwapped: false }), swapSides: true });
+    expect(res.statusCode).toBe(200);
+    expect(scan()).toMatchObject({
+      front_image_path: "session-1/1-back-x-scan_2.jpg",
+      back_image_path: "session-1/1-front-x-scan_1.jpg",
+      back_preview_path: "f.preview.png",
+      recognition_status: "recognized",
+      selected_scryfall_id: BOLT,
+    });
+    expect(scan().front_preview_path ?? null).toBeNull();
+  });
+
+  it("swaps nothing without a scanner-PC result, or when a side is missing", async () => {
+    await post({ swapSides: true });
+    expect(scan().front_image_path).toBe("session-1/1-front-x-scan_1.jpg");
+    scan().back_image_path = null;
+    await post({ local: local(), swapSides: true });
+    expect(scan()).toMatchObject({ front_image_path: "session-1/1-front-x-scan_1.jpg", back_image_path: null });
+  });
+
   it("never overwrites a cached printing's prices with the bulk index's", async () => {
     state.tables.card_printings = [{ scryfall_id: BOLT, price_usd_cents: 175, prices_updated_at: "2026-10-12T01:00:00.000Z" }];
     await post({ local: local() });

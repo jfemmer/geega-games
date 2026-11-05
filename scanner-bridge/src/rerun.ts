@@ -60,21 +60,33 @@ export async function rerunStoredScan(
   // Don't touch the finish on a re-run — whatever the reviewer chose stays.
   const recognition = await deps.recognizer.recognizePair({ front, back, finish: null });
   const result = recognition.result;
-  // Nothing is re-uploaded, so the stored files keep their original roles:
-  // if this run thinks the stored "back" is the face, the server is told so
-  // through the warnings rather than by swapping files.
-  if (result.sidesSwapped) {
+  // Nothing is re-uploaded. When this run finds the face on the stored
+  // "back" (an older bridge took the Magic card back for the face), the
+  // server swaps the two stored images so the face shows as the front.
+  const swapSides = result.sidesSwapped && !!front && !!back;
+  if (result.sidesSwapped && !swapSides) {
     result.warnings = [...result.warnings, "The stored front image looks like the card's back — check the images."];
   }
   result.sidesSwapped = false;
   // Which stored images are this PC's straightened copies: as recorded when
-  // they were first recognized, else judged from their shape.
+  // they were first recognized, else judged from their shape. After a swap
+  // each one keeps its own flag, now on the other side.
   const recorded = scan.recognition_data?.scannerPc?.straightened;
-  result.straightened = {
+  const stored = {
     front: typeof recorded?.front === "boolean" ? recorded.front : await looksStraightened(front),
     back: typeof recorded?.back === "boolean" ? recorded.back : await looksStraightened(back),
   };
+  result.straightened = swapSides ? { front: stored.back, back: stored.front } : stored;
 
-  await deps.api.call(`/api/admin/scans/${scanId}/recognize`, { method: "POST", body: { local: result } });
-  return { ok: true, status: 200, message: "Re-recognized on the scanner PC." };
+  await deps.api.call(`/api/admin/scans/${scanId}/recognize`, {
+    method: "POST",
+    body: swapSides ? { local: result, swapSides: true } : { local: result },
+  });
+  return {
+    ok: true,
+    status: 200,
+    message: swapSides
+      ? "Re-recognized on the scanner PC. The card's face was on the back image, so the two images were swapped."
+      : "Re-recognized on the scanner PC.",
+  };
 }
