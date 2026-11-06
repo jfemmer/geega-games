@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { sendPartnerReferralCheckin } from "../_lib/partnerEmails.js";
 import { CHECKIN_AFTER_DAYS } from "../../src/store/lib/partnerTypes.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
 // GET/POST /api/partner-referrals/process — run daily by Supabase pg_cron
 // (migration 20261011210000_partner_checkin_worker.sql), like the other
@@ -19,13 +20,7 @@ const BATCH_SIZE = 50;
 const TIME_BUDGET_MS = 40_000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
-  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
-    return res.status(200).json({ ok: true, skipped: "not production" });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   const started = Date.now();
   const summary = { due: 0, sent: 0, skipped: 0, failed: 0 };

@@ -5,18 +5,16 @@ import { ServerEnv } from "../_lib/env.js";
 import { logoUrl, siteUrl } from "../_lib/assets.js";
 import { CardBackInStock, cardBackInStockText } from "../_lib/emails/CardBackInStock.js";
 import { slugifyCardName } from "../../src/store/lib/cardSlug.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
-// This worker intentionally accepts GET/POST without customer auth — same
-// shape as api/deck-alerts/process.ts. It cannot choose recipients: it only
+// Only pg_cron can call this worker (allowWorkerRequest: the shared worker
+// secret, production only) — same shape as api/deck-alerts/process.ts. It cannot choose recipients: it only
 // drains pending rows a customer explicitly created via
 // /api/stock-alerts/subscribe, and rechecks stock itself rather than
 // trusting a trigger, so a subscription only ever emails once the card is
 // actually, currently purchasable.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   const db = getSupabaseAdmin();
   const { data: rows, error } = await db

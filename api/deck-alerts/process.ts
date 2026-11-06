@@ -5,16 +5,15 @@ import { ServerEnv } from "../_lib/env.js";
 import { siteUrl } from "../_lib/assets.js";
 import { DeckStockAlert, deckStockAlertText } from "../_lib/emails/DeckStockAlert.js";
 import { slugifyCardName } from "../../src/store/lib/cardSlug.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
-// This worker intentionally accepts GET/POST without customer auth. It cannot
-// choose recipients or create alerts: it only drains legitimate unsent rows
+// Only pg_cron can call this worker (allowWorkerRequest: the shared worker
+// secret, production only). It cannot choose recipients or create alerts: it
+// only drains legitimate unsent rows
 // created by the protected database inventory trigger. sendTrackedEmail adds a
 // second permanent idempotency barrier, so retries are safe.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   const db = getSupabaseAdmin() as any;
   const { data: rows, error } = await db

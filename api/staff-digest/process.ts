@@ -4,6 +4,7 @@ import { sendTrackedEmail } from "../_lib/emailService.js";
 import { ServerEnv } from "../_lib/env.js";
 import { logoUrl, siteUrl } from "../_lib/assets.js";
 import { StaffDigest, staffDigestText, type StaffDigestEmailData } from "../_lib/emails/StaffDigest.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
 // Cron-triggered (see geega-staff-digest-worker, once daily). No customer
 // auth: it can only read aggregate counts and email the store's own staff
@@ -11,10 +12,7 @@ import { StaffDigest, staffDigestText, type StaffDigestEmailData } from "../_lib
 // day via sendTrackedEmail's idempotency key, so a retried run never sends
 // two digests for the same day.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   const db = getSupabaseAdmin();
   const now = new Date();

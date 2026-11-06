@@ -11,11 +11,12 @@ import {
   type WishlistAlertItem,
 } from "../_lib/emails/WishlistAlert.js";
 import { slugifyCardName } from "../../src/store/lib/cardSlug.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
 // Wishlist alert worker (cron: geega-wishlist-alert-worker, every 15 min).
 //
-// Same trust model as api/deck-alerts/process.ts: it accepts GET/POST with no
-// customer auth, but cannot choose recipients or invent alerts. It only
+// Same trust model as api/deck-alerts/process.ts: only pg_cron can call it
+// (allowWorkerRequest), and it cannot choose recipients or invent alerts. It only
 //   1. runs wishlist_alert_scan() (service_role only), which queues events
 //      for real wishlist rows whose live inventory changed, then
 //   2. drains unsent wishlist_alert_events into ONE digest email per customer.
@@ -38,10 +39,7 @@ type EventRow = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   // wishlist_alert_events / wishlist_alert_scan aren't in the generated types yet.
   const db = getSupabaseAdmin() as any;

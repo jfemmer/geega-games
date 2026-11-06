@@ -106,7 +106,7 @@ async function runWorker() {
       return this;
     },
   };
-  await handler({ method: "POST", headers: {} } as never, res as never);
+  await handler({ method: "POST", headers: { "x-geega-worker-secret": "digest-test-secret" } } as never, res as never);
   return res;
 }
 
@@ -114,6 +114,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   vi.stubEnv("PUBLIC_SITE_URL", "https://geega-games.com");
+  vi.stubEnv("WORKER_SECRET", "digest-test-secret");
+  vi.stubEnv("VERCEL_ENV", "production");
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
   state.visitors = { data: [{ visitors: 14, page_views: 52 }], error: null };

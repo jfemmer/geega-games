@@ -152,12 +152,13 @@ async function runWorker(method = "POST") {
       return this;
     },
   };
-  await handler({ method, headers: {} } as never, res as never);
+  await handler({ method, headers: { "x-geega-worker-secret": "deck-test-secret" } } as never, res as never);
   return res;
 }
 
 beforeEach(() => {
   vi.stubEnv("PUBLIC_SITE_URL", "https://geega-games.com");
+  vi.stubEnv("WORKER_SECRET", "deck-test-secret");
   vi.spyOn(console, "error").mockImplementation(() => {});
   state.rows = [row];
   state.loadError = null;

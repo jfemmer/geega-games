@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeState, createFakeSupabase, fakeId, fakeResponse, type FakeState } from "./helpers/fakeSupabase";
 
 // The seller check-in a week after a lead goes to a partner store:
@@ -174,7 +174,7 @@ describe("parseDollars", () => {
 describe("/api/partner-referrals/process (daily worker)", () => {
   async function run(method = "POST") {
     const res = fakeResponse();
-    await worker({ method, headers: {}, query: {} } as never, res as never);
+    await worker({ method, headers: { "x-geega-worker-secret": "partner-test-secret" }, query: {} } as never, res as never);
     return res as typeof res & { body: Record<string, unknown> };
   }
 
@@ -193,6 +193,11 @@ describe("/api/partner-referrals/process (daily worker)", () => {
   beforeEach(() => {
     state.tables.partner_referrals = [];
     delete process.env.VERCEL_ENV;
+    process.env.WORKER_SECRET = "partner-test-secret";
+  });
+
+  afterEach(() => {
+    delete process.env.WORKER_SECRET;
   });
 
   it("checks in once on each pending referral sent at least a week ago", async () => {

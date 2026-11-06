@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { runShippingUpdates } from "../_lib/shippingUpdates.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
 // GET/POST /api/shipping-updates/process — run hourly by Supabase pg_cron
 // (migration 20260930150000_shipping_updates.sql), like the other workers
@@ -18,13 +19,7 @@ export const config = { maxDuration: 60 };
 const TIME_BUDGET_MS = 40_000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
-  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
-    return res.status(200).json({ ok: true, skipped: "not production" });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   try {
     const summary = await runShippingUpdates({ timeBudgetMs: TIME_BUDGET_MS });

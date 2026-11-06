@@ -4,9 +4,10 @@ import { sendTrackedEmail } from "../_lib/emailService.js";
 import { ServerEnv } from "../_lib/env.js";
 import { logoUrl, siteUrl } from "../_lib/assets.js";
 import { CheckoutRecovery, checkoutRecoveryText } from "../_lib/emails/CheckoutRecovery.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
-// This worker intentionally accepts GET/POST without customer auth — same
-// shape as api/deck-alerts/process.ts and api/stock-alerts/process.ts. It
+// Only pg_cron can call this worker (allowWorkerRequest: the shared worker
+// secret, production only) — same shape as api/deck-alerts/process.ts and api/stock-alerts/process.ts. It
 // cannot choose recipients: it only reads orders that are already sitting in
 // the database with a non-paid status, online orders only (a POS order in
 // this state is just a register sale still being rung up, not "abandoned").
@@ -18,10 +19,7 @@ const MIN_AGE_MS = 60 * 60 * 1000; // give checkout an hour to complete normally
 const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000; // a week-old abandoned cart isn't worth nagging about
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
+  if (!allowWorkerRequest(req, res)) return;
 
   const db = getSupabaseAdmin();
   const now = Date.now();

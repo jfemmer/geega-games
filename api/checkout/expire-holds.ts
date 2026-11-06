@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { expireStaleHolds } from "../_lib/checkoutHolds.js";
 import { runTradeWorker } from "../_lib/tradeExpiry.js";
+import { allowWorkerRequest } from "../_lib/cronAuth.js";
 
 // GET/POST /api/checkout/expire-holds — run every 5 minutes by pg_cron
 // (migration 20260924050000). Returns the cards of checkouts that were
@@ -11,17 +12,14 @@ import { runTradeWorker } from "../_lib/tradeExpiry.js";
 // close or expire trades (releasing reserved cards), and customers and staff
 // get their reminders. A trade problem never stops the checkout part.
 //
-// Same unauthenticated worker shape as api/checkout-recovery/process.ts: it
-// takes no input and only acts on deadlines that have already passed (or
-// payments and scans that already happened), with its calls to Stripe and
-// the carrier spaced out per trade, so calling it early or often is harmless.
+// Only pg_cron can call it (allowWorkerRequest: the shared worker secret,
+// production only). It takes no input and only acts on deadlines that have
+// already passed (or payments and scans that already happened), so an extra
+// run is harmless.
 export const config = { maxDuration: 60 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ ok: false });
-  }
+  if (!allowWorkerRequest(req, res)) return;
   try {
     const counts = await expireStaleHolds();
     const trades = await runTradeWorker();
