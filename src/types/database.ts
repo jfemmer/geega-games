@@ -4857,6 +4857,8 @@ export type Database = {
           free_ship_threshold_cents: number
           id: string
           handoff_method: string
+          hold_expires_at: string | null
+          hold_stage: string | null
           local_paid_cents: number | null
           local_payment_method: string | null
           meetup_details: string | null
@@ -4965,6 +4967,8 @@ export type Database = {
           free_ship_threshold_cents?: number
           id?: string
           handoff_method?: string
+          hold_expires_at?: string | null
+          hold_stage?: string | null
           local_paid_cents?: number | null
           local_payment_method?: string | null
           meetup_details?: string | null
@@ -5073,6 +5077,8 @@ export type Database = {
           free_ship_threshold_cents?: number
           id?: string
           handoff_method?: string
+          hold_expires_at?: string | null
+          hold_stage?: string | null
           local_paid_cents?: number | null
           local_payment_method?: string | null
           meetup_details?: string | null
@@ -5196,6 +5202,10 @@ export type Database = {
           payment_due_days: number
           processing_fee_cents: number
           return_policy: string
+          review_hold_hours: number
+          review_hold_max_cents: number
+          review_holds_enabled: boolean
+          review_holds_per_customer: number
           revision_hours: number
           scan_grace_hours: number
           ship_cost_estimate_cents: number
@@ -5279,6 +5289,10 @@ export type Database = {
           payment_due_days?: number
           processing_fee_cents?: number
           return_policy?: string
+          review_hold_hours?: number
+          review_hold_max_cents?: number
+          review_holds_enabled?: boolean
+          review_holds_per_customer?: number
           revision_hours?: number
           scan_grace_hours?: number
           ship_cost_estimate_cents?: number
@@ -5362,6 +5376,10 @@ export type Database = {
           payment_due_days?: number
           processing_fee_cents?: number
           return_policy?: string
+          review_hold_hours?: number
+          review_hold_max_cents?: number
+          review_holds_enabled?: boolean
+          review_holds_per_customer?: number
           revision_hours?: number
           scan_grace_hours?: number
           ship_cost_estimate_cents?: number
@@ -6800,6 +6818,15 @@ export type Database = {
         }
         Returns: string
       }
+      trade_hold_release: {
+        Args: {
+          p_actor_id: string | null
+          p_actor_label: string | null
+          p_reason: string | null
+          p_trade_id: string
+        }
+        Returns: number
+      }
       trade_import_card: {
         Args: {
           p_actor: string
@@ -6900,6 +6927,16 @@ export type Database = {
           p_trade_id: string
         }
         Returns: string
+      }
+      trade_release_expired_holds: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: {
+          released_lines: number
+          released_trade_id: string
+          released_trade_number: number
+        }[]
       }
       trade_reserve: {
         Args: {

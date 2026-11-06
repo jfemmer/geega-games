@@ -43,6 +43,7 @@ const repo = vi.hoisted(() => ({
   reject: vi.fn(),
   setDeposit: vi.fn(),
   extend: vi.fn(),
+  releaseHold: vi.fn(),
   verifyShipment: vi.fn(),
   markReceived: vi.fn(),
   cardsArrived: vi.fn(),
@@ -233,7 +234,8 @@ describe("review", () => {
     expect(approve).toBeEnabled();
 
     // The customer gets the confirmation window (Sundays don't count); nothing is reserved yet; no deposit on $88.99.
-    expect(within(dialog).getByText(/to confirm \(48 hours; Sundays don’t count\)\. Nothing is reserved until they confirm\./)).toBeInTheDocument();
+    // Review holds are on in these settings: the cards stay held through the confirmation window.
+    expect(within(dialog).getByText(/to confirm \(48 hours; Sundays don’t count\)\. Our cards stay held for them until then/)).toBeInTheDocument();
     expect(within(dialog).getByText("No deposit on this trade.")).toBeInTheDocument();
 
     repo.review.mockResolvedValue(answer(REVIEW));
@@ -717,6 +719,32 @@ describe("everything else on a trade", () => {
     await user.type(within(dialog).getByLabelText("Reason (optional, staff only)"), "Waiting on a box");
     await user.click(within(dialog).getByRole("button", { name: "Extend" }));
     await waitFor(() => expect(repo.extend).toHaveBeenCalledWith(TRADE_ID, { kind: "shipping", hours: 72, customerRequested: true, reason: "Waiting on a box" }));
+  });
+
+  it("shows a review hold, gives it more time in plain hours, and releases it only after a warning naming the cards", async () => {
+    const user = userEvent.setup();
+    const trade = staffTrade({
+      status: "pending_review",
+      hold: { stage: "review", expiresAt: "2099-10-30T19:00:00Z" },
+      wanted: [wantedItem({ status: "reserved" })],
+    });
+    const dialog = await openTrade(trade);
+    expect(within(dialog).getByText(/Held while you review:/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 of our card off the shelf/)).toBeInTheDocument();
+    repo.extend.mockResolvedValue(answer(trade));
+    const hold = within(dialog).getByText(/Held while you review:/).closest(".gg-trd-hold") as HTMLElement;
+    await user.click(within(hold).getByRole("button", { name: "Give more time…" }));
+    await user.selectOptions(within(hold).getByLabelText("Extend by"), "24");
+    expect(within(hold).getByText(/New deadline:/)).not.toHaveTextContent("Sundays");
+    await user.click(within(hold).getByRole("button", { name: "Extend" }));
+    await waitFor(() => expect(repo.extend).toHaveBeenCalledWith(TRADE_ID, { kind: "hold", hours: 24, customerRequested: false, reason: "" }));
+
+    repo.releaseHold.mockResolvedValue(answer({ ...trade, hold: null }));
+    await user.click(within(hold).getByRole("button", { name: "Release now…" }));
+    expect(within(hold).getByRole("alert")).toHaveTextContent(/The One Ring go back on sale right away/);
+    expect(repo.releaseHold).not.toHaveBeenCalled();
+    await user.click(within(hold).getByRole("button", { name: "Release our cards" }));
+    await waitFor(() => expect(repo.releaseHold).toHaveBeenCalledWith(TRADE_ID, ""));
   });
 
   it("sends a message to the customer, or keeps a note for staff", async () => {

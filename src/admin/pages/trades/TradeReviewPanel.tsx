@@ -26,9 +26,10 @@ import type { TradePanelProps } from "./types";
 // Pending review: staff approve (how many, and the value each) or reject
 // each of the customer's cards, then approve the trade (the customer then
 // has the confirmation window to confirm, with the deposit shown here), ask
-// the customer for changes, or reject it. Nothing is reserved until the
-// customer confirms. Card decisions are saved with whichever of those staff
-// pick, or on their own.
+// the customer for changes, or reject it. With review holds on, approving
+// keeps our cards held until the confirmation deadline (holding any that
+// weren't yet); otherwise nothing is reserved until the customer confirms.
+// Card decisions are saved with whichever of those staff pick, or on their own.
 
 type Outcome = "approve" | "revise" | "reject";
 
@@ -320,7 +321,11 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
           <div className="gg-trd-decide__body">
             <p className="gg-card-meta">
               The customer is emailed the approval and has until <strong>{formatDeadline(new Date(confirmBy).toISOString())}</strong> to
-              confirm ({settings.confirmationHours} hours; Sundays don&rsquo;t count). Nothing is reserved until they confirm. Once they do,
+              confirm ({settings.confirmationHours} hours; Sundays don&rsquo;t count).{" "}
+              {settings.reviewHoldsEnabled
+                ? "Our cards stay held for them until then (any not held yet are held now)."
+                : "Nothing is reserved until they confirm."}{" "}
+              Once they do,
               they get your mailing address and {shipDays} day{shipDays === 1 ? "" : "s"} to ship.
             </p>
             <div className="gg-form-grid">
@@ -370,7 +375,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
               maxLength={4000}
               value={revision}
               onChange={(e) => setRevision(e.target.value)}
-              hint={`Emailed to the customer. They have ${settings.revisionHours} hours to send their changes; nothing is reserved meanwhile.`}
+              hint={`Emailed to the customer. They have ${settings.revisionHours} hours to send their changes. ${trade.hold ? "Our cards stay held until the hold ends." : "Nothing is reserved meanwhile."}`}
             />
             <div className="gg-drawer-actions__buttons">
               <Button variant="primary" onClick={finish} loading={busy === "revise"} disabled={busy !== null || !revision.trim()}>

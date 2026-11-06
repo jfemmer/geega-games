@@ -15,8 +15,11 @@ import { checkTradeTracking, followUpScan, trackingConnected } from "./tradeTrac
 //   2. Tracking: the carrier's scans for packages waiting for their first
 //      scan (every 30 minutes) and packages in transit (every 3 hours). A
 //      scan by the deadline verifies the shipment and refunds the deposit.
-//   3. Approved trades whose cards sold before the customer confirmed go
-//      back to the customer (nothing was charged).
+//   3. Review holds whose time ran out are let go (trade_release_expired_holds):
+//      the cards go back on sale, the trade stays in review, and the customer
+//      is told. A confirmed reservation is never touched here. Then approved
+//      trades whose cards sold before the customer confirmed (cards not held)
+//      go back to the customer (nothing was charged).
 //   4. Past the shipping deadline with no scan yet: the customer is asked
 //      for proof of shipping; a number nothing can check automatically goes
 //      to staff to verify by hand.
@@ -49,10 +52,18 @@ export interface TradeWorkerCounts {
   tradeAlerts: number;
   tradeScansChecked: number;
   tradeDepositsReconciled: number;
+  tradeHoldsReleased: number;
 }
 
 export async function runTradeWorker(now = Date.now()): Promise<TradeWorkerCounts> {
-  const counts: TradeWorkerCounts = { tradesExpired: 0, tradeReminders: 0, tradeAlerts: 0, tradeScansChecked: 0, tradeDepositsReconciled: 0 };
+  const counts: TradeWorkerCounts = {
+    tradesExpired: 0,
+    tradeReminders: 0,
+    tradeAlerts: 0,
+    tradeScansChecked: 0,
+    tradeDepositsReconciled: 0,
+    tradeHoldsReleased: 0,
+  };
   const admin = getSupabaseAdmin();
   let settings: TradeSettingsRow;
   try {
@@ -72,6 +83,9 @@ export async function runTradeWorker(now = Date.now()): Promise<TradeWorkerCount
   });
   await step("tracking", async () => {
     counts.tradeScansChecked = await checkScans(admin, settings, now);
+  });
+  await step("holds", async () => {
+    counts.tradeHoldsReleased = await releaseExpiredHolds(admin, settings);
   });
   await step("availability", async () => {
     counts.tradeAlerts += await watchAvailability(admin, settings);
@@ -325,6 +339,26 @@ async function missingScans(admin: Admin, settings: TradeSettingsRow, now: numbe
     }
   }
   return { reminders, alerts };
+}
+
+// ---------------------------------------------------------------------------
+// 3a. Review holds that ran out
+// ---------------------------------------------------------------------------
+
+async function releaseExpiredHolds(admin: Admin, settings: TradeSettingsRow): Promise<number> {
+  const { data, error } = await admin.rpc("trade_release_expired_holds", { p_limit: BATCH });
+  if (error) {
+    console.error("[tradeExpiry] trade_release_expired_holds failed", error.message);
+    return 0;
+  }
+  const released = data ?? [];
+  for (const row of released) {
+    if (row.released_lines <= 0) continue;
+    const bundle = await loadTradeBundle(admin, row.released_trade_id);
+    if (!bundle) continue;
+    await sendTradeCustomerEmail(bundle, settings, { kind: "hold_released", why: "expired" });
+  }
+  return released.length;
 }
 
 // ---------------------------------------------------------------------------

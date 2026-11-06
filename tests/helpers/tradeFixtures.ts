@@ -164,6 +164,7 @@ export function staffTrade(over: Partial<StaffTrade> = {}): StaffTrade {
     freeShipFeeCents: 0,
     listDueAt: null,
     confirmBy: null,
+    hold: null,
     shipBy: null,
     shipDays: null,
     paymentDueAt: null,
@@ -246,6 +247,7 @@ export function tradeSummary(over: Partial<StaffTradeSummary> = {}): StaffTradeS
     finalValueCents: null,
     listDueAt: null,
     confirmBy: null,
+    hold: null,
     shipBy: null,
     paymentDueAt: null,
     inboundCarrier: null,
@@ -332,6 +334,10 @@ export const TRADE_SETTINGS: TradeSettings = {
   localMinTradeValueCents: 0,
   localCashPayoutEnabled: true,
   localCashRatePercent: 60,
+  reviewHoldsEnabled: true,
+  reviewHoldHours: 12,
+  reviewHoldMaxCents: 50000,
+  reviewHoldsPerCustomer: 1,
   updatedAt: null,
 };
 
@@ -398,6 +404,7 @@ export function customerSummary(over: Partial<CustomerTradeSummary> = {}): Custo
     offeredCount: 2,
     listDueAt: null,
     confirmBy: null,
+    hold: null,
     shipBy: null,
     paymentDueAt: null,
     depositStatus: "not_required",
@@ -410,6 +417,7 @@ export function customerSummary(over: Partial<CustomerTradeSummary> = {}): Custo
 export function confirmation(over: Partial<TradeConfirmation> = {}): TradeConfirmation {
   return {
     confirmBy: "2026-10-27T19:00:00.000Z",
+    hold: null,
     depositCents: 0,
     depositReason: null,
     termsText: DEPOSIT_TERMS,
@@ -493,4 +501,7 @@ export const TRADE_TERMS: TradeTerms = {
   localMinCardValueCents: 1500,
   localMinTradeValueCents: 0,
   localCashPayoutEnabled: false,
+  reviewHoldsEnabled: true,
+  reviewHoldHours: 12,
+  reviewHoldMaxCents: 50000,
 };

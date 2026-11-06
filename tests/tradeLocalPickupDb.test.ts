@@ -23,6 +23,8 @@ const MIGRATIONS = [
   "../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql",
   "../supabase/migrations/20261031030000_trade_meetup_draft.sql",
   "../supabase/migrations/20261031050000_trade_import_condition_price.sql",
+  // In place but switched off below: tests/tradeReviewHoldsDb.test.ts covers it on.
+  "../supabase/migrations/20261106010000_trade_review_holds.sql",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
 
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -108,7 +110,7 @@ describe("local pickup trades in the database", { timeout: 60_000 }, () => {
       await db.exec(sql); // safe to run twice
     }
     await db.exec(`insert into auth.users (id, email) values ${Object.entries(users).map(([n, id]) => `('${id}', '${n}@example.com')`).join(", ")}`);
-    await db.exec(`update public.trade_settings set enabled = true, max_active_trades = 10`);
+    await db.exec(`update public.trade_settings set enabled = true, max_active_trades = 10, review_holds_enabled = false`);
     await db.exec(`set test.role = 'service_role'`);
     ring = await inv("Sol Ring", 5, 4000);
     bolt = await inv("Lightning Bolt", 5, 4000);

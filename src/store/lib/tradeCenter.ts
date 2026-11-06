@@ -378,6 +378,9 @@ export const CUSTOMER_TIMELINE_LABELS: Readonly<Record<string, string>> = {
   wanted_changed: "Our cards on the trade changed",
   submitted: "You sent your trade for review",
   resubmitted: "You sent your changes",
+  hold_placed: "We're holding our cards while we review",
+  hold_expired: "Our cards are back on sale while we finish reviewing",
+  hold_released: "We stopped holding our cards for now",
   revision_requested: "We asked for a change",
   cards_unavailable: "Some of our cards sold before you confirmed",
   approved: "Approved: waiting for your confirmation",
@@ -594,6 +597,11 @@ export interface TradeTerms {
   localMinCardValueCents: number;
   localMinTradeValueCents: number;
   localCashPayoutEnabled: boolean;
+  /** Our cards are held from sending the trade (review) and through the confirmation window. */
+  reviewHoldsEnabled: boolean;
+  reviewHoldHours: number;
+  /** Trades worth more of our cards than this are held only once approved. */
+  reviewHoldMaxCents: number;
 }
 
 /** The terms that differ between shipped and local pickup trades. */
@@ -1115,6 +1123,23 @@ export interface TradeDisputeView {
 }
 
 /** A trade, as its customer sees it: nothing staff-only. */
+/**
+ * A temporary hold on our cards: from sending the trade (review) or from
+ * approval (confirmation). Null once the trade is reserved or closed, or when
+ * nothing is held. The server sets and enforces the end time; a countdown on
+ * a page is information only.
+ */
+export interface TradeHold {
+  stage: "review" | "confirmation";
+  expiresAt: string;
+}
+
+/** The hold as stored on the trade (hold_stage / hold_expires_at). */
+export function tradeHoldOf(stage: string | null | undefined, expiresAt: string | null | undefined): TradeHold | null {
+  if (!expiresAt || (stage !== "review" && stage !== "confirmation")) return null;
+  return { stage, expiresAt };
+}
+
 export interface CustomerTrade {
   id: string;
   tradeNumber: number;
@@ -1153,6 +1178,8 @@ export interface CustomerTrade {
   listDueAt: string | null;
   /** An approved trade must be confirmed by this. */
   confirmBy: string | null;
+  /** Our cards held while the trade is reviewed or confirmed (null when not held, or reserved). */
+  hold: TradeHold | null;
   /** The carrier must accept their package by this. */
   shipBy: string | null;
   shipDays: number | null;
@@ -1203,6 +1230,7 @@ export interface CustomerTradeSummary {
   offeredCount: number;
   listDueAt: string | null;
   confirmBy: string | null;
+  hold: TradeHold | null;
   shipBy: string | null;
   paymentDueAt: string | null;
   depositStatus: DepositStatus;
@@ -1257,7 +1285,7 @@ export interface StaffTradeDeposit extends TradeDeposit {
 
 export interface TradeExtensionView {
   id: string;
-  kind: "list" | "confirmation" | "shipping" | "payment";
+  kind: "list" | "confirmation" | "shipping" | "payment" | "hold";
   fromDeadline: string | null;
   toDeadline: string;
   hours: number | null;
@@ -1362,6 +1390,7 @@ export interface StaffTradeSummary {
   finalValueCents: number | null;
   listDueAt: string | null;
   confirmBy: string | null;
+  hold: TradeHold | null;
   shipBy: string | null;
   paymentDueAt: string | null;
   inboundCarrier: string | null;
@@ -1448,6 +1477,10 @@ export interface TradeSettings {
   localMinTradeValueCents: number;
   localCashPayoutEnabled: boolean;
   localCashRatePercent: number;
+  reviewHoldsEnabled: boolean;
+  reviewHoldHours: number;
+  reviewHoldMaxCents: number;
+  reviewHoldsPerCustomer: number;
   updatedAt: string | null;
 }
 
@@ -1485,6 +1518,9 @@ export const TRADE_SETTING_RANGES = {
   freeShipThresholdCents: [1, 100_000_000],
   shipCostEstimateCents: [0, 10_000],
   localMeetDays: [1, 30],
+  reviewHoldHours: [1, 72],
+  reviewHoldMaxCents: [0, 100_000_000],
+  reviewHoldsPerCustomer: [1, 20],
 } as const;
 
 /** How a local pickup trade's difference was paid in person, as staff and customers read it. */

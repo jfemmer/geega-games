@@ -300,14 +300,37 @@ function SettingsEditor({
       </Group>
 
       <Group
+        title="Holding our cards"
+        intro="While you review a trade, the customer's chosen cards are held so they can't sell. Approving keeps them held until the confirmation deadline, and confirming turns the hold into the reservation. Holds are released automatically when their time runs out."
+      >
+        <label className="gg-check-inline gg-trset__switch">
+          <input
+            type="checkbox"
+            checked={form.reviewHoldsEnabled}
+            disabled={disabled}
+            onChange={(e) => set({ reviewHoldsEnabled: e.target.checked })}
+          />
+          <span>
+            <strong>Hold cards during review</strong>
+            <span className="gg-card-meta"> Off: nothing is held until the customer confirms an approved trade.</span>
+          </span>
+        </label>
+        <div className="gg-form-grid">
+          {numberField("reviewHoldHours", "hours", "From when the trade is sent. Plain hours (Sundays count).")}
+          {moneyField("reviewHoldMaxCents", "Hold during review: trades up to", "Our cards, at trade prices. Bigger trades are held once you approve.")}
+          {numberField("reviewHoldsPerCustomer", "trades", "At once, in review or waiting to be confirmed.")}
+        </div>
+      </Group>
+
+      <Group
         title="Deadlines"
-        intro="Nothing is reserved while customers build their trade or while you review it. Confirming reserves our cards. Confirmation and shipping deadlines skip Sundays (Saturdays count) and any days listed below, in St. Louis time."
+        intro="Confirmation and shipping deadlines skip Sundays (Saturdays count) and any days listed below, in St. Louis time."
       >
         <div className="gg-form-grid">
           {numberField("draftDays", "days", "A draft that isn't sent by then closes.")}
           {numberField("revisionHours", "hours", "After you ask for changes.")}
-          {numberField("confirmationHours", "hours", "After you approve. 48 means Saturday 2 PM → Tuesday 2 PM.")}
-          {numberField("shipDaysNew", "days", "After confirming. 3 means Friday 2 PM → Tuesday 2 PM.")}
+          {numberField("confirmationHours", "hours", "After you approve. 24 means Saturday 2 PM → Monday 2 PM.")}
+          {numberField("shipDaysNew", "days", "After confirming. 2 means Friday 2 PM → Monday 2 PM.")}
           {numberField("scanGraceHours", "hours", "After the shipping deadline, before a trade with tracking but no scan expires. A late scan always goes to you.")}
           {numberField("paymentDueDays", "days")}
           {numberField("disputeWindowDays", "days", "Customers can send proof of shipping this long after a reservation expires.")}

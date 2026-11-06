@@ -18,6 +18,7 @@ import {
   cardLine,
   copiesToReturn,
   formatDeadline,
+  formatUsd,
   termsForHandoff,
   timeLeft,
   tradeLabel,
@@ -321,8 +322,15 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       : []),
   ];
 
-  const oursIntro = editable
-    ? local
+  const holdUntil = trade.hold ? formatDeadline(trade.hold.expiresAt) : null;
+  const oursIntro = trade.hold && holdUntil
+    ? trade.hold.stage === "review"
+      ? `Held for you until ${holdUntil} while we review your trade, so they can't sell in the meantime. Prices are our regular prices, set when each card was added.`
+      : `Held for you until ${holdUntil}, your deadline to confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""}.`
+    : editable
+    ? terms?.reviewHoldsEnabled
+      ? "These stay on sale until you send your trade; then we hold them for you while we review it. Prices are our regular prices, set when each card was added."
+      : local
       ? "These stay on sale until we approve your trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
       : "These stay on sale until you confirm your approved trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
     : local && status === "pending_review"
@@ -366,6 +374,16 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       <button type="submit" className="gg-btn gg-tc-submit__btn" disabled={busy !== null || submitProblems.length > 0}>
         {busy === "submit" ? "Sending…" : status === "revision_requested" ? "Send my changes" : "Send for review"}
       </button>
+      {terms?.reviewHoldsEnabled && (
+        <p className="gg-tc-line__meta">
+          {trade.wantedTotalCents <= terms.reviewHoldMaxCents
+            ? `When you send it, we'll hold our cards for you for up to ${terms.reviewHoldHours} hours while we review, if they're still available.`
+            : `Our cards are held for you once we approve your trade (trades over ${formatUsd(terms.reviewHoldMaxCents)} aren't held during review).`}{" "}
+          {local
+            ? "Once approved, we hold them until we meet."
+            : `Once approved, you'll have ${terms.confirmationHours} hours (not counting Sundays) to confirm, and we keep holding them until then.`}
+        </p>
+      )}
       <p className="gg-tc-line__meta">
         {local ? (
           <>Once we approve your trade, we hold our cards for you and set up where and when to meet.</>

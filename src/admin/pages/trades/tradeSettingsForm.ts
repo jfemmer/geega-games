@@ -40,7 +40,9 @@ export type NumberKey =
   | "overstockThreshold"
   | "localMeetDays"
   | "localCreditRatePercent"
-  | "localCashRatePercent";
+  | "localCashRatePercent"
+  | "reviewHoldHours"
+  | "reviewHoldsPerCustomer";
 
 export type MoneyKey =
   | "minCardValueCents"
@@ -60,7 +62,8 @@ export type MoneyKey =
   | "freeShipFeeCents"
   | "shipCostEstimateCents"
   | "localMinCardValueCents"
-  | "localMinTradeValueCents";
+  | "localMinTradeValueCents"
+  | "reviewHoldMaxCents";
 
 export interface SettingsForm {
   enabled: boolean;
@@ -91,6 +94,8 @@ export interface SettingsForm {
   /** The meeting spot: blank for none. */
   localMeetSpotName: string;
   localMeetSpotAddress: string;
+  /** Hold our cards from sending a trade and through the confirmation window. */
+  reviewHoldsEnabled: boolean;
 }
 
 const R = TRADE_SETTING_RANGES;
@@ -123,6 +128,8 @@ export const NUMBER_RANGES: Record<NumberKey, readonly [number, number]> = {
   localMeetDays: R.localMeetDays,
   localCreditRatePercent: R.creditRatePercent,
   localCashRatePercent: R.cashRatePercent,
+  reviewHoldHours: R.reviewHoldHours,
+  reviewHoldsPerCustomer: R.reviewHoldsPerCustomer,
 };
 
 export const NUMBER_KEYS = Object.keys(NUMBER_RANGES) as NumberKey[];
@@ -154,6 +161,8 @@ export const NUMBER_LABELS: Record<NumberKey, string> = {
   localMeetDays: "Days to hold our cards for a meetup",
   localCreditRatePercent: "Local pickup: store credit rate",
   localCashRatePercent: "Local pickup: cash rate",
+  reviewHoldHours: "Hours to hold cards while we review",
+  reviewHoldsPerCustomer: "Held trades per customer",
 };
 
 /** Dollar settings, with the range (in cents) each allows and its label for messages. */
@@ -175,6 +184,7 @@ const MONEY_RULES: Record<Exclude<MoneyKey, "maxTradeValueCents">, { range: read
   shipCostEstimateCents: { range: R.shipCostEstimateCents, label: "What shipping costs us" },
   localMinCardValueCents: { range: R.minCardValueCents, label: "Local pickup: minimum card value" },
   localMinTradeValueCents: { range: R.minTradeValueCents, label: "Local pickup: minimum trade" },
+  reviewHoldMaxCents: { range: R.reviewHoldMaxCents, label: "Hold during review: trades up to" },
 };
 
 const MONEY_KEYS = Object.keys(MONEY_RULES) as Exclude<MoneyKey, "maxTradeValueCents">[];
@@ -221,6 +231,7 @@ export function formOf(s: TradeSettings): SettingsForm {
     localCashPayoutEnabled: s.localCashPayoutEnabled,
     localMeetSpotName: s.localMeetSpotName ?? "",
     localMeetSpotAddress: s.localMeetSpotAddress ?? "",
+    reviewHoldsEnabled: s.reviewHoldsEnabled,
   };
 }
 
@@ -360,5 +371,6 @@ export function settingsInputOf(form: SettingsForm): TradeSettingsInput | { prob
     localCashPayoutEnabled: form.localCashPayoutEnabled,
     localMeetSpotName: form.localMeetSpotName.trim() || null,
     localMeetSpotAddress: form.localMeetSpotAddress.trim() || null,
+    reviewHoldsEnabled: form.reviewHoldsEnabled,
   };
 }

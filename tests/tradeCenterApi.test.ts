@@ -631,6 +631,7 @@ beforeEach(() => {
   rpc("trade_short_lines", () => ({ data: [], error: null }));
   rpc("trade_mark_unavailable", () => ({ data: null, error: null }));
   rpc("trade_expire_due", () => ({ data: [], error: null }));
+  rpc("trade_release_expired_holds", () => ({ data: [], error: null }));
   // As the database does it (tradeCenterDb.test.ts runs the real one): a new
   // number needs the packaging confirmation; the same one only takes a date.
   rpc("trade_record_tracking", (args) => {
@@ -2835,7 +2836,14 @@ describe("the worker (deadlines, scans, deposits, reminders)", () => {
 
   it("does nothing (and doesn't fail) where the Trade Center isn't set up", async () => {
     state.tables.trade_settings = [];
-    expect(await runTradeWorker()).toEqual({ tradesExpired: 0, tradeReminders: 0, tradeAlerts: 0, tradeScansChecked: 0, tradeDepositsReconciled: 0 });
+    expect(await runTradeWorker()).toEqual({
+      tradesExpired: 0,
+      tradeReminders: 0,
+      tradeAlerts: 0,
+      tradeScansChecked: 0,
+      tradeDepositsReconciled: 0,
+      tradeHoldsReleased: 0,
+    });
   });
 });
 
@@ -3214,3 +3222,77 @@ describe("local pickup trades", () => {
     expect((await owner.post({ action: "saveSettings", settings: { ...view, localMinTradeValueCents: 5000, maxTradeValueCents: 4000 } })).statusCode).toBe(400);
   });
 });
+
+describe("review holds (holding our cards while a trade is reviewed)", () => {
+  it("lets expired review holds go and tells each customer once", async () => {
+    const t = tradeRow({ status: "pending_review", submitted_at: iso(Date.now() - 13 * HOUR) });
+    trades().push(t);
+    rpc("trade_release_expired_holds", () => ({
+      data: [
+        { released_trade_id: t.id, released_trade_number: t.trade_number, released_lines: 2 },
+        // A trade whose hold had nothing on it: nothing to tell anyone.
+        { released_trade_id: "00000000-0000-4000-8000-000000000000", released_trade_number: 99, released_lines: 0 },
+      ],
+      error: null,
+    }));
+    const counts = await runTradeWorker();
+    expect(counts.tradeHoldsReleased).toBe(2);
+    expect(rpcArgs("trade_release_expired_holds")[0]).toMatchObject({ p_limit: 50 });
+    expect(emailTypes()).toEqual(["trade_hold_released"]);
+    expect(sent[0].text).toMatch(/still in review/);
+    expect(sent[0].idempotencyKey).toBe(`trade-hold-released-${t.id}-${t.submitted_at}`);
+  });
+
+  it("tells the customer their cards are held, and until when, when they send a trade under a hold", async () => {
+    const until = iso(Date.now() + 12 * HOUR);
+    const t = tradeRow({ status: "pending_review", submitted_at: iso(Date.now()), hold_stage: "review", hold_expires_at: until });
+    trades().push(t);
+    const { sendTradeCustomerEmail } = await import("../api/_lib/tradeCenterEmails.ts");
+    const { loadTradeBundle, loadTradeSettings } = await import("../api/_lib/tradeCenter.ts");
+    const { getSupabaseAdmin } = await import("../api/_lib/supabaseAdmin.ts");
+    const admin = getSupabaseAdmin();
+    const settings = { ...(await loadTradeSettings(admin)), review_holds_enabled: true };
+    const bundle = await loadTradeBundle(admin, t.id);
+    await sendTradeCustomerEmail(bundle!, settings, { kind: "submitted" });
+    expect(sent.at(-1)?.text).toMatch(/holding our cards for you until/);
+    // Not held (over the limit, or holds off): it says they stay on sale.
+    const unheld = tradeRow({ status: "pending_review", submitted_at: iso(Date.now()) });
+    trades().push(unheld);
+    await sendTradeCustomerEmail((await loadTradeBundle(admin, unheld.id))!, settings, { kind: "submitted" });
+    expect(sent.at(-1)?.text).toMatch(/stay on sale until we approve/);
+  });
+
+  it("lets staff extend a review hold in plain hours, and tells the customer", async () => {
+    const until = iso(Date.now() + 2 * HOUR);
+    const t = tradeRow({ status: "pending_review", submitted_at: iso(Date.now() - 10 * HOUR), hold_stage: "review", hold_expires_at: until });
+    trades().push(t);
+    rpc("trade_extend", (args) => {
+      Object.assign(find(args.p_trade_id), { hold_expires_at: args.p_new_deadline });
+      return { data: args.p_new_deadline, error: null };
+    });
+    const res = await staff.post({ action: "extend", tradeId: t.id, kind: "hold", hours: 6, reason: "Pricing a foil" });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_extend")[0]).toMatchObject({
+      p_kind: "hold",
+      p_new_deadline: new Date(Date.parse(until) + 6 * HOUR).toISOString(),
+      p_hours: 6,
+    });
+    expect(emailTypes()).toEqual(["trade_extended"]);
+    expect(sent[0].subject).toMatch(/holding our cards longer/);
+  });
+
+  it("lets staff release a hold on purpose, logged and emailed", async () => {
+    const t = tradeRow({ status: "pending_review", submitted_at: iso(Date.now()), hold_stage: "review", hold_expires_at: iso(Date.now() + HOUR) });
+    trades().push(t);
+    rpc("trade_hold_release", (args) => {
+      Object.assign(find(args.p_trade_id), { hold_stage: null, hold_expires_at: null });
+      return { data: 2, error: null };
+    });
+    const res = await staff.post({ action: "releaseHold", tradeId: t.id, reason: "Customer asked" });
+    expect(res.statusCode).toBe(200);
+    expect(rpcArgs("trade_hold_release")[0]).toMatchObject({ p_trade_id: t.id, p_reason: "Customer asked" });
+    expect(emailTypes()).toEqual(["trade_hold_released"]);
+    expect(sent[0].text).toMatch(/stopped holding our cards/);
+  });
+});
+

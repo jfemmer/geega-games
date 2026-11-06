@@ -82,7 +82,8 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 //     approve           { tradeId, conditions?, depositOverride? }  → the customer confirms within confirmation_hours
 //     reject            { tradeId, reason }                  before the trade is confirmed
 //     setDeposit        { tradeId, override }                auto | required | waived, before it's paid
-//     extend            { tradeId, kind, hours, customerRequested?, reason? }
+//     extend            { tradeId, kind, hours, customerRequested?, reason? }   kind: list, confirmation, shipping, payment, hold
+//     releaseHold       { tradeId, reason? }                 let a review or confirmation hold go now
 //     verifyShipment    { tradeId, acceptedAt, onTime, refund?, note? }
 //     markReceived      { tradeId }
 //     cardsArrived      { tradeId }                          a package for an expired reservation
@@ -329,7 +330,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       case "extend": {
-        const kind = body.kind === "list" || body.kind === "confirmation" || body.kind === "shipping" || body.kind === "payment" ? body.kind : null;
+        const kind =
+          body.kind === "list" || body.kind === "confirmation" || body.kind === "shipping" || body.kind === "payment" || body.kind === "hold"
+            ? body.kind
+            : null;
         if (!kind) throw new HttpError(400, "Which deadline?");
         if (kind === "shipping" && handoffOf(t) === "local") {
           throw new HttpError(409, "A local pickup trade holds our cards until it's finished: there's no deadline to extend.");
@@ -337,7 +341,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const hours = wholeNumber(body.hours, 1, 720);
         if (hours === null) throw new HttpError(400, "Extend by 1 to 720 hours.");
         const current =
-          kind === "list" ? t.list_due_at : kind === "confirmation" ? t.confirm_by : kind === "shipping" ? t.ship_by : t.payment_due_at;
+          kind === "list"
+            ? t.list_due_at
+            : kind === "confirmation"
+              ? t.confirm_by
+              : kind === "shipping"
+                ? t.ship_by
+                : kind === "hold"
+                  ? t.hold_expires_at
+                  : t.payment_due_at;
         const from = Math.max(Date.now(), current ? Date.parse(current) : 0);
         // Confirmation and shipping run in qualifying time (Sundays and excluded days don't count).
         const next =
@@ -358,6 +370,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (error) throw tradeDbError(error, "We couldn't extend the deadline. Try again.");
         await audit("extend", { kind, hours, customerRequested, to: new Date(next).toISOString() });
         customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "extended", deadline: kind });
+        break;
+      }
+
+      case "releaseHold": {
+        const reason = cleanText(body.reason, 1000);
+        const { data, error } = await admin.rpc("trade_hold_release", {
+          p_trade_id: tradeId,
+          p_reason: reason,
+          ...actor,
+        });
+        if (error) throw tradeDbError(error, "We couldn't release the hold. Try again.");
+        await audit("release_hold", { stage: t.hold_stage, until: t.hold_expires_at, lines: data, reason });
+        customerEmail = await emailCustomer(admin, settings, tradeId, { kind: "hold_released", why: "staff" });
         break;
       }
 
@@ -1611,6 +1636,16 @@ async function saveSettings(admin: Admin, staff: StaffContext, before: TradeSett
     ...localTerms,
     local_meet_spot_name: spotName ?? null,
     local_meet_spot_address: spotAddress ?? null,
+    // Review holds: a page from before these settings existed keeps what's saved.
+    review_holds_enabled: typeof o.reviewHoldsEnabled === "boolean" ? o.reviewHoldsEnabled : before.review_holds_enabled,
+    review_hold_hours:
+      o.reviewHoldHours === undefined ? before.review_hold_hours : num(o, "reviewHoldHours", r.reviewHoldHours, "Hours to hold cards while we review"),
+    review_hold_max_cents:
+      o.reviewHoldMaxCents === undefined ? before.review_hold_max_cents : num(o, "reviewHoldMaxCents", r.reviewHoldMaxCents, "Hold during review: trades up to"),
+    review_holds_per_customer:
+      o.reviewHoldsPerCustomer === undefined
+        ? before.review_holds_per_customer
+        : num(o, "reviewHoldsPerCustomer", r.reviewHoldsPerCustomer, "Held trades per customer"),
     updated_at: new Date().toISOString(),
     updated_by: staff.userId,
   };

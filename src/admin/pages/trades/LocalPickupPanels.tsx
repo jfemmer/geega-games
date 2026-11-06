@@ -167,7 +167,7 @@ export function LocalReviewPanel({ trade, settings, busy, run }: TradePanelProps
               maxLength={4000}
               value={revision}
               onChange={(e) => setRevision(e.target.value)}
-              hint={`Emailed to the customer. They have ${settings.revisionHours} hours to send their changes; nothing is reserved meanwhile.`}
+              hint={`Emailed to the customer. They have ${settings.revisionHours} hours to send their changes. ${trade.hold ? "Our cards stay held until the hold ends." : "Nothing is reserved meanwhile."}`}
             />
             <div className="gg-drawer-actions__buttons">
               <Button variant="primary" onClick={finish} loading={busy === "revise"} disabled={busy !== null || !revision.trim()}>

@@ -51,6 +51,7 @@ import {
   type TradeTerms,
   type TradeWantedInput,
   type TradeWantedItem,
+  tradeHoldOf,
 } from "../../src/store/lib/tradeCenter.js";
 import { addQualifyingDays, addQualifyingHours } from "../../src/store/lib/tradeDeadlines.js";
 import { conditionForAge } from "../../src/store/lib/tradeConditions.js";
@@ -263,6 +264,9 @@ export function termsOf(s: TradeSettingsRow): TradeTerms {
     localMinCardValueCents: s.local_min_card_value_cents,
     localMinTradeValueCents: s.local_min_trade_value_cents,
     localCashPayoutEnabled: s.local_cash_payout_enabled,
+    reviewHoldsEnabled: s.review_holds_enabled,
+    reviewHoldHours: s.review_hold_hours,
+    reviewHoldMaxCents: s.review_hold_max_cents,
   };
 }
 
@@ -330,6 +334,10 @@ export function settingsView(s: TradeSettingsRow): TradeSettings {
     localMinTradeValueCents: s.local_min_trade_value_cents,
     localCashPayoutEnabled: s.local_cash_payout_enabled,
     localCashRatePercent: s.local_cash_rate_percent,
+    reviewHoldsEnabled: s.review_holds_enabled,
+    reviewHoldHours: s.review_hold_hours,
+    reviewHoldMaxCents: s.review_hold_max_cents,
+    reviewHoldsPerCustomer: s.review_holds_per_customer,
     updatedAt: s.updated_at ?? null,
   };
 }
@@ -860,6 +868,7 @@ function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSetting
     freeShipFeeCents: t.free_ship_fee_cents,
     listDueAt: t.list_due_at,
     confirmBy: t.confirm_by,
+    hold: tradeHoldOf(t.hold_stage, t.hold_expires_at),
     shipBy: t.ship_by,
     shipDays: t.ship_days,
     paymentDueAt: t.payment_due_at,
@@ -1076,7 +1085,7 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
     extensions: (extras.extensions ?? []).map(
       (e): TradeExtensionView => ({
         id: e.id,
-        kind: (["list", "confirmation", "shipping", "payment"].includes(e.kind) ? e.kind : "shipping") as TradeExtensionView["kind"],
+        kind: (["list", "confirmation", "shipping", "payment", "hold"].includes(e.kind) ? e.kind : "shipping") as TradeExtensionView["kind"],
         fromDeadline: e.from_deadline,
         toDeadline: e.to_deadline,
         hours: e.hours,
@@ -1139,6 +1148,7 @@ export function customerSummaryView(t: TradeRow, wantedCount: number, offeredCou
     offeredCount,
     listDueAt: t.list_due_at,
     confirmBy: t.confirm_by,
+    hold: tradeHoldOf(t.hold_stage, t.hold_expires_at),
     shipBy: t.ship_by,
     paymentDueAt: t.payment_due_at,
     depositStatus: depositStatusOf(t.deposit_status),
@@ -1163,6 +1173,7 @@ export function staffSummaryView(t: TradeRow): StaffTradeSummary {
     finalValueCents: t.final_value_cents,
     listDueAt: t.list_due_at,
     confirmBy: t.confirm_by,
+    hold: tradeHoldOf(t.hold_stage, t.hold_expires_at),
     shipBy: t.ship_by,
     paymentDueAt: t.payment_due_at,
     inboundCarrier: t.inbound_carrier,

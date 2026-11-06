@@ -51,9 +51,9 @@ export function shipByPreview(days: number, settings: Pick<TradeSettings, "exclu
   return addQualifyingDays(now, days, settings.excludedDates);
 }
 
-/** The deadline after giving `hours` more: confirmation and shipping count qualifying hours, the others plain hours. */
+/** The deadline after giving `hours` more: confirmation and shipping count qualifying hours, the others (and a review hold) plain hours. */
 export function extendedDeadline(
-  kind: "list" | "confirmation" | "shipping" | "payment",
+  kind: "list" | "confirmation" | "shipping" | "payment" | "hold",
   currentIso: string | null,
   hours: number,
   settings: Pick<TradeSettings, "excludedDates">,

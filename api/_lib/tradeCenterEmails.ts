@@ -67,6 +67,21 @@ function clipRows<T>(rows: T[], more: (n: number) => T): T[] {
   return rows.length > MAX_EMAIL_CARDS ? [...rows.slice(0, MAX_EMAIL_CARDS), more(rows.length - MAX_EMAIL_CARDS)] : rows;
 }
 
+/**
+ * What happens to our cards while a trade is reviewed: held until a stated
+ * time (a review hold), or on sale until approval (no hold: holds off, the
+ * trade is over the limit, or the customer already has a held trade).
+ */
+function reviewHoldLine(t: TradeBundle["trade"], settings: TradeSettingsRow, afterApproval: string): string {
+  if (t.hold_stage === "review" && t.hold_expires_at) {
+    return `We're holding our cards for you until ${formatDeadline(t.hold_expires_at)} while we review, so they can't sell in the meantime.`;
+  }
+  if (settings.review_holds_enabled) {
+    return `Our cards aren't held during review for this trade, so they stay on sale until we approve it. ${afterApproval}`;
+  }
+  return `Our cards aren't reserved yet, so they stay on sale while we review. ${afterApproval}`;
+}
+
 /** "48 hours" or "3 days", in qualifying time. */
 function hoursPhrase(hours: number): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
@@ -200,11 +215,12 @@ export type TradeCustomerEmail =
   | { kind: "canceled_by_store"; reason: string | null }
   | { kind: "rejected"; reason: string | null }
   | { kind: "returned" }
-  | { kind: "extended"; deadline: "list" | "confirmation" | "shipping" | "payment" }
+  | { kind: "extended"; deadline: "list" | "confirmation" | "shipping" | "payment" | "hold" }
   | { kind: "reinstated" }
   | { kind: "dispute_received" }
   | { kind: "message"; messageId: string; body: string }
   | { kind: "meetup_set" }
+  | { kind: "hold_released"; why: "expired" | "staff" }
   | { kind: "reminder"; reminder: "list_due" | "revision_due" | "confirm_by" | "ship_by" | "payment_due" };
 
 /** Emails the customer about their trade. Never throws. */
@@ -278,7 +294,13 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         heading: "We got your trade",
         paragraphs: [
           `${greet} thanks! We're reviewing trade ${label} and will email you as soon as we've decided.`,
-          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, you'll confirm your trade to reserve them.",
+          reviewHoldLine(
+            t,
+            settings,
+            settings.review_holds_enabled
+              ? `Once we approve, we hold them for you while you confirm (${hoursPhrase(settings.confirmation_hours)}, not counting Sundays).`
+              : "Once we approve, you'll confirm your trade to reserve them.",
+          ),
           "Please don't mail anything yet: we'll send the address and packing instructions once your cards are reserved.",
         ],
         quote: comparisonBlock(
@@ -290,6 +312,26 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         button: view,
       });
     }
+
+    case "hold_released":
+      return sendCustomer(
+        b,
+        settings,
+        "trade_hold_released",
+        `trade-hold-released-${t.id}-${t.submitted_at}`,
+        `Trade ${label}: our cards are no longer held`,
+        {
+          previewText: "We're still reviewing your trade. Our cards are back on sale until we approve it.",
+          heading: "We're still reviewing your trade",
+          paragraphs: [
+            email.why === "expired"
+              ? `${greet} we haven't finished reviewing trade ${label} yet, and the ${hoursPhrase(settings.review_hold_hours)} we hold our cards during review have ended, so they're back on sale.`
+              : `${greet} we've stopped holding our cards for trade ${label} while we finish reviewing it, so they're back on sale for now.`,
+            "Your trade is still in review, and you don't need to do anything. When we approve it, we'll hold whatever's still available for you to confirm. If one of our cards sells first, we'll let you know and you can update your trade.",
+          ],
+          button: view,
+        },
+      );
 
     case "revision_requested":
       return sendCustomer(b, settings, "trade_revision_requested", `trade-revision-${t.id}-${t.list_due_at}`, `Trade ${label}: a change is needed`, {
@@ -348,7 +390,9 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           t.deposit_cents > 0
             ? `Confirming takes a refundable ${money(t.deposit_cents)} deposit. It's refunded in full once the carrier accepts your package by your shipping deadline, and you never lose it for declining an offer after your cards arrive.`
             : "No deposit is needed for this trade.",
-          "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
+          t.hold_stage === "confirmation"
+            ? "We're holding our cards for you until then, so nothing can sell before you confirm."
+            : "Until you confirm, our cards stay on sale. If one sells first, we'll let you know and you can update your trade.",
         ],
         note: t.approval_conditions ? `Approved on this condition: ${t.approval_conditions}` : null,
         rows: clipRows(
@@ -748,6 +792,17 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       });
 
     case "extended": {
+      if (email.deadline === "hold") {
+        const until = t.hold_expires_at;
+        return sendCustomer(b, settings, "trade_extended", `trade-extended-${t.id}-hold-${until}`, `Trade ${label}: we're holding our cards longer`, {
+          previewText: until ? `We're holding our cards for you until ${formatDeadline(until)}.` : "We're holding our cards for you a little longer.",
+          heading: "We're holding our cards a little longer",
+          paragraphs: [
+            `${greet} we need a bit more time to review trade ${label}, so we're holding our cards for you until ${until ? formatDeadline(until) : "we finish"}. You don't need to do anything.`,
+          ],
+          button: view,
+        });
+      }
       const at =
         email.deadline === "confirmation" ? t.confirm_by : email.deadline === "shipping" ? t.ship_by : email.deadline === "payment" ? t.payment_due_at : t.list_due_at;
       const what =
@@ -879,7 +934,7 @@ async function buildAndSendLocal(b: TradeBundle, settings: TradeSettingsRow, ema
         heading: "We got your trade",
         paragraphs: [
           `${greet} thanks! We're reviewing trade ${label}, a local pickup in ${area}, and will email you as soon as we've decided.`,
-          "Our cards aren't reserved yet, so they stay on sale while we review. Once we approve, we hold them for you until we meet.",
+          reviewHoldLine(t, settings, "Once we approve, we hold them for you until we meet."),
           `Bring the cards you're trading in when we meet: we'll value each one at its TCG low for the condition we see, and ${credit} of that is your trade credit toward our cards.`,
         ],
         rows: [{ label: "Our cards", value: money(t.wanted_total_cents) }],

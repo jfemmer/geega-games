@@ -287,8 +287,16 @@ export const tradeCenterRepository = {
     return post({ action: "setDeposit", tradeId, override });
   },
 
-  extend(tradeId: string, input: { kind: "list" | "confirmation" | "shipping" | "payment"; hours: number; customerRequested: boolean; reason: string }) {
+  extend(
+    tradeId: string,
+    input: { kind: "list" | "confirmation" | "shipping" | "payment" | "hold"; hours: number; customerRequested: boolean; reason: string },
+  ) {
     return post({ action: "extend", tradeId, ...input });
+  },
+
+  /** Let a review or confirmation hold go now: the cards go back on sale and the customer is told. */
+  releaseHold(tradeId: string, reason: string) {
+    return post({ action: "releaseHold", tradeId, reason });
   },
 
   /** The carrier accepted their package at acceptedAt; on time refunds the deposit, late sends it to review unless refund. */

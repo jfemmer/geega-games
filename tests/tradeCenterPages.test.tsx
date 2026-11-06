@@ -545,6 +545,16 @@ function wantedItemFor(id: string, cents: number) {
 
 describe("a trade's page", () => {
   const sheoldred = customerCard({ id: "o1", quantity: 1 });
+
+  it("says our cards are held, and until when, while the trade is reviewed or waits to be confirmed", async () => {
+    world.trade = customerTrade({
+      status: "pending_review",
+      hold: { stage: "review", expiresAt: "2099-01-01T17:00:00Z" },
+      wanted: [{ ...customerTrade().wanted[0], status: "reserved" as const }],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    expect(await screen.findByText(/Held for you until .* while we review your trade, so they can't sell in the meantime/)).toBeInTheDocument();
+  });
   const elves = customerCard({ id: "o3", cardName: "Llanowar Elves", setCode: "DOM", collectorNumber: "168", quantity: 4, referencePriceCents: 25, estimatedUnitCents: 25, eligibility: "below_minimum" });
 
   it("won't send a list with a card we can't take; sends it once that's off, with a note (3)", async () => {
@@ -554,7 +564,9 @@ describe("a trade's page", () => {
     const send = await screen.findByRole("button", { name: "Send for review" });
     expect(send).toBeDisabled();
     expect(screen.getByText(/Send it for review by/)).toHaveTextContent("or it closes.");
-    expect(screen.getByText(/These stay on sale until you confirm your approved trade, so they aren't reserved yet/)).toBeInTheDocument();
+    expect(screen.getByText(/These stay on sale until you send your trade; then we hold them for you while we review it/)).toBeInTheDocument();
+    expect(screen.getByText(/we'll hold our cards for you for up to 12 hours while we review/)).toBeInTheDocument();
+    expect(screen.getByText(/you'll have 48 hours \(not counting Sundays\) to confirm/)).toBeInTheDocument();
     expect(screen.getByText("Take off the card we can't accept.")).toBeInTheDocument();
     expect(screen.getByText(/Under our \$15\.00 minimum per card/)).toBeInTheDocument();
 
@@ -1355,7 +1367,8 @@ describe("local pickup on the storefront", () => {
     const steps = screen.getByRole("list", { name: "Trade progress" });
     expect(within(steps).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Our cards", "Review", "Meet up", "Done"]);
     // Nothing to confirm on a local trade: approving holds our cards.
-    expect(screen.getByText(/These stay on sale until we approve your trade/)).toBeInTheDocument();
+    expect(screen.getByText(/These stay on sale until you send your trade; then we hold them for you while we review it/)).toBeInTheDocument();
+    expect(screen.getByText(/Once approved, we hold them until we meet/)).toBeInTheDocument();
     expect(screen.getByText(/Once we approve your trade, we hold our cards for you and set up where and when to meet/)).toBeInTheDocument();
     const balance = screen.getByRole("region", { name: "Your trade" });
     expect(balance).toHaveTextContent("Local pickup");

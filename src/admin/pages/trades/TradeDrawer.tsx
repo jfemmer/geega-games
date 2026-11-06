@@ -55,8 +55,8 @@ import type { TradePanelProps } from "./types";
 const STAFF_NEXT: Record<TradeStatus, string> = {
   awaiting_trade_list: "The customer is still building their trade. Nothing is reserved.",
   pending_review: "Review each card below, then approve the trade, ask for changes, or reject it.",
-  revision_requested: "Waiting for the customer to change their trade. Nothing is reserved.",
-  awaiting_confirmation: "Approved. Waiting for the customer to confirm (and pay any deposit). Nothing is reserved yet.",
+  revision_requested: "Waiting for the customer to change their trade.",
+  awaiting_confirmation: "Approved. Waiting for the customer to confirm (and pay any deposit).",
   awaiting_deposit: "The customer confirmed and is paying the deposit. Our cards are reserved the moment it goes through.",
   awaiting_shipment: "Our cards are reserved. Waiting for the customer to ship and add tracking.",
   tracking_submitted: "Tracking added. Waiting for the carrier's first scan.",
@@ -80,7 +80,7 @@ const STAFF_NEXT: Record<TradeStatus, string> = {
 const LOCAL_STAFF_NEXT: Partial<Record<TradeStatus, string>> = {
   awaiting_trade_list: "The customer is still picking our cards. Nothing is reserved. Their cards are valued when you meet.",
   pending_review: "Local pickup: approve it (no card review, no deposit), ask for changes, or reject it.",
-  awaiting_confirmation: "Approved. Waiting for the customer to confirm. Nothing is reserved yet.",
+  awaiting_confirmation: "Approved. Waiting for the customer to confirm.",
   awaiting_shipment:
     "Our cards are held until you finish or cancel this trade. Agree on a time and place in the messages, then record their cards below when you meet. If they change their mind about one of our cards, take it off under Our cards: it goes straight back on sale.",
   completed: "Complete: traded in person. Add the cards you took to inventory.",
@@ -399,6 +399,7 @@ function StandingSection({ trade, owner, busy, run, settings }: TradePanelProps)
           <ExtendDeadline trade={trade} settings={settings} kind={deadline.kind} at={deadline.at} busy={busy} run={run} />
         </div>
       )}
+      {trade.hold && <HoldBlock trade={trade} settings={settings} busy={busy} run={run} owner={owner} />}
       {trade.extensions.length > 0 && (
         <details className="gg-trd-extensions">
           <summary>More time given ({trade.extensions.length})</summary>
@@ -453,6 +454,74 @@ function StandingSection({ trade, owner, busy, run, settings }: TradePanelProps)
   );
 }
 
+/**
+ * Our cards held for this trade before it's reserved: a review hold (from
+ * sending, for review_hold_hours) or a confirmation hold (from approval, until
+ * the confirmation deadline). More time, or letting the cards go now.
+ */
+function HoldBlock({ trade, settings, busy, run }: TradePanelProps) {
+  const now = useNow();
+  const [releasing, setReleasing] = useState(false);
+  const [reason, setReason] = useState("");
+  const hold = trade.hold;
+  if (!hold) return null;
+  const ends = Date.parse(hold.expiresAt);
+  const held = trade.wanted.filter((w) => w.status === "reserved");
+  const review = hold.stage === "review";
+  return (
+    <div className="gg-trd-deadline gg-trd-hold">
+      <span>
+        <strong>{review ? "Held while you review" : "Held while they confirm"}:</strong> until {formatDeadline(hold.expiresAt)}{" "}
+        <span className="gg-card-meta">({ends > now ? `${timeLeft(ends, now)} left` : "ending now"})</span>
+      </span>
+      <span className="gg-card-meta">
+        {held.length} of our card{held.length === 1 ? "" : "s"} off the shelf.{" "}
+        {review
+          ? "When it ends, they go back on sale and the trade stays in review; approving holds them again if they're still there."
+          : "This hold ends with the confirmation deadline: give more time there to keep holding."}
+      </span>
+      {review && <ExtendDeadline trade={trade} settings={settings} kind="hold" at={hold.expiresAt} busy={busy} run={run} />}
+      {!releasing ? (
+        <span className="gg-trd-extend">
+          <Button size="sm" variant="ghost" icon="close" disabled={busy !== null} onClick={() => setReleasing(true)}>
+            Release now…
+          </Button>
+        </span>
+      ) : (
+        <div className="gg-trd-form">
+          <div className="gg-inline-note gg-inline-note--warning" role="alert">
+            <Icon name="warning" size={18} />
+            <div>
+              <strong>
+                {held.map((w) => `${w.quantity} × ${w.cardName}`).join(", ") || "Our cards"} go back on sale right away.
+              </strong>{" "}
+              {trade.customerName ?? "The customer"} is emailed that we stopped holding them. The trade itself stays open.
+            </div>
+          </div>
+          <TextField label="Reason (optional, staff only)" maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <div className="gg-drawer-actions__buttons">
+            <Button size="sm" variant="ghost" onClick={() => setReleasing(false)} disabled={busy !== null}>
+              Keep holding
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              loading={busy === "releaseHold"}
+              disabled={busy !== null}
+              onClick={async () => {
+                const ok = await run("releaseHold", () => tradeCenterRepository.releaseHold(trade.id, reason.trim()), "Hold released.");
+                if (ok) setReleasing(false);
+              }}
+            >
+              Release our cards
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** More time on the running deadline (confirmation and shipping count qualifying hours). */
 function ExtendDeadline({
   trade,
@@ -464,7 +533,7 @@ function ExtendDeadline({
 }: {
   trade: StaffTrade;
   settings: TradeSettings;
-  kind: "list" | "confirmation" | "shipping" | "payment";
+  kind: "list" | "confirmation" | "shipping" | "payment" | "hold";
   at: string;
   busy: string | null;
   run: TradePanelProps["run"];
@@ -544,13 +613,14 @@ function ConfirmationPanel({ trade, busy, run }: TradePanelProps) {
         {trade.handoffMethod === "local" ? (
           <>
             Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see our cards and how long we&rsquo;ll hold them,
-            tick the box and confirm (no deposit). Our cards stay on sale until then.
+            tick the box and confirm (no deposit).{" "}
+            {trade.hold ? "Our cards are held until the confirmation deadline." : "Our cards stay on sale until then."}
           </>
         ) : (
           <>
             Approved{trade.approvedAt ? ` ${formatDateTime(trade.approvedAt)}` : ""}. They see the cards, both deadlines and the deposit
-            terms, tick the box and confirm{trade.deposit.cents > 0 ? `, paying the ${formatCents(trade.deposit.cents)} deposit` : ""}. Our
-            cards stay on sale until then.
+            terms, tick the box and confirm{trade.deposit.cents > 0 ? `, paying the ${formatCents(trade.deposit.cents)} deposit` : ""}.{" "}
+            {trade.hold ? "Our cards are held until the confirmation deadline." : "Our cards stay on sale until then."}
           </>
         )}
       </p>

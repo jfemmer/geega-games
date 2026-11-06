@@ -21,6 +21,10 @@ const FOLLOW_UPS = [
   readFileSync(new URL("../supabase/migrations/20261028030000_trade_meet_spot.sql", import.meta.url), "utf8"),
   readFileSync(new URL("../supabase/migrations/20261031010000_trade_local_hold_until_finished.sql", import.meta.url), "utf8"),
   readFileSync(new URL("../supabase/migrations/20261031050000_trade_import_condition_price.sql", import.meta.url), "utf8"),
+  // Review holds: in place, but switched off below, so everything here
+  // proves the flow without them is unchanged (tests/tradeReviewHoldsDb.test.ts
+  // covers them switched on).
+  readFileSync(new URL("../supabase/migrations/20261106010000_trade_review_holds.sql", import.meta.url), "utf8"),
 ];
 
 /** A row: whatever the query selected. */
@@ -131,6 +135,7 @@ describe("the Trade Center database", { timeout: 60_000 }, () => {
       await db.exec(sql);
       await db.exec(sql);
     }
+    await db.exec(`update public.trade_settings set review_holds_enabled = false`);
     await db.exec(`insert into auth.users (id, email) values ${Object.entries(users).map(([n, id]) => `('${id}', '${n}@example.com')`).join(", ")}`);
   });
 
