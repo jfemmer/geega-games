@@ -9,8 +9,7 @@ import ShopByDeck from "./ShopByDeck";
 import StorewideSaleBanner from "./StorewideSaleBanner";
 import OrdersPausedBanner from "./OrdersPausedBanner";
 import { useTradeTerms } from "../lib/tradeCenterApi";
-import { tradeCartCount, useTradeCart } from "../lib/tradeCart";
-import { TRADE_CENTER_PATH, TRADE_IN_PATH } from "../lib/tradeCenter";
+import { TRADE_IN_PATH } from "../lib/tradeCenter";
 import { siteLogoSrc } from "../lib/siteLogo";
 
 const SUGGEST_DEBOUNCE_MS = 200;
@@ -25,9 +24,8 @@ export default function Header() {
   const { user, signOut } = useAuth();
   const { path, query, navigate } = useRouter();
   const [cartOpen, setCartOpen] = useState(false);
-  // Trade Cards shows once staff switch trading on (Trades → Settings).
+  // "Trade" shows unless staff have switched trading off (Trades → Settings).
   const tradeTerms = useTradeTerms();
-  const tradeCount = tradeCartCount(useTradeCart());
 
   // The input is the single interactive source of truth for what's displayed
   // while typing; it's initialized from and kept in sync with the URL so
@@ -304,16 +302,10 @@ export default function Header() {
           Deals & Specials
         </Link>
         {/* Always in the markup (search engines read the prerendered page, where the
-            terms haven't loaded): the landing page explains trading; with cards in
-            the trade cart, the link goes straight to the cart. */}
+            terms haven't loaded): the landing page explains how trading works. */}
         {tradeTerms?.enabled !== false && (
-          <Link to={tradeCount > 0 ? TRADE_CENTER_PATH : TRADE_IN_PATH} className="gg-nav-trade">
+          <Link to={TRADE_IN_PATH} className="gg-nav-trade">
             Trade Cards
-            {tradeCount > 0 && (
-              <span className="gg-nav-trade__count" aria-label={`, ${tradeCount} in your trade`}>
-                {tradeCount}
-              </span>
-            )}
           </Link>
         )}
         <Link to="/sell-my-collection" className="gg-nav-sell">

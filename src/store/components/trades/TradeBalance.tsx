@@ -73,7 +73,7 @@ export function TradeBalance({
         </div>
       )}
       <TradeMoneyRows comparison={c} valueLabel={valueLabel} ratePercent={ratePercent} feeCents={feeCents} shipping={shipping} />
-      <TradeMoneyTotals comparison={c} excessLabel={excessLabel} />
+      <TradeMoneyTotals comparison={c} excessLabel={excessLabel} estimated={valueLabel === "estimated"} />
       {canAddCards && c.cardBalanceCents > 0 && c.moreValueNeededCents > 0 && c.offeredValueCents > 0 && (
         <p className="gg-tc-balance__hint gg-tc-balance__more">
           About {formatCents(c.moreValueNeededCents)} more in your cards would cover ours, or pay the rest by card at the end.
@@ -103,10 +103,11 @@ export function TradeMoneyRows({
   /** Under the credit: what it was before (the final offer). */
   creditNote?: string;
 }) {
+  const estimated = valueLabel === "estimated";
   return (
     <dl className="gg-tc-balance__rows">
       <div>
-        <dt>Our cards</dt>
+        <dt>Cards you want</dt>
         <dd>{formatCents(c.wantedCents)}</dd>
       </div>
       <div className="gg-tc-balance__need">
@@ -117,12 +118,13 @@ export function TradeMoneyRows({
         <dd>{formatCents(c.requiredValueCents)}</dd>
       </div>
       <div>
-        <dt>Your cards ({valueLabel})</dt>
+        <dt>Your {valueLabel} trade value</dt>
         <dd>{formatCents(c.offeredValueCents)}</dd>
       </div>
       <div className="gg-tc-balance__credit">
         <dt>
-          Trade credit at {ratePercent}%{creditNote && <span className="gg-tc-balance__hint">{creditNote}</span>}
+          {estimated ? "Estimated credit" : "Trade credit"} at {ratePercent}%
+          {creditNote && <span className="gg-tc-balance__hint">{creditNote}</span>}
         </dt>
         <dd>{formatCents(c.creditCents)}</dd>
       </div>
@@ -133,7 +135,10 @@ export function TradeMoneyRows({
         </div>
       )}
       <div className="gg-tc-balance__split">
-        <dt>Left to pay for our cards</dt>
+        <dt>
+          {estimated ? "Estimated remaining balance" : "Remaining balance"}
+          <span className="gg-tc-balance__hint">For our cards, after your credit</span>
+        </dt>
         <dd>{formatCents(c.cardBalanceCents)}</dd>
       </div>
       <div>
@@ -161,10 +166,13 @@ export function TradeMoneyTotals({
   comparison: c,
   excessLabel,
   payLabel = "You'd pay by card",
+  estimated = false,
 }: {
   comparison: TradeComparison;
   excessLabel?: string;
   payLabel?: string;
+  /** Still an estimate (before we've approved their cards): say so. */
+  estimated?: boolean;
 }) {
   return (
     <>
@@ -176,7 +184,7 @@ export function TradeMoneyTotals({
       )}
       {c.excessCents > 0 && (
         <div className="gg-tc-balance__total gg-tc-balance__total--credit">
-          <span>Credit left over</span>
+          <span>{estimated ? "Estimated excess credit" : "Credit left over"}</span>
           <strong>{formatCents(c.excessCents)}</strong>
         </div>
       )}

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { UseMyCardsPanel } from "../components/trades/UseMyCards";
+import { useTradeTerms } from "../lib/tradeCenterApi";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import {
   FUNDING,
@@ -182,6 +184,13 @@ export default function CheckoutPage() {
   const { lines, subtotalCents, discountableSubtotalCents, hasSaleOnly, loading: cartLoading, refresh, clear } = useCart();
   useRouter();
   const storeStatus = useStoreStatus();
+  const tradeTerms = useTradeTerms();
+  // How they're paying: today's checkout, or trading their cards toward the cart
+  // (?pay=trade from the cart's "Use My Magic Cards").
+  const [payMode, setPayMode] = useState<"pay" | "trade">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("pay") === "trade" ? "trade" : "pay",
+  );
+  const offerTrade = tradeTerms ? tradeTerms.enabled : true;
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | "new">("new");
@@ -760,9 +769,43 @@ export default function CheckoutPage() {
     );
   }
 
+  const choice = offerTrade ? (
+    <fieldset className="gg-paychoice">
+      <legend className="visually-hidden">How would you like to pay?</legend>
+      <label className={payMode === "pay" ? "gg-paychoice__opt gg-paychoice__opt--on" : "gg-paychoice__opt"}>
+        <input type="radio" name="gg-paychoice" value="pay" checked={payMode === "pay"} onChange={() => setPayMode("pay")} />
+        <span>
+          <strong>Pay Normally</strong>
+          <span className="gg-paychoice__hint">Checkout as usual, with any store credit you have.</span>
+        </span>
+      </label>
+      <label className={payMode === "trade" ? "gg-paychoice__opt gg-paychoice__opt--on" : "gg-paychoice__opt"}>
+        <input type="radio" name="gg-paychoice" value="trade" checked={payMode === "trade"} onChange={() => setPayMode("trade")} />
+        <span>
+          <strong>Use My Magic Cards</strong>
+          <span className="gg-paychoice__hint">
+            Trade cards you&rsquo;re not using toward this order
+            {tradeTerms ? `: ${tradeTerms.creditRatePercent}% of their value in trade credit` : ""}.
+          </span>
+        </span>
+      </label>
+    </fieldset>
+  ) : null;
+
+  if (payMode === "trade" && offerTrade) {
+    return (
+      <div className="gg-page">
+        <h1 style={{ color: "var(--gg-ink)" }}>Checkout</h1>
+        {choice}
+        <UseMyCardsPanel />
+      </div>
+    );
+  }
+
   return (
     <div className="gg-page">
       <h1 style={{ color: "var(--gg-ink)" }}>Checkout</h1>
+      {choice}
       {error && (
         <div ref={errorRef} className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
           {error}

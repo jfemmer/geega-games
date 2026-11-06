@@ -4,18 +4,19 @@ import { searchSellPrintings } from "../../lib/sellApi";
 import type { SellPrinting } from "../../lib/sellTypes";
 import { formatCents } from "../../lib/money";
 import {
+  CARD_CONDITIONS,
   CONDITION_NAMES,
   FINISH_NAMES,
   TRADE_LIMITS,
   conditionPercent,
   estimatedUnitCents,
   isTradeFinish,
+  type CardConditionCode,
   type CustomerTrade,
   type TradeFinish,
   type TradeOfferInput,
   type TradeTerms,
 } from "../../lib/tradeCenter";
-import { conditionForAge } from "../../lib/tradeConditions";
 import { finishesOf, printingPrice } from "./offerHelpers";
 
 // Paste a card list or upload a CSV for a trade. The text is read in the
@@ -23,9 +24,9 @@ import { finishesOf, printingPrice } from "./offerHelpers";
 // collection export, our own CSV, or one card per line), each line is
 // matched to its exact printing with the public card search, and the
 // customer checks everything on a review screen (which printing, finish,
-// how many) before anything is added. A condition in the list is ignored:
-// each card's condition comes from its printing's age (tradeConditions).
-// Only what they confirm is sent, as printings and quantities; the server
+// how many, and its condition) before anything is added. A condition in the
+// list is kept; a line without one waits for the customer to choose (never
+// assumed from the card's age). Only what they confirm is sent; the server
 // prices it.
 
 /** Files larger than this aren't read. */
@@ -45,6 +46,8 @@ export interface ImportRow {
   candidates: SellPrinting[];
   printingId: string | null;
   finish: TradeFinish;
+  /** From the list, or chosen on the review screen; null until chosen. */
+  condition: CardConditionCode | null;
   status: MatchStatus;
   include: boolean;
 }
@@ -138,6 +141,7 @@ export function OfferImport({
         candidates,
         printingId: status === "matched" ? candidates[0].scryfallId : null,
         finish: pickFinish(candidates[0], line.finish),
+        condition: line.condition,
         status,
         include: status !== "missing",
       });
@@ -166,15 +170,25 @@ export function OfferImport({
 
   const chosen = (rows ?? []).filter((r) => r.include);
   const unresolved = chosen.filter((r) => !r.printingId);
+  const noCondition = chosen.filter((r) => !r.condition);
+
+  function setAllConditions(condition: CardConditionCode) {
+    setRows((current) => (current ?? []).map((row) => (row.condition ? row : { ...row, condition })));
+  }
 
   async function add() {
     if (unresolved.length > 0) {
       setError("Choose the printing for each card you've ticked, or untick it.");
       return;
     }
+    if (noCondition.length > 0) {
+      setError("Choose the condition of each card you've ticked.");
+      return;
+    }
     const inputs: TradeOfferInput[] = chosen.map((r) => ({
       scryfallId: r.printingId as string,
       finish: r.finish,
+      condition: r.condition as CardConditionCode,
       quantity: r.quantity,
     }));
     setError(null);
@@ -186,15 +200,31 @@ export function OfferImport({
       <div className="gg-tc-import">
         <h3 className="gg-tc-import__title">Check your list</h3>
         <p className="gg-tc-line__meta">
-          We matched each line to a printing. Check the printing, finish and quantity, untick anything you don&rsquo;t want
-          to add, then add them to your cards. Each card&rsquo;s condition comes from its age.
+          We matched each line to a printing. Check the printing, finish, quantity and condition, untick anything you
+          don&rsquo;t want to add, then add them to your cards. Not sure of a condition? Pick the lower one: we check every card
+          when it arrives.
         </p>
+        {noCondition.length > 0 && (
+          <label className="gg-field gg-tc-import__allcond">
+            <span>
+              {noCondition.length} card{noCondition.length === 1 ? " needs" : "s need"} a condition. Set them all to:
+            </span>
+            <select value="" onChange={(e) => e.target.value && setAllConditions(e.target.value as CardConditionCode)}>
+              <option value="">Choose…</option>
+              {CARD_CONDITIONS.map((c) => (
+                <option key={c} value={c}>
+                  {CONDITION_NAMES[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {note && <p className="gg-alert gg-alert-warn">{note}</p>}
         <ul className="gg-tc-import__rows">
           {rows.map((row) => {
             const printing = row.candidates.find((p) => p.scryfallId === row.printingId);
             const reference = printing ? printingPrice(printing, row.finish) : null;
-            const condition = printing ? conditionForAge(printing.releasedAt) : null;
+            const condition = row.condition;
             const estimate = condition ? estimatedUnitCents(reference, conditionPercent(trade.conditionPercents, condition)) : null;
             return (
               <li key={row.key} className={row.status === "missing" ? "gg-tc-import__row gg-tc-import__row--missing" : "gg-tc-import__row"}>
@@ -257,9 +287,20 @@ export function OfferImport({
                         update(row.key, { quantity: Math.max(1, Math.min(TRADE_LIMITS.maxQuantity, Math.floor(Number(e.target.value) || 1))) })
                       }
                     />
+                    <select
+                      aria-label={`Condition of ${row.name}`}
+                      value={condition ?? ""}
+                      onChange={(e) => update(row.key, { condition: e.target.value ? (e.target.value as CardConditionCode) : null })}
+                    >
+                      <option value="">Condition…</option>
+                      {CARD_CONDITIONS.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
                     <span className="gg-tc-import__est">
-                      {condition && <span className="gg-tc-import__cond">{CONDITION_NAMES[condition]}</span>}
-                      {estimate !== null ? `~${formatCents(estimate)} ea` : printing ? "At review" : ""}
+                      {!condition ? "" : estimate !== null ? `~${formatCents(estimate)} ea` : printing ? "Priced by hand" : ""}
                     </span>
                   </span>
                 )}
@@ -303,15 +344,19 @@ export function OfferImport({
         <summary>What can I paste or upload?</summary>
         <p>
           One card per line: how many, the name, then anything else you know, like the set code in brackets, the
-          collector number and &ldquo;foil&rdquo; or &ldquo;etched&rdquo;. You don&rsquo;t need a condition: we set each
-          card&rsquo;s condition from its age.
+          collector number, &ldquo;foil&rdquo; or &ldquo;etched&rdquo;, and its condition (NM, LP, MP, HP or DMG). Lines
+          without a condition can be set on the next screen.
         </p>
         <p>
           Or a CSV file (up to {Math.round(MAX_IMPORT_BYTES / 1024)} KB and {TRADE_LIMITS.maxImportLines} cards) with a
           header row. We read these columns: <strong>Quantity</strong>, <strong>Name</strong> (or Card),{" "}
-          <strong>Set Code</strong> (or Set), <strong>Card Number</strong> (or Collector Number) and{" "}
-          <strong>Printing</strong> (or Finish). A collection export from the TCGplayer app works as it is.
+          <strong>Set Code</strong> (or Set), <strong>Card Number</strong> (or Collector Number),{" "}
+          <strong>Printing</strong> (or Finish) and <strong>Condition</strong>. A collection export from the TCGplayer app
+          works as it is. Example:
         </p>
+        <pre className="gg-tc-import__example">
+          {'Quantity,Name,Set Code,Card Number,Printing,Condition\n2,"Sheoldred, the Apocalypse",DMU,107,Normal,Near Mint\n1,"Ragavan, Nimble Pilferer",MH2,138,Foil,Lightly Played'}
+        </pre>
       </details>
       {error && (
         <div className="gg-alert gg-alert-error" role="alert">
@@ -345,7 +390,7 @@ export function OfferImport({
           Cancel
         </button>
       </div>
-      <p className="gg-tc-line__meta">We set each card&rsquo;s condition from its age, so you don&rsquo;t need to list one.</p>
+      <p className="gg-tc-line__meta">You&rsquo;ll check each card&rsquo;s printing and condition before anything is added.</p>
     </div>
   );
 }

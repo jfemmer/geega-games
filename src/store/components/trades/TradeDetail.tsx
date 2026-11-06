@@ -4,7 +4,7 @@ import { formatCents } from "../../lib/money";
 import { carrierLabel, trackingUrlFor } from "../../lib/tracking";
 import { useNow } from "../../lib/useNow";
 import { loadTrade, tradeActions, useTradeTerms, type ConfirmResponse, type TradeResponse } from "../../lib/tradeCenterApi";
-import { tradeCart, useTradeCart } from "../../lib/tradeCart";
+import { useCart } from "../../lib/CartContext";
 import {
   BLOCKING_ELIGIBILITY,
   CLOSED_TRADE_STATUSES,
@@ -19,6 +19,7 @@ import {
   copiesToReturn,
   formatDeadline,
   formatUsd,
+  heldDuringReview,
   termsForHandoff,
   timeLeft,
   tradeLabel,
@@ -40,7 +41,6 @@ import { DepositLine, TradeBalance } from "./TradeBalance";
 import { TradeShippingProgress } from "./TradeShippingProgress";
 import { TradeWantedList, type TradeWantedRow } from "./TradeWantedList";
 import { OfferCardsEditor } from "./OfferCardsEditor";
-import { conditionAgeSummary } from "../../lib/tradeConditions";
 import { TradeConfirmPanel } from "./TradeConfirmPanel";
 import { TradeDepositCard } from "./TradeDepositCard";
 import { TradeShippingPanel } from "./TradeShippingPanel";
@@ -49,6 +49,7 @@ import { TradeFinalOffer } from "./TradeFinalOffer";
 import { TradePaymentPanel } from "./TradePaymentPanel";
 import { TradeMessages, TradeTimeline } from "./TradeMessages";
 import { HandoffChoice, LocalBalance, LocalConfirmPanel, LocalMeetupPanel, LocalSettled, LocalYourCards } from "./LocalPickup";
+import { confirmWindow, plural } from "../../lib/tradeFaq";
 
 // Account → Trades → one trade: everything about it in one place, changing
 // with where it stands. While the customer builds their list: our cards
@@ -113,7 +114,8 @@ function afterDeposit(trade: CustomerTrade, paymentStatus: string | undefined): 
 export default function TradeDetail({ tradeId }: { tradeId: string }) {
   const { query, navigate } = useRouter();
   const terms = useTradeTerms();
-  const cart = useTradeCart();
+  // The shopping cart: cards added in the shop while this trade is a draft can join it.
+  const { lines: cartLines, removeItem: removeFromCart } = useCart();
   const [trade, setTrade] = useState<CustomerTrade | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [flash, setFlash] = useState<Flash>(null);
@@ -268,7 +270,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
   const wantedInputs: TradeWantedInput[] = onTrade
     .filter((w) => w.inventoryItemId)
     .map((w) => ({ inventoryItemId: w.inventoryItemId as string, quantity: w.quantity }));
-  const fromCart = cart.filter((c) => !onTrade.some((w) => w.inventoryItemId === c.inventoryItemId));
+  // Consigned copies can't be traded: they stay in the cart to buy normally.
+  const fromCart = cartLines.filter((c) => !c.saleOnly && !onTrade.some((w) => w.inventoryItemId === c.inventoryItemId));
   const blocked = trade.offered.filter((c) => BLOCKING_ELIGIBILITY.has(c.eligibility));
   const shortLines = onTrade.filter((w) => w.status === "requested" && w.available !== null && w.available < w.quantity);
   const valueLabel = ESTIMATED.has(status) ? "estimated" : APPROVED.has(status) ? "approved" : "final";
@@ -328,7 +331,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
       ? `Held for you until ${holdUntil} while we review your trade, so they can't sell in the meantime. Prices are our regular prices, set when each card was added.`
       : `Held for you until ${holdUntil}, your deadline to confirm${trade.deposit.cents > 0 ? " and pay the deposit" : ""}.`
     : editable
-    ? terms?.reviewHoldsEnabled
+    ? heldDuringReview(terms, trade.wantedTotalCents)
       ? "These stay on sale until you send your trade; then we hold them for you while we review it. Prices are our regular prices, set when each card was added."
       : local
       ? "These stay on sale until we approve your trade, so they aren't reserved yet. Prices are our regular prices, set when each card was added."
@@ -372,16 +375,18 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
         </ul>
       )}
       <button type="submit" className="gg-btn gg-tc-submit__btn" disabled={busy !== null || submitProblems.length > 0}>
-        {busy === "submit" ? "Sending…" : status === "revision_requested" ? "Send my changes" : "Send for review"}
+        {busy === "submit" ? "Submitting…" : status === "revision_requested" ? "Submit My Changes" : "Submit My Trade"}
       </button>
       {terms?.reviewHoldsEnabled && (
         <p className="gg-tc-line__meta">
-          {trade.wantedTotalCents <= terms.reviewHoldMaxCents
-            ? `When you send it, we'll hold our cards for you for up to ${terms.reviewHoldHours} hours while we review, if they're still available.`
-            : `Our cards are held for you once we approve your trade (trades over ${formatUsd(terms.reviewHoldMaxCents)} aren't held during review).`}{" "}
+          {heldDuringReview(terms, trade.wantedTotalCents)
+            ? `When you send it, we'll hold our cards for you for up to ${plural(terms.reviewHoldHours, "hour")} while we review, if they're still available.`
+            : `Our cards are held for you once we approve your trade${
+                terms.reviewHoldMaxCents > 0 ? ` (trades over ${formatUsd(terms.reviewHoldMaxCents)} aren't held during review)` : ""
+              }.`}{" "}
           {local
             ? "Once approved, we hold them until we meet."
-            : `Once approved, you'll have ${terms.confirmationHours} hours (not counting Sundays) to confirm, and we keep holding them until then.`}
+            : `Once approved, you'll have ${confirmWindow(terms.confirmationHours)} (not counting Sundays) to confirm, and we keep holding them until then.`}
         </p>
       )}
       <p className="gg-tc-line__meta">
@@ -597,7 +602,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
             {editable && fromCart.length > 0 && (
               <div className="gg-tc-cartmerge">
                 <p>
-                  You have {fromCart.length} more card{fromCart.length === 1 ? "" : "s"} in your trade cart.
+                  You have {fromCart.length} more card{fromCart.length === 1 ? "" : "s"} in your cart.
                 </p>
                 <button
                   type="button"
@@ -608,7 +613,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
                       [...wantedInputs, ...fromCart.map((c) => ({ inventoryItemId: c.inventoryItemId, quantity: c.quantity }))],
                       "Added to your trade.",
                     );
-                    if (ok) fromCart.forEach((c) => tradeCart.remove(c.inventoryItemId));
+                    if (ok) for (const c of fromCart) void removeFromCart(c.inventoryItemId);
                   }}
                 >
                   Add them to this trade
@@ -617,7 +622,7 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
             )}
             {editable && (
               <p className="gg-tc-line__meta">
-                Want more? <Link to="/shop">Browse the shop</Link> and tap &ldquo;Add to trade&rdquo; on any card.
+                Want more? <Link to="/shop">Browse the shop</Link>, add cards to your cart, and come back here to add them.
               </p>
             )}
           </section>
@@ -629,8 +634,8 @@ export default function TradeDetail({ tradeId }: { tradeId: string }) {
               <h2 id="gg-tc-theirs-title">Your cards</h2>
               {editable && (
                 <p className="gg-tc-line__meta">
-                  We set each card&rsquo;s condition from its age ({conditionAgeSummary()}). We price your cards at TCG low when we
-                  review your list, and check their condition when they arrive, so values can go up or down. We&rsquo;re looking for
+                  Choose each card&rsquo;s condition as best you can. Estimates use today&rsquo;s market prices; we price your cards at TCG
+                  low when we review your list and check every card when it arrives, so values can go up or down. We&rsquo;re looking for
                   staples: cards worth less than {formatCents(trade.minCardValueCents)} each at TCG low can&rsquo;t be traded.
                 </p>
               )}

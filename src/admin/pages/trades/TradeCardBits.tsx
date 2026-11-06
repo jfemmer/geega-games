@@ -57,7 +57,7 @@ function tcgplayerSearchUrl(cardName: string): string {
 
 /**
  * A customer's card: picture, name, printing, what they told us, and how we
- * estimated it (today's market price for the condition its age gives;
+ * estimated it (today's market price for the condition they chose;
  * staff price it at TCG low). With `lookup`, a link to look up its TCG low.
  */
 export function OfferCardHead({

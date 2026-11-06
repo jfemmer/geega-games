@@ -6,7 +6,7 @@ import { FaqSection, ShopRatingLine } from "../components/SellLandingSections";
 import { useTradeTerms } from "../lib/tradeCenterApi";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import { tradeFaqItems } from "../lib/tradeFaq";
-import { CARD_CONDITIONS, CONDITION_NAMES, TRADE_CENTER_PATH, TRADE_IN_PATH, type TradeTerms } from "../lib/tradeCenter";
+import { CARD_CONDITIONS, CONDITION_NAMES, STORE_CREDIT_PATH, heldDuringReview, TRADE_CENTER_PATH, TRADE_IN_PATH, type TradeTerms } from "../lib/tradeCenter";
 import { moneyShort, requiredValueCents } from "../lib/tradeShipping";
 import {
   CREDIT_MIN_LABEL,
@@ -21,8 +21,9 @@ import { HUB_CITY, ORGANIZATION_ID, breadcrumbJsonLd, faqJsonLd, serviceAreaServ
 // to Geega Games is, at what rate, and how it works, written for people
 // searching "trade in magic cards", "mtg trade in" and "trade magic cards
 // for store credit". It's prerendered (src/seo/routes.ts), so the rate is
-// in the HTML search engines read; the Trade Cards page (/trade-cards) is
-// the cart that does the trading and stays where it is.
+// in the HTML search engines read. Trading itself starts from the normal
+// shopping cart ("Use My Magic Cards" at checkout, or the Trade Cards page,
+// /trade-cards, which shows the same panel).
 //
 // The numbers come from the Trade Center settings. Until they load (and in
 // the prerendered page) the advertised snapshot in tradeAdvertised.ts
@@ -88,12 +89,15 @@ export default function TradeInPage() {
         <CreditRateBadge rate={t.creditRatePercent} />
         <div className="gg-collect-hero-actions">
           <Link to="/shop" className="gg-btn">
-            Pick the cards you want
+            Shop Magic cards
           </Link>
           <Link to={TRADE_CENTER_PATH} className="gg-btn gg-btn-ghost">
-            Open my trade cart
+            Trade toward my cart
           </Link>
         </div>
+        <p className="gg-area-note">
+          Not buying anything yet? <Link to={STORE_CREDIT_PATH}>Get store credit for my cards</Link> through our Sell program instead (it has its own rates, and no cards are held).
+        </p>
         <ShopRatingLine />
         {closed && (
           <p className="gg-area-note">
@@ -106,21 +110,19 @@ export default function TradeInPage() {
         <h2>How a trade-in works</h2>
         <ol className="gg-collect-steps">
           <li>
-            <strong>Choose our cards.</strong> Add singles from <Link to="/shop">the shop</Link> to your trade with &ldquo;Add to
-            trade&rdquo;. {t.minTradeValueCents > 0 ? `Trades start at ${moneyShort(t.minTradeValueCents)} of our cards.` : ""}
+            <strong>Choose your cards.</strong> Shop as usual and add singles from <Link to="/shop">the shop</Link> to your cart. At
+            checkout, choose &ldquo;Use My Magic Cards&rdquo;.{" "}
+            {t.minTradeValueCents > 0 ? `Trades start at ${moneyShort(t.minTradeValueCents)} of our cards.` : ""}
           </li>
           <li>
-            <strong>List the cards you&rsquo;re trading in.</strong> Search for each one or paste a list. Each card is priced at its TCG
-            low for its printing, finish and condition, and you see the estimate as you go.
+            <strong>Tell us what you&rsquo;re trading.</strong> Search for each card, paste a list or upload a CSV, and choose each
+            card&rsquo;s condition. You see an estimate as you go: {t.creditRatePercent}% of their value in trade credit.
+            {heldDuringReview(t) ? ` When you send your trade, we hold the cards you picked while we review it.` : ""}
           </li>
           <li>
-            <strong>We review and approve.</strong> You get {t.creditRatePercent}% of that total as credit toward the cards you picked. Once
-            you confirm, our cards are reserved for you.
-          </li>
-          <li>
-            <strong>Ship your cards, or meet us.</strong> Mail them tracked
-            {t.localPickupEnabled ? `, or bring them to a meetup in ${t.localPickupArea}` : ""}. We check every card and send a final offer
-            that lists any change and why; you decide, and anything your credit doesn&rsquo;t cover is paid by card.
+            <strong>Complete your trade.</strong> Once we approve it, confirm, then mail your cards tracked
+            {t.localPickupEnabled ? ` or bring them to a meetup in ${t.localPickupArea}` : ""}. We check every card and send a final offer
+            at TCG low that lists any change and why; you decide, and anything your credit doesn&rsquo;t cover is paid by card.
           </li>
         </ol>
         <MinimumExample t={t} />
@@ -154,8 +156,9 @@ export default function TradeInPage() {
           </table>
         </div>
         <p className="gg-area-note">
-          Until we see your cards, each one starts at a condition based on its printing&rsquo;s age. When they arrive we check every card;
-          one in better shape is worth more, one in worse shape is worth less, and your final offer shows every change.
+          You choose each card&rsquo;s condition when you list it (see our <Link to="/condition-guide">condition guide</Link>). When
+          your cards arrive we check every one; a card in better shape is worth more, one in worse shape is worth less, and your final
+          offer shows every change.
         </p>
       </section>
 
@@ -272,7 +275,7 @@ export default function TradeInPage() {
             <h3>Trade in: {t.creditRatePercent}% of TCG low</h3>
             <p>
               For staples you&rsquo;d swap for other singles. The rate is fixed, every card is priced at TCG low, and the credit goes toward
-              the cards you picked. <Link to={TRADE_CENTER_PATH}>Start a trade</Link>.
+              the cards in your cart. <Link to={TRADE_CENTER_PATH}>Start a trade</Link>.
             </p>
           </div>
           <div className="gg-collect-card">
@@ -292,13 +295,13 @@ export default function TradeInPage() {
 
       <section className="gg-collect-cta">
         <h2>Ready to trade?</h2>
-        <p>Find the cards you want in the shop, tap &ldquo;Add to trade&rdquo;, and start your trade from the cart.</p>
+        <p>Add the cards you want to your cart, then choose &ldquo;Use My Magic Cards&rdquo; at checkout.</p>
         <div className="gg-collect-hero-actions">
           <Link to="/shop" className="gg-btn">
-            Browse singles to trade for
+            Shop Magic cards
           </Link>
           <Link to={TRADE_CENTER_PATH} className="gg-btn gg-btn-ghost">
-            Open my trade cart
+            Trade toward my cart
           </Link>
         </div>
       </section>

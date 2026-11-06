@@ -20,6 +20,8 @@ import {
   SHIPPING_GUIDE_REMINDER,
   SHIPPING_GUIDE_TITLE,
 } from "../../lib/tradeShipping";
+import { shipWindow } from "../../lib/tradeFaq";
+import { CopyButton } from "../CopyButton";
 import { TradeProofForm } from "./TradeProofForm";
 import { TradeAskForTime } from "./TradeAskForTime";
 import { ShippingIllustration } from "./ShippingIllustration";
@@ -110,7 +112,19 @@ export function TradeShippingPanel({
   }
 
   const heading =
-    status === "in_transit" ? "Shipment verified" : status === "tracking_submitted" ? "Waiting for the carrier's first scan" : "Ship your cards";
+    status === "in_transit"
+      ? "Shipment verified"
+      : status === "tracking_submitted"
+        ? "Waiting for the carrier's first scan"
+        : "You're all set! Ship your cards to Geega Games.";
+  const mailLines = trade.mailTo
+    ? [
+        trade.mailTo.name,
+        trade.mailTo.line1,
+        trade.mailTo.line2,
+        `${trade.mailTo.city}, ${trade.mailTo.state} ${trade.mailTo.postalCode}`,
+      ].filter((line): line is string => Boolean(line))
+    : [];
 
   return (
     <section className="gg-tc-panel" aria-labelledby="gg-tc-ship-title">
@@ -128,7 +142,7 @@ export function TradeShippingPanel({
           ) : (
             <>
               Ship by <strong>{formatDeadline(trade.shipBy)}</strong> ({timeLeft(shipBy as number, now)} left
-              {trade.shipDays ? `; ${trade.shipDays} days, Sundays don't count` : ""}). The carrier has to scan your package by then: a label
+              {trade.shipDays ? `; ${shipWindow(trade.shipDays)}, Sundays don't count` : ""}). The carrier has to scan your package by then: a label
               on its own doesn&rsquo;t count.
             </>
           )}
@@ -150,29 +164,21 @@ export function TradeShippingPanel({
             <div className="gg-tc-address">
               <span className="gg-tc-address__label">Mail to</span>
               <address>
-                {trade.mailTo.name && (
-                  <>
-                    {trade.mailTo.name}
-                    <br />
-                  </>
-                )}
-                {trade.mailTo.line1}
-                <br />
-                {trade.mailTo.line2 && (
-                  <>
-                    {trade.mailTo.line2}
-                    <br />
-                  </>
-                )}
-                {trade.mailTo.city}, {trade.mailTo.state} {trade.mailTo.postalCode}
+                {mailLines.map((line, i) => (
+                  <span key={i} className="gg-tc-address__line">
+                    {line}
+                  </span>
+                ))}
               </address>
+              <CopyButton value={mailLines.join("\n")} label="Copy the mailing address" text="Copy address" />
             </div>
           ) : (
             <p className="gg-alert gg-alert-warn">We&rsquo;ll email you the address to mail your cards to.</p>
           )}
           <div className="gg-tc-ship__steps">
-            <p>
-              <strong>Put your trade ID, {label}, on a slip of paper inside.</strong>
+            <p className="gg-tc-ship__id">
+              <strong>Put your trade ID, {label}, on a slip of paper inside.</strong>{" "}
+              <CopyButton value={label} label={`Copy your trade ID, ${label}`} text="Copy trade ID" />
             </p>
             {trade.packingInstructions && <p>{trade.packingInstructions}</p>}
             <p>

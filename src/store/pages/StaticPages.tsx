@@ -23,7 +23,6 @@ import { REFERRAL_PAGES } from "../../seo/referralPages";
 import { ST_LOUIS_PATH } from "../../seo/sellAreas";
 import { ADVERTISED_TRADE_TERMS } from "../lib/tradeAdvertised";
 import { TRADE_IN_PATH } from "../lib/tradeCenter";
-import { CREDIT_SUMMARY } from "../lib/buyTerms";
 import { SHIPPING, formatCents, formatCentsShort } from "../lib/money";
 import { PHOTO_REQUEST_MIN_PRICE_LABEL } from "../lib/photoRequestTypes";
 import { SHIPS_TO_SUMMARY } from "../lib/usAddress";
@@ -67,6 +66,24 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Trading, right under the store's own hero: the shop stays first. */}
+      <section className="gg-home-trade" aria-labelledby="gg-home-trade-title">
+        <h2 id="gg-home-trade-title">Trade What You Have. Play What You Want.</h2>
+        <p>
+          Shop Magic singles and use your unused cards toward the ones you&rsquo;ve been wanting. Eligible cards earn{" "}
+          {ADVERTISED_TRADE_TERMS.creditRatePercent}% of their TCG low in trade credit: choose <em>Use My Magic Cards</em> at checkout.
+          By mail from anywhere in the US, or at a meetup in St. Louis.
+        </p>
+        <div className="gg-home-trade__actions">
+          <Link to="/shop" className="gg-btn">
+            Shop Magic Cards
+          </Link>
+          <Link to={TRADE_IN_PATH} className="gg-btn gg-btn-ghost">
+            How Trading Works
+          </Link>
+        </div>
+      </section>
+
       <DeckShowcase />
 
       <SellerReviewsSection />
@@ -85,21 +102,6 @@ export function HomePage() {
           Sell Your Cards
         </Link>
         <AreaLinks />
-      </section>
-
-      <section className="gg-collect-section gg-home-tradein">
-        <h2>Trade in Magic cards you don&rsquo;t play for {ADVERTISED_TRADE_TERMS.creditRatePercent}% store credit</h2>
-        <p className="gg-collect-lead">
-          Swap your Magic: The Gathering staples for the singles you want. We credit{" "}
-          {ADVERTISED_TRADE_TERMS.creditRatePercent}% of each card&rsquo;s TCG low toward any card in the shop,
-          by mail from anywhere in the US or at a meetup in St. Louis. Selling instead? Store credit pays{" "}
-          {CREDIT_SUMMARY}.
-        </p>
-        <div className="gg-collect-hero-actions">
-          <Link to={TRADE_IN_PATH} className="gg-btn gg-btn-ghost">
-            How trade-ins work
-          </Link>
-        </div>
       </section>
 
       <PartnerCategoriesSection />

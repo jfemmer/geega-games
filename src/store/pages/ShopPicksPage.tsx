@@ -3,7 +3,7 @@ import { Link, useRouter } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import ProductCard from "../components/ProductCard";
-import { TradeCartProgress } from "../components/trades/TradeCartProgress";
+import { TradeBanner } from "../components/trades/TradeBanner";
 import { cardDetailPath } from "../lib/cardSlug";
 import { listingTiles, type CardDetail } from "../lib/cardDetail";
 import { PICKS_PATH, readPickSlugs } from "../lib/postLinks";
@@ -68,7 +68,7 @@ export default function ShopPicksPage() {
         </p>
       </header>
 
-      <TradeCartProgress />
+      <TradeBanner />
 
       {slugs.length === 0 ? (
         <div className="gg-empty">

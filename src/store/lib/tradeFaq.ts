@@ -1,7 +1,6 @@
 import { formatCents } from "./money";
-import { localTermsDiffer, meetSpotLine, meetSpotOf, type TradeTerms } from "./tradeCenter";
+import { heldDuringReview, localTermsDiffer, meetSpotLine, meetSpotOf, type TradeTerms } from "./tradeCenter";
 import { moneyShort, requiredValueCents } from "./tradeShipping";
-import { conditionAgeSummary } from "./tradeConditions";
 import { addQualifyingDays, storeDateKey, storeInstant, weekdayOfKey } from "./tradeDeadlines";
 
 // The trade program's FAQ and the sentences that describe its terms, shared
@@ -14,6 +13,16 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 
 export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** "48 hours", or "5 days" past three: a shipping window (set in days) as customers read it. */
+export function shipWindow(days: number): string {
+  return days <= 3 ? plural(days * 24, "hour") : plural(days, "day");
+}
+
+/** "24 hours", or "4 days" past three days: the confirmation window (set in hours) as customers read it. */
+export function confirmWindow(hours: number): string {
+  return hours > 72 && hours % 24 === 0 ? plural(hours / 24, "day") : plural(hours, "hour");
 }
 
 /** "Tuesday": the day a shipping window that opens Friday at 2 PM closes, worked out like a real deadline. */
@@ -35,10 +44,22 @@ export function localTermsSentence(t: TradeTerms): string {
   return `Local pickup trades run on their own terms: ${t.localCreditRatePercent}% trade credit, staples worth ${moneyShort(t.localMinCardValueCents)}+ each at TCG low${minimum}.`;
 }
 
+/** " After 5 completed trades you get 72 hours." Only the tiers that actually give more time. */
+function loyaltyShipping(t: TradeTerms): string {
+  const tier1 = t.shipDaysTier1 > t.shipDaysNew;
+  const tier2 = t.shipDaysTier2 > Math.max(t.shipDaysNew, t.shipDaysTier1);
+  if (tier1 && tier2) {
+    return ` After ${plural(t.loyaltyTier1Trades, "completed trade")} you get ${shipWindow(t.shipDaysTier1)}, and after ${t.loyaltyTier2Trades}, ${shipWindow(t.shipDaysTier2)}.`;
+  }
+  if (tier1) return ` After ${plural(t.loyaltyTier1Trades, "completed trade")} you get ${shipWindow(t.shipDaysTier1)}.`;
+  if (tier2) return ` After ${plural(t.loyaltyTier2Trades, "completed trade")} you get ${shipWindow(t.shipDaysTier2)}.`;
+  return "";
+}
+
 export function tradeFaqItems(t: TradeTerms | null): { question: string; answer: string }[] {
   const rate = t ? `${t.creditRatePercent}%` : "a set share";
-  const confirmHours = t ? plural(t.confirmationHours, "hour") : "a set time";
-  const shipDays = t ? plural(t.shipDaysNew, "day") : "a few days";
+  const confirmHours = t ? confirmWindow(t.confirmationHours) : "a set time";
+  const shipDays = t ? shipWindow(t.shipDaysNew) : "a few days";
   const deposits = t?.depositsEnabled ?? false;
   const threshold = t ? formatCents(t.depositThresholdCents) : "";
   const spot = meetSpotOf(t);
@@ -53,15 +74,15 @@ export function tradeFaqItems(t: TradeTerms | null): { question: string; answer:
     },
     {
       question: "How do you decide my cards' condition?",
-      answer: `From when each printing came out: ${conditionAgeSummary()}. When your cards arrive we check every one, and a card in better or worse shape is worth more or less. Your final offer shows every change and why.`,
+      answer: `You choose each card's condition when you list it, and your estimate uses it. When your cards arrive we check every one, and a card in better or worse shape is worth more or less. Your final offer shows every change and why. Not sure? Pick the lower condition, or see our condition guide.`,
     },
     {
       question: "Is there a minimum trade?",
       answer: !t
-        ? "Yes: each trade needs a minimum value of our cards, shown in your trade cart."
+        ? "Yes: each trade needs a minimum value of our cards, shown when you choose Use My Magic Cards."
         : t.minTradeValueCents > 0
           ? `Yes: at least ${moneyShort(t.minTradeValueCents)} of our cards per trade, at their regular prices (shipping doesn't count toward it). You can add cards below that while you shop; you'll need to reach it to start your trade. At ${rate} trade credit, ${moneyShort(t.minTradeValueCents)} of our cards takes ${formatCents(requiredValueCents(t.minTradeValueCents, t.creditRatePercent, t.processingFeeCents))} of your cards at TCG low to cover completely.`
-          : `Not right now: a trade can be any amount of our cards. Your trade cart shows how much of your cards, at TCG low, it takes to cover them at ${rate} trade credit.`,
+          : `Not right now: a trade can be any amount of our cards. When you choose Use My Magic Cards, we show how much of your cards, at TCG low, it takes to cover them at ${rate} trade credit.`,
     },
     {
       question: "Do my cards have to cover everything I pick?",
@@ -77,12 +98,14 @@ export function tradeFaqItems(t: TradeTerms | null): { question: string; answer:
     },
     {
       question: "When are the cards I picked reserved for me?",
-      answer: `When you confirm your approved trade. While you build your trade and while we review it, our cards stay on sale. Once we approve it you have ${confirmHours} to confirm (Sundays don't count). If a card sells before you confirm, we'll tell you and you can pick another.`,
+      answer: t && heldDuringReview(t)
+        ? `As soon as you send your trade for review, we hold the cards you picked for you for up to ${plural(t.reviewHoldHours, "hour")} while we look at it (on trades with up to ${moneyShort(t.reviewHoldMaxCents)} of our cards; bigger trades are held once we approve them). Once we approve it they stay held while you confirm: you have ${confirmHours} to confirm (Sundays don't count). Confirming reserves them until your trade is done. If a card sells before you send your trade, we'll tell you and you can pick another.`
+        : `When you confirm your approved trade. While you build your trade and while we review it, our cards stay on sale. Once we approve it you have ${confirmHours} to confirm (Sundays don't count). If a card sells before you confirm, we'll tell you and you can pick another.`,
     },
     {
       question: "How long do I have to ship my cards?",
       answer: t
-        ? `${shipDays} from confirming, and Sundays don't count: confirm on a Friday at 2 PM and you'd ship by ${shipExampleDay(t.shipDaysNew)} at 2 PM. It counts as shipped when the carrier scans your package; a label on its own doesn't. After ${plural(t.loyaltyTier1Trades, "completed trade")} you get ${plural(t.shipDaysTier1, "day")}, and after ${t.loyaltyTier2Trades}, ${plural(t.shipDaysTier2, "day")}.`
+        ? `${shipDays} from confirming, and Sundays don't count: confirm on a Friday at 2 PM and you'd ship by ${shipExampleDay(t.shipDaysNew)} at 2 PM. It counts as shipped when the carrier scans your package; a label on its own doesn't. ${loyaltyShipping(t)}`
         : `${shipDays} from confirming, and Sundays don't count. It counts as shipped when the carrier scans your package; a label on its own doesn't.`,
     },
     {

@@ -20,6 +20,10 @@ export const TRADE_CENTER_PATH = "/trade-cards";
 /** The trade-in landing page: what trading is and the rate, prerendered for search (TradeInPage). */
 export const TRADE_IN_PATH = "/trade-in-magic-cards";
 export const MY_TRADES_PATH = "/account/trades";
+/** Checkout with "Use My Magic Cards" chosen: trading toward the cards in the cart. */
+export const USE_MY_CARDS_CHECKOUT_PATH = "/checkout?pay=trade";
+/** The store-credit-only route: Sell Your Cards, paid in store credit. */
+export const STORE_CREDIT_PATH = "/sell";
 export const TRADE_CENTER_API = "/api/trade-center";
 export const ADMIN_TRADE_CENTER_API = "/api/admin/trade-center";
 
@@ -99,22 +103,25 @@ export const HANDOFF_LABELS: Record<TradeHandoffMethod, string> = {
   local: "Local pickup",
 };
 
-/** As customers read them (My Trades, emails). */
+/**
+ * As customers read them (My Trades, the trade page, emails): the plain
+ * progress labels, each from the trade's real status.
+ */
 export const TRADE_STATUS_LABELS: Record<TradeStatus, string> = {
-  awaiting_trade_list: "Draft: add your cards",
-  pending_review: "Pending admin review",
-  revision_requested: "Changes requested",
-  awaiting_confirmation: "Awaiting your confirmation",
-  awaiting_deposit: "Awaiting deposit payment",
-  awaiting_shipment: "Reserved: awaiting shipment",
-  tracking_submitted: "Tracking submitted: awaiting carrier scan",
-  in_transit: "Shipped: in transit",
-  received: "Delivered: awaiting inspection",
-  under_inspection: "Inspection in progress",
-  awaiting_final_approval: "Final offer: awaiting your response",
-  awaiting_payment: "Accepted: payment due",
-  approved_for_fulfillment: "Final trade approved",
-  completed: "Trade completed",
+  awaiting_trade_list: "Tell us what you're trading",
+  pending_review: "Reviewing your cards",
+  revision_requested: "Changes needed",
+  awaiting_confirmation: "Ready for your confirmation",
+  awaiting_deposit: "Ready for your confirmation: deposit due",
+  awaiting_shipment: "Waiting for your shipment",
+  tracking_submitted: "Waiting for your shipment: tracking added",
+  in_transit: "Waiting for your shipment: on its way",
+  received: "Checking your cards",
+  under_inspection: "Checking your cards",
+  awaiting_final_approval: "Review your final offer",
+  awaiting_payment: "Review your final offer: payment due",
+  approved_for_fulfillment: "Completed",
+  completed: "Completed",
   rejected: "Not accepted",
   offer_expired: "Offer expired",
   canceled: "Canceled before shipment",
@@ -151,13 +158,12 @@ export const TRADE_STATUS_ADMIN_LABELS: Record<TradeStatus, string> = {
 
 /** What happens next, in the customer's words, for each status. */
 export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
-  awaiting_trade_list:
-    "Add the cards you're trading in and send your trade for review. Our cards aren't reserved yet: they stay on sale until your trade is confirmed.",
-  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards aren't reserved yet.",
+  awaiting_trade_list: "Add the cards you're trading in, choose each one's condition, and send your trade for review.",
+  pending_review: "We're reviewing your cards and will email you as soon as we've decided.",
   revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
-  awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards.",
-  awaiting_deposit: "Pay the refundable deposit to reserve our cards. Nothing is reserved until it goes through.",
-  awaiting_shipment: "Our cards are reserved for you. Ship your cards and add the tracking number before the deadline.",
+  awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to keep our cards.",
+  awaiting_deposit: "Pay the refundable deposit to finish confirming your trade.",
+  awaiting_shipment: "You're all set! Ship your cards and add the tracking number before the deadline.",
   tracking_submitted: "We have your tracking number. Your shipment counts once the carrier scans the package.",
   in_transit: "The carrier has your package. We'll email you when it arrives.",
   received: "Your package arrived. We'll inspect your cards next.",
@@ -177,17 +183,17 @@ export const TRADE_STATUS_NEXT: Record<TradeStatus, string> = {
 
 /** A local pickup trade, where it reads differently from a shipped one (customers). */
 const LOCAL_STATUS_LABELS: Partial<Record<TradeStatus, string>> = {
-  awaiting_trade_list: "Draft: send it for review",
+  awaiting_trade_list: "Send your trade for review",
   awaiting_shipment: "Reserved: let's meet up",
-  completed: "Trade completed",
+  completed: "Completed",
   canceled: "Canceled",
   expired: "No longer held",
 };
 
 const LOCAL_STATUS_NEXT: Partial<Record<TradeStatus, string>> = {
   awaiting_trade_list:
-    "Pick our cards and send your trade for review. You don't need to list your cards: bring them when we meet. Our cards aren't reserved yet.",
-  pending_review: "We're reviewing your trade and will email you as soon as we've decided. Our cards aren't reserved yet.",
+    "Check our cards and send your trade for review. You don't need to list your cards: bring them when we meet.",
+  pending_review: "We're reviewing your trade and will email you as soon as we've decided.",
   revision_requested: "We need a change before we can approve your trade. Update it and send it again.",
   awaiting_confirmation: "Your trade is approved. Confirm it before the deadline to reserve our cards until we meet.",
   awaiting_shipment:
@@ -301,7 +307,7 @@ export const TRADE_STEPS = [
   { key: "review", label: "Review" },
   { key: "confirm", label: "Confirm" },
   { key: "ship", label: "Ship" },
-  { key: "inspect", label: "Inspection" },
+  { key: "inspect", label: "Check" },
   { key: "offer", label: "Final offer" },
   { key: "done", label: "Done" },
 ] as const;
@@ -662,6 +668,20 @@ export function tradingOpen(terms: Pick<TradeTerms, "enabled" | "paused"> | null
   return Boolean(terms?.enabled && !terms.paused);
 }
 
+/**
+ * Whether our cards are held while a trade is reviewed, for a trade with
+ * `wantedCents` of our cards (or for any trade, when it's left out): review
+ * holds are on and the trade is within the cap (Trades → Settings; a cap of
+ * $0 holds nothing until approval), as trade_submit decides.
+ */
+export function heldDuringReview(
+  terms: Pick<TradeTerms, "reviewHoldsEnabled" | "reviewHoldMaxCents"> | null | undefined,
+  wantedCents?: number,
+): boolean {
+  if (!terms?.reviewHoldsEnabled || terms.reviewHoldMaxCents <= 0) return false;
+  return wantedCents === undefined || wantedCents <= terms.reviewHoldMaxCents;
+}
+
 // ---------------------------------------------------------------------------
 // Valuing the customer's cards
 // ---------------------------------------------------------------------------
@@ -890,6 +910,48 @@ export function offerChanges(cards: readonly TradeOfferCard[]): OfferChange[] {
   });
 }
 
+/**
+ * The final offer's changes in a sentence or two, for the summary above the
+ * card-by-card list: "2 cards were graded Lightly Played instead of Near
+ * Mint." Null when nothing changed. Each card's own reasons stay in the list.
+ */
+export function offerChangeSummary(cards: readonly TradeOfferCard[]): string | null {
+  const changed = new Set(offerChanges(cards).map((c) => c.cardId));
+  if (changed.size === 0) return null;
+  const graded = new Map<string, { verified: CardConditionCode; reported: CardConditionCode; copies: number }>();
+  let notTaken = 0;
+  let missing = 0;
+  let repriced = 0;
+  for (const c of cards) {
+    if (!changed.has(c.id)) continue;
+    const approvedQuantity = c.reviewStatus === "approved" ? (c.approvedQuantity ?? 0) : 0;
+    const finalQuantity = c.inspected ? (c.finalQuantity ?? 0) : 0;
+    if (finalQuantity === 0) {
+      notTaken += Math.max(approvedQuantity, 1);
+      continue;
+    }
+    if (finalQuantity < approvedQuantity) missing += approvedQuantity - finalQuantity;
+    if (c.verifiedCondition && c.verifiedCondition !== c.reportedCondition) {
+      const key = `${c.verifiedCondition}|${c.reportedCondition}`;
+      const g = graded.get(key) ?? { verified: c.verifiedCondition, reported: c.reportedCondition, copies: 0 };
+      g.copies += finalQuantity;
+      graded.set(key, g);
+    } else if (finalQuantity >= approvedQuantity) {
+      repriced += finalQuantity;
+    }
+  }
+  const cardsWord = (n: number, one: string, many: string) => `${n} card${n === 1 ? ` ${one}` : `s ${many}`}`;
+  const sentences = [
+    ...[...graded.values()].map(
+      (g) => `${cardsWord(g.copies, "was", "were")} graded ${CONDITION_NAMES[g.verified]} instead of ${CONDITION_NAMES[g.reported]}.`,
+    ),
+    ...(missing > 0 ? [`${cardsWord(missing, "wasn't", "weren't")} in the package.`] : []),
+    ...(notTaken > 0 ? [`${cardsWord(notTaken, "couldn't", "couldn't")} be taken.`] : []),
+    ...(repriced > 0 ? [`${cardsWord(repriced, "was", "were")} priced differently.`] : []),
+  ];
+  return sentences.length > 0 ? `${sentences.join(" ")} Each card's reason is below.` : null;
+}
+
 // ---------------------------------------------------------------------------
 // Deadlines
 // ---------------------------------------------------------------------------
@@ -942,8 +1004,8 @@ export interface TradeOfferInput {
   id?: string;
   scryfallId: string;
   finish: TradeFinish;
-  /** Not used by the server: it sets the condition from the printing's age (tradeConditions). */
-  condition?: CardConditionCode;
+  /** The condition the customer chose (required): the estimate uses it; staff check it on arrival. */
+  condition: CardConditionCode;
   quantity: number;
   customerEstimateCents?: number | null;
   note?: string | null;

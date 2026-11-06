@@ -160,7 +160,7 @@ export function TradeReviewPanel({ trade, settings, busy, run }: TradePanelProps
         )}
       </div>
       <p className="gg-card-meta">
-        Enter each card&rsquo;s TCG low for its listed condition (set from the card&rsquo;s age; you&rsquo;ll check the real condition
+        Enter each card&rsquo;s TCG low for its listed condition (the customer&rsquo;s choice; you&rsquo;ll check the real condition
         when the cards arrive). The market estimate is there for reference. Notes to the customer show on their trade page and
         in the email.
       </p>

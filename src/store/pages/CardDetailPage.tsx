@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../components/Icon";
 import { Link, useRouter } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { LISTING_PARAM, cardPageSeo, readListingId, withSelectedFirst } from "../../seo/catalog";
@@ -19,9 +20,7 @@ import { useAuth } from "../lib/AuthContext";
 import { useWishlist } from "../lib/WishlistContext";
 import { authLinkWithReturn } from "../lib/authRedirect";
 import { useTradeTerms } from "../lib/tradeCenterApi";
-import { tradeCart } from "../lib/tradeCart";
-import { TradeCartProgress } from "../components/trades/TradeCartProgress";
-import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
+import { TRADE_IN_PATH, tradingOpen } from "../lib/tradeCenter";
 import type { CardDetail } from "../lib/cardDetail";
 
 // One indexable page per unique card (grouped by oracle_id across every
@@ -50,7 +49,6 @@ export default function CardDetailPage({ slug }: { slug: string }) {
   // "Add to trade" (Trade Center): shown once staff switch trading on.
   const tradeTerms = useTradeTerms();
   const canTrade = tradingOpen(tradeTerms);
-  const [tradeAddedId, setTradeAddedId] = useState<string | null>(null);
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifyState, setNotifyState] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [notifyError, setNotifyError] = useState<string | null>(null);
@@ -245,7 +243,12 @@ export default function CardDetailPage({ slug }: { slug: string }) {
               </>
             )}
           </p>
-          <TradeCartProgress />
+          {canTrade && listings.some((l) => !l.saleOnly) && (
+            <p className="gg-card-detail__tradenote">
+              <Icon name="swap" size={16} /> You can trade your Magic cards toward this.{" "}
+              <Link to={TRADE_IN_PATH}>How trading works</Link>
+            </p>
+          )}
           <ul className="gg-card-detail__listinglist">
             {listings.map((l) => (
               <li
@@ -317,45 +320,7 @@ export default function CardDetailPage({ slug }: { slug: string }) {
                     {addedId === l.id ? "Added ✓" : addingId === l.id ? "Adding…" : "Add to cart"}
                   </button>
                   {canTrade && l.saleOnly && (
-                    <span className="gg-card-detail__saleonly">Consigned copy · sale only, not for trade</span>
-                  )}
-                  {canTrade && tradePriceCents(l) != null && (
-                    <span className="gg-card-detail__trade">
-                      <button
-                        type="button"
-                        className="gg-btn gg-btn-ghost gg-btn-sm"
-                        onClick={() => {
-                          tradeCart.add({
-                            inventoryItemId: l.id,
-                            cardName: detail.cardName,
-                            setCode: l.setCode,
-                            setName: l.setName,
-                            collectorNumber: l.collectorNumber,
-                            condition: l.condition,
-                            finish: l.finish,
-                            imageUrl: l.imageUrl,
-                            maxQuantity: l.quantity,
-                            tradePriceCents: tradePriceCents(l) as number,
-                            cardPath: `/shop/card/${slug}`,
-                          });
-                          setTradeAddedId(l.id);
-                          window.setTimeout(() => setTradeAddedId((cur) => (cur === l.id ? null : cur)), 2500);
-                        }}
-                      >
-                        {tradeAddedId === l.id ? "In your trade ✓" : "Add to trade"}
-                      </button>
-                      {tradeAddedId === l.id ? (
-                        <Link to={TRADE_CENTER_PATH} className="gg-card-detail__tradelink">
-                          View trade
-                        </Link>
-                      ) : (
-                        l.isDeal &&
-                        l.originalPriceCents != null &&
-                        l.originalPriceCents > (l.priceCents ?? 0) && (
-                          <span className="gg-card-detail__tradeprice">Trades at {formatCents(l.originalPriceCents)}</span>
-                        )
-                      )}
-                    </span>
+                    <span className="gg-card-detail__saleonly">Consigned copy · can&rsquo;t be used in a trade</span>
                   )}
                 </span>
                 {photoRequestAllowed(l.priceCents, l.originalPriceCents) && (

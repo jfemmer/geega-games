@@ -2517,6 +2517,27 @@ html {
   max-width: 900px;
   margin: 2.5rem auto;
 }
+
+/* Homepage: trading, in one band under the hero. */
+.gg-home-trade {
+  max-width: 900px;
+  margin: 0.5rem auto 2rem;
+  padding: 1.5rem 1.25rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #25003f, #4b1680);
+  color: #fff;
+  text-align: center;
+}
+/* #main: wins over brand-refresh.css's dark headings, as .gg-deckshow does. */
+#main .gg-home-trade h2,
+.gg-home-trade h2 { margin: 0 0 0.6rem; color: #fff; font-size: clamp(1.35rem, 4vw, 1.8rem); }
+.gg-home-trade p { max-width: 640px; margin: 0 auto 1rem; line-height: 1.55; color: #ece4f6; }
+.gg-home-trade__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
+.gg-home-trade__actions .gg-btn { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }
+.gg-home-trade__actions .gg-btn:not(.gg-btn-ghost) { background: #fff; color: #25003f; }
+.gg-home-trade__actions .gg-btn:not(.gg-btn-ghost):hover { background: #f3ecff; }
+.gg-home-trade__actions .gg-btn-ghost { border-color: #fff; color: #fff; background: transparent; }
+.gg-home-trade__actions .gg-btn-ghost:hover { background: rgba(255, 255, 255, 0.12); }
 .gg-collect-section h2 {
   color: var(--gg-purple);
   text-align: center;
@@ -6918,6 +6939,9 @@ html {
 }
 .gg-tc-address__label { display: block; margin-bottom: 0.3rem; font-size: 0.8rem; font-weight: 700; color: #663399; }
 .gg-tc-address address { font-style: normal; line-height: 1.5; color: var(--gg-ink); }
+.gg-tc-address__line { display: block; }
+.gg-tc-address .gg-btn { margin-top: 0.5rem; }
+.gg-tc-ship__id .gg-btn { margin-left: 0.25rem; vertical-align: middle; }
 .gg-tc-ship__steps p { margin: 0 0 0.6rem; line-height: 1.5; }
 .gg-tc-sendlist ul { margin: 0; padding-left: 1.1rem; line-height: 1.6; }
 .gg-tc-sendlist__out li { color: #8a2a2a; }
@@ -7285,6 +7309,8 @@ html {
 .gg-tc-compare div.gg-tc-compare__down dd { color: var(--gg-danger); }
 .gg-tc-compare div.gg-tc-compare__up { background: #f2fbf6; }
 .gg-tc-compare div.gg-tc-compare__up dd { color: var(--gg-ok); }
+.gg-tc-compare div.gg-tc-compare__reason { grid-column: 1 / -1; background: #fff; border: 1px solid #ece4f6; }
+.gg-tc-compare div.gg-tc-compare__reason dd { font-size: 0.95rem; font-weight: 500; line-height: 1.45; }
 .gg-tc-reasons { margin: 0.25rem 0 0; padding-left: 1rem; font-size: 0.82rem; line-height: 1.45; color: #8a2a2a; }
 .gg-tc-nopenalty { margin: 0.75rem 0 0; padding: 0.6rem 0.8rem; border-radius: 8px; background: #f2fbf6; color: #0f5132; line-height: 1.5; }
 
@@ -8026,3 +8052,100 @@ html {
   .gg-myconsign__sale { grid-template-columns: 1fr; }
   .gg-myconsign__sale .gg-myconsign__cardstatus { grid-column: 1; }
 }
+
+/* ── Checkout: Pay Normally / Use My Magic Cards ───────────────────────── */
+.gg-paychoice {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border: 0;
+}
+@media (min-width: 640px) {
+  .gg-paychoice { grid-template-columns: 1fr 1fr; }
+}
+.gg-paychoice__opt {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  min-height: 56px;
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--gg-line);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+.gg-paychoice__opt input { margin-top: 0.25rem; width: 1.1rem; height: 1.1rem; accent-color: var(--gg-purple); flex: none; }
+.gg-paychoice__opt > span { display: flex; flex-direction: column; gap: 0.15rem; }
+.gg-paychoice__opt strong { color: var(--gg-ink); font-size: 1rem; }
+.gg-paychoice__hint { font-size: 0.85rem; line-height: 1.4; color: #5b5366; }
+.gg-paychoice__opt--on { border-color: var(--gg-purple); background: #faf6ff; box-shadow: 0 0 0 1px var(--gg-purple) inset; }
+.gg-paychoice__opt:focus-within { outline: 2px solid var(--gg-purple-2); outline-offset: 2px; }
+
+.gg-usecards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+  padding: 1.1rem 1.1rem 1.25rem;
+  border: 1px solid #e2d2fa;
+  border-radius: 14px;
+  background: #fff;
+}
+.gg-usecards__title { margin: 0; color: var(--gg-ink); font-size: 1.25rem; }
+.gg-usecards__lead { margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--gg-purple); }
+.gg-usecards__rule { margin: 0; color: #3b3346; line-height: 1.5; }
+.gg-usecards__sub { margin: 0.5rem 0 0; font-size: 0.95rem; color: #3b3346; }
+.gg-usecards__more { align-self: flex-start; font-weight: 600; }
+.gg-usecards__saleonly { margin: 0; }
+.gg-usecards__start { width: 100%; min-height: 48px; font-size: 1.02rem; }
+.gg-usecards__hold { margin: 0; }
+.gg-usecards__credit { margin: 0.25rem 0 0; font-size: 0.9rem; color: #5b5366; }
+.gg-usecards__empty { display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+
+/* Offered cards: condition pickers */
+.gg-tc-line__condition { max-width: 12rem; }
+select.gg-tc-line__condition { min-height: 36px; }
+.gg-tc-import__allcond { margin: 0.25rem 0 0.5rem; }
+.gg-tc-import__example {
+  margin: 0.4rem 0 0;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: #f6f3fb;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* Shop pages: trading in one line */
+.gg-trade-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #e2d2fa;
+  border-radius: 10px;
+  background: #faf6ff;
+  color: #3b2a5a;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.gg-trade-banner svg { color: var(--gg-purple); flex: none; }
+.gg-trade-banner a { font-weight: 600; color: var(--gg-purple); white-space: nowrap; }
+.gg-card-detail__tradenote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.75rem;
+  color: #3b2a5a;
+  font-size: 0.92rem;
+}
+.gg-card-detail__tradenote svg { color: var(--gg-purple); }
+.gg-card-detail__tradenote a { font-weight: 600; color: var(--gg-purple); }
+.gg-drawer-trade { margin: 0 0 0.75rem; padding-top: 0.5rem; border-top: 1px dashed #e2d2fa; }
+.gg-drawer-trade .gg-card-meta { margin: 0.35rem 0 0; text-align: center; }

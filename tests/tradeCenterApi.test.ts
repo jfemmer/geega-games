@@ -889,19 +889,19 @@ describe("their cards: priced by the server (3, 7)", () => {
     state.tables.trade_request_items.push(itemRow(tradeId));
   });
 
-  it("takes the name and price from Scryfall, sets the condition from the card's age, and marks cards under the minimum", async () => {
+  it("takes the name and price from Scryfall, prices at the customer's condition, and marks cards under the minimum", async () => {
     const res = await ann.post({
       action: "saveOffer",
       tradeId,
       cards: [
-        // Whatever the browser sends for the name, the estimate or the condition, the server decides them.
-        { scryfallId: SHEOLDRED, finish: "nonfoil", condition: "NM", quantity: 1, cardName: "Black Lotus", estimatedUnitCents: 999999 },
-        { scryfallId: ELVES, finish: "nonfoil", condition: "HP", quantity: 4 },
+        // Whatever the browser sends for the name or the estimate, the server decides them; the condition is the customer's.
+        { scryfallId: SHEOLDRED, finish: "nonfoil", condition: "LP", quantity: 1, cardName: "Black Lotus", estimatedUnitCents: 999999 },
+        { scryfallId: ELVES, finish: "nonfoil", condition: "NM", quantity: 4 },
       ],
     });
     expect(res.statusCode).toBe(200);
     const cards = rpcArgs("trade_save_offer")[0].p_cards as Record<string, unknown>[];
-    // 4½ years old: Lightly Played, at 90% of its $80 market price.
+    // Lightly Played, as they said: 90% of its $80 market price.
     expect(cards[0]).toMatchObject({
       card_name: "Sheoldred, the Apocalypse",
       set_code: "DMU",
@@ -911,13 +911,13 @@ describe("their cards: priced by the server (3, 7)", () => {
       estimated_unit_cents: 7200,
       eligibility: "eligible",
     });
-    // A year old: Near Mint.
+    // Near Mint, as they said.
     expect(cards[1]).toMatchObject({ card_name: "Llanowar Elves", reported_condition: "NM", condition_percent: 100, estimated_unit_cents: 25, eligibility: "below_minimum", quantity: 4 });
     expect(JSON.stringify(cards)).not.toContain("Black Lotus");
     expect(JSON.stringify(cards)).not.toContain("999999");
   });
 
-  it("lists each card at the condition its age gives, and a card with no release date as Near Mint", async () => {
+  it("never assumes a card's condition from its age: an old card the customer calls Near Mint is estimated as Near Mint", async () => {
     scryfallCards.set(ELVES, scryfallCard(ELVES, "Llanowar Elves", "dom", "168", { usd: "30.00" }, ["nonfoil"], releasedYearsAgo(12)));
     scryfallCards.set(BOLT, scryfallCard(BOLT, "Lightning Bolt", "2xm", "117", { usd: "40.00" }, ["nonfoil"], releasedYearsAgo(25)));
     const lotus = fakeId();
@@ -926,17 +926,26 @@ describe("their cards: priced by the server (3, 7)", () => {
       action: "saveOffer",
       tradeId,
       cards: [
-        { scryfallId: ELVES, finish: "nonfoil", quantity: 1 },
-        { scryfallId: BOLT, finish: "nonfoil", quantity: 1 },
-        { scryfallId: lotus, finish: "nonfoil", quantity: 1 },
+        { scryfallId: ELVES, finish: "nonfoil", condition: "MP", quantity: 1 },
+        { scryfallId: BOLT, finish: "nonfoil", condition: "NM", quantity: 1 },
+        { scryfallId: lotus, finish: "nonfoil", condition: "DMG", quantity: 1 },
       ],
     });
     const cards = rpcArgs("trade_save_offer")[0].p_cards as Record<string, unknown>[];
     expect(cards.map((c) => [c.card_name, c.reported_condition, c.condition_percent, c.estimated_unit_cents])).toEqual([
       ["Llanowar Elves", "MP", 75, 2250],
-      ["Lightning Bolt", "HP", 60, 2400],
-      ["Mox Opal", "NM", 100, 5000],
+      ["Lightning Bolt", "NM", 100, 4000],
+      ["Mox Opal", "DMG", 40, 2000],
     ]);
+  });
+
+  it("needs a condition for every card, and refuses one that isn't a condition", async () => {
+    const missing = await ann.post({ action: "saveOffer", tradeId, cards: [{ scryfallId: BOLT, finish: "nonfoil", quantity: 1 }] });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.body.message).toBe("Choose the condition of each of your cards.");
+    const bogus = await ann.post({ action: "saveOffer", tradeId, cards: [{ scryfallId: BOLT, finish: "nonfoil", condition: "Mint", quantity: 1 }] });
+    expect(bogus.statusCode).toBe(400);
+    expect(rpcArgs("trade_save_offer")).toHaveLength(0);
   });
 
   it("never stands in another finish's price: a foil with no foil price is valued by hand", async () => {
@@ -994,20 +1003,22 @@ describe("their cards: priced by the server (3, 7)", () => {
     expect((rpcArgs("trade_save_offer")[1].p_cards as Record<string, unknown>[])[0].reference_price_cents).toBe(7000);
   });
 
-  it("merges the same printing and finish into one line (the condition comes from the card's age)", async () => {
+  it("merges the same printing, finish and condition into one line; another condition is its own line", async () => {
     await ann.post({
       action: "saveOffer",
       tradeId,
       cards: [
         { scryfallId: SHEOLDRED, finish: "nonfoil", condition: "NM", quantity: 1 },
-        { scryfallId: SHEOLDRED, finish: "nonfoil", condition: "HP", quantity: 2 },
-        { scryfallId: SHEOLDRED, finish: "foil", quantity: 1 },
+        { scryfallId: SHEOLDRED, finish: "nonfoil", condition: "NM", quantity: 2 },
+        { scryfallId: SHEOLDRED, finish: "nonfoil", condition: "HP", quantity: 1 },
+        { scryfallId: SHEOLDRED, finish: "foil", condition: "NM", quantity: 1 },
       ],
     });
     const cards = rpcArgs("trade_save_offer")[0].p_cards as Record<string, unknown>[];
-    expect(cards.map((c) => [c.finish, c.quantity])).toEqual([
-      ["nonfoil", 3],
-      ["foil", 1],
+    expect(cards.map((c) => [c.finish, c.reported_condition, c.quantity])).toEqual([
+      ["nonfoil", "NM", 3],
+      ["nonfoil", "HP", 1],
+      ["foil", "NM", 1],
     ]);
   });
 

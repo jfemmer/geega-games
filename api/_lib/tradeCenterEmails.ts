@@ -307,7 +307,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           b,
           t.estimated_value_cents,
           "Your cards (estimated)",
-          `Estimates use today's market prices, with each card's condition set from its age.${blocked > 0 ? ` ${blocked} card${blocked === 1 ? " has" : "s have"} no price yet.` : ""} We'll price your cards at TCG low when we review your trade, and check their condition when they arrive, so values can go up or down.`,
+          `Estimates use today's market prices for the condition you chose for each card.${blocked > 0 ? ` ${blocked} card${blocked === 1 ? " has" : "s have"} no price yet.` : ""} We'll price your cards at TCG low when we review your trade, and check their condition when they arrive, so values can go up or down.`,
         ),
         button: view,
       });

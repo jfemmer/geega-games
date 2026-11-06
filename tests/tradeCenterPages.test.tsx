@@ -4,21 +4,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CustomerTrade, CustomerTradeSummary, TradeTerms } from "../src/store/lib/tradeCenter";
+import type { CartLine } from "../src/store/lib/CartContext";
 import type { CatalogCard } from "../src/store/lib/useCatalog";
 import { TRADE_ID, TRADE_TERMS, confirmation, customerCard, customerSummary, customerTrade, shipment } from "./helpers/tradeFixtures";
 
-// The storefront's Trade Center: the Trade Cards page and its trade cart,
-// "Add to trade" on card pages, a trade's own page at each step (building
-// it, confirming with or without the refundable deposit, shipping and
-// tracking, proof of shipping, canceling, the final offer, how it settled,
-// an expired reservation, coming back from a bank check), and My Trades.
-// The real API client runs; fetch is the stand-in for /api/trade-center, so
-// these tests see exactly what's sent and with whose session. Stripe's card
-// form is a stand-in (card details never reach our pages anyway).
+// The storefront's Trade Center: trading toward the shopping cart ("Use My
+// Magic Cards", on the Trade Cards page and at checkout), how trading is
+// shown while shopping (the shop banner, the card page's note, the old trade
+// cart moving into the cart), a trade's own page at each step (building it,
+// choosing each card's condition, confirming with or without the refundable
+// deposit, shipping and tracking, proof of shipping, canceling, the final
+// offer, how it settled, an expired reservation, coming back from a bank
+// check), and My Trades. The real API client runs; fetch is the stand-in for
+// /api/trade-center, so these tests see exactly what's sent and with whose
+// session. The shopping cart is a small stand-in that keeps its lines (so
+// the panel re-renders as they change). Stripe's card form is a stand-in
+// (card details never reach our pages anyway).
 
 const world = vi.hoisted(() => ({
   session: "member-token" as string | null,
   addresses: [] as Record<string, unknown>[],
+  /** inventory_public rows: what each cart line counts for in a trade. */
+  inventory: [] as Record<string, unknown>[],
   terms: null as unknown as TradeTerms,
   trade: null as unknown as CustomerTrade,
   trades: [] as CustomerTradeSummary[],
@@ -31,12 +38,37 @@ const world = vi.hoisted(() => ({
   printings: [] as Record<string, unknown>[],
 }));
 
+/** The shopping cart: its lines, and what was added to it. */
+const cart = vi.hoisted(() => {
+  let lines: unknown[] = [];
+  const listeners = new Set<() => void>();
+  return {
+    added: [] as { id: string; qty: number }[],
+    get: () => lines,
+    set(next: unknown[]) {
+      lines = next;
+      for (const fn of listeners) fn();
+    },
+    subscribe(fn: () => void) {
+      listeners.add(fn);
+      return () => {
+        listeners.delete(fn);
+      };
+    },
+  };
+});
+
 vi.mock("../src/supabase", () => {
-  const chain = {
-    select: () => chain,
-    order: () => chain,
-    eq: () => chain,
-    then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: world.addresses, error: null }).then(resolve),
+  const chainFor = (table: string) => {
+    const chain = {
+      select: () => chain,
+      order: () => chain,
+      eq: () => chain,
+      in: () => chain,
+      then: (resolve: (v: unknown) => unknown) =>
+        Promise.resolve({ data: table === "inventory_public" ? world.inventory : world.addresses, error: null }).then(resolve),
+    };
+    return chain;
   };
   return {
     isSupabaseConfigured: true,
@@ -45,7 +77,7 @@ vi.mock("../src/supabase", () => {
         getSession: async () => ({ data: { session: world.session ? { access_token: world.session } : null } }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       },
-      from: () => chain,
+      from: (table: string) => chainFor(table),
       rpc: async (name: string) => (name === "get_card_detail" ? { data: CARD_DETAIL, error: null } : { data: null, error: null }),
     },
   };
@@ -54,7 +86,25 @@ vi.mock("../src/supabase", () => {
 vi.mock("../src/store/lib/AuthContext", () => ({
   useAuth: () => ({ user: world.session ? { id: "ann", email: "ann@example.com" } : null, loading: false, signOut: async () => {} }),
 }));
-vi.mock("../src/store/lib/CartContext", () => ({ useCart: () => ({ addItem: async () => {} }) }));
+vi.mock("../src/store/lib/CartContext", async () => {
+  const { useSyncExternalStore } = await import("react");
+  type Line = { inventoryItemId: string; quantity: number };
+  return {
+    useCart: () => {
+      const lines = useSyncExternalStore(cart.subscribe, cart.get) as Line[];
+      return {
+        lines,
+        loading: false,
+        addItem: async (id: string, qty = 1) => {
+          cart.added.push({ id, qty });
+        },
+        setQuantity: async (id: string, qty: number) =>
+          cart.set((cart.get() as Line[]).map((l) => (l.inventoryItemId === id ? { ...l, quantity: qty } : l))),
+        removeItem: async (id: string) => cart.set((cart.get() as Line[]).filter((l) => l.inventoryItemId !== id)),
+      };
+    },
+  };
+});
 vi.mock("../src/store/lib/stripeClient", () => ({ isStripeConfigured: true, getStripePromise: () => null }));
 vi.mock("@stripe/react-stripe-js", () => ({
   Elements: ({ children }: { children: ReactNode }) => <div data-testid="stripe-elements">{children}</div>,
@@ -86,7 +136,6 @@ const CARD_DETAIL = {
       imageUrl: null,
       quantity: 2,
       priceCents: 6800,
-      // On deal: trades use the price before the discount.
       isDeal: true,
       originalPriceCents: 8000,
       dealDiscountPercent: 15,
@@ -121,40 +170,60 @@ Element.prototype.scrollIntoView = vi.fn();
 
 const { RouterProvider } = await import("../src/store/lib/router");
 const { loadTradeTerms, resetTradeTermsForTests } = await import("../src/store/lib/tradeCenterApi");
-const { resetTradeCartForTests } = await import("../src/store/lib/tradeCart");
+const { LegacyTradeCartMove } = await import("../src/store/lib/tradeCart");
 const { default: TradeCardsPage } = await import("../src/store/pages/TradeCardsPage");
 const { default: TradeDetail } = await import("../src/store/components/trades/TradeDetail");
 const { default: MyTrades } = await import("../src/store/components/trades/MyTrades");
 const { default: CardDetailPage } = await import("../src/store/pages/CardDetailPage");
 const { default: ProductCard } = await import("../src/store/components/ProductCard");
-const { TradeCartProgress } = await import("../src/store/components/trades/TradeCartProgress");
+const { TradeBanner } = await import("../src/store/components/trades/TradeBanner");
 
 function at(path: string, ui: React.ReactNode) {
   window.history.replaceState({}, "", path);
   return render(<RouterProvider>{ui}</RouterProvider>);
 }
 
-const CART_ITEM = {
-  inventoryItemId: "i1",
-  cardName: "The One Ring",
-  setCode: "LTR",
-  setName: "The Lord of the Rings",
-  collectorNumber: "246",
-  condition: "NM",
-  finish: "nonfoil",
-  imageUrl: null,
-  quantity: 1,
-  maxQuantity: 1,
-  tradePriceCents: 7999,
-  cardPath: "/shop/card/the-one-ring",
-};
+/** A copy in the shopping cart, at the price it's sold at today. */
+function cartLine(over: Partial<CartLine> = {}): CartLine {
+  return {
+    inventoryItemId: "i1",
+    quantity: 1,
+    name: "The One Ring",
+    setCode: "ltr",
+    setName: "The Lord of the Rings",
+    condition: "NM",
+    finish: "nonfoil",
+    imageUrl: null,
+    priceCents: 7999,
+    sellable: 1,
+    variantType: null,
+    saleOnly: false,
+    ...over,
+  };
+}
+
+/**
+ * Puts lines in the cart, each counting in a trade at its regular price:
+ * `regular` (the price before a deal) when given, else the cart price.
+ */
+function fillCart(...lines: (CartLine & { regular?: number })[]) {
+  world.inventory = lines.map((l) => ({
+    id: l.inventoryItemId,
+    price_cents: l.priceCents,
+    original_price_cents: l.regular ?? null,
+    sale_only: l.saleOnly,
+  }));
+  cart.set(lines.map(({ regular: _regular, ...l }) => l));
+}
 
 beforeEach(() => {
   window.localStorage.clear();
   resetTradeTermsForTests();
-  resetTradeCartForTests();
+  cart.set([]);
+  cart.added = [];
   world.session = "member-token";
   world.addresses = [];
+  world.inventory = [];
   world.terms = TRADE_TERMS;
   world.trade = customerTrade();
   world.trades = [];
@@ -169,47 +238,78 @@ afterEach(() => {
   cleanup();
 });
 
+/** The Use My Magic Cards panel, once its trade prices have loaded. */
+async function usePanel() {
+  const panel = await screen.findByRole("region", { name: "Use My Magic Cards" });
+  await waitFor(() => expect(within(panel).queryByRole("button", { name: /tell us what you're trading|sign in to trade/i })).toBeEnabled());
+  return panel;
+}
+
 describe("the Trade Cards page (1)", () => {
-  /** The cart's cards, the summary beside them, and how trading works, once the terms have loaded. */
-  async function openCart() {
+  /** The page, and how trading works once the terms have loaded. */
+  async function openPage() {
     at("/trade-cards", <TradeCardsPage />);
-    await screen.findByRole("heading", { level: 1, name: "Your trade cart" });
+    await screen.findByRole("heading", { level: 1, name: "Trade your cards toward your cart" });
     const how = await screen.findByRole("region", { name: "How trading works" });
-    await waitFor(() => expect(how).toHaveTextContent("You receive 80% of your cards’ final TCG low"));
+    await waitFor(() => expect(how).toHaveTextContent("80% of their value in trade credit"));
     return how;
   }
 
-  it("is a trade cart: our cards, what of theirs it takes at TCG low, and starting the trade as the signed-in customer", async () => {
+  it("trades toward the cart: our cards at their regular price, what of theirs it takes, and starting the trade as the signed-in customer", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    // On deal at $68 in the cart; a trade counts it at its regular $80.
+    fillCart(cartLine({ priceCents: 6800, regular: 8000 }));
     world.respond = () => ({ status: 200, json: { ok: true, terms: TRADE_TERMS, trade: customerTrade({ id: "new-trade" }) } });
-    await openCart();
-    // What the page is, in a line.
-    expect(screen.getByText(/We price your cards at TCG low, and you get 80% of that as trade credit toward ours\./)).toBeInTheDocument();
+    await openPage();
+    expect(screen.getByText(/We price your cards at TCG low, and you get 80% of that as trade credit\./)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Your trades" })).toHaveAttribute("href", "/account/trades");
 
-    const items = screen.getByRole("region", { name: "Cards you want (1)" });
-    expect(items).toHaveTextContent("The One Ring");
-    expect(within(items).getByRole("link", { name: "Add more cards" })).toHaveAttribute("href", "/shop");
-    expect(items).toHaveTextContent("Trade prices are our regular prices");
+    const panel = await usePanel();
+    expect(panel).toHaveTextContent("Have Magic cards you’re not using? Trade them toward the cards in your cart!");
+    expect(panel).toHaveTextContent("Eligible cards earn 80% of their TCG low value in trade credit");
+    expect(within(panel).getByRole("heading", { name: "Step 1 of 3: the cards you want" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("The One Ring");
+    expect(within(panel).getByRole("link", { name: "Add more cards" })).toHaveAttribute("href", "/shop");
+    expect(panel).toHaveTextContent("In a trade our cards count at their regular price: sale and member prices don’t apply.");
+    expect(panel).toHaveTextContent("Our cards (1)$80.00");
+    // $80 of our cards at 80% trade credit takes $100 of theirs, at TCG low.
+    expect(within(panel).getByText("$100.00").closest("p")).toHaveTextContent("To cover our cards, trade in about $100.00 of your cards at TCG low");
+    expect(panel).toHaveTextContent("At 80% trade credit. Trade in less and pay the rest by card, or more and keep the extra as store credit.");
+    // No minimum set: nothing to say about one.
+    expect(panel).not.toHaveTextContent("minimum");
+    // What happens to our cards once they send it: held while we review, then the time to confirm.
+    expect(panel).toHaveTextContent(
+      "When you send your trade, we hold these for you for up to 12 hours while we review it; once approved you'll have 48 hours (not counting Sundays) to confirm.",
+    );
+    // The store-credit route, for someone not buying anything.
+    expect(within(panel).getByRole("link", { name: "Get store credit for my cards" })).toHaveAttribute("href", "/sell");
 
-    const summary = screen.getByRole("complementary", { name: "Trade summary" });
-    expect(summary).toHaveTextContent("Our cards (1)$79.99");
-    // $79.99 of our cards at 80% trade credit takes $99.99 of theirs, at TCG low.
-    expect(within(summary).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, trade in $99.99 of your cards at TCG low");
-    expect(summary).toHaveTextContent("At 80% trade credit. Trade in less and pay the rest by card, or more and keep the extra as store credit.");
-    // Starting doesn't reserve anything.
-    expect(summary).toHaveTextContent("Starting a trade doesn’t reserve these yet");
-
-    await user.click(within(summary).getByRole("button", { name: "Start my trade" }));
+    await user.click(within(panel).getByRole("button", { name: "Continue: tell us what you're trading" }));
     await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-trade"));
     expect(world.posts).toEqual([{ body: { action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }], handoffMethod: "ship" }, auth: "Bearer member-token" }]);
-    expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "null")).toEqual([]);
+    // They're on the trade now, not in the cart: nothing is bought twice.
+    expect(cart.get()).toEqual([]);
+  });
+
+  it("keeps a consigned copy in the cart to buy normally, and trades the rest", async () => {
+    const user = userEvent.setup();
+    fillCart(cartLine(), cartLine({ inventoryItemId: "c1", name: "Consigned Bolt", priceCents: 500, saleOnly: true }));
+    world.respond = () => ({ status: 200, json: { ok: true, terms: TRADE_TERMS, trade: customerTrade({ id: "new-trade" }) } });
+    at("/trade-cards", <TradeCardsPage />);
+    const panel = await usePanel();
+    expect(panel).toHaveTextContent("Consigned Bolt is a consigned copy and can't be traded. It stays in your cart to buy normally.");
+    expect(within(panel).queryByRole("combobox", { name: "How many Consigned Bolt" })).toBeNull();
+    expect(panel).toHaveTextContent("Our cards (1)$79.99");
+
+    await user.click(within(panel).getByRole("button", { name: "Continue: tell us what you're trading" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-trade"));
+    expect(world.posts[0].body.items).toEqual([{ inventoryItemId: "i1", quantity: 1 }]);
+    expect(cart.get()).toEqual([expect.objectContaining({ inventoryItemId: "c1" })]);
   });
 
   it("explains trading by mail and in person, in tabs", async () => {
     const user = userEvent.setup();
-    const how = await openCart();
+    const how = await openPage();
     expect(how).toHaveTextContent("Trade by mail, or in person in the St. Louis area.");
     const ship = within(how).getByRole("tab", { name: "Ship your cards" });
     const local = within(how).getByRole("tab", { name: "Local pickup" });
@@ -217,56 +317,52 @@ describe("the Trade Cards page (1)", () => {
     await user.click(local);
     const panel = within(how).getByRole("tabpanel", { name: "Local pickup" });
     expect(within(panel).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Choose our cards. Add singles from our shop to your trade cart. There’s no shipping.",
-      "Select local pickup. Choose Local pickup in your trade summary and submit your trade. You don’t need to list your cards in advance, though you’re welcome to add a note about what you plan to bring.",
+      "Choose our cards. Add singles from our shop to your cart, then choose Use My Magic Cards at checkout. There’s no shipping.",
+      "Select local pickup. Choose Local pickup when you start your trade, then send it. You don’t need to list your cards in advance, though you’re welcome to add a note about what you plan to bring.",
       "We review your trade. We check that our cards are available and email you as soon as your trade is approved. Approving takes our cards off sale and holds them for you until we meet: there’s nothing to confirm, and no deposit.",
       "We set up the meetup. We message you on your trade page to schedule a time to meet in the St. Louis area. Changed your mind about one of our cards? Tell us and we’ll take it off. Can’t make it? Cancel at no cost so we can put our cards back on sale.",
       "Meet and settle. Bring your cards: staples valued at $15 or more each at TCG low. We review each card together, price it at its TCG low for its condition, and you receive 80% as trade credit. Pay any remaining balance in cash or by card, or keep leftover credit for a future order. You leave with our cards the same day.",
     ]);
-    // Cards are graded together in person: no age table for local pickup.
+    // Cards are graded together in person: no condition table for local pickup.
     expect(within(how).queryByRole("table")).toBeNull();
     // Arrow keys move between the tabs.
     await user.keyboard("{ArrowLeft}");
     expect(ship).toHaveFocus();
     expect(ship).toHaveAttribute("aria-selected", "true");
-    expect(within(how).getByRole("table", { name: /Based on when/ })).toBeInTheDocument();
+    expect(within(how).getByRole("table", { name: /You choose each card’s condition/ })).toBeInTheDocument();
   });
 
-  it("starts empty, with the way to the shop and how trading works", async () => {
-    const how = await openCart();
-    expect(screen.getByRole("heading", { level: 2, name: "Your trade cart is empty" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Browse cards to trade for" })).toHaveAttribute("href", "/shop");
-    expect(screen.queryByRole("complementary", { name: "Trade summary" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /start my trade/i })).toBeNull();
+  it("starts from an empty cart with the way to the shop, and how trading works", async () => {
+    const how = await openPage();
+    const panel = screen.getByRole("region", { name: "Use My Magic Cards" });
+    expect(panel).toHaveTextContent("Your cart is empty. Add the cards you’d like, then come back here to trade toward them.");
+    expect(within(panel).getByRole("link", { name: "Shop Magic cards" })).toHaveAttribute("href", "/shop");
+    expect(within(panel).queryByRole("button", { name: /tell us what you're trading/i })).toBeNull();
     expect(how).toBeInTheDocument();
   });
 
-  it("explains trading in short steps: the list priced at TCG low when we review it, conditions from each card's age, and values that can change when the cards arrive", async () => {
-    const how = await openCart();
+  it("explains trading in three steps: choose, tell us (choosing each card's condition), complete; and what each condition is worth", async () => {
+    const how = await openPage();
     const steps = within(how).getAllByRole("listitem").map((li) => li.textContent);
     expect(steps).toEqual([
-      "Choose our cards. Add singles from our shop to your trade cart. Shipping is free on $200 or more of our cards.",
-      "Submit your trade list. Start your trade, then add the cards you’re trading in by searching for each one or pasting a list. We accept staples valued at $15 or more each at TCG low. Each card’s condition is assigned from its printing’s age, and you’ll see an estimated value as you go.",
-      "We review your trade. We price each card at its TCG low (the lowest listed price on TCGplayer) for its condition, and email you as soon as your trade is approved.",
-      "Confirm and ship. Confirm within 2 days to reserve our cards; trades of $300 or more require a refundable deposit. Then ship your cards with tracking within 3 days. Sundays don’t count toward either deadline.",
-      "We inspect your cards. When your cards arrive, we verify each one’s condition. A card’s value may go up or down, and every change is itemized with the reason.",
-      "Accept your final offer. You receive 80% of your cards’ final TCG low as trade credit. Pay any remaining balance by card or keep leftover credit for a future order, and we ship our cards to you. If you decline, we return your cards with no penalty.",
+      "Choose your cards. Shop as usual and add singles to your cart. At checkout, choose Use My Magic Cards.",
+      "Tell us what you're trading. Search for each card, paste a list or upload a CSV, and choose each card’s condition. We accept staples worth $15 or more each, and you’ll see an estimate as you go: 80% of their value in trade credit. When you send it, we hold your chosen cards for up to 12 hours while we review.",
+      "Complete your trade. Once we approve it, confirm within 48 hours (trades of $300 or more take a refundable deposit), then ship your cards with tracking within 72 hours (4 days once you've completed 3 trades). Sundays don’t count. We check every card when it arrives and send your final offer at TCG low, with any change explained. Accept it and we ship your new cards; decline and we return yours with no penalty.",
     ]);
-    // How a card's age sets the condition it's listed at.
-    const ages = within(how).getByRole("table", { name: /Based on when the card’s printing was released/ });
-    expect(within(ages).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
-      "Under 3 years oldNear Mint",
-      "3 to 10 years oldLightly Played",
-      "10 to 20 years oldModerately Played",
-      "20 years or olderHeavily Played",
+    // What each condition is worth; the customer chooses it, never its age.
+    const conditions = within(how).getByRole("table", { name: /You choose each card’s condition; we check every card when it arrives/ });
+    expect(within(conditions).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
+      `Near Mint${TRADE_TERMS.conditionPercents.NM}% of a near-mint copy`,
+      `Lightly Played${TRADE_TERMS.conditionPercents.LP}% of a near-mint copy`,
+      `Moderately Played${TRADE_TERMS.conditionPercents.MP}% of a near-mint copy`,
+      `Heavily Played${TRADE_TERMS.conditionPercents.HP}% of a near-mint copy`,
+      `Damaged${TRADE_TERMS.conditionPercents.DMG}% of a near-mint copy`,
     ]);
+    expect(within(conditions).getByRole("link", { name: "How we grade" })).toHaveAttribute("href", "/condition-guide");
+    expect(how).not.toHaveTextContent(/years old|printing’s age/);
     // The FAQ says the same.
     expect(screen.getByText("How do you decide my cards' condition?")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /From when each printing came out: Near Mint under 3 years old, Lightly Played 3 to 10 years, Moderately Played 10 to 20 years, Heavily Played 20 years or older\. When your cards arrive we check every one/,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/^You choose each card's condition when you list it, and your estimate uses it\./)).toBeInTheDocument();
     expect(screen.getByText(/we price each of your cards at its TCG low \(TCGplayer's lowest listed price\) for its condition and finish\. Your trade credit is 80% of that\./)).toBeInTheDocument();
     expect(screen.getByText(/One in better shape than listed is worth more, and one in worse shape is worth less/)).toBeInTheDocument();
     // No minimum set: the page doesn't advertise a $0 one.
@@ -274,11 +370,18 @@ describe("the Trade Cards page (1)", () => {
     expect(how).not.toHaveTextContent("$0");
   });
 
-  it("explains reservations, the confirmation and shipping windows and the deposit, from the settings", async () => {
-    await openCart();
+  it("explains holds, the confirmation and shipping windows and the deposit, from the settings", async () => {
+    await openPage();
     // The worked example is a real deadline: 3 qualifying days from Friday 2 PM skips Sunday.
     expect(screen.getByText(/confirm on a Friday at 2 PM and you'd ship by Tuesday at 2 PM/)).toBeInTheDocument();
-    expect(screen.getByText(/Once we approve it you have 48 hours to confirm \(Sundays don't count\)/)).toBeInTheDocument();
+    // Loyalty tiers that give more time, in the same words.
+    expect(screen.getByText(/^72 hours from confirming/)).toHaveTextContent("After 3 completed trades you get 4 days, and after 10, 5 days.");
+    // Held from sending, through the confirmation window.
+    expect(
+      screen.getByText(
+        "As soon as you send your trade for review, we hold the cards you picked for you for up to 12 hours while we look at it (on trades with up to $500 of our cards; bigger trades are held once we approve them). Once we approve it they stay held while you confirm: you have 48 hours to confirm (Sundays don't count). Confirming reserves them until your trade is done. If a card sells before you send your trade, we'll tell you and you can pick another.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Ask us to take another look, or decline it. We mail them back.")).toBeInTheDocument();
 
     const deposit = screen.getByText("The refundable deposit").closest("details")!;
@@ -293,80 +396,89 @@ describe("the Trade Cards page (1)", () => {
     expect(deposit).toHaveTextContent("Declining our final offer after your cards arrive, or canceling once the carrier has your package, never costs it.");
   });
 
+  it("says when our cards stay on sale until confirming, while review holds are off", async () => {
+    world.terms = { ...TRADE_TERMS, reviewHoldsEnabled: false };
+    fillCart(cartLine());
+    const how = await openPage();
+    expect(how).not.toHaveTextContent("we hold your chosen cards");
+    expect(screen.getByText(/^When you confirm your approved trade\. While you build your trade and while we review it, our cards stay on sale\./)).toBeInTheDocument();
+    const panel = await usePanel();
+    expect(panel).toHaveTextContent("These stay on sale until your trade is approved and confirmed.");
+  });
+
   it("doesn't advertise a deposit while deposits are off", async () => {
     world.terms = { ...TRADE_TERMS, depositsEnabled: false };
-    const how = await openCart();
+    const how = await openPage();
     expect(screen.queryByText("The refundable deposit")).toBeNull();
     expect(how).not.toHaveTextContent("deposit");
     expect(screen.getByText(/Not right now\. If a trade ever needs one/)).toBeInTheDocument();
   });
 
-  it("sends someone who isn't signed in to sign in first, and back", async () => {
+  it("sends someone who isn't signed in to sign in first, and back to trading", async () => {
     const user = userEvent.setup();
     world.session = null;
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     at("/trade-cards", <TradeCardsPage />);
-    await user.click(await screen.findByRole("button", { name: "Sign in to start my trade" }));
+    const panel = await usePanel();
+    await user.click(within(panel).getByRole("button", { name: "Sign in to trade" }));
     expect(window.location.pathname).toBe("/login");
-    expect(window.location.search).toBe("?next=%2Ftrade-cards");
+    expect(window.location.search).toBe("?next=%2Fcheckout%3Fpay%3Dtrade");
     expect(world.posts).toEqual([]);
     expect(screen.queryByRole("link", { name: "Your trades" })).toBeNull();
   });
 
   it("says when new trades are paused, and won't start one", async () => {
     world.terms = { ...TRADE_TERMS, paused: true, pauseMessage: "Back after the holidays." };
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     at("/trade-cards", <TradeCardsPage />);
     expect((await screen.findAllByText("Back after the holidays.")).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: /start my trade/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /tell us what you're trading/i })).toBeNull();
   });
 
   it("won't start a trade under the minimum, and follows the cart: the minimum, free shipping and the TCG low it takes", async () => {
     const user = userEvent.setup();
     world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
-    const signet = { ...CART_ITEM, inventoryItemId: "i2", cardName: "Arcane Signet", quantity: 2, maxQuantity: 9, tradePriceCents: 2500 };
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([signet]));
-    await openCart();
-    const summary = screen.getByRole("complementary", { name: "Trade summary" });
-    const copies = (n: number) => user.selectOptions(screen.getByLabelText("How many Arcane Signet"), String(n));
-    const need = () => within(summary).getByText(/^To cover our cards, trade in/).closest("p");
-    // $50 of our cards: browse and add freely, but not start. It takes $62.50 of theirs at TCG low.
-    expect(within(summary).getByText("Add $25 more to start your trade!")).toBeInTheDocument();
-    expect(within(summary).getByText("Add $25 more in cards to reach the $75 minimum trade value!")).toBeInTheDocument();
-    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
-    expect(need()).toHaveTextContent("To cover our cards, trade in $62.50 of your cards at TCG low");
+    fillCart(cartLine({ inventoryItemId: "i2", name: "Arcane Signet", quantity: 2, sellable: 9, priceCents: 2500 }));
+    at("/trade-cards", <TradeCardsPage />);
+    const panel = await screen.findByRole("region", { name: "Use My Magic Cards" });
+    await waitFor(() => expect(panel).toHaveTextContent("Our cards (2)$50.00"));
+    const startButton = () => within(panel).getByRole("button", { name: "Continue: tell us what you're trading" });
+    const copies = (n: number) => user.selectOptions(within(panel).getByLabelText("How many Arcane Signet"), String(n));
+    const need = () => within(panel).getByText(/^To cover our cards, trade in about/).closest("p");
+    // $50 of our cards: not enough to start. It takes $62.50 of theirs at TCG low.
+    expect(within(panel).getByText("Add $25 more in cards to reach the $75 minimum trade value!")).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+    expect(startButton()).toHaveAccessibleDescription("Add $25 more in cards to reach the $75 minimum trade value!");
+    expect(need()).toHaveTextContent("To cover our cards, trade in about $62.50 of your cards at TCG low");
     // Shipping our cards is its own line, apart from shipping theirs to us.
-    expect(summary).toHaveTextContent("Shipping our cards to youTracked, free from $200 · paid by card when your trade is final$3.99");
-    expect(screen.getByText(/You ship your cards to us separately, with tracking, at your cost\./)).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Shipping our cards to youTracked · paid by card when your trade is final$3.99");
     // $100: past the minimum, $100 from free shipping.
     await copies(4);
-    expect(screen.getByRole("region", { name: "Cards you want (4)" })).toBeInTheDocument();
-    expect(within(summary).getByText("You’re $100 away from FREE shipping!")).toBeInTheDocument();
-    expect(within(summary).getByText("Your trade meets the minimum value requirement!")).toBeInTheDocument();
-    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeEnabled();
-    expect(within(summary).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
-    expect(need()).toHaveTextContent("trade in $125.00 of your cards at TCG low");
-    expect(summary).toHaveTextContent("Our cards (4)$100.00");
-    // $175: nearly there. $200: free.
-    await copies(7);
-    expect(within(summary).getByText("Add just $25 more to unlock FREE shipping!")).toBeInTheDocument();
+    expect(cart.get()).toEqual([expect.objectContaining({ inventoryItemId: "i2", quantity: 4 })]);
+    expect(within(panel).getByText("Your trade meets the minimum value requirement!")).toBeInTheDocument();
+    expect(within(panel).getByText("You’re $100 away from FREE shipping!")).toBeInTheDocument();
+    expect(startButton()).toBeEnabled();
+    expect(need()).toHaveTextContent("trade in about $125.00 of your cards at TCG low");
+    expect(panel).toHaveTextContent("Our cards (4)$100.00");
+    // $200: free.
     await copies(8);
-    expect(within(summary).getByText("Your trade qualifies for FREE tracked shipping!")).toBeInTheDocument();
-    expect(summary).toHaveTextContent("Shipping our cards to youTracked, on usFREE");
-    expect(need()).toHaveTextContent("trade in $250.00 of your cards at TCG low");
-    // The bar doesn't repeat the shipping line in the summary.
-    expect(within(summary).queryByText(/^Shipping:/)).toBeNull();
+    expect(within(panel).getByText("Your trade qualifies for FREE tracked shipping!")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Shipping our cards to youTracked, on usFREE");
+    expect(need()).toHaveTextContent("trade in about $250.00 of your cards at TCG low");
     // Back under the minimum: the start is off again.
     await copies(1);
-    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
+    expect(startButton()).toBeDisabled();
+    // Taking a card off takes it out of the cart.
+    await user.click(within(panel).getByRole("button", { name: /Remove Arcane Signet/ }));
+    expect(cart.get()).toEqual([]);
     expect(world.posts).toEqual([]);
   });
 
   it("spells out the minimum, shipping and the processing fee from the settings", async () => {
     world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500, processingFeeCents: 200 };
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
-    const how = await openCart();
-    expect(how).toHaveTextContent("Trades start at $75 of our cards. Shipping is free on $200 or more of our cards.");
+    fillCart(cartLine());
+    const how = await openPage();
+    expect(how).toHaveTextContent("Trades start at $75 of our cards.");
     const know = screen.getByRole("region", { name: "Good to know" });
     expect(know).toHaveTextContent("We’re looking for staples: cards worth less than $15 each at TCG low, in their condition, can’t be traded.");
     // Said up top too, where customers start.
@@ -377,56 +489,37 @@ describe("the Trade Cards page (1)", () => {
     expect(know).toHaveTextContent("Shipping is never charged on a trade that’s canceled or declined, and it’s separate from any deposit.");
     expect(know).toHaveTextContent("A processing fee of $2.00 comes off each trade’s credit.");
     // The fee is covered too: ($79.99 + $2.00) at 80% takes $102.49 of theirs.
-    const summary = screen.getByRole("complementary", { name: "Trade summary" });
-    expect(summary).toHaveTextContent("To cover our cards, trade in $102.49 of your cards at TCG low");
-    expect(summary).toHaveTextContent("At 80% trade credit, after the $2.00 processing fee.");
+    const panel = await usePanel();
+    expect(panel).toHaveTextContent("To cover our cards, trade in about $102.49 of your cards at TCG low");
+    expect(panel).toHaveTextContent("At 80% trade credit, after the $2.00 processing fee.");
     expect(screen.getByText(/Yes: at least \$75 of our cards per trade/)).toHaveTextContent("takes $96.25 of your cards at TCG low to cover completely");
   });
 
-  it("shows the start's refusal in its own words", async () => {
+  it("shows the start's refusal in its own words, leaving the cart as it was", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     world.respond = () => ({ status: 409, json: { ok: false, message: "Only 0 of The One Ring available." } });
     at("/trade-cards", <TradeCardsPage />);
-    await user.click(await screen.findByRole("button", { name: "Start my trade" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Only 0 of The One Ring available.");
-    expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "[]")).toHaveLength(1);
+    const panel = await usePanel();
+    await user.click(within(panel).getByRole("button", { name: "Continue: tell us what you're trading" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Only 0 of The One Ring available.");
+    expect(cart.get()).toHaveLength(1);
+    expect(window.location.pathname).toBe("/trade-cards");
   });
-});
 
-describe("Add to trade on a card page", () => {
-  it("puts the copy in the trade cart at its regular price, never the deal price", async () => {
+  it("links to the customer's trades when the open-trade limit stops a new one", async () => {
     const user = userEvent.setup();
-    world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
-    at("/shop/card/sheoldred-the-apocalypse", <CardDetailPage slug="sheoldred-the-apocalypse" />);
-    await screen.findByRole("heading", { level: 1, name: "Sheoldred, the Apocalypse" });
-    expect(await screen.findByText("Trades at $80.00")).toBeInTheDocument();
-    // Nothing in the trade cart yet: no bar.
-    expect(screen.queryByRole("progressbar")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Add to trade" }));
-    expect(screen.getByRole("button", { name: "In your trade ✓" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View trade" })).toHaveAttribute("href", "/trade-cards");
-    // The bar follows the cart: $80 is past the $75 minimum, $120 short of free shipping.
-    expect(screen.getByText("You’re $120 away from FREE shipping!")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Our cards toward free shipping" })).toHaveAttribute("aria-valuenow", "80");
-    // And what it takes of theirs: $80 at 80% trade credit is $100 at TCG low.
-    expect(screen.getByText(/to cover ours/)).toHaveTextContent("Trade in $100.00 of your cards at TCG low to cover ours (80% trade credit)");
-    expect(screen.getByRole("link", { name: "Review your trade" })).toHaveAttribute("href", "/trade-cards#trade-cart");
-    expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "[]")).toEqual([
-      expect.objectContaining({ inventoryItemId: "listing-1", tradePriceCents: 8000, maxQuantity: 2, quantity: 1 }),
-    ]);
-  });
-
-  it("isn't offered while trading is paused", async () => {
-    world.terms = { ...TRADE_TERMS, paused: true };
-    at("/shop/card/sheoldred-the-apocalypse", <CardDetailPage slug="sheoldred-the-apocalypse" />);
-    await screen.findByRole("heading", { level: 1, name: "Sheoldred, the Apocalypse" });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByRole("button", { name: "Add to trade" })).toBeNull();
+    fillCart(cartLine());
+    world.respond = () => ({ status: 409, json: { ok: false, message: "You already have an open trade. Finish or cancel it first." } });
+    at("/trade-cards", <TradeCardsPage />);
+    const panel = await usePanel();
+    await user.click(within(panel).getByRole("button", { name: "Continue: tell us what you're trading" }));
+    const alert = await within(panel).findByRole("alert");
+    expect(within(alert).getByRole("link", { name: "See your trades" })).toHaveAttribute("href", "/account/trades");
   });
 });
 
-describe("Add to trade on the shop's cards", () => {
+describe("trading while shopping", () => {
   /** A copy in the shop's grid; on deal by default (15% off $80). */
   const shopCard = (over: Partial<CatalogCard> = {}): CatalogCard => ({
     id: "inv-1",
@@ -452,89 +545,78 @@ describe("Add to trade on the shop's cards", () => {
     variantType: null,
     ...over,
   });
-  const bolt = (over: Partial<CatalogCard> = {}) =>
-    shopCard({ id: "inv-2", oracleId: "o-bolt", name: "Lightning Bolt", set: "2xm", setName: "Double Masters", collectorNumber: "117", priceCents: 250, isDeal: false, originalPriceCents: null, dealDiscountPercent: null, dealSource: null, ...over });
 
-  it("adds a card to the trade cart at its regular price, then leads to the cart", async () => {
-    const user = userEvent.setup();
-    world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
-    at(
-      "/shop",
-      <>
-        <TradeCartProgress />
-        <ProductCard card={shopCard()} />
-        <ProductCard card={bolt()} />
-      </>,
-    );
-    const add = await screen.findByRole("button", { name: "Add to trade: Sheoldred, the Apocalypse" });
-    expect(add).toHaveTextContent(/^Add to trade$/);
-    // Deals don't apply to trades: the deal card says what it trades at; the other doesn't need to.
-    expect(screen.getAllByText(/^Trades at/)).toHaveLength(1);
-    expect(add).toHaveAccessibleDescription("Trades at $80.00");
-    expect(screen.getByRole("button", { name: "Add to trade: Lightning Bolt" })).not.toHaveAccessibleDescription();
-    // Nothing in the trade cart yet: no progress.
-    expect(screen.queryByRole("progressbar")).toBeNull();
-
-    await user.click(add);
-
-    const inTrade = screen.getByRole("link", { name: "In your trade: Sheoldred, the Apocalypse. Review your trade" });
-    expect(inTrade).toHaveTextContent("In your trade ✓");
-    expect(inTrade).toHaveAttribute("href", "/trade-cards#trade-cart");
-    // The button became the link: focus stays on it.
-    expect(inTrade).toHaveFocus();
-    expect(JSON.parse(window.localStorage.getItem("gg-trade-cart") ?? "[]")).toEqual([
-      expect.objectContaining({
-        inventoryItemId: "inv-1",
-        cardName: "Sheoldred, the Apocalypse",
-        setCode: "dmu",
-        condition: "NM",
-        finish: "nonfoil",
-        tradePriceCents: 8000,
-        maxQuantity: 2,
-        quantity: 1,
-        cardPath: "/shop/card/sheoldred-the-apocalypse",
-      }),
-    ]);
-    // The other card is untouched, and the progress above the grid follows the cart: $80 is past the $75 minimum.
-    expect(screen.getByRole("button", { name: "Add to trade: Lightning Bolt" })).toBeInTheDocument();
-    expect(screen.getByText("You’re $120 away from FREE shipping!")).toBeInTheDocument();
-    expect(screen.getByText(/to cover ours/)).toHaveTextContent("Trade in $100.00 of your cards at TCG low to cover ours (80% trade credit)");
-    expect(screen.getByText(/^Shipping:/)).toHaveTextContent("Shipping: $3.99");
-    expect(screen.getByRole("link", { name: "Review your trade" })).toHaveAttribute("href", "/trade-cards#trade-cart");
+  it("says on a card's page that cards can be traded toward it, with no separate trade button", async () => {
+    at("/shop/card/sheoldred-the-apocalypse", <CardDetailPage slug="sheoldred-the-apocalypse" />);
+    await screen.findByRole("heading", { level: 1, name: "Sheoldred, the Apocalypse" });
+    const note = (await screen.findByText(/You can trade your Magic cards toward this\./)).closest("p")!;
+    expect(within(note).getByRole("link", { name: "How trading works" })).toHaveAttribute("href", "/trade-in-magic-cards");
+    expect(screen.queryByRole("button", { name: /Add to trade/ })).toBeNull();
+    expect(screen.queryByText(/^Trades at/)).toBeNull();
   });
 
-  it("shows a card that's already in the trade cart as in it", async () => {
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([{ ...CART_ITEM, inventoryItemId: "inv-1", cardName: "Sheoldred, the Apocalypse" }]));
+  it("doesn't mention trading on a card's page while trading is paused", async () => {
+    world.terms = { ...TRADE_TERMS, paused: true };
+    at("/shop/card/sheoldred-the-apocalypse", <CardDetailPage slug="sheoldred-the-apocalypse" />);
+    await screen.findByRole("heading", { level: 1, name: "Sheoldred, the Apocalypse" });
+    await act(async () => {
+      await loadTradeTerms();
+    });
+    expect(screen.queryByText(/You can trade your Magic cards toward this\./)).toBeNull();
+  });
+
+  it("offers only Add to cart on the shop's cards: there's one cart", async () => {
     at("/shop", <ProductCard card={shopCard()} />);
-    expect(await screen.findByRole("link", { name: "In your trade: Sheoldred, the Apocalypse. Review your trade" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Add to trade/ })).toBeNull();
-  });
-
-  it("isn't offered for a card that's sold out or not for sale", async () => {
-    at(
-      "/shop",
-      <>
-        <ProductCard card={bolt()} />
-        <ProductCard card={shopCard({ id: "inv-3", name: "Sold Out Sheoldred", quantity: 0 })} />
-        <ProductCard card={bolt({ id: "inv-4", name: "Unpriced Bolt", priceCents: null })} />
-        <ProductCard card={bolt({ id: "inv-5", name: "Free Bolt", priceCents: 0 })} />
-      </>,
-    );
-    expect(await screen.findByRole("button", { name: "Add to trade: Lightning Bolt" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^Add to trade/ })).toHaveLength(1);
-  });
-
-  it.each([
-    ["switched off", { enabled: false }],
-    ["paused", { paused: true }],
-  ])("isn't offered while trading is %s", async (_label, change) => {
-    world.terms = { ...TRADE_TERMS, ...change };
-    at("/shop", <ProductCard card={bolt()} />);
     await act(async () => {
       await loadTradeTerms();
     });
     expect(screen.getByRole("button", { name: "Add to cart" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Add to trade/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add to trade/ })).toBeNull();
+    expect(screen.queryByText(/^Trades at/)).toBeNull();
+  });
+
+  it("tells shoppers above the shop that they can trade toward their cart, only while trading is open", async () => {
+    at("/shop", <TradeBanner />);
+    const banner = (await screen.findByText(/Trade them toward your cart at checkout/)).closest("p")!;
+    expect(banner).toHaveTextContent("Have Magic cards you’re not using? Trade them toward your cart at checkout: 80% of their value in trade credit.");
+    expect(within(banner).getByRole("link", { name: "How trading works" })).toHaveAttribute("href", "/trade-in-magic-cards");
+    cleanup();
+
+    resetTradeTermsForTests();
+    world.terms = { ...TRADE_TERMS, paused: true };
+    at("/shop", <TradeBanner />);
+    await act(async () => {
+      await loadTradeTerms();
+    });
+    expect(screen.queryByText(/Trade them toward your cart/)).toBeNull();
+  });
+
+  it("moves an old trade cart into the shopping cart once, then forgets it", async () => {
+    window.localStorage.setItem(
+      "gg-trade-cart",
+      JSON.stringify([
+        { inventoryItemId: "i1", cardName: "The One Ring", quantity: 2, tradePriceCents: 7999 },
+        { inventoryItemId: 7, quantity: 1 },
+        { inventoryItemId: "i3", quantity: 0 },
+      ]),
+    );
+    const { rerender } = at("/shop", <LegacyTradeCartMove />);
+    await waitFor(() => expect(cart.added).toEqual([{ id: "i1", qty: 2 }]));
+    expect(window.localStorage.getItem("gg-trade-cart")).toBeNull();
+    rerender(
+      <RouterProvider>
+        <LegacyTradeCartMove />
+      </RouterProvider>,
+    );
+    expect(cart.added).toHaveLength(1);
+  });
+
+  it("leaves the cart alone when there's no old trade cart, or it can't be read", async () => {
+    window.localStorage.setItem("gg-trade-cart", "not json");
+    at("/shop", <LegacyTradeCartMove />);
+    await act(async () => {});
+    expect(cart.added).toEqual([]);
+    expect(window.localStorage.getItem("gg-trade-cart")).toBeNull();
   });
 });
 
@@ -561,7 +643,7 @@ describe("a trade's page", () => {
     const user = userEvent.setup();
     world.trade = customerTrade({ status: "awaiting_trade_list", listDueAt: "2099-01-01T05:59:59Z", estimatedValueCents: 8000, offered: [sheoldred, elves] });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    const send = await screen.findByRole("button", { name: "Send for review" });
+    const send = await screen.findByRole("button", { name: "Submit My Trade" });
     expect(send).toBeDisabled();
     expect(screen.getByText(/Send it for review by/)).toHaveTextContent("or it closes.");
     expect(screen.getByText(/These stay on sale until you send your trade; then we hold them for you while we review it/)).toBeInTheDocument();
@@ -585,6 +667,40 @@ describe("a trade's page", () => {
     expect(world.posts[1]).toEqual({ body: { action: "submit", tradeId: TRADE_ID, note: "Happy to drop off in person" }, auth: "Bearer member-token" });
   });
 
+  it("adds the rest of the cart to a draft, then takes those cards out of the cart (consigned copies stay)", async () => {
+    const user = userEvent.setup();
+    world.trade = customerTrade({ status: "awaiting_trade_list", listDueAt: "2099-01-01T05:59:59Z", offered: [sheoldred] });
+    const onTrade = world.trade.wanted[0];
+    fillCart(
+      cartLine({ inventoryItemId: "i9", name: "Arcane Signet", quantity: 2, sellable: 4, priceCents: 2500 }),
+      cartLine({ inventoryItemId: "c1", name: "Consigned Bolt", saleOnly: true }),
+      // Already on the trade: not offered twice.
+      cartLine({ inventoryItemId: onTrade.inventoryItemId, name: onTrade.cardName }),
+    );
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    expect(await screen.findByText("You have 1 more card in your cart.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add them to this trade" }));
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual({
+      action: "setWanted",
+      tradeId: TRADE_ID,
+      items: [
+        ...world.trade.wanted.filter((w) => w.status === "requested" || w.status === "reserved").map((w) => ({ inventoryItemId: w.inventoryItemId, quantity: w.quantity })),
+        { inventoryItemId: "i9", quantity: 2 },
+      ],
+    });
+    await waitFor(() => expect(cart.get().map((l) => (l as CartLine).inventoryItemId)).toEqual(["c1", onTrade.inventoryItemId]));
+  });
+
+  it("doesn't offer the cart's cards once a trade can't change", async () => {
+    world.trade = customerTrade({ status: "pending_review" });
+    fillCart(cartLine({ inventoryItemId: "i9", name: "Arcane Signet" }));
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    await screen.findByRole("heading", { name: "Our cards" });
+    expect(screen.queryByText(/more cards? in your cart/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add them to this trade" })).toBeNull();
+  });
+
   it("won't send a draft under the minimum, and shows the way to it under our cards", async () => {
     world.terms = { ...TRADE_TERMS, minTradeValueCents: 7500 };
     world.trade = customerTrade({
@@ -596,7 +712,7 @@ describe("a trade's page", () => {
       offered: [sheoldred],
     });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    expect(await screen.findByRole("button", { name: "Send for review" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Submit My Trade" })).toBeDisabled();
     expect(screen.getByText("Add $15 more in cards to reach the $75 minimum trade value!")).toBeInTheDocument();
     const ours = screen.getByRole("heading", { name: "Our cards" }).closest("section")!;
     expect(within(ours).getByText("Add $15 more to start your trade!")).toBeInTheDocument();
@@ -619,7 +735,7 @@ describe("a trade's page", () => {
 
   /** "YYYY-MM-DD", `years` years before today: a printing's release date. */
   const releasedYearsAgo = (years: number) => new Date(Date.now() - years * 365.25 * 86_400_000).toISOString().slice(0, 10);
-  /** Ragavan, as the public card search finds it: out 4½ years, so it's listed Lightly Played. */
+  /** Ragavan, as the public card search finds it (out 4½ years: its age never sets its condition). */
   const ragavanPrinting = (releasedAt: string | null = releasedYearsAgo(4.5)) => ({
     scryfallId: "s9",
     cardName: "Ragavan, Nimble Pilferer",
@@ -636,58 +752,98 @@ describe("a trade's page", () => {
   });
   const draftWithNoCards = () => customerTrade({ status: "awaiting_trade_list", listDueAt: "2099-01-01T05:59:59Z", estimatedValueCents: 0, offered: [] });
 
-  it("adds a card from the search at the condition its age gives: nothing to pick, and none sent", async () => {
+  it("has the customer choose each card's condition, with nothing chosen for them, and sends it", async () => {
     const user = userEvent.setup();
-    const released = releasedYearsAgo(4.5);
-    world.printings = [ragavanPrinting(released)];
+    world.printings = [ragavanPrinting()];
     world.trade = draftWithNoCards();
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     // The page explains it before they start.
-    expect(await screen.findByText(/We set each card’s condition from its age \(Near Mint under 3 years old/)).toHaveTextContent(
-      "We price your cards at TCG low when we review your list, and check their condition when they arrive, so values can go up or down.",
+    expect(await screen.findByText(/Choose each card’s condition as best you can\./)).toHaveTextContent(
+      "we price your cards at TCG low when we review your list and check every card when it arrives, so values can go up or down.",
     );
     await user.type(screen.getByLabelText("Search for a card"), "Ragavan");
     await user.click(await screen.findByRole("button", { name: /Ragavan, Nimble Pilferer/ }));
 
     const pick = screen.getByText("Ragavan, Nimble Pilferer", { selector: ".gg-tc-pick__name" }).closest(".gg-tc-pick") as HTMLElement;
-    expect(pick).toHaveTextContent(`Condition: Lightly PlayedPrinted in ${released.slice(0, 4)}. Set from the card’s age; we check it when your cards arrive.`);
-    expect(within(pick).queryByRole("combobox")).toBeNull();
-    expect(pick).toHaveTextContent("Estimated $46.80 each (today’s market price $52.00 × 90% for Lightly Played). We set the price at TCG low when we review your list.");
+    const condition = within(pick).getByRole("combobox", { name: "Condition" });
+    // No default, and no estimate or adding until they choose.
+    expect(condition).toHaveValue("");
+    expect(condition).toHaveAccessibleDescription(/Your best guess\. We check every card when it arrives; not sure\? Pick the lower one\./);
+    expect(within(pick).getByRole("link", { name: "How we grade" })).toHaveAttribute("href", "/condition-guide");
+    expect(pick).toHaveTextContent("Choose its condition to see an estimate.");
+    expect(within(pick).getByRole("button", { name: "Add to my cards" })).toBeDisabled();
+    expect(pick).not.toHaveTextContent(/years old|Printed in|card’s age/);
+
+    await user.selectOptions(condition, "LP");
+    expect(pick).toHaveTextContent(
+      "Estimated $46.80 each (based on today’s market price $52.00 × 90% for Lightly Played). Final value uses TCG low once we’ve checked your cards.",
+    );
+    await user.selectOptions(condition, "NM");
+    expect(pick).toHaveTextContent("Estimated $52.00 each (based on today’s market price $52.00).");
 
     await user.click(within(pick).getByRole("button", { name: "Add to my cards" }));
     await waitFor(() => expect(world.posts).toHaveLength(1));
-    expect(world.posts[0].body).toEqual({ action: "saveOffer", tradeId: TRADE_ID, cards: [{ scryfallId: "s9", finish: "nonfoil", quantity: 1 }] });
+    expect(world.posts[0].body).toEqual({
+      action: "saveOffer",
+      tradeId: TRADE_ID,
+      cards: [{ scryfallId: "s9", finish: "nonfoil", condition: "NM", quantity: 1 }],
+    });
   });
 
-  it("lists a brand-new printing, or one with no date, as Near Mint", async () => {
+  it("lets them change a listed card's condition, and sends the change", async () => {
     const user = userEvent.setup();
-    world.printings = [ragavanPrinting(null)];
-    world.trade = draftWithNoCards();
+    const offered = customerCard({ id: "o1", reportedCondition: "NM" });
+    world.trade = customerTrade({ status: "awaiting_trade_list", listDueAt: "2099-01-01T05:59:59Z", offered: [offered] });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    await user.type(await screen.findByLabelText("Search for a card"), "Ragavan");
-    await user.click(await screen.findByRole("button", { name: /Ragavan, Nimble Pilferer/ }));
-    const pick = screen.getByText("Ragavan, Nimble Pilferer", { selector: ".gg-tc-pick__name" }).closest(".gg-tc-pick") as HTMLElement;
-    expect(pick).toHaveTextContent("Condition: Near MintSet from the card’s age; we check it when your cards arrive.");
-    expect(pick).toHaveTextContent("Estimated $52.00 each (today’s market price $52.00). We set the price at TCG low when we review your list.");
+    const select = await screen.findByRole("combobox", { name: `Condition of ${offered.cardName}` });
+    expect(select).toHaveValue(offered.reportedCondition);
+    await user.selectOptions(select, "MP");
+    await waitFor(() => expect(world.posts).toHaveLength(1));
+    expect(world.posts[0].body).toEqual(
+      expect.objectContaining({
+        action: "saveOffer",
+        tradeId: TRADE_ID,
+        cards: [expect.objectContaining({ id: "o1", scryfallId: offered.scryfallId, condition: "MP" })],
+      }),
+    );
   });
 
-  it("ignores a condition written in a pasted list: each card's comes from its age", async () => {
+  it("takes a condition written in a pasted list, and has them choose the rest, one by one or all at once", async () => {
     const user = userEvent.setup();
     world.printings = [ragavanPrinting()];
     world.trade = draftWithNoCards();
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     await user.click(await screen.findByRole("button", { name: "Paste it or upload a CSV" }));
     await user.click(screen.getByLabelText("Paste your list"));
-    await user.paste("2 Ragavan, Nimble Pilferer [MH2] 138 NM");
+    await user.paste("2 Ragavan, Nimble Pilferer [MH2] 138 LP\n1 Ragavan, Nimble Pilferer [MH2] 138");
     await user.click(screen.getByRole("button", { name: "Read my list" }));
 
-    const row = (await screen.findByText("2 Ragavan, Nimble Pilferer [MH2] 138 NM")).closest("li") as HTMLElement;
-    expect(within(row).getByText("Lightly Played")).toBeInTheDocument();
-    expect(row).toHaveTextContent("~$46.80 ea");
-    expect(within(row).queryByRole("combobox", { name: /Condition/ })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Add 1 card" }));
+    // The list's own condition is used as written.
+    const written = (await screen.findByText("2 Ragavan, Nimble Pilferer [MH2] 138 LP")).closest("li") as HTMLElement;
+    expect(within(written).getByRole("combobox", { name: /^Condition of/ })).toHaveValue("LP");
+    expect(written).toHaveTextContent("~$46.80 ea");
+    // The other has none: nothing is assumed, and it can't be added yet.
+    const blank = screen.getByText("1 Ragavan, Nimble Pilferer [MH2] 138").closest("li") as HTMLElement;
+    expect(within(blank).getByRole("combobox", { name: /^Condition of/ })).toHaveValue("");
+    expect(blank).not.toHaveTextContent("~$");
+    await user.click(screen.getByRole("button", { name: "Add 2 cards" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose the condition of each card you've ticked.");
+    expect(world.posts).toEqual([]);
+
+    // Set the rest at once: only the one without a condition changes.
+    await user.selectOptions(screen.getByRole("combobox", { name: /1 card needs a condition\. Set them all to:/ }), "MP");
+    expect(within(blank).getByRole("combobox", { name: /^Condition of/ })).toHaveValue("MP");
+    expect(within(written).getByRole("combobox", { name: /^Condition of/ })).toHaveValue("LP");
+    await user.click(screen.getByRole("button", { name: "Add 2 cards" }));
     await waitFor(() => expect(world.posts).toHaveLength(1));
-    expect(world.posts[0].body).toEqual({ action: "saveOffer", tradeId: TRADE_ID, cards: [{ scryfallId: "s9", finish: "nonfoil", quantity: 2 }] });
+    expect(world.posts[0].body).toEqual({
+      action: "saveOffer",
+      tradeId: TRADE_ID,
+      cards: [
+        { scryfallId: "s9", finish: "nonfoil", condition: "LP", quantity: 2 },
+        { scryfallId: "s9", finish: "nonfoil", condition: "MP", quantity: 1 },
+      ],
+    });
   });
 
   it("adds up the trade in the order it's read: what it takes, the credit, the rest of our cards, shipping by card, the deposit apart", async () => {
@@ -702,11 +858,11 @@ describe("a trade's page", () => {
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     const balance = await screen.findByRole("region", { name: "Your trade" });
     // $150 of ours takes $187.50 of theirs at 80%; $150 approved earns $120: $30 of our cards and $3.99 shipping by card.
-    expect(balance).toHaveTextContent("Our cards$150.00");
+    expect(balance).toHaveTextContent("Cards you want$150.00");
     expect(balance).toHaveTextContent("Your cards neededAt TCG low, to cover ours at 80% trade credit$187.50");
-    expect(balance).toHaveTextContent("Your cards (approved)$150.00");
+    expect(balance).toHaveTextContent("Your approved trade value$150.00");
     expect(balance).toHaveTextContent("Trade credit at 80%$120.00");
-    expect(balance).toHaveTextContent("Left to pay for our cards$30.00");
+    expect(balance).toHaveTextContent("Remaining balanceFor our cards, after your credit$30.00");
     expect(balance).toHaveTextContent("Shipping our cards to youFree from $200 · paid by card, not credit$3.99");
     expect(balance).toHaveTextContent("You'd pay by card$33.99");
     expect(balance).toHaveTextContent("Your credit covers 80% of our cards");
@@ -762,7 +918,7 @@ describe("a trade's page", () => {
       wanted: [customerTrade().wanted[0], { ...customerTrade().wanted[1], quantity: 2, available: 1 }],
     });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    expect(await screen.findByRole("button", { name: "Send for review" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Submit My Trade" })).toBeDisabled();
     expect(screen.getByText("Only 1 left: lower the quantity")).toBeInTheDocument();
     expect(screen.getByText("One of our cards has fewer copies left than you picked.")).toBeInTheDocument();
   });
@@ -792,7 +948,7 @@ describe("a trade's page", () => {
     expect(panel).toHaveTextContent("Refundable depositNone needed");
     expect(panel).toHaveTextContent("Total reserved market value$88.99");
     expect(panel).toHaveTextContent("Your trade-in cards (approved estimate)$80.00Priced at TCG low. $64.00 in trade credit.");
-    expect(panel).toHaveTextContent("if you confirm now: 3 days, Sundays don’t count");
+    expect(panel).toHaveTextContent("if you confirm now: 72 hours, Sundays don’t count");
     expect(panel).toHaveTextContent("Approved on this condition: Sheoldred must be Near Mint.");
     expect(within(panel).getByRole("heading", { name: "What confirming means" })).toBeInTheDocument();
 
@@ -803,7 +959,42 @@ describe("a trade's page", () => {
     await waitFor(() => expect(world.posts).toHaveLength(1));
     expect(world.posts[0]).toEqual({ body: { action: "confirm", tradeId: TRADE_ID, acknowledged: true, termsVersion: 1 }, auth: "Bearer member-token" });
     expect(await screen.findByRole("status")).toHaveTextContent(/Confirmed! Our cards are reserved for you: ship by/);
-    expect(screen.getByRole("heading", { name: "Ship your cards" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "You're all set! Ship your cards to Geega Games." })).toBeInTheDocument();
+  });
+
+  it("says our cards are already held while an approved trade waits to be confirmed", async () => {
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      approvedValueCents: 8000,
+      confirmBy: "2099-01-03T20:00:00.000Z",
+      hold: { stage: "confirmation", expiresAt: "2099-01-03T20:00:00.000Z" },
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z", shipByIfConfirmedNow: "2099-01-06T20:00:00.000Z" }),
+      offered: [{ ...sheoldred, reviewStatus: "approved" as const, approvedQuantity: 1, approvedUnitCents: 8000 }],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    expect(panel).toHaveTextContent("We're holding our cards for you until then.");
+    expect(panel).not.toHaveTextContent("stay on sale");
+    expect(panel).toHaveTextContent("Confirming keeps our cards reserved for you until your trade is done.");
+  });
+
+  it("explains the reservation deposit in plain words before they pay it", async () => {
+    world.trade = customerTrade({
+      status: "awaiting_confirmation",
+      wantedTotalCents: 32000,
+      approvedValueCents: 8000,
+      confirmBy: "2099-01-03T20:00:00.000Z",
+      deposit: { cents: 2000, status: "payment_pending", reason: "threshold", paidCents: null, paidAt: null, refundRequestedAt: null, refundedAt: null },
+      confirmation: confirmation({ confirmBy: "2099-01-03T20:00:00.000Z", depositCents: 2000, depositReason: "threshold" }),
+      offered: [{ ...sheoldred, reviewStatus: "approved" as const, approvedQuantity: 1, approvedUnitCents: 8000 }],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const panel = (await screen.findByRole("heading", { name: "Confirm your trade" })).closest("section")!;
+    expect(panel).toHaveTextContent(
+      "We’ll reserve your selected cards once your trade is approved and your reservation deposit is paid. The deposit protects against abandoned trades and is handled according to our cancellation policy.",
+    );
+    // Agreeing to the terms comes before paying.
+    expect(within(panel).getByRole("button", { name: "Confirm Trade & Pay Deposit" })).toBeDisabled();
   });
 
   it("confirms with the refundable deposit: the terms, then the card form for exactly that amount (7)", async () => {
@@ -924,13 +1115,21 @@ describe("a trade's page", () => {
       ],
     });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    expect(await screen.findByText(/100 Test Ave/)).toHaveTextContent("Geega Games100 Test AveBallwin, MO 63011");
+    expect(await screen.findByRole("heading", { name: "You're all set! Ship your cards to Geega Games." })).toBeInTheDocument();
+    expect((await screen.findByText("100 Test Ave")).closest("address")).toHaveTextContent("Geega Games100 Test AveBallwin, MO 63011");
     expect(screen.getByText(/Put your trade ID, TR-1001, on a slip of paper inside\./)).toBeInTheDocument();
+    // The address and the trade ID copy in a tap (for a label site or a note), one line per line of the address.
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await user.click(screen.getByRole("button", { name: "Copy the mailing address" }));
+    expect(writeText).toHaveBeenLastCalledWith("Geega Games\n100 Test Ave\nBallwin, MO 63011");
+    await user.click(screen.getByRole("button", { name: "Copy your trade ID, TR-1001" }));
+    expect(writeText).toHaveBeenLastCalledWith("TR-1001");
     expect(screen.getByRole("heading", { name: "Leave these out" }).nextElementSibling).toHaveTextContent("Llanowar Elves");
     // Before mailing, a card we turned down says to leave it out.
     expect(screen.getByText("Not accepted: please leave it out")).toBeInTheDocument();
 
-    expect(screen.getByText(/Ship by/)).toHaveTextContent("3 days, Sundays don't count");
+    expect(screen.getByText(/Ship by/)).toHaveTextContent("72 hours, Sundays don't count");
     expect(screen.getByText(/The carrier has to scan your package by then/)).toBeInTheDocument();
 
     // Protecting cards in the mail: always shown while they pack, with what damage on the way means.
@@ -1154,15 +1353,17 @@ describe("a trade's page", () => {
     expect(final).toHaveTextContent("1 × $80.00");
     expect(final).toHaveTextContent("1 × $72.00");
     // Before and after, the difference, and why.
-    expect(final).toHaveTextContent("Estimated before you shipped$80.00");
-    expect(final).toHaveTextContent("Final value after inspection$72.00");
-    expect(final).toHaveTextContent("Difference−$8.00");
-    expect(final).toHaveTextContent("Trade credit$57.60was $64.00");
+    // The credit before and after, the difference, and why, in a line; then card by card.
+    expect(final).toHaveTextContent("Original estimated credit$64.0080% of $80.00, approved before you shipped");
+    expect(final).toHaveTextContent("Final approved credit$57.6080% of $72.00, after we checked your cards");
+    expect(final).toHaveTextContent("Difference−$6.40");
+    expect(final).toHaveTextContent("Reason1 card was graded Lightly Played instead of Near Mint. Each card's reason is below.");
+    expect(final).toHaveTextContent("−$8.00");
     expect(final).toHaveTextContent("Condition: Lightly Played (listed as Near Mint)");
     expect(final).toHaveTextContent("Whitening on the back");
     expect(final).toHaveTextContent("You’re free to decline with no penalty");
 
-    await user.click(within(final).getByRole("button", { name: "Accept the offer" }));
+    await user.click(within(final).getByRole("button", { name: "Accept Final Offer" }));
     await user.click(await within(final).findByRole("button", { name: "Accept and finish my trade" }));
     await waitFor(() => expect(world.posts).toHaveLength(1));
     expect(world.posts[0].body).toEqual({ action: "accept", tradeId: TRADE_ID, addressId: "addr-1" });
@@ -1171,7 +1372,7 @@ describe("a trade's page", () => {
     world.posts = [];
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
     const again = (await screen.findByRole("heading", { name: "Your revised offer" })).closest("section")!;
-    await user.click(within(again).getByRole("button", { name: "Decline and get my cards back" }));
+    await user.click(within(again).getByRole("button", { name: "Decline Final Offer" }));
     expect(again).toHaveTextContent("There’s no penalty for declining, and it never affects your deposit.");
     const confirm = within(again).getAllByRole("button").find((b) => /decline/i.test(b.textContent ?? "") && b.getAttribute("type") === "submit")!;
     await user.click(confirm);
@@ -1248,15 +1449,15 @@ describe("My Trades", () => {
     at("/account/trades", <MyTrades />);
     const links = await screen.findAllByRole("link", { name: /TR-/ });
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/account/trades/t-conf", "/account/trades/t-new", "/account/trades/t-old"]);
-    expect(links[0]).toHaveTextContent("Awaiting your confirmation");
+    expect(links[0]).toHaveTextContent("Ready for your confirmation");
     expect(links[0]).toHaveTextContent("Confirm by");
     // Said before they confirm, not sprung on them.
     expect(links[0]).toHaveTextContent("Refundable deposit of $10.00 when you confirm");
-    expect(links[1]).toHaveTextContent("Reserved: awaiting shipment");
+    expect(links[1]).toHaveTextContent("Waiting for your shipment");
     expect(links[1]).toHaveTextContent("Ship your cards by");
     expect(links[1]).toHaveTextContent("Deposit $20.00: paid (refundable)");
     expect(links[1]).toHaveTextContent("3 of our cards ($88.99) · 1 of yours");
-    expect(links[2]).toHaveTextContent("Trade completed");
+    expect(links[2]).toHaveTextContent("Completed");
   });
 
   it("invites a first trade when there are none", async () => {
@@ -1268,23 +1469,23 @@ describe("My Trades", () => {
 describe("local pickup on the storefront", () => {
   const LOCAL_TERMS = TRADE_TERMS;
 
-  it("offers local pickup on the trade cart: no shipping, what to bring, and starts a local trade", async () => {
+  it("offers local pickup when trading toward the cart: no shipping, what to bring, and starts a local trade", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     world.respond = () => ({ status: 200, json: { ok: true, terms: LOCAL_TERMS, trade: customerTrade({ id: "new-local", handoffMethod: "local" }) } });
     at("/trade-cards", <TradeCardsPage />);
-    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
-    await waitFor(() => expect(within(summary).getByRole("group", { name: "How do you want to trade?" })).toBeInTheDocument());
-    expect(within(summary).getByRole("radio", { name: /Ship my cards/ })).toBeChecked();
-    await user.click(within(summary).getByRole("radio", { name: /Local pickup/ }));
-    expect(summary).toHaveTextContent("Meet us in the St. Louis area");
-    expect(summary).toHaveTextContent("ShippingYou pick our cards up when we meetNone");
-    expect(within(summary).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, bring about $99.99 of your cards at TCG low");
-    expect(summary).toHaveTextContent("Then we hold them while we set up a time to meet.");
+    const panel = await usePanel();
+    expect(within(panel).getByRole("group", { name: "How do you want to trade?" })).toBeInTheDocument();
+    expect(within(panel).getByRole("radio", { name: /Ship my cards/ })).toBeChecked();
+    await user.click(within(panel).getByRole("radio", { name: /Local pickup/ }));
+    expect(panel).toHaveTextContent("Meet us in the St. Louis area");
+    expect(panel).toHaveTextContent("ShippingYou pick our cards up when we meetNone");
+    expect(within(panel).getByText("$99.99").closest("p")).toHaveTextContent("To cover our cards, bring about $99.99 of your cards at TCG low");
+    expect(panel).toHaveTextContent("we hold these for you for up to 12 hours while we review it, then until we meet.");
     // The FAQ answers it too.
     expect(screen.getByText("Can I trade in person?")).toBeInTheDocument();
 
-    await user.click(within(summary).getByRole("button", { name: "Start my trade" }));
+    await user.click(within(panel).getByRole("button", { name: "Continue: tell us what you're trading" }));
     await waitFor(() => expect(window.location.pathname).toBe("/account/trades/new-local"));
     expect(world.posts[0].body).toEqual({ action: "start", items: [{ inventoryItemId: "i1", quantity: 1 }], handoffMethod: "local" });
   });
@@ -1298,47 +1499,48 @@ describe("local pickup on the storefront", () => {
       localMinTradeValueCents: 10000,
       localCashPayoutEnabled: true,
     };
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     at("/trade-cards", <TradeCardsPage />);
-    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
-    await waitFor(() => expect(within(summary).getByRole("group", { name: "How do you want to trade?" })).toBeInTheDocument());
+    const panel = await usePanel();
     const lead = () => document.querySelector(".gg-tc-cartpage__lead")?.textContent ?? "";
     const staples = () => document.querySelector(".gg-tc-staples")?.textContent ?? "";
+    const startButton = () => within(panel).getByRole("button", { name: "Continue: tell us what you're trading" });
     // Shipping: shipping's terms.
     expect(lead()).toContain("80% of that");
     expect(staples()).toContain("$15+");
-    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeEnabled();
+    expect(startButton()).toBeEnabled();
 
-    await user.click(within(summary).getByRole("radio", { name: /Local pickup/ }));
+    await user.click(within(panel).getByRole("radio", { name: /Local pickup/ }));
     expect(lead()).toContain("90% of that");
     expect(staples()).toContain("$5+");
-    expect(summary).toHaveTextContent("At 90% trade credit");
-    expect(summary).toHaveTextContent("or take cash for it, at a lower rate");
+    expect(panel).toHaveTextContent("Eligible cards earn 90% of their TCG low value");
+    expect(panel).toHaveTextContent("At 90% trade credit");
+    expect(panel).toHaveTextContent("or take cash for it, at a lower rate");
     // $79.99 of our cards is under local pickup's $100 minimum.
-    expect(within(summary).getByRole("button", { name: "Start my trade" })).toBeDisabled();
+    expect(startButton()).toBeDisabled();
+    expect(panel).toHaveTextContent("Add $20.01 more in cards to reach the $100 minimum trade value!");
     // How trading works follows the choice, with local pickup's own numbers.
     const how = screen.getByRole("region", { name: "How trading works" });
     expect(within(how).getByRole("tab", { name: "Local pickup" })).toHaveAttribute("aria-selected", "true");
-    const panel = within(how).getByRole("tabpanel");
-    expect(panel).toHaveTextContent("Local trades start at $100 of our cards. There’s no shipping.");
-    expect(panel).toHaveTextContent("staples valued at $5 or more each at TCG low");
-    expect(panel).toHaveTextContent("you receive 90% as trade credit");
-    expect(panel).toHaveTextContent("(or take it in cash, at a lower rate)");
+    const tab = within(how).getByRole("tabpanel");
+    expect(tab).toHaveTextContent("Local trades start at $100 of our cards. There’s no shipping.");
+    expect(tab).toHaveTextContent("staples valued at $5 or more each at TCG low");
+    expect(tab).toHaveTextContent("you receive 90% as trade credit");
+    expect(tab).toHaveTextContent("(or take it in cash, at a lower rate)");
     expect(screen.getByText(/Anything your 90% trade credit doesn't cover/)).toBeInTheDocument();
   });
 
   it("shows the meeting spot, with directions, when local pickup is chosen", async () => {
     const user = userEvent.setup();
     world.terms = { ...TRADE_TERMS, localMeetSpotName: "Ballwin Library", localMeetSpotAddress: "1600 Clarkson Rd, Ballwin, MO" };
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     at("/trade-cards", <TradeCardsPage />);
-    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
-    await waitFor(() => expect(within(summary).getByRole("radio", { name: /Local pickup/ })).toBeInTheDocument());
-    expect(summary).toHaveTextContent("Meet us at Ballwin Library.");
-    expect(within(summary).queryByRole("link", { name: /Get directions/ })).toBeNull();
-    await user.click(within(summary).getByRole("radio", { name: /Local pickup/ }));
-    expect(summary).toHaveTextContent("Where we meetBallwin Library1600 Clarkson Rd, Ballwin, MO");
-    expect(within(summary).getByRole("link", { name: /Get directions/ })).toHaveAttribute(
+    const panel = await usePanel();
+    expect(panel).toHaveTextContent("Meet us at Ballwin Library.");
+    expect(within(panel).queryByRole("link", { name: /Get directions/ })).toBeNull();
+    await user.click(within(panel).getByRole("radio", { name: /Local pickup/ }));
+    expect(panel).toHaveTextContent("Where we meetBallwin Library1600 Clarkson Rd, Ballwin, MO");
+    expect(within(panel).getByRole("link", { name: /Get directions/ })).toHaveAttribute(
       "href",
       "https://www.google.com/maps/search/?api=1&query=Ballwin%20Library%2C%201600%20Clarkson%20Rd%2C%20Ballwin%2C%20MO",
     );
@@ -1347,11 +1549,11 @@ describe("local pickup on the storefront", () => {
 
   it("doesn't offer local pickup while it's off", async () => {
     world.terms = { ...TRADE_TERMS, localPickupEnabled: false };
-    window.localStorage.setItem("gg-trade-cart", JSON.stringify([CART_ITEM]));
+    fillCart(cartLine());
     at("/trade-cards", <TradeCardsPage />);
-    const summary = await screen.findByRole("complementary", { name: "Trade summary" });
-    await waitFor(() => expect(summary).toHaveTextContent("Our cards (1)$79.99"));
-    expect(within(summary).queryByRole("group", { name: "How do you want to trade?" })).toBeNull();
+    const panel = await usePanel();
+    expect(panel).toHaveTextContent("Our cards (1)$79.99");
+    expect(within(panel).queryByRole("group", { name: "How do you want to trade?" })).toBeNull();
     expect(screen.queryByText("Can I trade in person?")).toBeNull();
   });
 
@@ -1359,9 +1561,9 @@ describe("local pickup on the storefront", () => {
     const user = userEvent.setup();
     world.trade = customerTrade({ status: "awaiting_trade_list", handoffMethod: "local", listDueAt: "2099-01-01T05:59:59Z", estimatedValueCents: 0, offered: [] });
     at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
-    const send = await screen.findByRole("button", { name: "Send for review" });
+    const send = await screen.findByRole("button", { name: "Submit My Trade" });
     expect(send).toBeEnabled();
-    expect(screen.getByRole("heading", { level: 2, name: "Draft: send it for review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Send your trade for review" })).toBeInTheDocument();
     expect(screen.getByText(/Bring them when we meet/)).toBeInTheDocument();
     expect(screen.queryByText("Add the cards you're trading in.")).toBeNull();
     const steps = screen.getByRole("list", { name: "Trade progress" });

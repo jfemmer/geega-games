@@ -1,4 +1,5 @@
 import "./App.css";
+import { LegacyTradeCartMove } from "./store/lib/tradeCart";
 import "./foilShimmer.css";
 import "./store/store.css";
 import "./store/brand-refresh.css";
@@ -310,6 +311,7 @@ export function Storefront({ initialPath }: { initialPath?: string }) {
           <RouterProvider initialPath={initialPath}>
             <PageViewTracker />
             <AttributionTracker />
+            <LegacyTradeCartMove />
             <div className="app">
               <a className="skip-link" href="#main">
                 Skip to content

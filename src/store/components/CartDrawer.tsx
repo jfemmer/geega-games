@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { useTradeTerms } from "../lib/tradeCenterApi";
+import { USE_MY_CARDS_CHECKOUT_PATH, tradingOpen } from "../lib/tradeCenter";
 import { useCart } from "../lib/CartContext";
 import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
@@ -22,6 +24,7 @@ export default function CartDrawer({
   const { user } = useAuth();
   const { ordersPaused, message: pausedMessage, pausedUntil } = useStoreStatus();
   const { navigate } = useRouter();
+  const tradeTerms = useTradeTerms();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -227,6 +230,29 @@ export default function CartDrawer({
             >
               {ordersPaused ? "Checkout paused" : "Checkout"}
             </button>
+            {tradingOpen(tradeTerms) && (
+              <div className="gg-drawer-trade">
+                <button
+                  type="button"
+                  className="gg-btn gg-btn-ghost"
+                  style={{ width: "100%" }}
+                  onClick={() => {
+                    onClose();
+                    navigate(USE_MY_CARDS_CHECKOUT_PATH);
+                  }}
+                >
+                  Use My Magic Cards
+                </button>
+                <p className="gg-card-meta">
+                  Trade cards you&rsquo;re not using toward this cart.
+                  {tradeTerms && tradeTerms.minTradeValueCents > 0
+                    ? subtotalCents >= tradeTerms.minTradeValueCents
+                      ? ` Trades start at ${formatCents(tradeTerms.minTradeValueCents)}: you're there.`
+                      : ` Trades start at ${formatCents(tradeTerms.minTradeValueCents)} of our cards: add about ${formatCents(tradeTerms.minTradeValueCents - subtotalCents)} more.`
+                    : ""}
+                </p>
+              </div>
+            )}
             {!user && !ordersPaused && memberSavingsCents > 0 && (
               <p className="gg-card-meta" style={{ textAlign: "center", margin: "0 0 0.5rem" }}>
                 No account needed — but{" "}

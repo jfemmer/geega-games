@@ -54,7 +54,6 @@ import {
   tradeHoldOf,
 } from "../../src/store/lib/tradeCenter.js";
 import { addQualifyingDays, addQualifyingHours } from "../../src/store/lib/tradeDeadlines.js";
-import { conditionForAge } from "../../src/store/lib/tradeConditions.js";
 import {
   depositFor,
   privilegesFor,
@@ -1217,9 +1216,9 @@ export function readWantedInputs(raw: unknown, maxLines: number): TradeWantedInp
 }
 
 /**
- * The customer's cards. The same printing and finish twice becomes one line:
- * its condition comes from the printing's age (priceOffers), so any
- * condition the browser sends is ignored.
+ * The customer's cards: each with the condition the customer chose (never
+ * assumed from the card's age; staff check it when the cards arrive). The
+ * same printing, finish and condition twice becomes one line.
  */
 export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput[] {
   if (!Array.isArray(raw)) throw new HttpError(400, "Your cards didn't come through. Try again.");
@@ -1228,6 +1227,7 @@ export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput
     const o = (item ?? {}) as Record<string, unknown>;
     const scryfallId = typeof o.scryfallId === "string" && UUID_RE.test(o.scryfallId) ? o.scryfallId.toLowerCase() : null;
     const finish = isTradeFinish(o.finish) ? o.finish : null;
+    const condition = isConditionCode(o.condition) ? o.condition : null;
     const quantity = wholeNumber(o.quantity, 1, TRADE_LIMITS.maxQuantity);
     const id = typeof o.id === "string" && UUID_RE.test(o.id) ? o.id.toLowerCase() : undefined;
     const estimate =
@@ -1237,10 +1237,11 @@ export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput
     if (!scryfallId || !finish || quantity === null) {
       throw new HttpError(400, "One of your cards is missing its printing, finish or quantity.");
     }
+    if (!condition) throw new HttpError(400, "Choose the condition of each of your cards.");
     if (o.customerEstimateCents !== undefined && o.customerEstimateCents !== null && estimate === null) {
       throw new HttpError(400, "One of your price notes isn't a number we can use.");
     }
-    const key = `${scryfallId}|${finish}`;
+    const key = `${scryfallId}|${finish}|${condition}`;
     const earlier = merged.get(key);
     if (earlier) {
       earlier.quantity = Math.min(earlier.quantity + quantity, TRADE_LIMITS.maxQuantity);
@@ -1251,6 +1252,7 @@ export function readOfferInputs(raw: unknown, maxLines: number): TradeOfferInput
       id,
       scryfallId,
       finish,
+      condition,
       quantity,
       customerEstimateCents: estimate,
       note: cleanText(o.note, TRADE_LIMITS.maxCardNote),
@@ -1312,7 +1314,7 @@ interface PrintingInfo {
   finishes: string[];
   prices: { usd: number | null; usdFoil: number | null; usdEtched: number | null };
   checkedAt: string | null;
-  /** "YYYY-MM-DD": the customer's card is listed at the condition its age gives (tradeConditions). */
+  /** "YYYY-MM-DD": when the printing was released (shown for reference; condition is the customer's choice). */
   releasedAt: string | null;
 }
 
@@ -1411,8 +1413,8 @@ export interface PricedOffer {
 
 /**
  * Prices the customer's cards for a trade: each printing's market reference
- * for its finish, the trade's percentage for the condition the printing's
- * age gives (tradeConditions: the browser's condition is never used), and
+ * for its finish, the trade's percentage for the condition the customer
+ * chose (one of the five; never assumed from the card's age), and
  * whether we can take it (the trade's minimum, and today's exclusions and
  * overstock limit). These are estimates: staff price each card at TCG low
  * when they review the list. The card's name, set and picture come from
@@ -1452,7 +1454,8 @@ export async function priceOffers(
       throw new HttpError(400, `${p.cardName} (${p.setCode}) doesn't come in ${input.finish === "nonfoil" ? "non-foil" : input.finish}.`);
     }
     const reference = referencePriceFor(p.prices, input.finish);
-    const condition = conditionForAge(p.releasedAt);
+    // The condition the customer chose; staff check it when the cards arrive.
+    const condition = input.condition;
     const pct = conditionPercent(percents, condition);
     const estimate = estimatedUnitCents(reference, pct);
     const onHand = stock.get(input.scryfallId) ?? 0;

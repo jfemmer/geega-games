@@ -13,6 +13,7 @@ import {
   type CustomerTrade,
 } from "../../lib/tradeCenter";
 import { moneyShort, tradeShippingCents } from "../../lib/tradeShipping";
+import { shipWindow } from "../../lib/tradeFaq";
 import type { ConfirmResponse } from "../../lib/tradeCenterApi";
 import { TradeCardPayment } from "./TradeCardForm";
 import { returnUrlFor } from "./tradePayment";
@@ -82,8 +83,10 @@ export function TradeConfirmPanel({
           <>The time to confirm ran out at {formatDeadline(c.confirmBy)}.</>
         ) : (
           <>
-            Confirm by <strong>{formatDeadline(c.confirmBy)}</strong> ({timeLeft(confirmBy, now)} left). Until you do, our cards stay on
-            sale.
+            Confirm by <strong>{formatDeadline(c.confirmBy)}</strong> ({timeLeft(confirmBy, now)} left).{" "}
+            {trade.hold?.stage === "confirmation"
+              ? "We're holding our cards for you until then."
+              : "Until you do, our cards stay on sale."}
           </>
         )}
       </p>
@@ -133,7 +136,7 @@ export function TradeConfirmPanel({
           <dd>
             {formatDeadline(c.shipByIfConfirmedNow)}
             <span className="gg-tc-facts__sub">
-              if you confirm now: {c.shipDays} day{c.shipDays === 1 ? "" : "s"}, Sundays don&rsquo;t count
+              if you confirm now: {shipWindow(c.shipDays)}, Sundays don&rsquo;t count
             </span>
           </dd>
         </div>
@@ -178,6 +181,10 @@ export function TradeConfirmPanel({
         {deposit > 0 ? (
           <>
             <h3>Refundable Reservation Deposit</h3>
+            <p className="gg-tc-terms__lead">
+              We&rsquo;ll reserve your selected cards once your trade is approved and your reservation deposit is paid. The deposit protects
+              against abandoned trades and is handled according to our cancellation policy.
+            </p>
             {paragraphs.map((p) => (
               <p key={p}>{p}</p>
             ))}
@@ -186,7 +193,10 @@ export function TradeConfirmPanel({
           <>
             <h3>What confirming means</h3>
             <p>
-              Confirming reserves our cards for you and takes them off sale. There&rsquo;s no deposit on this trade. Please only confirm if
+              {trade.hold?.stage === "confirmation"
+                ? "Confirming keeps our cards reserved for you until your trade is done."
+                : "Confirming reserves our cards for you and takes them off sale."}{" "}
+              There&rsquo;s no deposit on this trade. Please only confirm if
               you&rsquo;ll ship: canceling after confirming, or not shipping in time, counts against future trades.
             </p>
           </>
@@ -212,7 +222,7 @@ export function TradeConfirmPanel({
           <div>
             <dt>Shipping requirements</dt>
             <dd>
-              Ship within {c.shipDays} day{c.shipDays === 1 ? "" : "s"} of confirming (Sundays don&rsquo;t count; Saturdays do), with tracking.
+              Ship within {shipWindow(c.shipDays)} of confirming (Sundays don&rsquo;t count; Saturdays do), with tracking.
               It counts when the carrier scans your package; a label on its own doesn&rsquo;t. Put your trade ID, {tradeLabel(trade.tradeNumber)},
               inside.
             </dd>

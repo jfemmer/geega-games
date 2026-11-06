@@ -236,8 +236,10 @@ export function LocalConfirmPanel({
           <>The time to confirm ran out at {formatDeadline(c.confirmBy)}.</>
         ) : (
           <>
-            Confirm by <strong>{formatDeadline(c.confirmBy)}</strong> ({timeLeft(confirmBy, now)} left). Until you do, our cards stay on
-            sale.
+            Confirm by <strong>{formatDeadline(c.confirmBy)}</strong> ({timeLeft(confirmBy, now)} left).{" "}
+            {trade.hold?.stage === "confirmation"
+              ? "We're holding our cards for you until then."
+              : "Until you do, our cards stay on sale."}
           </>
         )}
       </p>

@@ -7,6 +7,7 @@ import { shippingLabel } from "../../lib/tradeShipping";
 import {
   CONDITION_NAMES,
   TRADE_LIMITS,
+  offerChangeSummary,
   offerChanges,
   printingLabel,
   tradeComparison,
@@ -68,6 +69,9 @@ export function TradeFinalOffer({
   };
   const before = tradeComparison({ ...money, offeredValueCents: approvedValue });
   const after = tradeComparison({ ...money, offeredValueCents: finalValue });
+  const finalCredit = trade.finalCreditCents ?? after.creditCents;
+  const creditDiff = finalCredit - before.creditCents;
+  const reason = offerChangeSummary(trade.offered);
   const bottom = (c: typeof before) =>
     c.cashDueCents > 0 ? `${formatCents(c.cashDueCents)} to pay by card` : `${formatCents(c.excessCents)} credit left over`;
   // Still held (normally it's refunded once the carrier accepts the package):
@@ -84,29 +88,39 @@ export function TradeFinalOffer({
       </p>
       <dl className="gg-tc-compare">
         <div>
-          <dt>Estimated before you shipped</dt>
-          <dd>{formatCents(approvedValue)}</dd>
+          <dt>Original estimated credit</dt>
+          <dd>
+            {formatCents(before.creditCents)}
+            <span className="gg-tc-facts__sub">
+              {trade.creditRatePercent}% of {formatCents(approvedValue)}, approved before you shipped
+            </span>
+          </dd>
         </div>
         <div>
-          <dt>Final value after inspection</dt>
-          <dd>{formatCents(finalValue)}</dd>
+          <dt>Final approved credit</dt>
+          <dd>
+            {formatCents(finalCredit)}
+            <span className="gg-tc-facts__sub">
+              {trade.creditRatePercent}% of {formatCents(finalValue)}, after we checked your cards
+              {trade.processingFeeCents > 0 ? `, less the ${formatCents(trade.processingFeeCents)} processing fee` : ""}
+            </span>
+          </dd>
         </div>
-        {diff !== 0 && (
-          <div className={diff < 0 ? "gg-tc-compare__down" : "gg-tc-compare__up"}>
+        {creditDiff !== 0 && (
+          <div className={creditDiff < 0 ? "gg-tc-compare__down" : "gg-tc-compare__up"}>
             <dt>Difference</dt>
             <dd>
-              {diff < 0 ? "−" : "+"}
-              {formatCents(Math.abs(diff))}
+              {creditDiff < 0 ? "−" : "+"}
+              {formatCents(Math.abs(creditDiff))}
             </dd>
           </div>
         )}
-        <div>
-          <dt>Trade credit</dt>
-          <dd>
-            {formatCents(trade.finalCreditCents ?? after.creditCents)}
-            {diff !== 0 && <span className="gg-tc-facts__sub">was {formatCents(before.creditCents)}</span>}
-          </dd>
-        </div>
+        {reason && (
+          <div className="gg-tc-compare__reason">
+            <dt>Reason</dt>
+            <dd>{reason}</dd>
+          </div>
+        )}
         <div>
           <dt>Shipping our cards to you</dt>
           <dd>
@@ -197,13 +211,13 @@ export function TradeFinalOffer({
 
       <div className="gg-tc-answer">
         <button type="button" className="gg-btn" onClick={() => setMode("accept")} disabled={busy}>
-          Accept the offer
+          Accept Final Offer
         </button>
-        <button type="button" className="gg-btn gg-btn-ghost" onClick={() => setMode("adjust")} disabled={busy}>
+        <button type="button" className="gg-btn gg-btn-ghost gg-tc-answer__decline" onClick={() => setMode("decline")} disabled={busy}>
+          Decline Final Offer
+        </button>
+        <button type="button" className="gg-linkbtn" onClick={() => setMode("adjust")} disabled={busy}>
           Ask for an adjustment
-        </button>
-        <button type="button" className="gg-linkbtn gg-tc-answer__decline" onClick={() => setMode("decline")} disabled={busy}>
-          Decline and get my cards back
         </button>
       </div>
 

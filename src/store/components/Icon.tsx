@@ -14,7 +14,8 @@ export type StoreIconName =
   | "tag"
   | "percent"
   | "close"
-  | "share";
+  | "share"
+  | "swap";
 
 const PATHS: Record<StoreIconName, string> = {
   user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
@@ -29,6 +30,7 @@ const PATHS: Record<StoreIconName, string> = {
   tag: "M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8ZM7 7h.01",
   percent: "M19 5 5 19M6.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM17.5 20a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
   close: "M18 6 6 18M6 6l12 12",
+  swap: "M16 3l4 4-4 4M20 7H8M8 21l-4-4 4-4M4 17h12",
   share:
     "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98",
 };

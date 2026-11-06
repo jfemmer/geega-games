@@ -11,13 +11,23 @@ import type { ReactNode } from "react";
 
 const cart = vi.hoisted(() => ({ priceCents: 8000 }));
 
-vi.mock("../src/supabase", () => ({
-  isSupabaseConfigured: false,
-  supabase: {
-    auth: { getSession: async () => ({ data: { session: null } }) },
-    rpc: async () => ({ data: null, error: null }),
-  },
-}));
+vi.mock("../src/supabase", () => {
+  // inventory_public, for what the cart's cards count for in a trade (Use My Magic Cards).
+  const chain = {
+    select: () => chain,
+    in: () => chain,
+    then: (resolve: (v: unknown) => unknown) =>
+      Promise.resolve({ data: [{ id: "inv-1", price_cents: cart.priceCents, original_price_cents: null, sale_only: false }], error: null }).then(resolve),
+  };
+  return {
+    isSupabaseConfigured: false,
+    supabase: {
+      auth: { getSession: async () => ({ data: { session: null } }) },
+      rpc: async () => ({ data: null, error: null }),
+      from: () => chain,
+    },
+  };
+});
 
 vi.mock("../src/store/lib/AuthContext", () => ({
   useAuth: () => ({ user: null, loading: false, signUp: async () => ({}) }),
@@ -38,6 +48,7 @@ vi.mock("../src/store/lib/CartContext", () => ({
         priceCents: cart.priceCents,
         sellable: 1,
         variantType: null,
+        saleOnly: false,
       },
     ],
     itemCount: 1,
@@ -46,6 +57,8 @@ vi.mock("../src/store/lib/CartContext", () => ({
     error: null,
     refresh: async () => {},
     clear: async () => {},
+    removeItem: async () => {},
+    setQuantity: async () => {},
   }),
 }));
 
@@ -90,6 +103,7 @@ beforeEach(() => {
   });
   vi.stubGlobal("fetch", fetchSpy);
   window.sessionStorage.clear();
+  window.history.replaceState({}, "", "/checkout");
 });
 
 afterEach(() => {
@@ -119,11 +133,14 @@ function summaryRow(label: string): string {
   return row?.textContent ?? "";
 }
 
+/** The shipping choices (not Pay Normally / Use My Magic Cards). */
+const shippingRadios = () => screen.queryAllByRole("radio").filter((r) => r.getAttribute("name") !== "gg-paychoice");
+
 describe("checkout with $75 or more of cards", () => {
   it("doesn't offer Plain White Envelope: free tracked shipping is applied", () => {
     render(<CheckoutPage />);
 
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(shippingRadios()).toHaveLength(0);
     expect(screen.queryByText(/Plain White Envelope/)).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent(
       "Free tracked shipping. Orders of $75 or more ship free with tracking, automatically.",
@@ -141,7 +158,7 @@ describe("checkout with $75 or more of cards", () => {
   it("applies at exactly $75", () => {
     cart.priceCents = 7500;
     render(<CheckoutPage />);
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(shippingRadios()).toHaveLength(0);
     expect(summaryRow("Shipping")).toBe("ShippingFree");
   });
 });
@@ -174,9 +191,41 @@ describe("checkout under $75", () => {
     cart.priceCents = 8000;
     rerender(<CheckoutPage />);
 
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(shippingRadios()).toHaveLength(0);
     expect(summaryRow("Shipping")).toBe("ShippingFree");
     fillGuestDetails();
     expect((await placeOrder()).shippingMethod).toBe("tracked");
+  });
+});
+
+describe("choosing how to pay", () => {
+  const payNormally = () => screen.getByRole("radio", { name: /Pay Normally/ });
+  const useMyCards = () => screen.getByRole("radio", { name: /Use My Magic Cards/ });
+
+  it("opens on Pay Normally, and Use My Magic Cards swaps the payment form for trading toward the cart", async () => {
+    render(<CheckoutPage />);
+    expect(payNormally()).toBeChecked();
+    expect(useMyCards()).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Continue to payment" })).toBeInTheDocument();
+
+    fireEvent.click(useMyCards());
+    const panel = await screen.findByRole("region", { name: "Use My Magic Cards" });
+    expect(panel).toHaveTextContent("Gaea's Cradle");
+    expect(screen.getByText("Gaea's Cradle", { selector: ".gg-tc-line__name" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue to payment" })).toBeNull();
+
+    // Back to paying: the order is as it was, and nothing was sent.
+    fireEvent.click(payNormally());
+    expect(screen.queryByRole("region", { name: "Use My Magic Cards" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Continue to payment" })).toBeInTheDocument();
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url).includes("create-payment-intent"))).toEqual([]);
+  });
+
+  it("opens on Use My Magic Cards from the cart's link", async () => {
+    window.history.replaceState({}, "", "/checkout?pay=trade");
+    render(<CheckoutPage />);
+    expect(useMyCards()).toBeChecked();
+    expect(await screen.findByRole("region", { name: "Use My Magic Cards" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue to payment" })).toBeNull();
   });
 });

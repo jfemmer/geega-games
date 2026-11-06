@@ -17,6 +17,7 @@ import { CREDIT_SUMMARY } from "../lib/buyTerms";
 import { SELLER_REFERRAL_REWARD_CENTS, SELL_HUB_PATH } from "../lib/partnerTypes";
 import { PRODUCTION_ORIGIN } from "../../seo/site";
 import { UsStateSelect } from "../components/UsStateSelect";
+import { CopyButton } from "../components/CopyButton";
 import { useReveal } from "../lib/useReveal";
 import { SHIPS_TO_SUMMARY, SHIP_TO_COUNTRY, checkUsAddress } from "../lib/usAddress";
 import {
@@ -293,27 +294,6 @@ export function OrderProgress({
         );
       })}
     </ol>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="gg-btn gg-btn-ghost gg-btn-sm"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
-        } catch {
-          /* clipboard unavailable — the number is still selectable text */
-        }
-      }}
-    >
-      {copied ? "Copied ✓" : "Copy"}
-    </button>
   );
 }
 

@@ -35,7 +35,7 @@ describe("the trade-in landing page", () => {
     expect(html).not.toContain("a set percentage");
   });
 
-  it("links on to the shop, the trade cart and the sell page", () => {
+  it("links on to the shop, trading toward the cart, store credit and the sell page", () => {
     window.history.replaceState({}, "", TRADE_IN_PATH);
     render(
       <RouterProvider>
@@ -43,8 +43,12 @@ describe("the trade-in landing page", () => {
       </RouterProvider>,
     );
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("80% of TCG low in store credit");
-    expect(screen.getAllByRole("link", { name: "Open my trade cart" })[0]).toHaveAttribute("href", "/trade-cards");
-    expect(screen.getByRole("link", { name: "Pick the cards you want" })).toHaveAttribute("href", "/shop");
+    expect(screen.getAllByRole("link", { name: "Trade toward my cart" })[0]).toHaveAttribute("href", "/trade-cards");
+    expect(screen.getAllByRole("link", { name: "Shop Magic cards" })[0]).toHaveAttribute("href", "/shop");
+    expect(screen.getByRole("link", { name: "Get store credit for my cards" })).toHaveAttribute("href", "/sell");
+    // Trading starts from the normal cart now, and conditions are the customer's to choose.
+    expect(document.body).not.toHaveTextContent(/Add to trade|trade cart|printing’s age/);
+    expect(document.body).toHaveTextContent("At checkout, choose “Use My Magic Cards”.");
     expect(screen.getAllByRole("link", { name: "Get a free offer" })[0]).toHaveAttribute("href", "/sell-my-collection");
     expect(screen.getByRole("heading", { level: 2, name: "Frequently asked questions" })).toBeInTheDocument();
   });
