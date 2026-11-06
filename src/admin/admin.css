@@ -3855,6 +3855,9 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-trades-list .gg-ordercell__cust { overflow-wrap: anywhere; }
 .gg-trades__inline-status { display: none; }
 .gg-trades__stage { font-size: 0.72rem; color: var(--gg-text-faint); }
+.gg-trades__value--left { align-items: flex-start; }
+.gg-trades__holdsum { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; margin: 0.25rem 0 0.75rem; font-size: 0.85rem; color: var(--gg-text-muted, #5b5366); }
+.gg-trades__stage--warn { color: #8a5a00; font-weight: 600; }
 
 .gg-trd { display: flex; flex-direction: column; gap: 22px; }
 .gg-trd__section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -4383,3 +4386,16 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-settle-sum { margin-top: 0.75rem; }
 .gg-settle-sum th { font-weight: 500; }
 .gg-settle-sum td { text-align: right; }
+
+/* Trades: condition photos at inspection (TradeConditionPhotos). */
+.gg-trd-photos { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
+.gg-trd-photos__label { width: 100%; font-size: 0.8rem; font-weight: 600; color: var(--gg-text-muted, #5b5366); }
+.gg-trd-photos__list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.gg-trd-photos__list li { position: relative; }
+.gg-trd-photos__list img { display: block; width: 72px; height: 72px; object-fit: cover; border: 1px solid var(--gg-border, #e2dcea); border-radius: 8px; }
+.gg-trd-photos__remove {
+  position: absolute; top: -8px; right: -8px; display: grid; place-items: center;
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: 50%;
+  background: #2b2233; color: #fff; font-size: 1rem; line-height: 1; cursor: pointer;
+}
+.gg-trd-photos__remove:disabled { opacity: 0.5; cursor: default; }

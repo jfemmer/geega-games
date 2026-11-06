@@ -1380,6 +1380,34 @@ describe("a trade's page", () => {
     expect(world.posts[0].body).toMatchObject({ action: "decline", tradeId: TRADE_ID });
   });
 
+  it("shows our inspection photos beside a card on the final offer", async () => {
+    world.trade = customerTrade({
+      status: "awaiting_final_approval",
+      approvedValueCents: 8000,
+      finalValueCents: 7200,
+      finalCreditCents: 5760,
+      offered: [
+        {
+          ...sheoldred,
+          reviewStatus: "approved",
+          approvedQuantity: 1,
+          approvedUnitCents: 8000,
+          inspected: true,
+          receivedQuantity: 1,
+          verifiedCondition: "LP",
+          finalQuantity: 1,
+          finalUnitCents: 7200,
+          photos: [{ path: "t/o1__a.jpg", url: "https://signed.example/a.jpg" }],
+        },
+      ],
+    });
+    at(`/account/trades/${TRADE_ID}`, <TradeDetail tradeId={TRADE_ID} />);
+    const final = (await screen.findByRole("heading", { name: "Your revised offer" })).closest("section")!;
+    const photos = within(final).getByRole("list", { name: "Photos of Sheoldred, the Apocalypse from our inspection" });
+    expect(within(photos).getByRole("img", { name: "Sheoldred, the Apocalypse, photo 1 from our inspection" })).toHaveAttribute("src", "https://signed.example/a.jpg");
+    expect(within(photos).getByRole("link")).toHaveAttribute("href", "https://signed.example/a.jpg");
+  });
+
   it("shows how a finished trade settled, and what's coming back", async () => {
     world.trade = customerTrade({
       status: "approved_for_fulfillment",

@@ -5,9 +5,14 @@ import { requireStaff, type StaffContext } from "../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { logAdminAction } from "../_lib/auditLog.js";
 import {
+  CONDITION_PHOTO_BUCKET,
   DISPUTE_BUCKET,
+  STAFF_PHOTO_STATUSES,
   UUID_RE,
   bundleAvailability,
+  conditionPhotoCard,
+  conditionPhotoPath,
+  loadConditionPhotos,
   loadWantedTraits,
   loadStockedLines,
   type WantedCardTraits,
@@ -39,7 +44,10 @@ import { trackingConnected } from "../_lib/tradeTracking.js";
 import { checkUsAddress, SHIP_TO_COUNTRY } from "../../src/store/lib/usAddress.js";
 import {
   CARD_CONDITIONS,
+  CONDITION_PHOTO_STATUSES,
+  CONDITION_PHOTO_TYPES,
   DEPOSIT_STATUSES,
+  HOLD_SOON_MS,
   RESERVED_STATUSES,
   STAFF_CANCELABLE_STATUSES,
   STAFF_REJECTABLE_STATUSES,
@@ -52,6 +60,7 @@ import {
   isOpenTrade,
   isTradeCarrier,
   isTradeStatus,
+  tradeHoldOf,
   type StockedLine,
   type TradeStatus,
 } from "../../src/store/lib/tradeCenter.js";
@@ -65,12 +74,12 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 // hand and marking cash paid are for the store owner (role admin).
 //
 //   GET ?view=list[&filter=…][&deposit=<status>][&q=] → { trades, counts, settings, owner }
-//        filter: waiting (needs staff), open, all, deposits, reserved, abandoned, local (local pickup), finished
+//        filter: waiting (needs staff), open, all, deposits, reserved, held (review or confirmation hold), abandoned, local (local pickup), finished
 //        (approved for fulfillment or completed), or a status. The filters' counts and the
 //        statuses' share one object, so no filter is named after a status.
 //   GET ?id=<trade id>                               → { trade, settings, owner }
 //   GET ?view=settings                               → { settings, owner }
-//   GET ?view=reserved                               → { lines, settings, owner }   our cards held for trades
+//   GET ?view=reserved                               → { lines, settings, owner }   our cards held for trades (holds and reservations)
 //   GET ?view=customers                              → { customers, settings, owner } reliability
 //   GET ?view=deposits                               → { totals, trades, settings, owner }
 //   GET ?view=economics[&days=30|90|365]             → { totals, trades, days, settings, owner }  finished trades
@@ -98,6 +107,11 @@ import { acceptedCardCounts, economicsTotals, tradeEconomics, type TradeEconomic
 //     setCustomerFlags  { userId, depositRequired, blocked, note? }  owner
 //     inspect, confirmAsDescribed, sendFinalOffer, reopenInspection, setWanted,
 //     setPostage        { tradeId, postageCents | null }     what shipping our cards cost (finished trades)
+//     photoUploads      { tradeId, cardId, files: [{ mimeType, sizeBytes }] }
+//                                                             → { uploads: [{ path, token, signedUrl }] } signed links
+//                                                             to upload condition photos of one card (inspection
+//                                                             through the final offer); the photos show once uploaded
+//     deletePhoto       { tradeId, path }                    remove one condition photo
 //   Local pickup trades (handoff_method local):
 //     approve           { …, meetupDetails? }                 no card review and never a deposit
 //     setMeetup         { tradeId, details }                  where and when to meet (emailed once approved)
@@ -132,6 +146,8 @@ const SHIP_ONLY_ACTIONS = new Set([
   "recordPayment",
   "setPostage",
   "resolveDispute",
+  "photoUploads",
+  "deletePhoto",
 ]);
 /** Signed links to proof-of-shipping files last this long. */
 const FILE_LINK_SECONDS = 15 * 60;
@@ -211,7 +227,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new HttpError(409, "Meetups are for local pickup trades.");
     }
 
+    if (action === "photoUploads") {
+      const uploads = await conditionPhotoUploads(admin, bundle, body);
+      await audit("photo_uploads", { cardId: body.cardId, files: uploads.length });
+      return sendJson(res, 200, { ok: true, uploads });
+    }
+
     switch (action) {
+      case "deletePhoto": {
+        if (!(CONDITION_PHOTO_STATUSES as readonly string[]).includes(status)) {
+          throw new HttpError(409, "Condition photos can only be changed while inspecting, until the customer answers the final offer.");
+        }
+        const path = typeof body.path === "string" ? body.path : "";
+        if (!conditionPhotoCard(tradeId, path)) throw new HttpError(400, "That photo isn't on this trade.");
+        const { error } = await admin.storage.from(CONDITION_PHOTO_BUCKET).remove([path]);
+        if (error) throw new HttpError(500, "We couldn't remove the photo. Try again.");
+        await audit("photo_delete", { path });
+        break;
+      }
+
       case "review": {
         const cards = readReviewCards(body.cards, bundle);
         const { error } = await admin.rpc("trade_review_cards", { p_trade_id: tradeId, p_cards: cards as unknown as Json, ...actor });
@@ -864,7 +898,7 @@ async function retireOrRecordDeposit(bundle: TradeBundle): Promise<void> {
 async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSettingsRow) {
   const t = bundle.trade;
   const paths = bundle.disputes.flatMap((d) => disputeFilesOf(d.files).map((f) => f.path));
-  const [standing, extensions, consents, availability, links, wantedTraits, stockedLines] = await Promise.all([
+  const [standing, extensions, consents, availability, links, wantedTraits, stockedLines, conditionPhotos] = await Promise.all([
     customerStanding(admin, t.user_id, settings).catch((): CustomerStanding | null => null),
     admin.from("trade_extensions").select("*").eq("trade_request_id", t.id).order("created_at"),
     admin.from("trade_consents").select("*").eq("trade_request_id", t.id).order("created_at"),
@@ -872,6 +906,7 @@ async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSetti
     paths.length > 0 ? admin.storage.from(DISPUTE_BUCKET).createSignedUrls(paths, FILE_LINK_SECONDS) : Promise.resolve({ data: [], error: null }),
     loadWantedTraits(admin, bundle).catch(() => new Map<string, WantedCardTraits>()),
     loadStockedLines(admin, bundle).catch(() => new Map<string, StockedLine[]>()),
+    STAFF_PHOTO_STATUSES.has(t.status) ? loadConditionPhotos(admin, t.id).catch(() => new Map()) : Promise.resolve(new Map()),
   ]);
   const fileUrls = new Map<string, string>();
   for (const l of links.data ?? []) if (l.path && l.signedUrl) fileUrls.set(l.path, l.signedUrl);
@@ -883,6 +918,7 @@ async function staffView(admin: Admin, bundle: TradeBundle, settings: TradeSetti
     wantedTraits,
     stockedLines,
     fileUrls,
+    conditionPhotos,
     autoTracked: trackingConnected(),
   });
 }
@@ -948,6 +984,35 @@ async function logEvent(
   if (error) console.error("[admin/trade-center] couldn't log", event, tradeId, error.message);
 }
 
+/** Signed links to upload condition photos of one of the customer's cards straight to private storage. */
+async function conditionPhotoUploads(admin: Admin, bundle: TradeBundle, body: Record<string, unknown>) {
+  const t = bundle.trade;
+  if (!(CONDITION_PHOTO_STATUSES as readonly string[]).includes(t.status)) {
+    throw new HttpError(409, "Condition photos can be added while inspecting, until the customer answers the final offer.");
+  }
+  const cardId = typeof body.cardId === "string" && UUID_RE.test(body.cardId) ? body.cardId.toLowerCase() : null;
+  const card = cardId ? bundle.offers.find((c) => c.id === cardId) : undefined;
+  if (!card) throw new HttpError(400, "That card isn't on this trade.");
+  const files = Array.isArray(body.files) ? body.files : [];
+  if (files.length === 0) throw new HttpError(400, "Choose a photo first.");
+  const existing = (await loadConditionPhotos(admin, t.id)).get(card.id)?.length ?? 0;
+  if (existing + files.length > TRADE_LIMITS.maxConditionPhotos) {
+    throw new HttpError(400, `Add up to ${TRADE_LIMITS.maxConditionPhotos} photos of each card.`);
+  }
+  return Promise.all(
+    files.map(async (raw) => {
+      const f = (raw ?? {}) as Record<string, unknown>;
+      const type = typeof f.mimeType === "string" ? f.mimeType.toLowerCase() : "";
+      const size = typeof f.sizeBytes === "number" && Number.isFinite(f.sizeBytes) ? f.sizeBytes : 0;
+      if (!(CONDITION_PHOTO_TYPES as readonly string[]).includes(type)) throw new HttpError(400, "Photos must be JPEG, PNG, WebP or HEIC.");
+      if (size <= 0 || size > TRADE_LIMITS.maxConditionPhotoBytes) throw new HttpError(400, "Each photo can be up to 10 MB.");
+      const { data, error } = await admin.storage.from(CONDITION_PHOTO_BUCKET).createSignedUploadUrl(conditionPhotoPath(t.id, card.id, type));
+      if (error || !data) throw new HttpError(500, "We couldn't start the upload. Try again.");
+      return { path: data.path, token: data.token, signedUrl: data.signedUrl };
+    }),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Lists
 // ---------------------------------------------------------------------------
@@ -968,6 +1033,8 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
     query = query.not("deposit_status", "in", "(not_required,canceled)");
   } else if (filter === "reserved") {
     query = query.in("status", [...RESERVED_STATUSES]);
+  } else if (filter === "held") {
+    query = query.not("hold_stage", "is", null);
   } else if (filter === "abandoned") {
     query = query.in("customer_fault", ABANDONED_FAULTS);
   } else if (filter === "finished") {
@@ -989,10 +1056,11 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
   }
   const [{ data, error }, rows] = await Promise.all([
     query,
-    admin.from("trade_requests").select("status, needs_staff, deposit_status, customer_fault, handoff_method").limit(10000),
+    admin.from("trade_requests").select("status, needs_staff, deposit_status, customer_fault, handoff_method, hold_stage, hold_expires_at").limit(10000),
   ]);
   if (error || rows.error) throw new HttpError(500, "We couldn't load trades. Try again.");
-  const counts: Record<string, number> = { waiting: 0, open: 0, all: 0, deposits: 0, reserved: 0, abandoned: 0, local: 0, finished: 0 };
+  const counts: Record<string, number> = { waiting: 0, open: 0, all: 0, deposits: 0, reserved: 0, held: 0, holdsEndingSoon: 0, abandoned: 0, local: 0, finished: 0 };
+  const soon = Date.now() + HOLD_SOON_MS;
   for (const s of TRADE_STATUSES) counts[s] = 0;
   for (const row of rows.data ?? []) {
     counts.all += 1;
@@ -1001,6 +1069,10 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
     if (row.needs_staff) counts.waiting += 1;
     if (row.deposit_status !== "not_required" && row.deposit_status !== "canceled") counts.deposits += 1;
     if ((RESERVED_STATUSES as readonly string[]).includes(row.status)) counts.reserved += 1;
+    if (row.hold_stage) {
+      counts.held += 1;
+      if (row.hold_expires_at && Date.parse(row.hold_expires_at) <= soon) counts.holdsEndingSoon += 1;
+    }
     if (row.customer_fault && ABANDONED_FAULTS.includes(row.customer_fault)) counts.abandoned += 1;
     if (row.status === "approved_for_fulfillment" || row.status === "completed") counts.finished += 1;
     if (row.handoff_method === "local") counts.local += 1;
@@ -1008,12 +1080,17 @@ async function listTrades(admin: Admin, rawFilter: unknown, rawQuery: unknown, r
   return { trades: (data ?? []).map(staffSummaryView), counts };
 }
 
-/** Our cards held for trades right now, with each trade's deadline. */
+/**
+ * Our cards held for trades right now: on a review or confirmation hold
+ * (ending soonest first) or reserved for a confirmed trade, with each
+ * trade's deadline.
+ */
 async function reservedLines(admin: Admin) {
   const { data: trades, error } = await admin
     .from("trade_requests")
-    .select("id, trade_number, status, customer_name, customer_email, ship_by, inbound_accepted_at, deposit_status, handoff_method")
-    .in("status", [...RESERVED_STATUSES])
+    .select("id, trade_number, status, customer_name, customer_email, ship_by, inbound_accepted_at, deposit_status, handoff_method, hold_stage, hold_expires_at")
+    .or(`status.in.(${RESERVED_STATUSES.join(",")}),hold_stage.not.is.null`)
+    .order("hold_expires_at", { ascending: true, nullsFirst: false })
     .order("ship_by", { ascending: true, nullsFirst: false })
     .limit(MAX_LISTED);
   if (error) throw new HttpError(500, "We couldn't load reservations. Try again.");
@@ -1026,7 +1103,10 @@ async function reservedLines(admin: Admin) {
     .eq("status", "reserved");
   if (itemsErr) throw new HttpError(500, "We couldn't load reservations. Try again.");
   const byTrade = new Map((trades ?? []).map((t) => [t.id, t]));
-  return (items ?? []).flatMap((i) => {
+  // In the trades' order (holds ending soonest, then shipping deadlines), not the items'.
+  const rank = new Map((trades ?? []).map((t, n) => [t.id, n]));
+  const ordered = [...(items ?? [])].sort((a, b) => (rank.get(a.trade_request_id) ?? 0) - (rank.get(b.trade_request_id) ?? 0));
+  return ordered.flatMap((i) => {
     const t = byTrade.get(i.trade_request_id);
     if (!t) return [];
     return [{
@@ -1040,6 +1120,7 @@ async function reservedLines(admin: Admin) {
       shippedAt: t.inbound_accepted_at,
       depositStatus: t.deposit_status,
       handoffMethod: handoffOf(t),
+      hold: tradeHoldOf(t.hold_stage, t.hold_expires_at),
       inventoryItemId: i.inventory_item_id,
       cardName: i.card_name,
       setCode: i.set_code,

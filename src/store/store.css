@@ -8149,3 +8149,8 @@ select.gg-tc-line__condition { min-height: 36px; }
 .gg-card-detail__tradenote a { font-weight: 600; color: var(--gg-purple); }
 .gg-drawer-trade { margin: 0 0 0.75rem; padding-top: 0.5rem; border-top: 1px dashed #e2d2fa; }
 .gg-drawer-trade .gg-card-meta { margin: 0.35rem 0 0; text-align: center; }
+
+/* Final offer: our inspection photos beside a card. */
+.gg-tc-photos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0; padding: 0; list-style: none; }
+.gg-tc-photos img { display: block; width: 64px; height: 64px; object-fit: cover; border: 1px solid #e6def0; border-radius: 8px; }
+.gg-tc-photos a:focus-visible { outline: 3px solid var(--gg-gold); outline-offset: 2px; border-radius: 8px; }

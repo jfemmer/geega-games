@@ -1,18 +1,21 @@
 import { adminFetch } from "./apiClient";
 import {
   ADMIN_TRADE_CENTER_API,
+  TRADE_LIMITS,
   type CardConditionCode,
   type DepositStatus,
   type StaffTrade,
   type StaffTradeSummary,
   type TradeCarrier,
   type TradeHandoffMethod,
+  type TradeHold,
   type TradeSettings,
   type TradeStatus,
   type TradeWantedInput,
 } from "../../store/lib/tradeCenter";
 import type { CustomerRecord, DepositOverride, Privileges } from "../../store/lib/tradeRules";
 import type { EconomicsTotals, TradeEconomics } from "../../store/lib/tradeEconomics";
+import { preparePhoto } from "../utils/preparePhoto";
 
 // Admin → Trades (online trades from the storefront's Trade Cards page).
 // Everything goes through /api/admin/trade-center (service role, staff only):
@@ -20,9 +23,9 @@ import type { EconomicsTotals, TradeEconomics } from "../../store/lib/tradeEcono
 // the trade as it now stands, so the drawer never shows a stale total.
 
 /** The list's filters, or one status. None is named after a status: their counts share one object. */
-export type TradeListFilter = "waiting" | "open" | "all" | "deposits" | "reserved" | "abandoned" | "local" | "finished" | TradeStatus;
+export type TradeListFilter = "waiting" | "open" | "all" | "deposits" | "reserved" | "held" | "abandoned" | "local" | "finished" | TradeStatus;
 
-/** One of our cards held for a trade right now (Reserved tab). */
+/** One of our cards held for a trade right now: on a review or confirmation hold, or reserved (Holds & reservations tab). */
 export interface ReservedLine {
   itemId: string;
   tradeId: string;
@@ -36,6 +39,8 @@ export interface ReservedLine {
   depositStatus: DepositStatus;
   /** Local pickup: shipBy is when the hold for the meetup ends. */
   handoffMethod: TradeHandoffMethod;
+  /** A review or confirmation hold (null once reserved, or on an older trade). */
+  hold: TradeHold | null;
   inventoryItemId: string | null;
   cardName: string;
   setCode: string | null;
@@ -297,6 +302,38 @@ export const tradeCenterRepository = {
   /** Let a review or confirmation hold go now: the cards go back on sale and the customer is told. */
   releaseHold(tradeId: string, reason: string) {
     return post({ action: "releaseHold", tradeId, reason });
+  },
+
+  /**
+   * Condition photos of one of the customer's cards, taken at inspection:
+   * downsized, uploaded straight to private storage through signed links,
+   * then the trade as it now stands (with the photos).
+   */
+  async uploadConditionPhotos(tradeId: string, cardId: string, files: File[]): Promise<TradeDetailResult> {
+    const blobs = await Promise.all(files.map(preparePhoto));
+    for (const blob of blobs) {
+      if (blob.size > TRADE_LIMITS.maxConditionPhotoBytes) throw new Error("A photo is over 10 MB. Try a smaller one.");
+    }
+    const { uploads } = await adminFetch<{ uploads: { path: string; signedUrl: string }[] }>(ADMIN_TRADE_CENTER_API, {
+      method: "POST",
+      body: {
+        action: "photoUploads",
+        tradeId,
+        cardId,
+        files: blobs.map((b) => ({ mimeType: b.type || "image/jpeg", sizeBytes: b.size })),
+      },
+    });
+    await Promise.all(
+      uploads.map(async (u, i) => {
+        const res = await fetch(u.signedUrl, { method: "PUT", headers: { "Content-Type": blobs[i].type || "image/jpeg" }, body: blobs[i] });
+        if (!res.ok) throw new Error("A photo didn't upload. Check your connection and try again.");
+      }),
+    );
+    return this.get(tradeId);
+  },
+
+  deleteConditionPhoto(tradeId: string, path: string) {
+    return post({ action: "deletePhoto", tradeId, path });
   },
 
   /** The carrier accepted their package at acceptedAt; on time refunds the deposit, late sends it to review unless refund. */

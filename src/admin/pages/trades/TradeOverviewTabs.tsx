@@ -20,15 +20,17 @@ import {
 import {
   CONDITION_NAMES,
   DEPOSIT_STATUS_ADMIN_LABELS,
+  HOLD_SOON_MS,
   TRADE_STATUS_ADMIN_LABELS,
   tradeStatusAdminLabel,
-  formatDeadline,
   tradeLabel,
   type DepositStatus,
   type StaffTradeSummary,
 } from "../../../store/lib/tradeCenter";
 import { LOYALTY_TIER_LABELS, onTimePercent } from "../../../store/lib/tradeRules";
 import { DEPOSIT_STATUS_TONE, TRADE_STATUS_TONE } from "./tradeLabels";
+import { holdLine } from "./tradeListBits";
+import { useNow } from "../../../store/lib/useNow";
 
 // Admin → Trades: the overview tabs beside the trade list. Deposits: every
 // deposit and where its money is (held, refunding, refunded, under review,
@@ -288,10 +290,17 @@ export function EconomicsTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =
 
 export function ReservedTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) => void }) {
   const data = useAsync(() => tradeCenterRepository.reserved(), []);
+  const now = useNow(60_000);
   const lines = data.data?.lines ?? [];
   const totalCents = lines.reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0);
   const copies = lines.reduce((n, l) => n + l.quantity, 0);
-  const trades = new Set(lines.map((l) => l.tradeId)).size;
+  const tradeIds = (pick: (l: ReservedLine) => boolean) => new Set(lines.filter(pick).map((l) => l.tradeId)).size;
+  const onReview = tradeIds((l) => l.hold?.stage === "review");
+  const onConfirm = tradeIds((l) => l.hold?.stage === "confirmation");
+  const reserved = tradeIds((l) => !l.hold);
+  const endingSoon = tradeIds((l) => l.hold !== null && Date.parse(l.hold.expiresAt) - now <= HOLD_SOON_MS);
+  const holdOf = (l: ReservedLine) =>
+    holdLine({ hold: l.hold, status: l.status, handoffMethod: l.handoffMethod, shipBy: l.shipBy, inboundAcceptedAt: l.shippedAt }, now);
 
   const columns: Column<ReservedLine>[] = [
     {
@@ -322,39 +331,52 @@ export function ReservedTab({ onOpenTrade }: { onOpenTrade: (tradeId: string) =>
     },
     {
       key: "when",
-      header: "Reserved until",
+      header: "Held until",
       secondary: true,
-      render: (l) => (
-        <span className="gg-card-meta">
-          {l.handoffMethod === "local"
-            ? "Local pickup: held until finished"
-            : l.shippedAt
-              ? "Shipped: reserved until settled"
-              : l.shipBy
-                ? `Ship by ${formatDeadline(l.shipBy)}`
-                : TRADE_STATUS_ADMIN_LABELS[l.status]}
-        </span>
-      ),
+      render: (l) => {
+        const h = holdOf(l);
+        if (!h) return <span className="gg-card-meta">{TRADE_STATUS_ADMIN_LABELS[l.status]}</span>;
+        return (
+          <span className="gg-trades__value gg-trades__value--left">
+            <Badge tone={h.soon ? "gold" : h.label === "Reserved" ? "info" : "purple"}>{h.label}</Badge>
+            {h.detail && <span className={h.soon ? "gg-trades__stage gg-trades__stage--warn" : "gg-trades__stage"}>{h.detail}</span>}
+          </span>
+        );
+      },
     },
   ];
 
   if (data.loading && !data.data) return <TableSkeleton rows={5} cols={5} />;
   if (data.error) return <ErrorState message={data.error} onRetry={data.reload} />;
 
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   return (
     <SectionCard
-      title="Our cards reserved for trades"
+      title="Our cards held for trades"
       className="gg-trades-list"
-      action={<span className="gg-card-meta">{lines.length > 0 ? `${copies} cop${copies === 1 ? "y" : "ies"} · ${formatCents(totalCents)} · ${trades} trade${trades === 1 ? "" : "s"}` : null}</span>}
+      action={<span className="gg-card-meta">{lines.length > 0 ? `${copies} cop${copies === 1 ? "y" : "ies"} · ${formatCents(totalCents)}` : null}</span>}
     >
       <p className="gg-card-meta">
-        Reserved once a customer confirms (and pays any deposit), and released if they don&rsquo;t ship in time, cancel, or the trade closes.
-        Reserved copies can&rsquo;t be bought at checkout.
+        Held while we review a trade, then while the customer confirms, and reserved once they confirm (and pay any deposit). Holds that
+        run out are released automatically; reservations are released if they don&rsquo;t ship in time, cancel, or the trade closes. Held
+        and reserved copies can&rsquo;t be bought at checkout. Open a trade to extend or release its hold.
       </p>
+      {lines.length > 0 && (
+        <p className="gg-trades__holdsum">
+          <span>{plural(onReview, "trade")} on review hold</span>
+          <span>{plural(onConfirm, "trade")} waiting to confirm</span>
+          <span>{plural(reserved, "trade")} reserved</span>
+          {endingSoon > 0 && (
+            <Badge tone="gold">
+              {plural(endingSoon, "hold")} ending within {HOLD_SOON_MS / 3_600_000} hours
+            </Badge>
+          )}
+        </p>
+      )}
       {lines.length === 0 ? (
-        <EmptyState icon="cards" title="Nothing is reserved" message="Cards reserved for confirmed trades show up here." />
+        <EmptyState icon="cards" title="Nothing is held" message="Cards held for trades in review, waiting to be confirmed, or reserved show up here." />
       ) : (
-        <DataTable columns={columns} rows={lines} rowKey={(l) => l.itemId} onRowClick={(l) => onOpenTrade(l.tradeId)} caption="Reserved cards" />
+        <DataTable columns={columns} rows={lines} rowKey={(l) => l.itemId} onRowClick={(l) => onOpenTrade(l.tradeId)} caption="Held and reserved cards" />
       )}
     </SectionCard>
   );

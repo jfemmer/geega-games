@@ -41,6 +41,7 @@ import {
   type TradeFinish,
   type TradeHandoffMethod,
   type TradeMessage,
+  type TradeConditionPhoto,
   type TradeOfferCard,
   type TradeOfferInput,
   type TradeOutgoing,
@@ -94,6 +95,69 @@ export type TradeOrderShipping = Pick<
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DISPUTE_BUCKET = "trade-dispute-files";
+/** Condition photos staff take at inspection (private; see the trade_condition_photos migration). */
+export const CONDITION_PHOTO_BUCKET = "trade-condition-photos";
+/** Signed links to condition photos last this long. */
+export const CONDITION_PHOTO_LINK_SECONDS = 15 * 60;
+const PHOTO_NAME_RE = /^([0-9a-f-]{36})__[0-9a-f-]{36}\.(jpg|png|webp|heic)$/i;
+
+/** Staff see condition photos from the moment the package arrives. */
+export const STAFF_PHOTO_STATUSES: ReadonlySet<string> = new Set([
+  "received",
+  "under_inspection",
+  "awaiting_final_approval",
+  "awaiting_payment",
+  "approved_for_fulfillment",
+  "completed",
+  "declined_after_inspection",
+  "canceled_by_store",
+]);
+/** Customers see them once the final offer is out (with the changes they explain). */
+export const CUSTOMER_PHOTO_STATUSES: ReadonlySet<string> = new Set([
+  "awaiting_final_approval",
+  "awaiting_payment",
+  "approved_for_fulfillment",
+  "completed",
+  "declined_after_inspection",
+]);
+
+/** Where a new photo of one card goes: <trade>/<card>__<uuid>.<ext>, so one listing per trade finds them all. */
+export function conditionPhotoPath(tradeId: string, offerCardId: string, mimeType: string): string {
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : mimeType === "image/heic" ? "heic" : "jpg";
+  return `${tradeId}/${offerCardId}__${crypto.randomUUID()}.${ext}`;
+}
+
+/** The offer card a stored photo belongs to, or null when the path isn't one of this trade's photos. */
+export function conditionPhotoCard(tradeId: string, path: string): string | null {
+  if (!path.startsWith(`${tradeId}/`)) return null;
+  const m = path.slice(tradeId.length + 1).match(PHOTO_NAME_RE);
+  return m ? m[1].toLowerCase() : null;
+}
+
+/**
+ * A trade's condition photos by offer card id, oldest first, each with a
+ * short-lived signed link. Empty when there are none or storage can't be
+ * reached (photos are supporting detail: a trade still loads without them).
+ */
+export async function loadConditionPhotos(admin: Admin, tradeId: string): Promise<Map<string, TradeConditionPhoto[]>> {
+  const out = new Map<string, TradeConditionPhoto[]>();
+  const bucket = admin.storage.from(CONDITION_PHOTO_BUCKET);
+  const { data, error } = await bucket.list(tradeId, { limit: 1000, sortBy: { column: "created_at", order: "asc" } });
+  if (error || !data) return out;
+  const paths = data.filter((f) => f.id && PHOTO_NAME_RE.test(f.name)).map((f) => `${tradeId}/${f.name}`);
+  if (paths.length === 0) return out;
+  const links = await bucket.createSignedUrls(paths, CONDITION_PHOTO_LINK_SECONDS);
+  if (links.error) return out;
+  for (const l of links.data ?? []) {
+    if (!l.path || !l.signedUrl) continue;
+    const card = conditionPhotoCard(tradeId, l.path);
+    if (!card) continue;
+    const list = out.get(card) ?? [];
+    list.push({ path: l.path, url: l.signedUrl });
+    out.set(card, list);
+  }
+  return out;
+}
 
 /** Trimmed text clipped to maxLength, or null when blank or not a string. */
 export function cleanText(value: unknown, maxLength: number): string | null {
@@ -749,6 +813,7 @@ function offerView(row: TradeOfferRow): TradeOfferCard {
     disposition: (["pending", "accepted", "rejected", "returned", "imported"].includes(row.disposition)
       ? row.disposition
       : "pending") as TradeOfferCard["disposition"],
+    photos: [],
   };
 }
 
@@ -813,6 +878,8 @@ const MAIL_TO_STATUSES: ReadonlySet<TradeStatus> = new Set(["awaiting_shipment",
 
 export interface ViewExtras {
   availability?: Map<string, number>;
+  /** Condition photos from inspection, by offer card id (loadConditionPhotos). */
+  conditionPhotos?: Map<string, TradeConditionPhoto[]>;
   /** Our cards' colors and type lines (the staff view sends them, for sorting). */
   wantedTraits?: Map<string, WantedCardTraits>;
   /** EasyPost is connected: scans are checked automatically. */
@@ -913,8 +980,9 @@ function baseView(bundle: TradeBundle, forStaff: boolean, settings: TradeSetting
  * inspecting (received, under_inspection): the customer sees the decisions
  * once they're made (approval, a request for changes, the final offer).
  */
-function customerOfferView(row: TradeOfferRow, status: string): TradeOfferCard {
-  const card = offerView(row);
+function customerOfferView(row: TradeOfferRow, status: string, photos: TradeConditionPhoto[] = []): TradeOfferCard {
+  // Photos only once the inspection is shared with them (the final offer onward).
+  const card = { ...offerView(row), photos };
   if (status === "pending_review") {
     return { ...card, reviewStatus: "pending", approvedQuantity: null, approvedUnitCents: null, reviewNote: null };
   }
@@ -928,6 +996,7 @@ function customerOfferView(row: TradeOfferRow, status: string): TradeOfferCard {
       flags: [],
       inspectionNote: null,
       inspected: false,
+      photos: [],
     };
   }
   return card;
@@ -965,7 +1034,7 @@ export function customerTradeView(
       refundRequestedAt: t.deposit_refund_requested_at,
       refundedAt: t.deposit_refunded_at,
     },
-    offered: offers.map((row) => customerOfferView(row, t.status)),
+    offered: offers.map((row) => customerOfferView(row, t.status, extras.conditionPhotos?.get(row.id) ?? [])),
     timeline: events.flatMap((e) => {
       const label = timelineLabel(e.event, handoffOf(t), e.to_status);
       return label === undefined ? [] : [{ event: e.event, label, createdAt: e.created_at }];
@@ -1041,7 +1110,7 @@ export function staffTradeView(bundle: TradeBundle, settings: TradeSettingsRow |
     customerName: t.customer_name,
     customerEmail: t.customer_email,
     offered: offers.map((row) => {
-      const view = staffOfferView(row);
+      const view = { ...staffOfferView(row), photos: extras.conditionPhotos?.get(row.id) ?? [] };
       const lines = extras.stockedLines?.get(row.id);
       return lines ? { ...view, stockedLines: lines } : view;
     }),
@@ -1170,6 +1239,13 @@ export function staffSummaryView(t: TradeRow): StaffTradeSummary {
     estimatedValueCents: t.estimated_value_cents,
     approvedValueCents: t.approved_value_cents,
     finalValueCents: t.final_value_cents,
+    creditRatePercent: t.credit_rate_percent,
+    processingFeeCents: t.processing_fee_cents,
+    shipFeeCents: t.ship_fee_cents,
+    freeShipThresholdCents: t.free_ship_threshold_cents,
+    freeShipFeeCents: t.free_ship_fee_cents,
+    finalCreditCents: t.final_credit_cents,
+    amountDueCents: t.amount_due_cents,
     listDueAt: t.list_due_at,
     confirmBy: t.confirm_by,
     hold: tradeHoldOf(t.hold_stage, t.hold_expires_at),

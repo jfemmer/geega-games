@@ -23,7 +23,7 @@ import {
 // step (review and approval with the deposit, waiting for confirmation, the
 // shipment and its scans, proof of shipping, the deposit, inspection and the
 // final offer, payment, wrapping up, an expired reservation), the Deposits,
-// Reserved, Customers and Economics tabs, and the trade settings. The repository is a
+// Holds & reservations, Customers and Economics tabs, and the trade settings. The repository is a
 // stand-in: these tests are about what staff see and exactly what each
 // button sends.
 
@@ -44,6 +44,8 @@ const repo = vi.hoisted(() => ({
   setDeposit: vi.fn(),
   extend: vi.fn(),
   releaseHold: vi.fn(),
+  uploadConditionPhotos: vi.fn(),
+  deleteConditionPhoto: vi.fn(),
   verifyShipment: vi.fn(),
   markReceived: vi.fn(),
   cardsArrived: vi.fn(),
@@ -167,6 +169,48 @@ describe("the list", () => {
     await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("in_transit", "ann", "forfeiture_review"));
     await user.click(screen.getByRole("tab", { name: /^Abandoned/ }));
     await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("abandoned", "ann", "forfeiture_review"));
+  });
+
+  it("shows each trade's credit, balance, how long our cards are held, and where the package is", async () => {
+    const soon = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const later = new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString();
+    repo.list.mockResolvedValueOnce({
+      trades: [
+        // $160 estimated at 80% is $128 of credit: covers $88.99 of ours, $39.01 left as store credit; shipping ours is by card.
+        tradeSummary({ hold: { stage: "review", expiresAt: soon } }),
+        // Approved $50 at 80% is $40 against $88.99 of ours: $48.99 plus $3.99 shipping by card.
+        tradeSummary({ id: "t-2", tradeNumber: 998, status: "awaiting_confirmation", approvedValueCents: 5000, hold: { stage: "confirmation", expiresAt: later }, needsStaff: false }),
+        tradeSummary({ id: "t-3", tradeNumber: 997, status: "tracking_submitted", inboundCarrier: "USPS", shipBy: "2099-01-01T05:59:59Z", needsStaff: false }),
+        tradeSummary({ id: "t-4", tradeNumber: 996, status: "awaiting_payment", finalValueCents: 5000, finalCreditCents: 4000, amountDueCents: 5298, needsStaff: false }),
+      ],
+      counts: { waiting: 1, open: 4, all: 4 },
+      settings: TRADE_SETTINGS,
+      owner: true,
+    });
+    renderPage();
+    const row = (n: string) => screen.getByText(n).closest("tr")!;
+    await screen.findByText("TR-1001");
+
+    expect(row("TR-1001")).toHaveTextContent("$160.00estimate$128.00 credit");
+    expect(row("TR-1001")).toHaveTextContent("$3.99 by card · $39.01 credit leftif it holds");
+    // A review hold ending within two hours is flagged, and the next step says to review before then.
+    expect(within(row("TR-1001")).getByText("Review hold")).toBeInTheDocument();
+    expect(row("TR-1001")).toHaveTextContent(/left · ends/);
+    expect(row("TR-1001").querySelector(".gg-trades__stage--warn")).not.toBeNull();
+    expect(row("TR-1001")).toHaveTextContent("Review before the hold ends");
+
+    expect(row("TR-998")).toHaveTextContent("$52.98 by card");
+    expect(within(row("TR-998")).getByText("Confirmation hold")).toBeInTheDocument();
+    expect(row("TR-998").querySelector(".gg-trades__stage--warn")).toBeNull();
+
+    expect(within(row("TR-997")).getByText("Reserved")).toBeInTheDocument();
+    expect(row("TR-997")).toHaveTextContent("Tracking added (USPS): awaiting first scan");
+
+    // Final and accepted: the trade's own credit and amount due, not worked out again.
+    expect(row("TR-996")).toHaveTextContent("$50.00final$40.00 credit");
+    expect(row("TR-996")).toHaveTextContent("$52.98 by card");
+    expect(row("TR-996")).not.toHaveTextContent("if it holds");
+    expect(row("TR-996")).toHaveTextContent("Received");
   });
 
   it("says when trading is paused or off, and when it isn't set up at all", async () => {
@@ -327,6 +371,26 @@ describe("receiving, inspection and the final offer", () => {
     await waitFor(() => expect(repo.markReceived).toHaveBeenCalledWith(TRADE_ID));
     expect(await screen.findByText("Marked received. The email to the customer didn't go out: let them know another way.")).toBeInTheDocument();
     expect(await within(screen.getByRole("dialog")).findByText("Inspect their cards")).toBeInTheDocument();
+  });
+
+  it("adds condition photos to a card, shows them, and removes one", async () => {
+    const user = userEvent.setup();
+    const dialog = await openTrade(INSPECTING);
+    const sheoldred = within(dialog).getByText("Sheoldred, the Apocalypse").closest("li")!;
+    expect(within(sheoldred).getByText("The customer sees these with your final offer. Up to 6.")).toBeInTheDocument();
+    const photo = { path: `${TRADE_ID}/o1__p1.jpg`, url: "https://signed.example/p1.jpg" };
+    const withPhoto = { ...INSPECTING, offered: APPROVED.map((c) => (c.id === "o1" ? { ...c, photos: [photo] } : c)) };
+    repo.uploadConditionPhotos.mockResolvedValue(answer(withPhoto));
+    const file = new File(["x"], "whitening.jpg", { type: "image/jpeg" });
+    await user.upload(within(sheoldred).getByLabelText("Photos of Sheoldred, the Apocalypse"), file);
+    await waitFor(() => expect(repo.uploadConditionPhotos).toHaveBeenCalledWith(TRADE_ID, "o1", [file]));
+    expect(await screen.findByText("Photo added.")).toBeInTheDocument();
+
+    const card = within(screen.getByRole("dialog")).getByText("Sheoldred, the Apocalypse").closest("li")!;
+    expect(within(card).getByRole("link", { name: "Open photo 1 of Sheoldred, the Apocalypse" })).toHaveAttribute("href", photo.url);
+    repo.deleteConditionPhoto.mockResolvedValue(answer(INSPECTING));
+    await user.click(within(card).getByRole("button", { name: "Remove photo 1 of Sheoldred, the Apocalypse" }));
+    await waitFor(() => expect(repo.deleteConditionPhoto).toHaveBeenCalledWith(TRADE_ID, photo.path));
   });
 
   it("rescales a worse condition, saves only what changed, and confirms the rest", async () => {
@@ -1040,20 +1104,57 @@ describe("the Deposits, Reserved and Customers tabs", () => {
     await waitFor(() => expect(repo.get).toHaveBeenCalledWith("t-r"));
   });
 
-  it("lists our cards reserved for trades with each trade's deadline", async () => {
+  it("lists our cards held for trades: holds ending soonest first, flagged when they end within two hours, then reservations", async () => {
+    const line = (over: Record<string, unknown>) => ({
+      shipBy: null,
+      shippedAt: null,
+      depositStatus: "not_required",
+      handoffMethod: "ship",
+      hold: null,
+      customerEmail: null,
+      setCode: "ltr",
+      collectorNumber: "1",
+      condition: "NM",
+      finish: "nonfoil",
+      imageUrl: null,
+      ...over,
+    });
+    const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
     repo.reserved.mockResolvedValue({
       lines: [
-        { itemId: "l1", tradeId: "t1", tradeNumber: 1001, status: "awaiting_shipment", customerName: "Ann Lee", customerEmail: "ann@example.com", shipBy: "2099-10-30T19:00:00Z", shippedAt: null, depositStatus: "paid", inventoryItemId: "i1", cardName: "The One Ring", setCode: "ltr", collectorNumber: "246", condition: "NM", finish: "nonfoil", quantity: 1, unitPriceCents: 7999, imageUrl: null },
-        { itemId: "l2", tradeId: "t2", tradeNumber: 1002, status: "in_transit", customerName: "Bo Diaz", customerEmail: null, shipBy: "2099-10-20T19:00:00Z", shippedAt: "2099-10-19T15:00:00Z", depositStatus: "refund_pending", inventoryItemId: "i2", cardName: "Arcane Signet", setCode: "cmr", collectorNumber: "297", condition: "LP", finish: "foil", quantity: 2, unitPriceCents: 450, imageUrl: null },
+        line({ itemId: "h1", tradeId: "t3", tradeNumber: 1003, status: "pending_review", customerName: "Cy Ho", hold: { stage: "review", expiresAt: inMinutes(45) }, inventoryItemId: "i3", cardName: "Mana Crypt", quantity: 1, unitPriceCents: 20000 }),
+        line({ itemId: "h2", tradeId: "t4", tradeNumber: 1004, status: "awaiting_confirmation", customerName: "Di Wu", hold: { stage: "confirmation", expiresAt: inMinutes(600) }, inventoryItemId: "i4", cardName: "Sol Ring", quantity: 1, unitPriceCents: 300 }),
+        line({ itemId: "l1", tradeId: "t1", tradeNumber: 1001, status: "awaiting_shipment", customerName: "Ann Lee", customerEmail: "ann@example.com", shipBy: "2099-10-30T19:00:00Z", depositStatus: "paid", inventoryItemId: "i1", cardName: "The One Ring", setCode: "ltr", collectorNumber: "246", quantity: 1, unitPriceCents: 7999 }),
+        line({ itemId: "l2", tradeId: "t2", tradeNumber: 1002, status: "in_transit", customerName: "Bo Diaz", shipBy: "2099-10-20T19:00:00Z", shippedAt: "2099-10-19T15:00:00Z", depositStatus: "refund_pending", inventoryItemId: "i2", cardName: "Arcane Signet", setCode: "cmr", collectorNumber: "297", condition: "LP", finish: "foil", quantity: 2, unitPriceCents: 450 }),
       ],
       settings: TRADE_SETTINGS,
       owner: true,
     });
     renderPage("tab=reserved");
     expect(await screen.findByText("The One Ring")).toBeInTheDocument();
-    expect(screen.getByText("3 copies · $88.99 · 2 trades")).toBeInTheDocument();
-    expect(screen.getByText("The One Ring").closest("tr")).toHaveTextContent("Ship by");
-    expect(screen.getByText("Arcane Signet").closest("tr")).toHaveTextContent("Shipped: reserved until settled");
+    expect(screen.getByRole("tab", { name: /Holds & reservations/ })).toBeInTheDocument();
+    expect(screen.getByText("5 copies · $291.99")).toBeInTheDocument();
+    expect(screen.getByText("1 trade on review hold")).toBeInTheDocument();
+    expect(screen.getByText("1 trade waiting to confirm")).toBeInTheDocument();
+    expect(screen.getByText("2 trades reserved")).toBeInTheDocument();
+    expect(screen.getByText("1 hold ending within 2 hours")).toBeInTheDocument();
+
+    const crypt = screen.getByText("Mana Crypt").closest("tr")!;
+    expect(crypt).toHaveTextContent("Review hold");
+    expect(crypt.querySelector(".gg-trades__stage--warn")).toHaveTextContent(/left · ends/);
+    const sol = screen.getByText("Sol Ring").closest("tr")!;
+    expect(sol).toHaveTextContent("Confirmation hold");
+    expect(sol.querySelector(".gg-trades__stage--warn")).toBeNull();
+    expect(screen.getByText("The One Ring").closest("tr")).toHaveTextContent("ReservedShip by");
+    expect(screen.getByText("Arcane Signet").closest("tr")).toHaveTextContent("Shipped: until settled");
+  });
+
+  it("filters the list to trades whose cards are on hold", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("TR-1001");
+    await user.click(screen.getByRole("tab", { name: /^On hold/ }));
+    await waitFor(() => expect(repo.list).toHaveBeenLastCalledWith("held", "", null));
   });
 
   it("shows each customer's record and lets the owner require a deposit or pause their trades", async () => {

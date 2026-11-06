@@ -8,6 +8,7 @@ import { Tabs } from "../../components/ui/Nav";
 import { DataTable, type Column } from "../../components/ui/DataTable";
 import { EmptyState, ErrorState, TableSkeleton } from "../../components/ui/States";
 import { useAsync } from "../../hooks/useAsync";
+import { useNow } from "../../../store/lib/useNow";
 import { ADMIN_BASE } from "../../hooks/useRouter";
 import { formatCents, timeAgo } from "../../utils/format";
 import { tradeCenterRepository, type TradeListFilter } from "../../repositories/tradeCenter.supabase";
@@ -29,14 +30,16 @@ import {
 } from "../../../store/lib/tradeCenter";
 import { DEPOSIT_STATUS_TONE, REVIEW_FLAG_SHORT, TRADE_STATUS_TONE, waitingOnStaff } from "./tradeLabels";
 import { TradeDrawer } from "./TradeDrawer";
+import { balanceLabel, holdLine, shipmentLine, theirValue, tradeMoney } from "./tradeListBits";
 import { TradeSettingsPanel } from "./TradeSettingsPanel";
 import { CustomersTab, DepositsTab, EconomicsTab, ReservedTab } from "./TradeOverviewTabs";
 
 // Admin → Trades: online trades from the storefront's Trade Cards page.
-// Trades tab: the list (waiting on you, open, reserved, abandoned, local
+// Trades tab: the list (waiting on you, open, on hold, reserved, abandoned, local
 // pickup, completed, all, or one status or deposit status; search by TR number,
 // name or email) and each trade in a drawer (TradeDrawer) with everything
-// staff do to it. Deposits, Reserved, Customers and Economics: overviews.
+// staff do to it. Deposits, Holds & reservations (holds ending soonest first),
+// Customers and Economics: overviews.
 // Settings: rates, minimums, shipping, limits, deadlines, deposits,
 // reliability, the address customers mail their cards to, and turning
 // trading on, off or paused. ?trade=<id> opens a trade (staff alerts link
@@ -48,6 +51,7 @@ const VIEWS: readonly View[] = ["trades", "deposits", "reserved", "customers", "
 const MAIN_FILTERS: { key: TradeListFilter; label: string }[] = [
   { key: "waiting", label: "Waiting on you" },
   { key: "open", label: "Open" },
+  { key: "held", label: "On hold" },
   { key: "reserved", label: "Reserved" },
   { key: "abandoned", label: "Abandoned" },
   { key: "local", label: "Local pickup" },
@@ -63,14 +67,6 @@ function useDebounced<T>(value: T, ms: number): T {
     return () => window.clearTimeout(timer);
   }, [value, ms]);
   return debounced;
-}
-
-/** Their cards' value as it stands: estimated, approved or final (a local pickup trade's: at the meetup). */
-function theirValue(t: StaffTradeSummary): { cents: number; stage: string } | null {
-  if (t.finalValueCents != null) return { cents: t.finalValueCents, stage: "final" };
-  if (t.handoffMethod === "local") return null;
-  if (t.approvedValueCents != null) return { cents: t.approvedValueCents, stage: "approved" };
-  return { cents: t.estimatedValueCents, stage: "estimate" };
 }
 
 /** What's flagged, or the next thing that has a date on it, in a few words. */
@@ -97,6 +93,8 @@ function nextUp(t: StaffTradeSummary): string {
     case "awaiting_payment":
       return t.paymentDueAt ? `Pay by ${formatDeadline(t.paymentDueAt)}` : "—";
     case "pending_review":
+      // Review before the hold ends, or the customer's cards go back on sale.
+      if (t.hold?.stage === "review") return `Review before the hold ends (${formatDeadline(t.hold.expiresAt)})`;
       return t.submittedAt ? `Sent ${timeAgo(t.submittedAt)}` : "—";
     default:
       return "—";
@@ -114,6 +112,7 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
   const searchTerm = useDebounced(search.trim(), 300);
   const [selectedId, setSelectedId] = useState<string | null>(query.get("trade"));
 
+  const now = useNow(60_000);
   const list = useAsync(() => tradeCenterRepository.list(filter, searchTerm, depositFilter), [filter, searchTerm, depositFilter]);
   // As the latest list response had them (saving settings reloads the list).
   const settings = list.data?.settings ?? null;
@@ -154,10 +153,12 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
       render: (t) => {
         const v = theirValue(t);
         if (!v) return <span className="gg-trades__stage">at the meetup</span>;
+        const m = tradeMoney(t);
         return (
           <span className="gg-trades__value">
             {formatCents(v.cents)}
             <span className="gg-trades__stage">{v.stage}</span>
+            {m && <span className="gg-trades__stage">{formatCents(m.creditCents)} credit</span>}
           </span>
         );
       },
@@ -170,10 +171,47 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
       render: (t) => formatCents(t.wantedTotalCents),
     },
     {
+      key: "balance",
+      header: "Balance",
+      align: "right",
+      secondary: true,
+      render: (t) => {
+        const m = tradeMoney(t);
+        if (!m) return <span className="gg-card-meta">—</span>;
+        return (
+          <span className="gg-trades__value">
+            {balanceLabel(m)}
+            {m.stage !== "final" && <span className="gg-trades__stage">if it holds</span>}
+          </span>
+        );
+      },
+    },
+    {
       key: "status",
       header: "Status",
       secondary: true,
       render: (t) => <Badge tone={TRADE_STATUS_TONE[t.status]}>{tradeStatusAdminLabel(t.status, t.handoffMethod)}</Badge>,
+    },
+    {
+      key: "hold",
+      header: "Our cards held",
+      secondary: true,
+      render: (t) => {
+        const h = holdLine(t, now);
+        if (!h) return <span className="gg-card-meta">—</span>;
+        return (
+          <span className="gg-trades__value gg-trades__value--left">
+            <Badge tone={h.soon ? "gold" : h.label === "Reserved" ? "info" : "purple"}>{h.label}</Badge>
+            {h.detail && <span className={h.soon ? "gg-trades__stage gg-trades__stage--warn" : "gg-trades__stage"}>{h.detail}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      key: "shipment",
+      header: "Shipment",
+      secondary: true,
+      render: (t) => <span className="gg-card-meta">{shipmentLine(t) ?? "—"}</span>,
     },
     {
       key: "deposit",
@@ -193,13 +231,12 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
       key: "next",
       header: "Next",
       secondary: true,
-      render: (t) => <span className="gg-card-meta">{nextUp(t)}</span>,
-    },
-    {
-      key: "updated",
-      header: "Updated",
-      secondary: true,
-      render: (t) => <span className="gg-card-meta">{timeAgo(t.updatedAt)}</span>,
+      render: (t) => (
+        <span className="gg-trades__value gg-trades__value--left">
+          <span className="gg-card-meta">{nextUp(t)}</span>
+          <span className="gg-trades__stage">Updated {timeAgo(t.updatedAt)}</span>
+        </span>
+      ),
     },
   ];
 
@@ -226,7 +263,7 @@ export function TradesPage({ query, onNavigate }: { query: URLSearchParams; onNa
         items={[
           { key: "trades", label: "Trades", count: counts.waiting ?? undefined },
           { key: "deposits", label: "Deposits" },
-          { key: "reserved", label: "Reserved", count: counts.reserved || undefined },
+          { key: "reserved", label: "Holds & reservations", count: (counts.held ?? 0) + (counts.reserved ?? 0) || undefined },
           { key: "customers", label: "Customers" },
           { key: "economics", label: "Economics" },
           { key: "settings", label: "Settings" },

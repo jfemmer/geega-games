@@ -5,6 +5,7 @@ import {
   PHOTO_REQUEST_MAX_PHOTOS,
   PHOTO_REQUEST_MAX_PHOTO_BYTES,
 } from "../../store/lib/photoRequestTypes";
+import { preparePhoto } from "../utils/preparePhoto";
 
 // LIVE repository for Inventory → Photo requests (public.photo_requests).
 // Same split as referralLeads.supabase.ts:
@@ -16,10 +17,6 @@ import {
 
 const BUCKET = "photo-request-photos";
 const VIEW_LINK_TTL_SECONDS = 60 * 30;
-
-/** Longest side of a photo after downsizing — plenty for a condition check, small enough to email. */
-const MAX_PHOTO_EDGE = 2000;
-const JPEG_QUALITY = 0.86;
 
 interface Row {
   id: string;
@@ -83,26 +80,6 @@ function mapRow(row: Row): PhotoRequest {
         }
       : null,
   };
-}
-
-/** Downsize a phone photo to a JPEG that emails well. Falls back to the original file. */
-async function preparePhoto(file: File): Promise<Blob> {
-  if (typeof createImageBitmap !== "function") return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
-    return blob ?? file;
-  } catch {
-    return file;
-  }
 }
 
 export type PhotoRequestFilter = "open" | "sent" | "closed" | "all";

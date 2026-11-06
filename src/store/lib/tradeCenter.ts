@@ -47,7 +47,22 @@ export const TRADE_LIMITS = {
   /** Proof of shipping: files, and each one's size. */
   maxDisputeFiles: 5,
   maxDisputeFileBytes: 10 * 1024 * 1024,
+  /** Condition photos staff take at inspection: per card, and each one's size. */
+  maxConditionPhotos: 6,
+  maxConditionPhotoBytes: 10 * 1024 * 1024,
 } as const;
+
+/** Photo types staff can attach to a card at inspection (the bucket enforces the same). */
+export const CONDITION_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"] as const;
+
+/** Statuses in which staff can add or remove condition photos: while inspecting, and until the customer answers the final offer. */
+export const CONDITION_PHOTO_STATUSES: readonly TradeStatus[] = ["received", "under_inspection", "awaiting_final_approval"];
+
+/** A photo staff took of one of the customer's cards at inspection, through a short-lived signed link. */
+export interface TradeConditionPhoto {
+  path: string;
+  url: string;
+}
 
 /** File types accepted as proof of shipping (the bucket enforces the same). */
 export const DISPUTE_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"] as const;
@@ -1081,6 +1096,8 @@ export interface TradeOfferCard {
   inspectionNote: string | null;
   inspected: boolean;
   disposition: "pending" | "accepted" | "rejected" | "returned" | "imported";
+  /** Condition photos from inspection (customers see them once the final offer is out). */
+  photos: TradeConditionPhoto[];
 }
 
 export interface TradeMessage {
@@ -1195,6 +1212,9 @@ export interface TradeHold {
   stage: "review" | "confirmation";
   expiresAt: string;
 }
+
+/** Holds ending within this long are flagged for staff (review or chase the customer before then). */
+export const HOLD_SOON_MS = 2 * 60 * 60 * 1000;
 
 /** The hold as stored on the trade (hold_stage / hold_expires_at). */
 export function tradeHoldOf(stage: string | null | undefined, expiresAt: string | null | undefined): TradeHold | null {
@@ -1450,6 +1470,15 @@ export interface StaffTradeSummary {
   estimatedValueCents: number;
   approvedValueCents: number | null;
   finalValueCents: number | null;
+  /** The trade's own terms, for its credit and balance in the list. */
+  creditRatePercent: number;
+  processingFeeCents: number;
+  shipFeeCents: number;
+  freeShipThresholdCents: number;
+  freeShipFeeCents: number;
+  /** Once the final offer is accepted: the credit, and what's paid by card. */
+  finalCreditCents: number | null;
+  amountDueCents: number | null;
   listDueAt: string | null;
   confirmBy: string | null;
   hold: TradeHold | null;

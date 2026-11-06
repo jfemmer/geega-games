@@ -22,6 +22,7 @@ import {
 } from "./_lib/tradeDeposits.js";
 import { autoTracking, checkTradeTracking, followUpScan, trackingConnected } from "./_lib/tradeTracking.js";
 import {
+  CUSTOMER_PHOTO_STATUSES,
   DISPUTE_BUCKET,
   UUID_RE,
   bundleAvailability,
@@ -30,6 +31,7 @@ import {
   customerSummaryView,
   customerTradeView,
   handoffOf,
+  loadConditionPhotos,
   loadCustomerBundle,
   loadTradeSettings,
   localPickupTerms,
@@ -61,6 +63,7 @@ import {
   isHandoffMethod,
   isTradeFinish,
   tradeLabel,
+  type TradeConditionPhoto,
   type TradeConfirmation,
   type TradeOfferInput,
   type TradeStatus,
@@ -471,11 +474,15 @@ async function sendFresh(
 ) {
   const now = Date.now();
   const bundle = await loadCustomerBundle(admin, tradeId, userId);
-  const [availability, confirmation] = await Promise.all([
+  const [availability, confirmation, conditionPhotos] = await Promise.all([
     bundleAvailability(admin, bundle),
     confirmationFor(admin, bundle, settings, now),
+    // The bundle is already theirs (loadCustomerBundle checks), so their trade's photos are theirs to see.
+    CUSTOMER_PHOTO_STATUSES.has(bundle.trade.status)
+      ? loadConditionPhotos(admin, bundle.trade.id).catch(() => new Map<string, TradeConditionPhoto[]>())
+      : Promise.resolve(new Map<string, TradeConditionPhoto[]>()),
   ]);
-  const trade = customerTradeView(bundle, settings, { availability, confirmation, autoTracked: trackingConnected(), now });
+  const trade = customerTradeView(bundle, settings, { availability, confirmation, conditionPhotos, autoTracked: trackingConnected(), now });
   return sendJson(res, 200, { ok: true, terms: termsOf(settings), trade, ...extra });
 }
 

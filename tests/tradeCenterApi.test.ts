@@ -1787,6 +1787,58 @@ describe("My Trades and privacy (15)", () => {
   });
 });
 
+describe("condition photos at inspection", () => {
+  it("lets staff upload photos of one card straight to private storage, see them, and remove them", async () => {
+    const t = approvedTrade({ status: "under_inspection", received_at: iso(Date.now()) });
+    const card = state.tables.trade_offer_cards.find((c) => c.trade_request_id === t.id)!;
+    const files = [{ mimeType: "image/jpeg", sizeBytes: 2048 }];
+    // Only for this trade's own cards, real photos, under 10 MB.
+    expect((await staff.post({ action: "photoUploads", tradeId: t.id, cardId: fakeId(), files })).statusCode).toBe(400);
+    expect((await staff.post({ action: "photoUploads", tradeId: t.id, cardId: card.id, files: [{ mimeType: "application/pdf", sizeBytes: 10 }] })).statusCode).toBe(400);
+    expect((await staff.post({ action: "photoUploads", tradeId: t.id, cardId: card.id, files: [{ mimeType: "image/png", sizeBytes: 11 * 1024 * 1024 }] })).statusCode).toBe(400);
+
+    const ok = await staff.post({ action: "photoUploads", tradeId: t.id, cardId: card.id, files });
+    expect(ok.statusCode).toBe(200);
+    const [upload] = ok.body.uploads as { path: string; signedUrl: string }[];
+    expect(upload.path).toMatch(new RegExp(`^${t.id}/${card.id}__[0-9a-f-]{36}\\.jpg$`));
+    state.files[upload.path] = { data: Buffer.alloc(2048), contentType: "image/jpeg" };
+
+    const view = (await staff.get({ id: t.id })).body.trade as { offered: { id: string; photos: { path: string; url: string }[] }[] };
+    expect(view.offered.find((c) => c.id === card.id)!.photos).toEqual([{ path: upload.path, url: `https://signed.example/${upload.path}` }]);
+
+    // Up to six of each card.
+    for (let n = 0; n < 5; n += 1) state.files[`${t.id}/${card.id}__${fakeId()}.jpg`] = { data: Buffer.alloc(10) };
+    expect((await staff.post({ action: "photoUploads", tradeId: t.id, cardId: card.id, files })).statusCode).toBe(400);
+
+    // Removing: only this trade's photos.
+    const other = approvedTrade({ status: "under_inspection" });
+    expect((await staff.post({ action: "deletePhoto", tradeId: other.id, path: upload.path })).statusCode).toBe(400);
+    const removed = await staff.post({ action: "deletePhoto", tradeId: t.id, path: upload.path });
+    expect(removed.statusCode).toBe(200);
+    expect(state.files[upload.path]).toBeUndefined();
+  });
+
+  it("won't take photos before the cards arrive or after the customer has answered", async () => {
+    const early = approvedTrade({ status: "awaiting_shipment" });
+    const card = state.tables.trade_offer_cards.find((c) => c.trade_request_id === early.id)!;
+    expect((await staff.post({ action: "photoUploads", tradeId: early.id, cardId: card.id, files: [{ mimeType: "image/jpeg", sizeBytes: 10 }] })).statusCode).toBe(409);
+    const done = approvedTrade({ status: "completed" });
+    const doneCard = state.tables.trade_offer_cards.find((c) => c.trade_request_id === done.id)!;
+    expect((await staff.post({ action: "photoUploads", tradeId: done.id, cardId: doneCard.id, files: [{ mimeType: "image/jpeg", sizeBytes: 10 }] })).statusCode).toBe(409);
+  });
+
+  it("shows the customer their cards' photos only once the final offer is out", async () => {
+    const t = approvedTrade({ status: "under_inspection", received_at: iso(Date.now()) });
+    const card = state.tables.trade_offer_cards.find((c) => c.trade_request_id === t.id)!;
+    const path = `${t.id}/${card.id}__${fakeId()}.jpg`;
+    state.files[path] = { data: Buffer.alloc(10), contentType: "image/jpeg" };
+    const photosOf = async () => ((await ann.get({ id: t.id })).body.trade as { offered: { photos: unknown[] }[] }).offered[0].photos;
+    expect(await photosOf()).toEqual([]);
+    t.status = "awaiting_final_approval";
+    expect(await photosOf()).toEqual([{ path, url: `https://signed.example/${path}` }]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 
 describe("admin Trades: access (15)", () => {
@@ -1858,6 +1910,32 @@ describe("admin Trades: the list, the views and a trade", () => {
     state.tables.trade_request_items.push(itemRow(t.id, { status: "reserved" }), itemRow(draft.id));
     const lines = (await staff.get({ view: "reserved" })).body.lines as Record<string, unknown>[];
     expect(lines).toEqual([expect.objectContaining({ tradeId: t.id, cardName: "The One Ring", quantity: 1, shipBy: t.ship_by, shippedAt: null })]);
+  });
+
+  it("lists our cards on review and confirmation holds too, holds ending soonest first", async () => {
+    const reserved = tradeRow({ status: "awaiting_shipment", ship_by: iso(Date.now() + DAY) });
+    const late = tradeRow({ status: "awaiting_confirmation", hold_stage: "confirmation", hold_expires_at: iso(Date.now() + 10 * HOUR) });
+    const soon = tradeRow({ status: "pending_review", hold_stage: "review", hold_expires_at: iso(Date.now() + HOUR) });
+    const unheld = tradeRow({ status: "pending_review" });
+    trades().push(reserved, late, soon, unheld);
+    for (const t of [reserved, late, soon]) state.tables.trade_request_items.push(itemRow(t.id, { status: "reserved" }));
+    state.tables.trade_request_items.push(itemRow(unheld.id));
+    const lines = (await staff.get({ view: "reserved" })).body.lines as Record<string, unknown>[];
+    expect(lines.map((l) => l.tradeId)).toEqual([soon.id, late.id, reserved.id]);
+    expect(lines[0]).toMatchObject({ hold: { stage: "review", expiresAt: soon.hold_expires_at } });
+    expect(lines[2]).toMatchObject({ hold: null });
+  });
+
+  it("filters the list to held trades and counts holds ending within two hours", async () => {
+    trades().push(
+      tradeRow({ status: "pending_review", hold_stage: "review", hold_expires_at: iso(Date.now() + HOUR) }),
+      tradeRow({ status: "awaiting_confirmation", hold_stage: "confirmation", hold_expires_at: iso(Date.now() + 10 * HOUR) }),
+      tradeRow({ status: "pending_review" }),
+    );
+    const res = await staff.get({ filter: "held" });
+    expect((res.body.trades as { hold: unknown }[]).every((t) => t.hold !== null)).toBe(true);
+    expect((res.body.trades as unknown[]).length).toBe(2);
+    expect(res.body.counts).toMatchObject({ held: 2, holdsEndingSoon: 1 });
   });
 
   it("lists customers with their record and what it earns them; the owner can require a deposit or pause them", async () => {
@@ -2017,7 +2095,8 @@ describe("admin Trades: review and approval (4, 5)", () => {
     t.wanted_total_cents = 32000;
     await staff.post({ action: "approve", tradeId: t.id, depositCents: 1 });
     expect(rpcArgs("trade_approve")[0]).toMatchObject({ p_deposit_cents: 2000, p_deposit_reason: "threshold" });
-    expect(sent[0].text).toContain("Confirming takes a refundable $20.00 deposit.");
+    expect(sent[0].text).toContain("We'll reserve your selected cards once your trade is approved and your reservation deposit is paid.");
+    expect(sent[0].text).toContain("For this trade it's a refundable $20.00");
 
     Object.assign(t, { status: "pending_review", wanted_total_cents: 8899 });
     customerStats[ANN] = { recent_faults: 2 };
@@ -2389,6 +2468,8 @@ describe("admin Trades: inspection and the final offer (12)", () => {
     expect(text).toContain("Your revised offer is ready");
     expect(text).toContain("A few things changed from the $140.00 we approved before you shipped");
     expect(text).toContain("Your cards are now valued at $126.00");
+    // The credit before and after, the difference and the reason, as on the page.
+    expect(text).toContain("Original estimated credit: $112.00. Final approved credit: $100.80. Difference: −$11.20. Reason: 2 cards were graded Lightly Played instead of Near Mint.");
     expect(text).toContain("Condition: Lightly Played (listed as Near Mint)");
     expect(text).toContain("Light wear: valued as LP");
     expect(text).toContain("You'll never lose your deposit for declining an offer after your cards arrive");

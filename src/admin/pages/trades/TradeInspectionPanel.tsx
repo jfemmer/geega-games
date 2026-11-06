@@ -19,12 +19,14 @@ import {
   type InspectDraft,
 } from "./tradeMath";
 import { OfferCardHead } from "./TradeCardBits";
+import { TradeConditionPhotos } from "./TradeConditionPhotos";
 import type { TradePanelProps } from "./types";
 
 // Received / under inspection: for each card we approved, how many arrived,
 // whether it's real, the condition we see, how many we take and its TCG low
 // now (a new condition rescales the approved value by the trade's condition
-// percentages as a starting point; staff type the TCG low over it). Then the
+// percentages as a starting point; staff type the TCG low over it), with
+// photos of anything that differs (TradeConditionPhotos). Then the
 // final offer, worked out from what's saved, optionally with cash for
 // credit beyond the order.
 
@@ -228,6 +230,7 @@ export function TradeInspectionPanel({ trade, settings, busy, run }: TradePanelP
                   </label>
                 ))}
               </fieldset>
+              <TradeConditionPhotos trade={trade} card={c} busy={busy} run={run} />
               <details className="gg-trd-card__notes" open={Boolean(d.note || d.internalNote) || undefined}>
                 <summary>Notes{d.note || d.internalNote ? "" : " (optional)"}</summary>
                 <div className="gg-form-grid">

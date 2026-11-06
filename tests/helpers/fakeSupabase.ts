@@ -156,21 +156,38 @@ class Query implements PromiseLike<Result> {
     return this;
   }
   /**
-   * PostgREST's or=(…) with eq, ilike, is (null, true, false) and lt/lte/gt/gte
+   * PostgREST's or=(…) with eq, in, ilike, is (null, true, false) and lt/lte/gt/gte (each optionally negated with not.)
    * conditions, e.g. "name.ilike.%sam%,email.ilike.%sam%" or
    * "checked_at.is.null,checked_at.lt.2026-10-25T20:00:00.000Z".
    */
   or(conditions: string) {
-    const parts = conditions.split(",").map((part) => {
-      const [column, op, ...rest] = part.split(".");
-      return { column, op, value: rest.join(".") };
+    // Split on top-level commas only: "status.in.(a,b),hold_stage.not.is.null".
+    const pieces: string[] = [];
+    let depth = 0;
+    let current = "";
+    for (const ch of conditions) {
+      if (ch === "(") depth += 1;
+      if (ch === ")") depth -= 1;
+      if (ch === "," && depth === 0) {
+        pieces.push(current);
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    pieces.push(current);
+    const parts = pieces.map((part) => {
+      const [column, ...restParts] = part.split(".");
+      const negate = restParts[0] === "not";
+      const [op, ...rest] = negate ? restParts.slice(1) : restParts;
+      return { column, op, value: rest.join("."), negate };
     });
     const like = (pattern: string) =>
       new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, "i");
     const literal = (value: string) => (value === "null" ? null : value === "true" ? true : value === "false" ? false : value);
-    this.filters.push((row) =>
-      parts.some(({ column, op, value }) => {
+    const test = (row: Row, { column, op, value }: { column: string; op: string; value: string }): boolean => {
         const cell = row[column];
+        if (op === "in") return value.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim()).includes(String(cell));
         if (op === "eq") return String(cell) === value;
         if (op === "ilike") return cell != null && like(value).test(String(cell));
         if (op === "is") return (cell ?? null) === literal(value);
@@ -179,8 +196,8 @@ class Query implements PromiseLike<Result> {
         if (op === "gt") return cell != null && compare(cell, value) > 0;
         if (op === "gte") return cell != null && compare(cell, value) >= 0;
         throw new Error(`fakeSupabase: or(${op}) isn't supported`);
-      }),
-    );
+    };
+    this.filters.push((row) => parts.some((part) => (part.negate ? !test(row, part) : test(row, part))));
     return this;
   }
   order(column: string, opts?: { ascending?: boolean; nullsFirst?: boolean }) {
@@ -411,6 +428,10 @@ export function createFakeSupabase(state: FakeState) {
         download: async (path: string) => {
           const f = state.files[path];
           return f ? { data: new Blob([f.data]), error: null } : { data: null, error: { message: "Object not found" } };
+        },
+        remove: async (paths: string[]) => {
+          for (const path of paths) delete state.files[path];
+          return { data: paths.map((name) => ({ name })), error: null };
         },
         upload: async (path: string, data: Buffer, opts?: { contentType?: string }) => {
           state.files[path] = { data: Buffer.from(data), contentType: opts?.contentType };

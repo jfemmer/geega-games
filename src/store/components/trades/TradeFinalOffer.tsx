@@ -18,7 +18,7 @@ import {
 
 // The final offer, after inspection: what we estimated before they shipped
 // and what we're offering now, card by card with the reason for every
-// change, and what that does to the money (trade credit covers our cards;
+// change (with our inspection photos, when we took any), and what that does to the money (trade credit covers our cards;
 // shipping them is paid by card); then the customer's answer.
 // Accepting asks where to ship our cards (a saved address or a new one);
 // asking for an adjustment is a message to staff; declining shows the
@@ -177,6 +177,17 @@ export function TradeFinalOffer({
                       <ul className="gg-tc-reasons">
                         {change.reasons.map((r) => (
                           <li key={r}>{r}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {c.photos.length > 0 && (
+                      <ul className="gg-tc-photos" aria-label={`Photos of ${c.cardName} from our inspection`}>
+                        {c.photos.map((p, n) => (
+                          <li key={p.path}>
+                            <a href={p.url} target="_blank" rel="noopener noreferrer">
+                              <img src={p.url} alt={`${c.cardName}, photo ${n + 1} from our inspection`} loading="lazy" />
+                            </a>
+                          </li>
                         ))}
                       </ul>
                     )}

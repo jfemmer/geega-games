@@ -19,6 +19,7 @@ import {
   formatDeadline,
   formatUsd,
   myTradePath,
+  offerChangeSummary,
   offerChanges,
   tradeComparison,
   tradeCreditCents,
@@ -86,8 +87,9 @@ function reviewHoldLine(t: TradeBundle["trade"], settings: TradeSettingsRow, aft
 function hoursPhrase(hours: number): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 }
-function daysPhrase(days: number): string {
-  return days === 1 ? "1 day" : `${days} days`;
+/** A shipping window as the trade pages say it: "48 hours" up to three days, then "5 days". */
+function shipWindowPhrase(days: number): string {
+  return days <= 3 ? hoursPhrase(days * 24) : days === 1 ? "1 day" : `${days} days`;
 }
 
 /** The shipping terms a trade started on. */
@@ -271,6 +273,7 @@ function offerCardsOf(b: TradeBundle): TradeOfferCard[] {
     inspectionNote: c.inspection_note,
     inspected: c.inspected_at !== null,
     disposition: "pending",
+    photos: [],
   }));
 }
 
@@ -388,7 +391,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
             ? `You have until ${confirmBy} to confirm it: ${hoursPhrase(settings.confirmation_hours)}, not counting Sundays. If it isn't confirmed by then, the approval expires.`
             : "Confirm it on your trade page to reserve our cards.",
           t.deposit_cents > 0
-            ? `Confirming takes a refundable ${money(t.deposit_cents)} deposit. It's refunded in full once the carrier accepts your package by your shipping deadline, and you never lose it for declining an offer after your cards arrive.`
+            ? `We'll reserve your selected cards once your trade is approved and your reservation deposit is paid. The deposit protects against abandoned trades and is handled according to our cancellation policy. For this trade it's a refundable ${money(t.deposit_cents)}, returned in full once the carrier accepts your package by your shipping deadline, and you never lose it for declining an offer after your cards arrive.`
             : "No deposit is needed for this trade.",
           t.hold_stage === "confirmation"
             ? "We're holding our cards for you until then, so nothing can sell before you confirm."
@@ -420,7 +423,7 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
         paragraphs: [
           `${greet} trade ${label} is confirmed${t.deposit_status === "paid" ? ` and your ${money(deposit)} deposit is paid` : ""}. Our cards are reserved for you and off the shelf.`,
           shipBy
-            ? `Ship your cards by ${shipBy}: ${daysPhrase(t.ship_days ?? settings.ship_days_new)}, not counting Sundays. Your shipment counts once the carrier scans your package, so drop it off with time to spare; a label on its own doesn't count.`
+            ? `Ship your cards by ${shipBy}: ${shipWindowPhrase(t.ship_days ?? settings.ship_days_new)}, not counting Sundays. Your shipment counts once the carrier scans your package, so drop it off with time to spare; a label on its own doesn't count.`
             : "Ship your cards soon. Your shipment counts once the carrier scans your package.",
           "Then add the tracking number on your trade page.",
           ...(t.deposit_status === "paid"
@@ -573,6 +576,9 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
       const value = t.final_value_cents ?? 0;
       const approved = t.approved_value_cents ?? 0;
       const changes = offerChanges(offerCardsOf(b));
+      const summary = offerChangeSummary(offerCardsOf(b));
+      const originalCredit = tradeCreditCents(approved, t.credit_rate_percent, t.processing_fee_cents);
+      const finalCredit = t.final_credit_cents ?? tradeCreditCents(value, t.credit_rate_percent, t.processing_fee_cents);
       const cash = t.excess_handling === "cash" && t.cash_payout_cents ? t.cash_payout_cents : null;
       return sendCustomer(b, settings, "trade_final_offer", `trade-final-offer-${t.id}-${t.final_offer_at}`, `Trade ${label}: inspection done, your final offer is ready`, {
         previewText: changes.length > 0 ? "A few things changed. Review your final offer." : "Everything matched. Review your final offer.",
@@ -582,6 +588,13 @@ async function buildAndSend(b: TradeBundle, settings: TradeSettingsRow, email: T
           changes.length > 0
             ? `A few things changed from the ${money(approved)} we approved before you shipped; each change and its reason is listed below. Your cards are now valued at ${money(value)}.`
             : `Everything matched what we approved: your cards are valued at ${money(value)}.`,
+          ...(changes.length > 0
+            ? [
+                `Original estimated credit: ${money(originalCredit)}. Final approved credit: ${money(finalCredit)}. Difference: ${
+                  finalCredit - originalCredit < 0 ? "−" : "+"
+                }${money(Math.abs(finalCredit - originalCredit))}.${summary ? ` Reason: ${summary.replace(/ Each card's reason is below\.$/, "")}` : ""}`,
+              ]
+            : []),
         ],
         quote: comparisonBlock(
           b,
