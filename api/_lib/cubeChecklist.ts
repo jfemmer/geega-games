@@ -12,7 +12,7 @@ import {
   defaultRarityRule,
   exactNameTerm,
   mainType,
-  normalizeName,
+  cardKey,
   rarityClause,
   type ChecklistAdminSummary,
   type ChecklistCard,
@@ -186,14 +186,15 @@ async function getCard(list: ListRow, cardId: unknown): Promise<CardRow> {
   return data as CardRow;
 }
 
-async function listNames(list: ListRow): Promise<Set<string>> {
+/** The cards on the list, by cardKey (and which slot each is in). */
+async function listKeys(list: ListRow): Promise<Map<string, string>> {
   const { data, error } = await db()
     .from("cube_checklist_cards")
-    .select("name")
+    .select("id, name")
     .eq("checklist_id", list.id)
     .limit(5000);
   if (error) dbError(error);
-  return new Set((data ?? []).map((r) => normalizeName(r.name)));
+  return new Map((data ?? []).map((r) => [cardKey(r.name), r.id]));
 }
 
 async function updateCard(list: ListRow, cardId: string, patch: Partial<CardRow>): Promise<ChecklistCard> {
@@ -231,7 +232,7 @@ async function findAllowedCard(name: string, rule: RarityRule): Promise<Scryfall
     `${exactNameTerm(name)} game:paper ${rarityClause(rule)}`,
     "name",
   )) as ScryfallCardExtra[];
-  return found.find((c) => normalizeName(c.name) === normalizeName(name)) ?? found[0] ?? null;
+  return found.find((c) => cardKey(c.name) === cardKey(name)) ?? found[0] ?? null;
 }
 
 function colorLetters(colors: string[] | undefined): string {
@@ -317,11 +318,11 @@ export async function runCardAction(
       const card = await getCard(list, body.cardId);
       const newName = cleanText(body.newName, CHECKLIST_LIMITS.cardName);
       if (!newName) throw new HttpError(400, "Choose a card to swap in.");
-      if (normalizeName(newName) === normalizeName(card.name)) {
+      if (cardKey(newName) === cardKey(card.name)) {
         throw new HttpError(400, "That's the card already in this slot.");
       }
-      const names = await listNames(list);
-      if (names.has(normalizeName(newName))) throw new HttpError(409, `${newName} is already on the list.`);
+      const onList = await listKeys(list);
+      if (onList.has(cardKey(newName))) throw new HttpError(409, `${newName} is already on the list.`);
 
       const sc = await findAllowedCard(newName, rule);
       if (!sc) {
@@ -332,6 +333,9 @@ export async function runCardAction(
             : `${newName} hasn't been printed at common or uncommon, so it can't go in this cube.`,
         );
       }
+      // Check again with Scryfall's own name (a typed name can resolve to a card on the list).
+      if (cardKey(sc.name) === cardKey(card.name)) throw new HttpError(400, "That's the card already in this slot.");
+      if (onList.has(cardKey(sc.name))) throw new HttpError(409, `${sc.name} is already on the list.`);
       const typeLine = sc.type_line ?? sc.card_faces?.[0]?.type_line ?? null;
       const colors = sc.colors ?? faceColors(sc);
       const first = card.original_name == null;
@@ -356,6 +360,14 @@ export async function runCardAction(
     case "unswap": {
       const card = await getCard(list, body.cardId);
       if (!card.original_name) return { card: toCard(card) };
+      // Someone may have swapped the cube's card into another slot since.
+      const elsewhere = (await listKeys(list)).get(cardKey(card.original_name));
+      if (elsewhere && elsewhere !== card.id) {
+        throw new HttpError(
+          409,
+          `${card.original_name} is on the list again in another slot, so this swap can't be undone. Swap that one out first.`,
+        );
+      }
       return {
         card: await updateCard(list, card.id, {
           name: card.original_name,
@@ -377,13 +389,13 @@ export async function runCardAction(
       // Look the card up without the rarity rule: the cube's own card may not be one.
       const [sc] = (await scryfallSearchCards(`${exactNameTerm(card.name)} game:paper`, "name")) as ScryfallCardExtra[];
       if (!sc) return { current: null, options: [] };
-      const names = await listNames(list);
+      const onList = await listKeys(list);
       const similar = (await scryfallSearchCards(similarCardsQuery(sc, rule), "edhrec")) as ScryfallCardExtra[];
       return {
         // The card on the list now, so people can compare it with the options.
         current: toOption(sc),
         options: similar
-          .filter((c) => !names.has(normalizeName(c.name)))
+          .filter((c) => !onList.has(cardKey(c.name)))
           .slice(0, SUGGESTION_COUNT)
           .map(toOption),
       };
@@ -394,11 +406,11 @@ export async function runCardAction(
       if (!q || q.length < 2) return { options: [] };
       // Treat what they typed as part of a name, not Scryfall syntax.
       const term = `name:"${q.replace(/["\\]/g, "")}"`;
-      const names = await listNames(list);
+      const onList = await listKeys(list);
       const found = (await scryfallSearchCards(`${term} game:paper ${rarityClause(rule)}`, "edhrec")) as ScryfallCardExtra[];
       return {
         options: found
-          .filter((c) => !names.has(normalizeName(c.name)))
+          .filter((c) => !onList.has(cardKey(c.name)))
           .slice(0, SEARCH_COUNT)
           .map(toOption),
       };
@@ -487,7 +499,7 @@ export async function createChecklist(input: {
   const seen = new Set<string>();
   const rows = cube.cards
     .filter((c) => {
-      const key = normalizeName(c.name);
+      const key = cardKey(c.name);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -538,7 +550,7 @@ export async function deleteChecklist(list: ListRow): Promise<void> {
 export async function markFoundByName(list: ListRow, names: unknown, actor: string): Promise<number> {
   if (!Array.isArray(names)) throw new HttpError(400, "Missing card names.");
   const wanted = new Set(
-    names.filter((n): n is string => typeof n === "string").slice(0, 2000).map(normalizeName),
+    names.filter((n): n is string => typeof n === "string").slice(0, 2000).map(cardKey),
   );
   const { data, error } = await db()
     .from("cube_checklist_cards")
@@ -547,7 +559,7 @@ export async function markFoundByName(list: ListRow, names: unknown, actor: stri
     .is("found_at", null)
     .limit(5000);
   if (error) dbError(error);
-  const ids = (data ?? []).filter((r) => wanted.has(normalizeName(r.name))).map((r) => r.id);
+  const ids = (data ?? []).filter((r) => wanted.has(cardKey(r.name))).map((r) => r.id);
   for (let i = 0; i < ids.length; i += 200) {
     const { error: upErr } = await db()
       .from("cube_checklist_cards")

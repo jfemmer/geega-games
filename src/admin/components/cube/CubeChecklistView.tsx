@@ -14,6 +14,7 @@ import { formatCents, timeAgo } from "../../utils/format";
 import type { CardImageUris, CardPrinting } from "../../types";
 import {
   RARITY_RULE_LABELS,
+  cardKey,
   colorRank,
   mergeCards,
   normalizeName,
@@ -137,6 +138,10 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
       return a.name.localeCompare(b.name);
     });
   }, [list, sort, byRecent]);
+
+  // Every card on the list right now (kept fresh by the refresh), so the swap
+  // panel never offers one that's already on it — one of each card.
+  const onList = useMemo(() => new Set((list?.cards ?? []).map((c) => cardKey(c.name))), [list]);
 
   const recent = useMemo(
     () =>
@@ -417,6 +422,7 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                   <SwapPanel
                     call={call}
                     card={card}
+                    onList={onList}
                     rarityLabel={list.rarityRule === "common" ? "commons" : "commons and uncommons"}
                     onSwapped={(saved) => {
                       replaceCard(saved);
@@ -466,11 +472,14 @@ function CompareTile({ option, label, current = false, action }: {
 function SwapPanel({
   call,
   card,
+  onList,
   rarityLabel,
   onSwapped,
 }: {
   call: CubeChecklistCaller;
   card: ChecklistCard;
+  /** cardKeys of everything on the list now. */
+  onList: Set<string>;
   rarityLabel: string;
   onSwapped: (card: ChecklistCard) => void;
 }) {
@@ -538,7 +547,10 @@ function SwapPanel({
   }
 
   const showingSearch = query.trim().length >= 2;
-  const options = showingSearch ? results : suggestions;
+  // The server already leaves out cards on the list; this also drops any that
+  // someone has swapped in since these options loaded.
+  const loaded = showingSearch ? results : suggestions;
+  const options = useMemo(() => loaded?.filter((o) => !onList.has(cardKey(o.name))) ?? null, [loaded, onList]);
 
   return (
     <div className="gg-cubecheck__panel">

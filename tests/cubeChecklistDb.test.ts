@@ -11,6 +11,10 @@ const MIGRATION = readFileSync(
   new URL("../supabase/migrations/20261110060000_cube_checklists.sql", import.meta.url),
   "utf8",
 );
+const ONE_OF_EACH = readFileSync(
+  new URL("../supabase/migrations/20261110200000_cube_checklist_one_of_each.sql", import.meta.url),
+  "utf8",
+);
 
 const STANDINS = `
 create role anon; create role authenticated; create role service_role;
@@ -37,6 +41,8 @@ beforeAll(async () => {
   await db.exec(STANDINS);
   await db.exec(MIGRATION);
   await db.exec(MIGRATION); // safe to run twice
+  await db.exec(ONE_OF_EACH);
+  await db.exec(ONE_OF_EACH);
   listId = (
     await one(
       `insert into public.cube_checklists (name, cube_id, share_token) values ('The Pauper Cube', 'thepaupercube', repeat('a', 32)) returning id`,
@@ -62,6 +68,27 @@ describe("cube checklist tables", () => {
         [listId],
       ),
     ).toBe("23505");
+  });
+
+  it("counts a two-part card by its front face, so the full name is a duplicate too", async () => {
+    await db.query(
+      `insert into public.cube_checklist_cards (checklist_id, position, name) values ($1, 5, 'Ardenvale Tactician')`,
+      [listId],
+    );
+    expect(
+      await errorCode(
+        `insert into public.cube_checklist_cards (checklist_id, position, name) values ($1, 6, 'ardenvale tactician // Dizzying Swoop')`,
+        [listId],
+      ),
+    ).toBe("23505");
+    // A swap that would turn another slot into it is refused the same way.
+    expect(
+      await errorCode(
+        `update public.cube_checklist_cards set name = 'Ardenvale Tactician // Dizzying Swoop', original_name = name, swapped_at = now() where name = 'Counterspell'`,
+      ),
+    ).toBe("23505");
+    const idx = await db.query<Row>(`select indexname from pg_indexes where tablename = 'cube_checklist_cards' and indexname like '%uidx' order by 1`);
+    expect(idx.rows.map((r) => r.indexname)).toEqual(["cube_checklist_cards_card_uidx"]);
   });
 
   it("refuses half-recorded finds and swaps, bad rarity rules and bad cube ids", async () => {

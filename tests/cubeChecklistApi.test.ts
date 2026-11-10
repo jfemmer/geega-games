@@ -187,6 +187,53 @@ describe("share link", () => {
     expect(row(COUNTERSPELL).name).toBe("Counterspell");
   });
 
+  it("treats a two-part card's full name as the card already on the list", async () => {
+    // CubeCobra lists the front face; Scryfall names the whole card.
+    state.tables.cube_checklist_cards.push(card("22222222-2222-4222-8222-000000000003", 2, "Ardenvale Tactician"));
+
+    // Not suggested…
+    scry.searchCards
+      .mockResolvedValueOnce([scryCard("Counterspell")])
+      .mockResolvedValueOnce([scryCard("Ardenvale Tactician // Dizzying Swoop"), scryCard("Mana Leak")]);
+    const suggest = await post(share, { token: TOKEN, action: "suggest", cardId: COUNTERSPELL });
+    expect(suggest.body.options.map((o: { name: string }) => o.name)).toEqual(["Mana Leak"]);
+
+    // …not in search results…
+    scry.searchCards.mockResolvedValueOnce([scryCard("Ardenvale Tactician // Dizzying Swoop")]);
+    const search = await post(share, { token: TOKEN, action: "search", query: "ardenvale" });
+    expect(search.body.options).toEqual([]);
+
+    // …and can't be swapped in, by either name.
+    const byFull = await post(share, {
+      token: TOKEN, who: "Sam", action: "swap", cardId: COUNTERSPELL, newName: "Ardenvale Tactician // Dizzying Swoop",
+    });
+    expect(byFull.status).toBe(409);
+    // Accents and capitals don't make it a different card.
+    const accented = await post(share, { token: TOKEN, who: "Sam", action: "swap", cardId: COUNTERSPELL, newName: "ARDENVALE TACTICIÁN" });
+    expect(accented.status).toBe(409);
+    // A name that only Scryfall knows is that card (its other half) is caught after the lookup.
+    scry.searchCards.mockResolvedValueOnce([scryCard("Ardenvale Tactician // Dizzying Swoop")]);
+    const backHalf = await post(share, { token: TOKEN, who: "Sam", action: "swap", cardId: COUNTERSPELL, newName: "Dizzying Swoop" });
+    expect(scry.searchCards).toHaveBeenCalledTimes(4);
+    expect(backHalf.status).toBe(409);
+    expect(backHalf.body.message).toBe("Ardenvale Tactician // Dizzying Swoop is already on the list.");
+    expect(row(COUNTERSPELL).name).toBe("Counterspell");
+  });
+
+  it("won't undo a swap if the cube's card is back on the list in another slot", async () => {
+    scry.searchCards.mockResolvedValueOnce([scryCard("Mana Leak")]);
+    await post(share, { token: TOKEN, who: "Sam", action: "swap", cardId: COUNTERSPELL, newName: "Mana Leak" });
+    // Someone swaps Counterspell into the Kor Skyfisher slot.
+    scry.searchCards.mockResolvedValueOnce([scryCard("Counterspell")]);
+    expect((await post(share, { token: TOKEN, who: "Alex", action: "swap", cardId: SKYFISHER, newName: "Counterspell" })).status).toBe(200);
+
+    const undo = await post(share, { token: TOKEN, who: "Sam", action: "unswap", cardId: COUNTERSPELL });
+    expect(undo.status).toBe(409);
+    expect(undo.body.message).toMatch(/Counterspell is on the list again in another slot/);
+    expect(row(COUNTERSPELL).name).toBe("Mana Leak");
+    expect(cardsTable().filter((c) => c.name === "Counterspell")).toHaveLength(1);
+  });
+
   it("suggests similar commons that aren't already on the list", async () => {
     scry.searchCards
       .mockResolvedValueOnce([scryCard("Counterspell")]) // the card itself

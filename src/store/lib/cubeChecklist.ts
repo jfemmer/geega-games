@@ -86,6 +86,18 @@ export function normalizeName(s: string): string {
     .trim();
 }
 
+/**
+ * The key that decides "is this the same card?" — one of each card per list.
+ * Front face only, case- and accent-insensitive, because CubeCobra and
+ * Scryfall name two-part cards differently: the list has "Ardenvale
+ * Tactician", Scryfall says "Ardenvale Tactician // Dizzying Swoop".
+ * (Front-face names are unique across Magic.) The database enforces the same
+ * rule with its (checklist_id, lower(front face)) unique index.
+ */
+export function cardKey(name: string): string {
+  return normalizeName(name.split("//")[0]);
+}
+
 /** A card name as a Scryfall exact-name term: !"Fire // Ice". */
 export function exactNameTerm(name: string): string {
   return `!"${name.replace(/["\\]/g, "")}"`;

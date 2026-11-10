@@ -218,6 +218,35 @@ describe("shared checklist view", () => {
     await waitFor(() => expect(screen.queryByText("Mana Leak")).toBeNull());
   });
 
+  it("drops an option once it's on the list (someone else swapped it in)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    setup({
+      get: (b) =>
+        b.since
+          ? { view: { ...VIEW, cards: [c("d", 2, "Mana Leak", { originalName: "Ponder", swappedBy: "Alex", swappedAt: T0, updatedAt: "2026-11-10T00:09:00.000Z" })] } }
+          : { view: VIEW },
+      suggest: () => ({
+        current: null,
+        options: [
+          { name: "Mana Leak", typeLine: "Instant", manaCost: "{1}{U}", imageSmall: null, imageNormal: null, edhrecRank: 95 },
+          { name: "Exclude", typeLine: "Instant", manaCost: "{2}{U}", imageSmall: null, imageNormal: null, edhrecRank: 340 },
+        ],
+      }),
+    });
+    const row = (await screen.findByText("Counterspell")).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "Swap" }));
+    const strip = await within(row).findByRole("list", { name: /compared with/ });
+    expect(within(strip).getByText("Mana Leak")).toBeTruthy();
+
+    // Alex swaps Mana Leak into the Ponder slot; the next refresh brings it in.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_000);
+    });
+    await waitFor(() => expect(within(strip).queryByText("Mana Leak")).toBeNull());
+    expect(within(strip).getByText("Exclude")).toBeTruthy();
+  });
+
   it("searches for any allowed card to swap in", async () => {
     const user = userEvent.setup();
     const call = setup({
