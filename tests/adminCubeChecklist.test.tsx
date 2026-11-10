@@ -31,6 +31,8 @@ function c(id: string, position: number, name: string, extra: Partial<ChecklistC
     swappedAt: null,
     foundBy: null,
     foundAt: null,
+    elo: null,
+    pickCount: null,
     updatedAt: T0,
     ...extra,
   };
@@ -247,6 +249,64 @@ describe("shared checklist view", () => {
     expect(within(strip).getByText("Exclude")).toBeTruthy();
   });
 
+  it("shows suggested upgrades, and swaps one in with one tap", async () => {
+    const user = userEvent.setup();
+    const call = setup({
+      upgrades: () => ({
+        upgradesView: {
+          ratedCount: 3,
+          poolSize: 2,
+          ratingsUpdatedAt: T0,
+          upgrades: [
+            {
+              cut: c("d", 2, "Ponder", { typeLine: "Sorcery", elo: 1050, pickCount: 900 }),
+              add: { name: "Preordain", typeLine: "Sorcery", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 30, listRank: 12 },
+            },
+          ],
+        },
+      }),
+      swap: () => ({ card: c("d", 2, "Preordain", { originalName: "Ponder", swappedBy: "Sam", swappedAt: T0, updatedAt: "2026-11-10T00:06:00.000Z" }) }),
+    });
+    const section = within((await screen.findByText("Suggested upgrades")).closest("section")!);
+    expect(section.getByText("Ponder")).toBeTruthy();
+    expect(section.getByText(/rating 1050/)).toBeTruthy();
+    expect(section.getByText(/#12 on your list/)).toBeTruthy();
+
+    await user.click(section.getByRole("button", { name: "Swap Ponder for Preordain" }));
+    expect(call).toHaveBeenCalledWith({ action: "swap", cardId: "d", newName: "Preordain" });
+    expect(await screen.findByText("Preordain", { selector: ".gg-cubecheck__name" })).toBeTruthy();
+    // The upgrades are fetched again after a swap.
+    await waitFor(() => expect(call.mock.calls.filter((x) => x[0].action === "upgrades")).toHaveLength(2));
+  });
+
+  it("Compare opens that card's Swap panel, with list cards marked", async () => {
+    const user = userEvent.setup();
+    setup({
+      upgrades: () => ({
+        upgradesView: {
+          ratedCount: 3,
+          poolSize: 1,
+          ratingsUpdatedAt: T0,
+          upgrades: [
+            {
+              cut: c("d", 2, "Ponder", { typeLine: "Sorcery", elo: 1050, pickCount: 900 }),
+              add: { name: "Preordain", typeLine: "Sorcery", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 30, listRank: 12 },
+            },
+          ],
+        },
+      }),
+      suggest: () => ({
+        current: null,
+        options: [{ name: "Preordain", typeLine: "Sorcery", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 30, listRank: 12 }],
+      }),
+    });
+    const section = within((await screen.findByText("Suggested upgrades")).closest("section")!);
+    await user.click(section.getByRole("button", { name: "Compare" }));
+    const strip = await screen.findByRole("list", { name: /Ponder compared with/ });
+    expect(within(strip).getByText("From your list · #12")).toBeTruthy();
+    expect((screen.getByLabelText("Search cards") as HTMLInputElement).value).toBe("Ponder");
+  });
+
   it("searches for any allowed card to swap in", async () => {
     const user = userEvent.setup();
     const call = setup({
@@ -349,6 +409,52 @@ describe("admin page", () => {
   });
 });
 
+describe("suggestion list editor", () => {
+  it("loads, saves, and reports what can't be suggested", async () => {
+    const user = userEvent.setup();
+    api.adminFetch.mockImplementation(async (_path: string, init?: { body?: Record<string, unknown> }) => {
+      if (!init) {
+        return {
+          checklists: [
+            {
+              id: "list-1", name: "The Pauper Cube", cubeId: "thepaupercube", rarityRule: "common",
+              shareToken: "t".repeat(32), shareEnabled: true, createdAt: T0, cardCount: 3, foundCount: 0, ratingsUpdatedAt: T0,
+            },
+          ],
+        };
+      }
+      const a = init.body?.action;
+      if (a === "get") return { view: VIEW };
+      if (a === "upgrades") return { upgradesView: { upgrades: [], ratedCount: 0, poolSize: 0, ratingsUpdatedAt: T0 } };
+      if (a === "suggestions-get") {
+        return { names: ["Preordain"], summary: { saved: 1, usable: 1, alreadyOnList: 0, notAllowed: [], notFound: [] } };
+      }
+      if (a === "suggestions-set") {
+        return { summary: { saved: 3, usable: 1, alreadyOnList: 0, notAllowed: ["Arcane Denial"], notFound: ["Not A Card"] } };
+      }
+      return {};
+    });
+    render(
+      <ToastProvider>
+        <CubeChecklistPage />
+      </ToastProvider>,
+    );
+    const card = within((await screen.findByText("Suggestion list")).closest("section, .gg-card") as HTMLElement);
+    await user.click(card.getByRole("button", { name: /Edit/ }));
+    const box = (await card.findByLabelText(/Card names, one per line/)) as HTMLTextAreaElement;
+    expect(box.value).toBe("Preordain");
+    await user.clear(box);
+    await user.type(box, "Preordain{Enter}Arcane Denial{Enter}Not A Card");
+    await user.click(card.getByRole("button", { name: "Save list" }));
+    expect(api.adminFetch).toHaveBeenCalledWith("/api/admin/cube-checklists", {
+      method: "POST",
+      body: { action: "suggestions-set", id: "list-1", names: "Preordain\nArcane Denial\nNot A Card" },
+    });
+    expect(await card.findByText(/Never printed at common in paper \(1\): Arcane Denial/)).toBeTruthy();
+    expect(card.getByText(/Not found on Scryfall.*Not A Card/)).toBeTruthy();
+  });
+});
+
 describe("share page", () => {
   it("asks for a name once, then sends it with the token", async () => {
     const user = userEvent.setup();
@@ -360,8 +466,8 @@ describe("share page", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect(await screen.findByText("Counterspell")).toBeTruthy();
     expect(screen.getByText("Sam")).toBeTruthy();
-    const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown[])[1] && (fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
-    expect(body).toMatchObject({ action: "get", token: "k".repeat(32), who: "Sam" });
+    const bodies = (fetchMock.mock.calls as unknown as [string, RequestInit][]).map((c) => JSON.parse(String(c[1].body)));
+    expect(bodies.find((b) => b.action === "get")).toMatchObject({ action: "get", token: "k".repeat(32), who: "Sam" });
     expect(window.localStorage.getItem("gg-cube-checklist-name")).toBe("Sam");
 
     cleanup();

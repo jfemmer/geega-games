@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { HttpError } from "./http.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
-import { fetchCubeList } from "./cubeCobra.js";
+import { fetchCubeList, fetchCubeRatings } from "./cubeCobra.js";
 import { scryfallSearchCards, scryfallSearchPage } from "./scryfall.js";
 import { normalizeScryfallCards } from "../../src/admin/services/scryfall.js";
 import type { ScryfallCard } from "../../src/admin/services/scryfall.types.js";
@@ -12,7 +12,16 @@ import {
   defaultRarityRule,
   exactNameTerm,
   mainType,
+  CHECKLIST_LIMITS as LIMITS,
+  UPGRADE_RULES,
   cardKey,
+  listOptionsFor,
+  pairUpgrades,
+  suggestionOption,
+  suggestionPool,
+  type SuggestionInfo,
+  type SuggestionListSummary,
+  type UpgradesView,
   rarityClause,
   type ChecklistAdminSummary,
   type ChecklistCard,
@@ -29,8 +38,13 @@ import {
 // duplicates) are enforced once, here.
 
 const CARD_COLUMNS =
-  "id, position, name, type_line, color_category, original_name, original_type_line, original_color_category, swapped_by, swapped_at, found_by, found_at, updated_at";
-const LIST_COLUMNS = "id, name, cube_id, rarity_rule, share_token, share_enabled, created_at, updated_at";
+  "id, position, name, type_line, color_category, original_name, original_type_line, original_color_category, swapped_by, swapped_at, found_by, found_at, elo, pick_count, mana_value, updated_at";
+const LIST_COLUMNS =
+  "id, name, cube_id, rarity_rule, share_token, share_enabled, created_at, updated_at, ratings_updated_at";
+const SUGGESTION_COLUMNS =
+  "position, name, card_name, type_line, colors, mana_value, mana_cost, image_small, image_normal, edhrec_rank, paper_common, paper_uncommon";
+/** CubeCobra ratings move slowly; fetch them again at most this often. */
+const RATINGS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Re-send a little of what came just before `since`, so nothing in flight is missed. */
 const SYNC_OVERLAP_MS = 15_000;
@@ -52,6 +66,9 @@ type CardRow = {
   swapped_at: string | null;
   found_by: string | null;
   found_at: string | null;
+  elo: number | null;
+  pick_count: number | null;
+  mana_value: number | null;
   updated_at: string;
 };
 
@@ -64,6 +81,22 @@ export type ListRow = {
   share_enabled: boolean;
   created_at: string;
   updated_at: string;
+  ratings_updated_at: string | null;
+};
+
+type SuggestionRow = {
+  position: number;
+  name: string;
+  card_name: string | null;
+  type_line: string | null;
+  colors: string[];
+  mana_value: number | null;
+  mana_cost: string | null;
+  image_small: string | null;
+  image_normal: string | null;
+  edhrec_rank: number | null;
+  paper_common: boolean;
+  paper_uncommon: boolean;
 };
 
 /** Front-face colors (double-faced cards keep them on the face). */
@@ -101,7 +134,26 @@ function toCard(r: CardRow): ChecklistCard {
     swappedAt: r.swapped_at,
     foundBy: r.found_by,
     foundAt: r.found_at,
+    elo: r.elo,
+    pickCount: r.pick_count,
     updatedAt: r.updated_at,
+  };
+}
+
+function toSuggestion(r: SuggestionRow): SuggestionInfo {
+  return {
+    position: r.position,
+    name: r.name,
+    cardName: r.card_name,
+    typeLine: r.type_line,
+    colors: r.colors ?? [],
+    manaValue: r.mana_value == null ? null : Number(r.mana_value),
+    manaCost: r.mana_cost,
+    imageSmall: r.image_small,
+    imageNormal: r.image_normal,
+    edhrecRank: r.edhrec_rank,
+    paperCommon: r.paper_common,
+    paperUncommon: r.paper_uncommon,
   };
 }
 
@@ -280,7 +332,8 @@ export type CardActionResult =
   | { card: ChecklistCard; alreadyFound?: boolean }
   | { cards: ChecklistCard[] }
   | { options: SwapOption[]; current?: SwapOption | null }
-  | { printings: CardPrinting[]; hasMore: boolean };
+  | { printings: CardPrinting[]; hasMore: boolean }
+  | { upgradesView: UpgradesView };
 
 /** Actions that change the list need a name to credit. */
 export const WRITE_ACTIONS = new Set(["found", "swap", "unswap"]);
@@ -389,15 +442,28 @@ export async function runCardAction(
       // Look the card up without the rarity rule: the cube's own card may not be one.
       const [sc] = (await scryfallSearchCards(`${exactNameTerm(card.name)} game:paper`, "name")) as ScryfallCardExtra[];
       if (!sc) return { current: null, options: [] };
-      const onList = await listKeys(list);
+      const [onList, suggestions] = await Promise.all([listKeys(list), loadSuggestions(list)]);
+      // Cards from the checklist's own suggestion list come first.
+      const fromList = listOptionsFor(
+        {
+          colorCategory: card.color_category,
+          typeLine: card.type_line,
+          manaValue: typeof sc.cmc === "number" ? sc.cmc : card.mana_value == null ? null : Number(card.mana_value),
+        },
+        suggestionPool(suggestions, new Set(onList.keys()), rule),
+      ).map(suggestionOption);
+      const listed = new Set(fromList.map((o) => cardKey(o.name)));
       const similar = (await scryfallSearchCards(similarCardsQuery(sc, rule), "edhrec")) as ScryfallCardExtra[];
       return {
         // The card on the list now, so people can compare it with the options.
         current: toOption(sc),
-        options: similar
-          .filter((c) => !onList.has(cardKey(c.name)))
-          .slice(0, SUGGESTION_COUNT)
-          .map(toOption),
+        options: [
+          ...fromList,
+          ...similar
+            .filter((c) => !onList.has(cardKey(c.name)) && !listed.has(cardKey(c.name)))
+            .slice(0, SUGGESTION_COUNT)
+            .map(toOption),
+        ],
       };
     }
 
@@ -415,6 +481,9 @@ export async function runCardAction(
           .map(toOption),
       };
     }
+
+    case "upgrades":
+      return { upgradesView: await loadUpgrades(list) };
 
     case "printings": {
       const name = cleanText(body.name, CHECKLIST_LIMITS.cardName);
@@ -466,6 +535,7 @@ export async function listSummaries(): Promise<ChecklistAdminSummary[]> {
         createdAt: l.created_at,
         cardCount: all.count ?? 0,
         foundCount: found.count ?? 0,
+        ratingsUpdatedAt: l.ratings_updated_at,
       };
     }),
   );
@@ -510,6 +580,9 @@ export async function createChecklist(input: {
       name: c.name.slice(0, 200),
       type_line: c.type?.slice(0, 200) ?? null,
       color_category: c.colorCategory?.slice(0, 40) ?? null,
+      elo: c.elo ?? null,
+      pick_count: c.pickCount ?? null,
+      mana_value: c.cmc ?? null,
     }));
 
   for (let i = 0; i < rows.length; i += 500) {
@@ -518,6 +591,9 @@ export async function createChecklist(input: {
       await db().from("cube_checklists").delete().eq("id", list.id);
       dbError(insErr);
     }
+  }
+  if (rows.some((r) => r.elo != null)) {
+    await db().from("cube_checklists").update({ ratings_updated_at: new Date().toISOString() }).eq("id", list.id);
   }
   return list as ListRow;
 }
@@ -570,4 +646,176 @@ export async function markFoundByName(list: ListRow, names: unknown, actor: stri
     if (upErr) dbError(upErr);
   }
   return ids.length;
+}
+
+/* ------------------------------------------------------------------ *
+ * Suggestion list and suggested upgrades
+ * ------------------------------------------------------------------ */
+
+/** The key the database uses for "same card" (front face, lower-case; no accent folding). */
+function dbCardKey(name: string): string {
+  return name.split("//")[0].trim().toLowerCase();
+}
+
+export async function loadSuggestions(list: ListRow): Promise<SuggestionInfo[]> {
+  const { data, error } = await db()
+    .from("cube_checklist_suggestions")
+    .select(SUGGESTION_COLUMNS)
+    .eq("checklist_id", list.id)
+    .order("position", { ascending: true })
+    .limit(LIMITS.suggestionList);
+  if (error) dbError(error);
+  return ((data ?? []) as SuggestionRow[]).map(toSuggestion);
+}
+
+/** Card names from pasted text: one per line; "1 Name" / "1x Name" counts and "#" comments ignored. */
+export function parseNameList(input: unknown): string[] {
+  const lines = Array.isArray(input) ? input : typeof input === "string" ? input.split(/\r?\n/) : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of lines) {
+    if (typeof raw !== "string") continue;
+    const name = raw
+      .replace(/#.*$/, "")
+      .replace(/^\s*\d+\s*x?\s+/i, "")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (!name || name.length > LIMITS.cardName) continue;
+    const key = cardKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+    if (out.length >= LIMITS.suggestionList) break;
+  }
+  return out;
+}
+
+function summarize(list: ListRow, rows: SuggestionInfo[], onList: Set<string>): SuggestionListSummary {
+  const rule = asRule(list.rarity_rule);
+  const found = rows.filter((r) => r.cardName);
+  const isOn = (r: SuggestionInfo) => onList.has(cardKey(r.cardName ?? r.name));
+  return {
+    saved: rows.length,
+    usable: suggestionPool(rows, onList, rule).length,
+    alreadyOnList: found.filter(isOn).length,
+    notAllowed: found
+      .filter((r) => !isOn(r) && !(rule === "common" ? r.paperCommon : r.paperUncommon))
+      .map((r) => r.cardName ?? r.name),
+    notFound: rows.filter((r) => !r.cardName).map((r) => r.name),
+  };
+}
+
+export async function suggestionSummary(
+  list: ListRow,
+): Promise<{ names: string[]; summary: SuggestionListSummary }> {
+  const [rows, onList] = await Promise.all([loadSuggestions(list), listKeys(list)]);
+  return { names: rows.map((r) => r.name), summary: summarize(list, rows, new Set(onList.keys())) };
+}
+
+type LookupRow = {
+  requested: string;
+  card_name: string | null;
+  type_line: string | null;
+  colors: string[] | null;
+  mana_value: number | null;
+  mana_cost: string | null;
+  image_small: string | null;
+  image_normal: string | null;
+  edhrec_rank: number | null;
+  paper_common: boolean;
+  paper_uncommon: boolean;
+};
+
+/** Replace a checklist's suggestion list: look each name up once and store what pairing needs. */
+export async function setSuggestions(list: ListRow, input: unknown): Promise<SuggestionListSummary> {
+  const names = parseNameList(input);
+  const found = new Map<string, LookupRow>();
+  for (let i = 0; i < names.length; i += 500) {
+    const { data, error } = await db().rpc("cube_checklist_lookup_cards", { p_names: names.slice(i, i + 500) });
+    if (error) dbError(error);
+    for (const r of (data ?? []) as LookupRow[]) found.set(dbCardKey(r.requested), r);
+  }
+  const rows: SuggestionRow[] = names.map((name, position) => {
+    const r = found.get(dbCardKey(name));
+    return {
+      position,
+      name,
+      card_name: r?.card_name ?? null,
+      type_line: r?.type_line ?? null,
+      colors: r?.colors ?? [],
+      mana_value: r?.mana_value ?? null,
+      mana_cost: r?.mana_cost ?? null,
+      image_small: r?.image_small ?? null,
+      image_normal: r?.image_normal ?? null,
+      edhrec_rank: r?.edhrec_rank ?? null,
+      paper_common: r?.paper_common ?? false,
+      paper_uncommon: r?.paper_uncommon ?? false,
+    };
+  });
+
+  const { error: delErr } = await db().from("cube_checklist_suggestions").delete().eq("checklist_id", list.id);
+  if (delErr) dbError(delErr);
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db()
+      .from("cube_checklist_suggestions")
+      .insert(rows.slice(i, i + 500).map((r) => ({ ...r, checklist_id: list.id })));
+    if (error) dbError(error);
+  }
+  const onList = await listKeys(list);
+  return summarize(list, rows.map(toSuggestion), new Set(onList.keys()));
+}
+
+/**
+ * Fetch CubeCobra's draft ratings for the cube's cards and store them, when
+ * they're missing or a day old (or always, with force). Best effort: if
+ * CubeCobra can't be reached, whatever ratings are stored are used.
+ */
+export async function refreshRatings(
+  list: ListRow,
+  force = false,
+): Promise<{ list: ListRow; updated: number | null }> {
+  const fresh =
+    list.ratings_updated_at != null && Date.now() - Date.parse(list.ratings_updated_at) < RATINGS_MAX_AGE_MS;
+  if (fresh && !force) return { list, updated: null };
+  try {
+    const rated = await fetchCubeRatings(list.cube_id);
+    const ratings = rated.map((c) => ({
+      key: dbCardKey(c.name),
+      elo: c.elo,
+      pick_count: c.pickCount ?? 0,
+      mana_value: c.cmc ?? null,
+    }));
+    const { data, error } = await db().rpc("cube_checklist_set_ratings", {
+      p_checklist_id: list.id,
+      p_ratings: ratings,
+    });
+    if (error) dbError(error);
+    return { list: { ...list, ratings_updated_at: new Date().toISOString() }, updated: Number(data ?? 0) };
+  } catch (err) {
+    if (force) throw err instanceof HttpError ? err : new HttpError(502, "Couldn't get ratings from CubeCobra.");
+    console.warn("cube checklist: ratings refresh failed", err instanceof Error ? err.message : err);
+    return { list, updated: null };
+  }
+}
+
+/** Suggested upgrades for a checklist (see pairUpgrades in src/store/lib/cubeChecklist.ts). */
+export async function loadUpgrades(listIn: ListRow): Promise<UpgradesView> {
+  const { list } = await refreshRatings(listIn);
+  const [cardsRes, suggestions] = await Promise.all([
+    db().from("cube_checklist_cards").select(CARD_COLUMNS).eq("checklist_id", list.id).limit(5000),
+    loadSuggestions(list),
+  ]);
+  if (cardsRes.error) dbError(cardsRes.error);
+  const rows = (cardsRes.data ?? []) as CardRow[];
+  const cards = rows.map((r) => ({ ...toCard(r), manaValue: r.mana_value == null ? null : Number(r.mana_value) }));
+  const pool = suggestionPool(suggestions, new Set(cards.map((c) => cardKey(c.name))), asRule(list.rarity_rule));
+  return {
+    upgrades: pairUpgrades(cards, pool).map(({ cut, add }) => {
+      const { manaValue: _manaValue, ...card } = cut;
+      return { cut: card, add: suggestionOption(add) };
+    }),
+    ratedCount: cards.filter((c) => c.elo != null && (c.pickCount ?? 0) >= UPGRADE_RULES.minPicks).length,
+    poolSize: pool.length,
+    ratingsUpdatedAt: list.ratings_updated_at,
+  };
 }

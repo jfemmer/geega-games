@@ -29,6 +29,12 @@ export interface CubeCard {
   type: string | null;
   /** CubeCobra color category, e.g. "White", "Multicolored", "Lands" (null when unknown). */
   colorCategory: string | null;
+  /** CubeCobra draft rating (Elo from picks across all its drafts), when sent. */
+  elo?: number | null;
+  /** How many picks the rating rests on (0 = no data; the rating is then CubeCobra's default). */
+  pickCount?: number | null;
+  /** Mana value, when sent. */
+  cmc?: number | null;
 }
 
 export interface CubeList {
@@ -41,6 +47,10 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 }
 
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 /** One card entry from cubeJSON (shape varies across CubeCobra versions). */
 function cardFromJson(raw: unknown): CubeCard | null {
   if (!raw || typeof raw !== "object") return null;
@@ -50,10 +60,14 @@ function cardFromJson(raw: unknown): CubeCard | null {
     : {}) as Record<string, unknown>;
   const name = str(details.name) ?? str(c.name);
   if (!name) return null;
+  const elo = num(details.elo);
   return {
     name,
     type: str(c.type_line) ?? str(details.type),
     colorCategory: str(c.colorCategory) ?? str(details.colorcategory),
+    elo: elo == null ? null : Math.round(elo),
+    pickCount: num(details.pickCount),
+    cmc: num(c.cmc) ?? num(details.cmc),
   };
 }
 
@@ -95,6 +109,17 @@ async function get(url: string): Promise<Response> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Draft ratings for a cube's mainboard (cubeJSON only; the text list has
+ * none). Empty when CubeCobra sends no ratings.
+ */
+export async function fetchCubeRatings(cubeId: string): Promise<CubeCard[]> {
+  if (!CUBE_ID_RE.test(cubeId)) throw new HttpError(400, "Invalid cube id.");
+  const res = await get(`${BASE}/cube/api/cubeJSON/${encodeURIComponent(cubeId)}`);
+  if (!res.ok) throw new HttpError(502, `CubeCobra returned an error (${res.status}).`);
+  return parseCubeJson(await res.json()).cards.filter((c) => c.elo != null);
 }
 
 /** Fetch a cube's mainboard from CubeCobra. */

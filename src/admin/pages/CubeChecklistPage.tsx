@@ -3,7 +3,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { SectionCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { SelectField, TextField } from "../components/ui/Field";
+import { SelectField, TextArea, TextField } from "../components/ui/Field";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { TableSkeleton, ErrorState } from "../components/ui/States";
 import { CubeChecklistView } from "../components/cube/CubeChecklistView";
@@ -16,7 +16,9 @@ import {
   defaultRarityRule,
   type ChecklistAdminSummary,
   type RarityRule,
+  type SuggestionListSummary,
 } from "../../store/lib/cubeChecklist";
+import { timeAgo } from "../utils/format";
 import type { CubeChecklistCaller } from "../../store/lib/cubeChecklistApi";
 
 // TEMPORARY — Cube Checklist (staff side).
@@ -130,6 +132,7 @@ export function CubeChecklistPage() {
                 }}
               />
               <SelectedChecklist key={selected.id} list={selected} />
+              <SuggestionListEditor key={`suggestions:${selected.id}`} list={selected} onChanged={lists.reload} />
             </>
           )}
         </>
@@ -427,6 +430,160 @@ function CreateChecklist({
           )}
         </div>
       </form>
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * The suggestion list: cards staff want suggested as swaps, best first.
+ * Suggested upgrades pair them with the cube's lowest-rated cards, and they
+ * come first in each card's Better options.
+ */
+function SuggestionListEditor({ list, onChanged }: { list: ChecklistAdminSummary; onChanged: () => void }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState<string | null>(null);
+  const [summary, setSummary] = useState<SuggestionListSummary | null>(null);
+  const [busy, setBusy] = useState<"load" | "save" | "ratings" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setBusy("load");
+    setError(null);
+    try {
+      const r = await adminFetch<{ names: string[]; summary: SuggestionListSummary }>(ENDPOINT, {
+        method: "POST",
+        body: { action: "suggestions-get", id: list.id },
+        notify: false,
+      });
+      setText(r.names.join("\n"));
+      setSummary(r.summary);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't load the suggestion list.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function save() {
+    setBusy("save");
+    setError(null);
+    try {
+      const r = await adminFetch<{ summary: SuggestionListSummary }>(ENDPOINT, {
+        method: "POST",
+        body: { action: "suggestions-set", id: list.id, names: text ?? "" },
+      });
+      setSummary(r.summary);
+      toast.success(`Saved ${r.summary.saved} cards. ${r.summary.usable} can be suggested.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the suggestion list.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function refreshRatings() {
+    setBusy("ratings");
+    try {
+      await adminFetch(ENDPOINT, { method: "POST", body: { action: "refresh-ratings", id: list.id } });
+      toast.success("Ratings updated from CubeCobra.");
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't get ratings from CubeCobra.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const count = text == null ? 0 : text.split(/\r?\n/).filter((l) => l.trim()).length;
+
+  return (
+    <SectionCard
+      title="Suggestion list"
+      action={
+        <Button
+          size="sm"
+          variant="ghost"
+          iconRight={open ? "chevronDown" : "chevronRight"}
+          aria-expanded={open}
+          onClick={() => {
+            const next = !open;
+            setOpen(next);
+            if (next && text == null) void load();
+          }}
+        >
+          {open ? "Hide" : "Edit"}
+        </Button>
+      }
+    >
+      <p className="gg-card-meta">
+        Cards you'd like suggested as swaps, best first. They show up as <strong>Suggested upgrades</strong> for the
+        cube's lowest-rated cards, and first in each card's Better options. Only cards that aren't on the list and
+        fit the rarity rule ({RARITY_RULE_LABELS[list.rarityRule].toLowerCase()}) are suggested.{" "}
+        Ratings from CubeCobra {list.ratingsUpdatedAt ? `updated ${timeAgo(list.ratingsUpdatedAt)}` : "not fetched yet"}
+        {" · "}
+        <button
+          type="button"
+          className="gg-cubecheck__link"
+          disabled={busy === "ratings"}
+          onClick={() => void refreshRatings()}
+        >
+          {busy === "ratings" ? "Updating…" : "Update now"}
+        </button>
+      </p>
+      {open && (
+        <div className="gg-cubecheck__create gg-cubecheck__suggestions">
+          {text == null ? (
+            busy === "load" ? (
+              <TableSkeleton rows={3} cols={1} />
+            ) : (
+              error && <ErrorState message={error} onRetry={() => void load()} />
+            )
+          ) : (
+            <>
+              <TextArea
+                label={`Card names, one per line (${count})`}
+                hint="Paste a list in order of priority. Counts like “1x” and lines starting with # are ignored."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={12}
+                spellCheck={false}
+              />
+              {error && (
+                <p className="gg-field__error" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="gg-cubecheck__shareactions">
+                <Button variant="primary" loading={busy === "save"} onClick={() => void save()}>
+                  Save list
+                </Button>
+              </div>
+            </>
+          )}
+          {summary && (
+            <div className="gg-cubecheck__summary" role="status">
+              <p>
+                <strong>{summary.usable}</strong> of {summary.saved} can be suggested.{" "}
+                {summary.alreadyOnList > 0 && <>{summary.alreadyOnList} are already on the list. </>}
+              </p>
+              {summary.notAllowed.length > 0 && (
+                <p>
+                  Never printed {list.rarityRule === "common" ? "at common" : "at common or uncommon"} in paper (
+                  {summary.notAllowed.length}): {summary.notAllowed.join(", ")}
+                </p>
+              )}
+              {summary.notFound.length > 0 && (
+                <p>
+                  Not found on Scryfall — check the spelling ({summary.notFound.length}): {summary.notFound.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </SectionCard>
   );
 }

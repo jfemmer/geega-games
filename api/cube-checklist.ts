@@ -21,6 +21,7 @@ import { CHECKLIST_LIMITS } from "../src/store/lib/cubeChecklist.js";
 //   { token, action: "suggest", cardId }                 -> { options }
 //   { token, action: "search", query }                   -> { options }
 //   { token, action: "printings", name, page? }          -> { printings, hasMore }
+//   { token, action: "upgrades" }                        -> { upgradesView }  (low-rated cards + list swaps)
 //
 // "who" is the name the person typed on their phone, shown next to what they
 // found or swapped. It's a label, not an identity: anyone with the link can
@@ -38,6 +39,7 @@ const LIMITS: Record<string, number> = {
   suggest: 240,
   search: 400,
   printings: 400,
+  upgrades: 120,
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

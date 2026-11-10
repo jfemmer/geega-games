@@ -21,6 +21,8 @@ import {
   type ChecklistCard,
   type ChecklistView,
   type SwapOption,
+  type UpgradeSuggestion,
+  type UpgradesView,
 } from "../../../store/lib/cubeChecklist";
 import type { CubeChecklistCaller } from "../../../store/lib/cubeChecklistApi";
 
@@ -35,6 +37,7 @@ const REFRESH_MS = 8_000;
 /** Marking found (or not) takes a second tap within this long, so a stray tap does nothing. */
 const CONFIRM_MS = 4_000;
 const RECENT_COUNT = 5;
+const UPGRADES_SHOWN = 4;
 
 type View = "remaining" | "all" | "found" | "swapped";
 type SortKey = "color" | "name";
@@ -59,7 +62,28 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
   const [panel, setPanel] = useState<Panel>(null);
   // The card whose found box was tapped once and is waiting for the confirming tap.
   const [armedId, setArmedId] = useState<string | null>(null);
+  // Suggested upgrades (low-rated cards + a card from the suggestion list each).
+  const [upgrades, setUpgrades] = useState<UpgradesView | null>(null);
+  const [upgradesVersion, setUpgradesVersion] = useState(0);
+  const [showAllUpgrades, setShowAllUpgrades] = useState(false);
+  const [swappingId, setSwappingId] = useState<string | null>(null);
   const syncedAt = useRef<string | null>(null);
+
+  // Loaded once, and again after a swap (which changes what's suggested).
+  // Optional: if it fails the rest of the page works as before.
+  useEffect(() => {
+    let active = true;
+    call<{ upgradesView: UpgradesView }>({ action: "upgrades" })
+      .then((r) => {
+        if (active) setUpgrades(r.upgradesView);
+      })
+      .catch(() => {
+        /* suggestions are extra; stay hidden */
+      });
+    return () => {
+      active = false;
+    };
+  }, [call, upgradesVersion]);
 
   // An armed box goes back to normal if the second tap doesn't come.
   useEffect(() => {
@@ -219,10 +243,33 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
     try {
       const { card: saved } = await call<{ card: ChecklistCard }>({ action: "unswap", cardId: card.id });
       replaceCard(saved);
+      setUpgradesVersion((n) => n + 1);
       toast.success(`Put ${saved.name} back.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't undo that swap.");
     }
+  }
+
+  async function applyUpgrade(u: UpgradeSuggestion) {
+    setSwappingId(u.cut.id);
+    try {
+      const { card: saved } = await call<{ card: ChecklistCard }>({ action: "swap", cardId: u.cut.id, newName: u.add.name });
+      replaceCard(saved);
+      setUpgrades((prev) => (prev ? { ...prev, upgrades: prev.upgrades.filter((x) => x.cut.id !== u.cut.id) } : prev));
+      setUpgradesVersion((n) => n + 1);
+      toast.success(`Swapped ${u.cut.name} for ${saved.name}. Undo is on the card.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't make that swap.");
+    } finally {
+      setSwappingId(null);
+    }
+  }
+
+  /** Open the card's Swap panel (the list card is first in its Better options). */
+  function compareUpgrade(u: UpgradeSuggestion) {
+    setView("all");
+    setSearch(u.cut.name);
+    setPanel({ cardId: u.cut.id, kind: "swap" });
   }
 
   function onSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -293,6 +340,56 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                 >
                   Undo
                 </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {upgrades && upgrades.upgrades.length > 0 && (
+        <section className="gg-cubecheck__recent gg-cubecheck__upgrades" aria-label="Suggested upgrades">
+          <div className="gg-cubecheck__recenthead">
+            <h3 className="gg-cubecheck__panelhead">
+              Suggested upgrades
+              <span className="gg-cubecheck__hint">
+                Lowest-rated cards on CubeCobra, each with a card from your list that fills the same role
+              </span>
+            </h3>
+            {upgrades.upgrades.length > UPGRADES_SHOWN && (
+              <button type="button" className="gg-cubecheck__link" onClick={() => setShowAllUpgrades((v) => !v)}>
+                {showAllUpgrades ? "Show fewer" : `Show all ${upgrades.upgrades.length}`}
+              </button>
+            )}
+          </div>
+          <ul className="gg-cubecheck__recentlist">
+            {(showAllUpgrades ? upgrades.upgrades : upgrades.upgrades.slice(0, UPGRADES_SHOWN)).map((u) => (
+              <li key={u.cut.id} className="gg-cubecheck__upgrade">
+                <span className="gg-cubecheck__upgradepair">
+                  <span>
+                    <span className="gg-cubecheck__upgradeout">{u.cut.name}</span>
+                    <span className="gg-cubecheck__hint"> rating {u.cut.elo}</span>
+                  </span>
+                  <Icon name="chevronRight" size={14} className="gg-cubecheck__upgradearrow" />
+                  <span>
+                    <span className="gg-cubecheck__recentname">{u.add.name}</span>
+                    {u.add.listRank != null && <span className="gg-cubecheck__hint"> #{u.add.listRank} on your list</span>}
+                  </span>
+                </span>
+                <span className="gg-cubecheck__upgradeactions">
+                  <button type="button" className="gg-cubecheck__link" onClick={() => compareUpgrade(u)}>
+                    Compare
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={swappingId === u.cut.id}
+                    disabled={swappingId != null}
+                    aria-label={`Swap ${u.cut.name} for ${u.add.name}`}
+                    onClick={() => void applyUpgrade(u)}
+                  >
+                    Swap
+                  </Button>
+                </span>
               </li>
             ))}
           </ul>
@@ -427,6 +524,7 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                     onSwapped={(saved) => {
                       replaceCard(saved);
                       setPanel(null);
+                      setUpgradesVersion((n) => n + 1);
                       toast.success(`Swapped in ${saved.name}.`);
                     }}
                   />
@@ -461,6 +559,9 @@ function CompareTile({ option, label, current = false, action }: {
       <CardImage images={optionImages(option)} alt={option.name} size="lg" />
       <span className="gg-cubecheck__tilename">{option.name}</span>
       <span className="gg-cubecheck__tilemeta">{[option.manaCost, option.typeLine].filter(Boolean).join(" · ")}</span>
+      {option.listRank != null && (
+        <span className="gg-cubecheck__fromlist">From your list · #{option.listRank}</span>
+      )}
       <span className="gg-cubecheck__hint">
         {option.edhrecRank != null ? `#${option.edhrecRank.toLocaleString()} most played` : "Not ranked"}
       </span>
@@ -572,7 +673,8 @@ function SwapPanel({
         {showingSearch ? "Search results" : "Better options"}
         {!showingSearch && (
           <span className="gg-cubecheck__hint">
-            Similar cards (same colors, type and about the same cost), most played first
+            Cards from your list first, then similar cards (same colors, type and about the same cost), most played
+            first
           </span>
         )}
       </h3>

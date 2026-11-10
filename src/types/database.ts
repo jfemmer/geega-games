@@ -639,13 +639,16 @@ export type Database = {
         Row: {
           checklist_id: string
           color_category: string | null
+          elo: number | null
           found_at: string | null
           found_by: string | null
           id: string
+          mana_value: number | null
           name: string
           original_color_category: string | null
           original_name: string | null
           original_type_line: string | null
+          pick_count: number | null
           position: number
           swapped_at: string | null
           swapped_by: string | null
@@ -655,13 +658,16 @@ export type Database = {
         Insert: {
           checklist_id: string
           color_category?: string | null
+          elo?: number | null
           found_at?: string | null
           found_by?: string | null
           id?: string
+          mana_value?: number | null
           name: string
           original_color_category?: string | null
           original_name?: string | null
           original_type_line?: string | null
+          pick_count?: number | null
           position: number
           swapped_at?: string | null
           swapped_by?: string | null
@@ -671,13 +677,16 @@ export type Database = {
         Update: {
           checklist_id?: string
           color_category?: string | null
+          elo?: number | null
           found_at?: string | null
           found_by?: string | null
           id?: string
+          mana_value?: number | null
           name?: string
           original_color_category?: string | null
           original_name?: string | null
           original_type_line?: string | null
+          pick_count?: number | null
           position?: number
           swapped_at?: string | null
           swapped_by?: string | null
@@ -694,6 +703,62 @@ export type Database = {
           },
         ]
       }
+      cube_checklist_suggestions: {
+        Row: {
+          card_name: string | null
+          checklist_id: string
+          colors: string[]
+          edhrec_rank: number | null
+          image_normal: string | null
+          image_small: string | null
+          mana_cost: string | null
+          mana_value: number | null
+          name: string
+          paper_common: boolean
+          paper_uncommon: boolean
+          position: number
+          type_line: string | null
+        }
+        Insert: {
+          card_name?: string | null
+          checklist_id: string
+          colors?: string[]
+          edhrec_rank?: number | null
+          image_normal?: string | null
+          image_small?: string | null
+          mana_cost?: string | null
+          mana_value?: number | null
+          name: string
+          paper_common?: boolean
+          paper_uncommon?: boolean
+          position: number
+          type_line?: string | null
+        }
+        Update: {
+          card_name?: string | null
+          checklist_id?: string
+          colors?: string[]
+          edhrec_rank?: number | null
+          image_normal?: string | null
+          image_small?: string | null
+          mana_cost?: string | null
+          mana_value?: number | null
+          name?: string
+          paper_common?: boolean
+          paper_uncommon?: boolean
+          position?: number
+          type_line?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cube_checklist_suggestions_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "cube_checklists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cube_checklists: {
         Row: {
           created_at: string
@@ -702,6 +767,7 @@ export type Database = {
           id: string
           name: string
           rarity_rule: string
+          ratings_updated_at: string | null
           share_enabled: boolean
           share_token: string
           updated_at: string
@@ -713,6 +779,7 @@ export type Database = {
           id?: string
           name: string
           rarity_rule?: string
+          ratings_updated_at?: string | null
           share_enabled?: boolean
           share_token: string
           updated_at?: string
@@ -724,6 +791,7 @@ export type Database = {
           id?: string
           name?: string
           rarity_rule?: string
+          ratings_updated_at?: string | null
           share_enabled?: boolean
           share_token?: string
           updated_at?: string
@@ -5914,6 +5982,26 @@ export type Database = {
           set_code: string
           set_name: string
         }[]
+      }
+      cube_checklist_lookup_cards: {
+        Args: { p_names: string[] }
+        Returns: {
+          requested: string
+          card_name: string | null
+          type_line: string | null
+          colors: string[]
+          mana_value: number | null
+          mana_cost: string | null
+          image_small: string | null
+          image_normal: string | null
+          edhrec_rank: number | null
+          paper_common: boolean
+          paper_uncommon: boolean
+        }[]
+      }
+      cube_checklist_set_ratings: {
+        Args: { p_checklist_id: string; p_ratings: Json }
+        Returns: number
       }
       admin_mark_section_seen: {
         Args: { p_section: string }

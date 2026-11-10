@@ -1,6 +1,15 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeState, createFakeSupabase, fakeId, fakeResponse, type FakeState } from "./helpers/fakeSupabase";
-import { colorCategoryFor, defaultRarityRule, mainType, mergeCards } from "../src/store/lib/cubeChecklist";
+import {
+  colorCategoryFor,
+  defaultRarityRule,
+  mainType,
+  mergeCards,
+  pairUpgrades,
+  suggestionPool,
+  type ChecklistCard,
+  type SuggestionInfo,
+} from "../src/store/lib/cubeChecklist";
 
 // The cube checklist endpoints: the public share link (POST /api/cube-checklist)
 // and the staff side (/api/admin/cube-checklists). The database and Scryfall
@@ -19,7 +28,7 @@ const scry = vi.hoisted(() => ({
   searchCards: vi.fn(),
   searchPage: vi.fn(),
 }));
-const cube = vi.hoisted(() => ({ fetchCubeList: vi.fn() }));
+const cube = vi.hoisted(() => ({ fetchCubeList: vi.fn(), fetchCubeRatings: vi.fn() }));
 
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => createFakeSupabase(state) }));
 vi.mock("../api/_lib/scryfall.js", () => ({
@@ -29,6 +38,7 @@ vi.mock("../api/_lib/scryfall.js", () => ({
 vi.mock("../api/_lib/cubeCobra.js", async (orig) => ({
   ...(await orig<typeof import("../api/_lib/cubeCobra")>()),
   fetchCubeList: cube.fetchCubeList,
+  fetchCubeRatings: cube.fetchCubeRatings,
 }));
 
 const { default: share } = await import("../api/cube-checklist.ts");
@@ -55,7 +65,29 @@ function card(id: string, position: number, name: string, extra: Record<string, 
     swapped_at: null,
     found_by: null,
     found_at: null,
+    elo: null,
+    pick_count: null,
+    mana_value: null,
     updated_at: "2026-11-10T00:00:00.000Z",
+    ...extra,
+  };
+}
+
+function suggestion(position: number, name: string, extra: Record<string, unknown> = {}) {
+  return {
+    checklist_id: LIST,
+    position,
+    name,
+    card_name: name,
+    type_line: "Instant",
+    colors: ["U"],
+    mana_value: 2,
+    mana_cost: "{U}{U}",
+    image_small: null,
+    image_normal: null,
+    edhrec_rank: null,
+    paper_common: true,
+    paper_uncommon: true,
     ...extra,
   };
 }
@@ -111,8 +143,10 @@ beforeEach(() => {
       share_enabled: true,
       created_at: "2026-11-10T00:00:00.000Z",
       updated_at: "2026-11-10T00:00:00.000Z",
+      ratings_updated_at: new Date().toISOString(),
     },
   ];
+  state.tables.cube_checklist_suggestions = [];
   state.tables.cube_checklist_cards = [
     card(SKYFISHER, 0, "Kor Skyfisher", { color_category: "White" }),
     card(COUNTERSPELL, 1, "Counterspell", { type_line: "Instant", color_category: "Blue" }),
@@ -121,6 +155,7 @@ beforeEach(() => {
   scry.searchCards.mockReset();
   scry.searchPage.mockReset();
   cube.fetchCubeList.mockReset();
+  cube.fetchCubeRatings.mockReset();
 });
 
 describe("share link", () => {
@@ -257,6 +292,114 @@ describe("share link", () => {
   });
 });
 
+describe("suggestion list and upgrades", () => {
+  it("puts cards from the suggestion list first in Better options, with their place on the list", async () => {
+    state.tables.cube_checklist_suggestions = [
+      suggestion(0, "Kor Skyfisher", { type_line: "Creature — Kor Soldier", colors: ["W"] }), // on the list already
+      suggestion(1, "Memory Lapse"),
+      suggestion(2, "Daze", { mana_value: 4 }), // 2 more than Counterspell: still close enough here
+      suggestion(3, "Chainer's Edict", { colors: ["B"] }), // wrong color
+      suggestion(4, "Arcane Denial", { paper_common: false }), // never a common
+    ];
+    scry.searchCards
+      .mockResolvedValueOnce([scryCard("Counterspell")])
+      .mockResolvedValueOnce([scryCard("Memory Lapse"), scryCard("Mana Leak")]);
+    const { body } = await post(share, { token: TOKEN, action: "suggest", cardId: COUNTERSPELL });
+    expect(body.options.map((o: { name: string; listRank?: number }) => [o.name, o.listRank ?? null])).toEqual([
+      ["Memory Lapse", 2],
+      ["Daze", 3],
+      ["Mana Leak", null], // then the usual similar cards, without repeats
+    ]);
+  });
+
+  it("pairs the lowest-rated cards with list cards in the same role", async () => {
+    state.tables.cube_checklist_cards = [
+      card(SKYFISHER, 0, "Kor Skyfisher", { color_category: "White", type_line: "Creature — Kor Soldier", elo: 1500, pick_count: 9000, mana_value: 2 }),
+      card(COUNTERSPELL, 1, "Counterspell", { color_category: "Blue", type_line: "Instant", elo: 1450, pick_count: 9000, mana_value: 2 }),
+      card("22222222-2222-4222-8222-000000000003", 2, "Mist Raven", { color_category: "Blue", type_line: "Creature — Bird", elo: 1100, pick_count: 800, mana_value: 4 }),
+      card("22222222-2222-4222-8222-000000000004", 3, "Consider", { color_category: "Blue", type_line: "Instant", elo: 1050, pick_count: 900, mana_value: 1 }),
+    ];
+    state.tables.cube_checklist_suggestions = [
+      suggestion(0, "Memory Lapse"), // blue spell, 2 -> replaces Consider (1)
+      suggestion(1, "Man-o'-War", { type_line: "Creature — Jellyfish", mana_value: 3 }), // blue creature 3 -> Mist Raven (4)
+    ];
+    const { status, body } = await post(share, { token: TOKEN, action: "upgrades" });
+    expect(status).toBe(200);
+    expect(cube.fetchCubeRatings).not.toHaveBeenCalled(); // ratings are fresh
+    // Only the weakest quarter is considered: 4 rated cards -> just Consider.
+    expect(body.upgradesView.upgrades.map((u: { cut: { name: string }; add: { name: string } }) => [u.cut.name, u.add.name])).toEqual([
+      ["Consider", "Memory Lapse"],
+    ]);
+    expect(body.upgradesView).toMatchObject({ ratedCount: 4, poolSize: 2 });
+    expect(body.upgradesView.upgrades[0].add.listRank).toBe(1);
+  });
+
+  it("fetches CubeCobra ratings when they're a day old, and carries on if CubeCobra is down", async () => {
+    state.tables.cube_checklists[0].ratings_updated_at = "2026-01-01T00:00:00.000Z";
+    const setRatings = vi.fn(() => ({ data: 2, error: null }));
+    state.rpc.cube_checklist_set_ratings = setRatings;
+    cube.fetchCubeRatings.mockResolvedValueOnce([
+      { name: "Kor Skyfisher", type: null, colorCategory: null, elo: 1500, pickCount: 9000, cmc: 2 },
+      { name: "Ardenvale Tactician // Dizzying Swoop", type: null, colorCategory: null, elo: 1200, pickCount: 0, cmc: 3 },
+    ]);
+    expect((await post(share, { token: TOKEN, action: "upgrades" })).status).toBe(200);
+    expect(setRatings).toHaveBeenCalledWith({
+      p_checklist_id: LIST,
+      p_ratings: [
+        { key: "kor skyfisher", elo: 1500, pick_count: 9000, mana_value: 2 },
+        { key: "ardenvale tactician", elo: 1200, pick_count: 0, mana_value: 3 },
+      ],
+    });
+
+    cube.fetchCubeRatings.mockRejectedValueOnce(new Error("down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await post(share, { token: TOKEN, action: "upgrades" })).status).toBe(200);
+    warn.mockRestore();
+  });
+
+  it("lets staff save a pasted list and reports what can't be used", async () => {
+    state.rpc.cube_checklist_lookup_cards = (args) => ({
+      data: (args.p_names as string[]).flatMap((n) =>
+        n === "Not A Card"
+          ? [{ requested: n, card_name: null, colors: [], paper_common: false, paper_uncommon: false }]
+          : [
+              {
+                requested: n,
+                card_name: n === "lorien revealed" ? "Lórien Revealed" : n,
+                type_line: "Instant",
+                colors: ["U"],
+                mana_value: 2,
+                paper_common: n !== "Arcane Denial",
+                paper_uncommon: true,
+              },
+            ],
+      ),
+      error: null,
+    });
+    const pasted = "1 Memory Lapse\n2x Arcane Denial\nCounterspell\n# a comment\n\nNot A Card\nmemory lapse\n";
+    const { status, body } = await post(admin, { id: LIST, action: "suggestions-set", names: pasted }, STAFF);
+    expect(status).toBe(200);
+    expect(body.summary).toEqual({
+      saved: 4,
+      usable: 1,
+      alreadyOnList: 1,
+      notAllowed: ["Arcane Denial"],
+      notFound: ["Not A Card"],
+    });
+    expect(state.tables.cube_checklist_suggestions.map((r) => [r.position, r.name, r.card_name])).toEqual([
+      [0, "Memory Lapse", "Memory Lapse"],
+      [1, "Arcane Denial", "Arcane Denial"],
+      [2, "Counterspell", "Counterspell"],
+      [3, "Not A Card", null],
+    ]);
+    // Friends with the share link can't change it.
+    expect((await post(share, { token: TOKEN, action: "suggestions-set", names: "Ponder" })).status).toBe(400);
+
+    const got = await post(admin, { id: LIST, action: "suggestions-get" }, STAFF);
+    expect(got.body.names).toEqual(["Memory Lapse", "Arcane Denial", "Counterspell", "Not A Card"]);
+  });
+});
+
 describe("staff side", () => {
   it("needs a staff session", async () => {
     expect((await post(admin, { action: "get", id: LIST })).status).toBe(401);
@@ -314,6 +457,28 @@ describe("helpers", () => {
     expect(colorCategoryFor("Creature — Kor", ["W"])).toBe("White");
     expect(mainType("Artifact Creature — Golem")).toBe("Creature");
     expect(mainType("Instant // Sorcery")).toBe("Instant");
+  });
+
+  it("only calls a card weak with enough picks, and leaves swapped-in cards alone", () => {
+    const base = { originalName: null, swappedBy: null, swappedAt: null, foundBy: null, foundAt: null, updatedAt: "x", typeLine: "Instant", colorCategory: "Blue" };
+    const cards = [
+      { ...base, id: "1", position: 0, name: "New Card", elo: 900, pickCount: 3, manaValue: 2 }, // too few picks
+      { ...base, id: "2", position: 1, name: "Swapped In", elo: 950, pickCount: 500, manaValue: 2, originalName: "X", swappedAt: "x" },
+      { ...base, id: "3", position: 2, name: "Weak", elo: 1000, pickCount: 500, manaValue: 2 },
+      { ...base, id: "4", position: 3, name: "Fine", elo: 1300, pickCount: 500, manaValue: 2 },
+    ] as (ChecklistCard & { manaValue: number })[];
+    const pool: SuggestionInfo[] = [
+      { position: 0, name: "A", cardName: "A", typeLine: "Instant", colors: ["U"], manaValue: 2, manaCost: null, imageSmall: null, imageNormal: null, edhrecRank: null, paperCommon: true, paperUncommon: true },
+    ];
+    expect(pairUpgrades(cards, pool).map((p) => p.cut.name)).toEqual(["Weak"]);
+  });
+
+  it("builds the pool best first, allowed rarity only, one of each, nothing already on the list", () => {
+    const s = (position: number, name: string, paperCommon = true): SuggestionInfo => ({
+      position, name, cardName: name, typeLine: "Instant", colors: [], manaValue: 1, manaCost: null, imageSmall: null, imageNormal: null, edhrecRank: null, paperCommon, paperUncommon: true,
+    });
+    const pool = suggestionPool([s(2, "C"), s(0, "A"), s(1, "B", false), s(3, "a"), s(4, "On List")], new Set(["on list"]), "common");
+    expect(pool.map((p) => p.name)).toEqual(["A", "C"]);
   });
 
   it("merges refreshes by id without letting an older copy win", () => {

@@ -9,7 +9,10 @@ import {
   getListById,
   listSummaries,
   markFoundByName,
+  refreshRatings,
   runCardAction,
+  setSuggestions,
+  suggestionSummary,
   updateChecklist,
   type CardActionBody,
 } from "../_lib/cubeChecklist.js";
@@ -21,6 +24,9 @@ import {
 //   POST { action: "update", id, name?, shareEnabled?, rotateToken? } -> { checklist }
 //   POST { action: "delete", id }              -> {}
 //   POST { action: "import-found", id, names } -> { marked }  (this browser's old ticks)
+//   POST { action: "suggestions-get", id }     -> { names, summary }  (the suggestion list)
+//   POST { action: "suggestions-set", id, names } -> { summary }  (names: pasted text or array)
+//   POST { action: "refresh-ratings", id }     -> { updated }  (CubeCobra draft ratings, now)
 //   POST { id, action: get|found|swap|unswap|suggest|search|printings, ... }
 //        -> the same card actions as the share link, credited to the staff member.
 
@@ -79,6 +85,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "delete") {
       await deleteChecklist(list);
       return sendJson(res, 200, { ok: true });
+    }
+    if (action === "suggestions-get") {
+      return sendJson(res, 200, { ok: true, ...(await suggestionSummary(list)) });
+    }
+    if (action === "suggestions-set") {
+      return sendJson(res, 200, { ok: true, summary: await setSuggestions(list, body.names) });
+    }
+    if (action === "refresh-ratings") {
+      const { updated } = await refreshRatings(list, true);
+      return sendJson(res, 200, { ok: true, updated });
     }
     if (action === "import-found") {
       const marked = await markFoundByName(list, body.names, staffLabel(staff.email));

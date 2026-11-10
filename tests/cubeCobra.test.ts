@@ -7,7 +7,10 @@ describe("CubeCobra parsing", () => {
       name: "The Pauper Cube",
       cards: {
         mainboard: [
-          { cardID: "a", details: { name: "Kor Skyfisher", type: "Creature — Kor Soldier", colorcategory: "White" } },
+          {
+            cardID: "a",
+            details: { name: "Kor Skyfisher", type: "Creature — Kor Soldier", colorcategory: "White", elo: 1432.6, pickCount: 9100, cmc: 2 },
+          },
           { cardID: "b", type_line: "Instant", colorCategory: "Blue", details: { name: "Counterspell", type: "x" } },
           { cardID: "c", details: {} },
         ],
@@ -16,14 +19,14 @@ describe("CubeCobra parsing", () => {
     });
     expect(parsed.name).toBe("The Pauper Cube");
     expect(parsed.cards).toEqual([
-      { name: "Kor Skyfisher", type: "Creature — Kor Soldier", colorCategory: "White" },
-      { name: "Counterspell", type: "Instant", colorCategory: "Blue" },
+      { name: "Kor Skyfisher", type: "Creature — Kor Soldier", colorCategory: "White", elo: 1433, pickCount: 9100, cmc: 2 },
+      { name: "Counterspell", type: "Instant", colorCategory: "Blue", elo: null, pickCount: null, cmc: null },
     ]);
   });
 
   it("reads the older flat cards array", () => {
     const parsed = parseCubeJson({ cards: [{ details: { name: "Lightning Bolt" } }] });
-    expect(parsed.cards).toEqual([{ name: "Lightning Bolt", type: null, colorCategory: null }]);
+    expect(parsed.cards).toEqual([{ name: "Lightning Bolt", type: null, colorCategory: null, elo: null, pickCount: null, cmc: null }]);
   });
 
   it("tolerates junk", () => {

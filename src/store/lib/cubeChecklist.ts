@@ -23,6 +23,9 @@ export interface ChecklistCard {
   swappedAt: string | null;
   foundBy: string | null;
   foundAt: string | null;
+  /** CubeCobra draft rating, and how many picks it rests on (null = not rated). */
+  elo: number | null;
+  pickCount: number | null;
   updatedAt: string;
 }
 
@@ -46,6 +49,8 @@ export interface ChecklistAdminSummary extends ChecklistSummary {
   createdAt: string;
   cardCount: number;
   foundCount: number;
+  /** When CubeCobra's draft ratings were last fetched. */
+  ratingsUpdatedAt: string | null;
 }
 
 /** A card offered as a swap: a similar, popular card, or a search result. */
@@ -57,6 +62,51 @@ export interface SwapOption {
   imageNormal: string | null;
   /** EDHREC popularity rank (lower = more played), when Scryfall has one. */
   edhrecRank: number | null;
+  /** Its place on the checklist's suggestion list (1 = top), when it came from there. */
+  listRank?: number | null;
+}
+
+/** A card on the suggestion list, as looked up in the local Scryfall data. */
+export interface SuggestionInfo {
+  position: number;
+  /** As typed. */
+  name: string;
+  /** Scryfall's name; null when nothing matched. */
+  cardName: string | null;
+  typeLine: string | null;
+  colors: string[];
+  manaValue: number | null;
+  manaCost: string | null;
+  imageSmall: string | null;
+  imageNormal: string | null;
+  edhrecRank: number | null;
+  paperCommon: boolean;
+  paperUncommon: boolean;
+}
+
+/** One suggested upgrade: cut a low-rated card, swap in a card from the list. */
+export interface UpgradeSuggestion {
+  cut: ChecklistCard;
+  add: SwapOption;
+}
+
+export interface UpgradesView {
+  upgrades: UpgradeSuggestion[];
+  /** Cube cards with enough draft data to be judged. */
+  ratedCount: number;
+  /** Suggestion-list cards that could go in (allowed rarity, not on the list). */
+  poolSize: number;
+  ratingsUpdatedAt: string | null;
+}
+
+/** What saving a suggestion list found. */
+export interface SuggestionListSummary {
+  saved: number;
+  /** Could go in now: allowed rarity and not already on the list. */
+  usable: number;
+  alreadyOnList: number;
+  notAllowed: string[];
+  notFound: string[];
 }
 
 export const CUBE_CHECKLIST_PATH = "/cube-checklist";
@@ -65,6 +115,24 @@ export const CHECKLIST_LIMITS = {
   personName: 40,
   cardName: 200,
   search: 80,
+  suggestionList: 1000,
+} as const;
+
+/**
+ * How suggested upgrades are picked (see pairUpgrades):
+ *  - minPicks: a rating needs at least this many CubeCobra picks to call a
+ *    card weak (new cards sit at CubeCobra's default 1200 with no picks).
+ *  - cutShare: only the lowest-rated share of the rated cards is considered.
+ *  - maxManaGap: the replacement costs within this much of the card it replaces.
+ */
+export const UPGRADE_RULES = {
+  minPicks: 50,
+  cutShare: 0.25,
+  maxUpgrades: 40,
+  maxManaGap: 1,
+  /** In Better options, list cards may differ a little more in cost. */
+  optionManaGap: 2,
+  listOptions: 4,
 } as const;
 
 /** Pauper cubes may only swap in commons; other cubes allow uncommons too. */
@@ -154,6 +222,102 @@ const MAIN_TYPES = [
 export function mainType(typeLine: string | null): string | null {
   const front = (typeLine ?? "").split("//")[0];
   return MAIN_TYPES.find((t) => new RegExp(`\\b${t}\\b`).test(front)) ?? null;
+}
+
+/** Can this suggestion go in under the rarity rule? */
+export function allowedByRule(s: Pick<SuggestionInfo, "paperCommon" | "paperUncommon">, rule: RarityRule): boolean {
+  return rule === "common" ? s.paperCommon : s.paperUncommon;
+}
+
+/** "Same role" for swaps: color (hybrid counts as multicolored) and kind of card. */
+export function swapGroup(colorCategory: string | null, typeLine: string | null): string {
+  const color = colorCategory === "Hybrid" ? "Multicolored" : (colorCategory ?? "?");
+  const type = mainType(typeLine);
+  const kind = type === "Instant" || type === "Sorcery" ? "Spell" : (type ?? "?");
+  return `${color}|${kind}`;
+}
+
+export function suggestionGroup(s: Pick<SuggestionInfo, "typeLine" | "colors">): string {
+  return swapGroup(colorCategoryFor(s.typeLine, s.colors), s.typeLine);
+}
+
+/** Suggestion-list cards that could go in now, best first, one of each. */
+export function suggestionPool(
+  suggestions: SuggestionInfo[],
+  onList: Set<string>,
+  rule: RarityRule,
+): SuggestionInfo[] {
+  const seen = new Set<string>();
+  return [...suggestions]
+    .sort((a, b) => a.position - b.position)
+    .filter((s) => {
+      if (!s.cardName || !allowedByRule(s, rule)) return false;
+      const key = cardKey(s.cardName);
+      if (onList.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+export function suggestionOption(s: SuggestionInfo): SwapOption {
+  return {
+    name: s.cardName ?? s.name,
+    typeLine: s.typeLine,
+    manaCost: s.manaCost,
+    imageSmall: s.imageSmall,
+    imageNormal: s.imageNormal,
+    edhrecRank: s.edhrecRank,
+    listRank: s.position + 1,
+  };
+}
+
+function manaGap(a: number | null, b: number | null): number {
+  return a == null || b == null ? 0 : Math.abs(a - b);
+}
+
+/**
+ * Suggested upgrades: the lowest-rated cards on the checklist, each paired
+ * with the highest card on the suggestion list that fills the same role
+ * (same color, same kind of card, about the same mana value).
+ *
+ * Only cards whose rating rests on enough picks are judged, cards someone
+ * already swapped in are left alone, and each list card is offered once.
+ */
+export function pairUpgrades(
+  cards: (ChecklistCard & { manaValue?: number | null })[],
+  pool: SuggestionInfo[],
+): { cut: ChecklistCard & { manaValue?: number | null }; add: SuggestionInfo }[] {
+  const rated = cards
+    .filter((c) => c.elo != null && (c.pickCount ?? 0) >= UPGRADE_RULES.minPicks && !c.originalName)
+    .sort((a, b) => (a.elo ?? 0) - (b.elo ?? 0) || a.position - b.position);
+  const weakest = rated.slice(0, Math.ceil(rated.length * UPGRADE_RULES.cutShare));
+  const used = new Set<number>();
+  const pairs: { cut: ChecklistCard & { manaValue?: number | null }; add: SuggestionInfo }[] = [];
+  for (const cut of weakest) {
+    const group = swapGroup(cut.colorCategory, cut.typeLine);
+    const add = pool.find(
+      (s) =>
+        !used.has(s.position) &&
+        suggestionGroup(s) === group &&
+        manaGap(s.manaValue, cut.manaValue ?? null) <= UPGRADE_RULES.maxManaGap,
+    );
+    if (!add) continue;
+    used.add(add.position);
+    pairs.push({ cut, add });
+    if (pairs.length >= UPGRADE_RULES.maxUpgrades) break;
+  }
+  return pairs;
+}
+
+/** List cards that fill the same role as a card, for Better options. */
+export function listOptionsFor(
+  card: { colorCategory: string | null; typeLine: string | null; manaValue: number | null },
+  pool: SuggestionInfo[],
+): SuggestionInfo[] {
+  const group = swapGroup(card.colorCategory, card.typeLine);
+  return pool
+    .filter((s) => suggestionGroup(s) === group && manaGap(s.manaValue, card.manaValue) <= UPGRADE_RULES.optionManaGap)
+    .slice(0, UPGRADE_RULES.listOptions);
 }
 
 /** Merge a refresh (only changed cards) into the list, by id. */
