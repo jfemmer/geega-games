@@ -28,6 +28,7 @@ import { StorewideSalePage } from "./pages/StorewideSalePage";
 import { VacationModePage } from "./pages/VacationModePage";
 import { YardSaleModePage } from "./pages/YardSaleModePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { CubeChecklistPage } from "./pages/CubeChecklistPage";
 import "../foilShimmer.css";
 import "./admin.css";
 
@@ -136,6 +137,8 @@ function AdminDashboard() {
         return <VacationModePage />;
       case "audit-log":
         return <AuditLogPage />;
+      case "cube-checklist":
+        return <CubeChecklistPage />;
       case "overview":
       default:
         return <OverviewPage onNavigate={navigate} />;

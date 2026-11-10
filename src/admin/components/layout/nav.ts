@@ -111,6 +111,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: `${ADMIN_BASE}/vacation`,
   },
   {
+    key: "cube-checklist",
+    label: "Cube Checklist",
+    icon: "check",
+    path: `${ADMIN_BASE}/cube-checklist`,
+  },
+  {
     key: "audit-log",
     label: "Audit Log",
     icon: "clock",
@@ -141,4 +147,5 @@ export const SECTION_TITLES: Record<string, string> = {
   "yard-sale": "Yard Sale Mode",
   vacation: "Vacation Mode",
   "audit-log": "Audit Log",
+  "cube-checklist": "Cube Checklist",
 };
