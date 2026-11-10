@@ -51,8 +51,8 @@ export interface CardImageProps {
   /** Optional additional faces for DFC/transform face-switching in the preview. */
   faces?: CardFace[] | null;
   alt: string;
-  /** Thumbnail size preset. */
-  size?: "xs" | "sm" | "md";
+  /** Thumbnail size preset ("lg" is for side-by-side card comparison). */
+  size?: "xs" | "sm" | "md" | "lg";
   /** Reference art (Scryfall) vs a physical scan. Affects the preview label. */
   kind?: CardImageKind;
   /** Overrides the small preview frame label. */
@@ -73,6 +73,7 @@ const THUMB_DIMS: Record<NonNullable<CardImageProps["size"]>, { w: number; h: nu
   xs: { w: 30, h: 42 },
   sm: { w: 44, h: 61 },
   md: { w: 64, h: 89 },
+  lg: { w: 146, h: 204 },
 };
 
 function isTouchDevice(): boolean {
@@ -97,10 +98,10 @@ export function CardImage({
 }: CardImageProps) {
   const dims = THUMB_DIMS[size];
 
-  // Ordered candidate URLs for the thumbnail, degrading through sizes. md uses a
-  // "normal" source (sharper at 64px); xs/sm use "small" to save bandwidth.
+  // Ordered candidate URLs for the thumbnail, degrading through sizes. md/lg use
+  // a "normal" source (sharper); xs/sm use "small" to save bandwidth.
   const thumbCandidates = useMemo(
-    () => imageCandidates(images, size === "md" ? "normal" : "small"),
+    () => imageCandidates(images, size === "md" || size === "lg" ? "normal" : "small"),
     [images, size],
   );
   // Which candidate index we're currently attempting for the thumbnail.

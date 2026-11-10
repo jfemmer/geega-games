@@ -197,6 +197,8 @@ describe("share link", () => {
       "edhrec",
     ]);
     expect(body.options.map((o: { name: string }) => o.name)).toEqual(["Mana Leak", "Exclude"]);
+    // The card on the list comes back too, so it can be shown beside the options.
+    expect(body.current).toMatchObject({ name: "Counterspell", manaCost: "{U}{U}", typeLine: "Instant", edhrecRank: 10 });
     expect(body.options[0]).toMatchObject({ manaCost: "{U}{U}", edhrecRank: 10, imageSmall: "https://img/Mana Leak.jpg" });
   });
 

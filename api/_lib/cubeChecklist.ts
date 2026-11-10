@@ -278,7 +278,7 @@ export type CardActionResult =
   | { view: ChecklistView }
   | { card: ChecklistCard; alreadyFound?: boolean }
   | { cards: ChecklistCard[] }
-  | { options: SwapOption[] }
+  | { options: SwapOption[]; current?: SwapOption | null }
   | { printings: CardPrinting[]; hasMore: boolean };
 
 /** Actions that change the list need a name to credit. */
@@ -376,10 +376,12 @@ export async function runCardAction(
       const card = await getCard(list, body.cardId);
       // Look the card up without the rarity rule: the cube's own card may not be one.
       const [sc] = (await scryfallSearchCards(`${exactNameTerm(card.name)} game:paper`, "name")) as ScryfallCardExtra[];
-      if (!sc) return { options: [] };
+      if (!sc) return { current: null, options: [] };
       const names = await listNames(list);
       const similar = (await scryfallSearchCards(similarCardsQuery(sc, rule), "edhrec")) as ScryfallCardExtra[];
       return {
+        // The card on the list now, so people can compare it with the options.
+        current: toOption(sc),
         options: similar
           .filter((c) => !names.has(normalizeName(c.name)))
           .slice(0, SUGGESTION_COUNT)

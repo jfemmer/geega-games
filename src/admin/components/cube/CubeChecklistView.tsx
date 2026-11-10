@@ -31,6 +31,9 @@ import type { CubeChecklistCaller } from "../../../store/lib/cubeChecklistApi";
 // it asks for cards changed since the last refresh and merges them in.
 
 const REFRESH_MS = 8_000;
+/** Marking found (or not) takes a second tap within this long, so a stray tap does nothing. */
+const CONFIRM_MS = 4_000;
+const RECENT_COUNT = 5;
 
 type View = "remaining" | "all" | "found" | "swapped";
 type SortKey = "color" | "name";
@@ -53,7 +56,16 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
   const [view, setView] = useState<View>("remaining");
   const [sort, setSort] = useState<SortKey>("color");
   const [panel, setPanel] = useState<Panel>(null);
+  // The card whose found box was tapped once and is waiting for the confirming tap.
+  const [armedId, setArmedId] = useState<string | null>(null);
   const syncedAt = useRef<string | null>(null);
+
+  // An armed box goes back to normal if the second tap doesn't come.
+  useEffect(() => {
+    if (!armedId) return;
+    const t = window.setTimeout(() => setArmedId(null), CONFIRM_MS);
+    return () => window.clearTimeout(t);
+  }, [armedId]);
 
   // Put in a card exactly as given: the server's answer to our own action, or
   // our optimistic guess. (Background refreshes go through mergeCards, which
@@ -112,16 +124,28 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
     };
   }, [call, attempt]);
 
+  // The Found tab lists the most recently found first.
+  const byRecent = view === "found";
   const cards = useMemo(() => {
     const all = list?.cards ?? [];
     return [...all].sort((a, b) => {
+      if (byRecent) return (b.foundAt ?? "").localeCompare(a.foundAt ?? "") || a.name.localeCompare(b.name);
       if (sort === "color") {
         const d = colorRank(a.colorCategory) - colorRank(b.colorCategory);
         if (d !== 0) return d;
       }
       return a.name.localeCompare(b.name);
     });
-  }, [list, sort]);
+  }, [list, sort, byRecent]);
+
+  const recent = useMemo(
+    () =>
+      (list?.cards ?? [])
+        .filter((c) => c.foundAt)
+        .sort((a, b) => (b.foundAt ?? "").localeCompare(a.foundAt ?? ""))
+        .slice(0, RECENT_COUNT),
+    [list],
+  );
 
   const counts = useMemo(() => {
     let found = 0;
@@ -152,6 +176,16 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
       );
     });
   }, [cards, search, view]);
+
+  /** First tap arms the box; a second tap on the same box within CONFIRM_MS does it. */
+  function tapFound(card: ChecklistCard) {
+    if (armedId !== card.id) {
+      setArmedId(card.id);
+      return;
+    }
+    setArmedId(null);
+    void setFound(card, card.foundAt == null);
+  }
 
   async function setFound(card: ChecklistCard, found: boolean) {
     // Optimistic: tick it now, put the server's copy in when it answers. The
@@ -187,11 +221,12 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
   }
 
   function onSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    // Sorting a stack: type a name, Enter marks the one match found.
+    // Sorting a stack: type a name, then Enter twice marks the one match found
+    // (the first Enter arms its box, like a first tap).
     if (e.key === "Enter" && visible.length === 1 && !visible[0].foundAt) {
       e.preventDefault();
-      void setFound(visible[0], true);
-      setSearch("");
+      if (armedId === visible[0].id) setSearch("");
+      tapFound(visible[0]);
     }
   }
 
@@ -224,10 +259,45 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
       )}
       {identity && <div className="gg-cubecheck__identity">{identity}</div>}
 
+      {recent.length > 0 && (
+        <section className="gg-cubecheck__recent" aria-label="Recently found">
+          <div className="gg-cubecheck__recenthead">
+            <h3 className="gg-cubecheck__panelhead">Recently found</h3>
+            {view !== "found" && (
+              <button type="button" className="gg-cubecheck__link" onClick={() => setView("found")}>
+                See all {counts.found}
+              </button>
+            )}
+          </div>
+          <ul className="gg-cubecheck__recentlist">
+            {recent.map((card) => (
+              <li key={card.id} className="gg-cubecheck__recentitem">
+                <Icon name="check" size={14} className="gg-cubecheck__recentcheck" />
+                <span className="gg-cubecheck__recentname">{card.name}</span>
+                <span className="gg-cubecheck__hint">
+                  {card.foundBy} · {timeAgo(card.foundAt)}
+                </span>
+                <button
+                  type="button"
+                  className="gg-cubecheck__link"
+                  aria-label={`Undo: put ${card.name} back on the list to find`}
+                  onClick={() => {
+                    void setFound(card, false);
+                    toast.info(`${card.name} is back on the list to find.`);
+                  }}
+                >
+                  Undo
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="gg-cubecheck__toolbar">
         <SearchInput
           label="Search cards"
-          placeholder="Search by name, type, or who found it… (Enter marks a single match found)"
+          placeholder="Search by name, type, or who found it… (Enter twice marks a single match found)"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={onSearchKeyDown}
@@ -235,7 +305,7 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
         />
         <div className="gg-cubecheck__controls">
           <Tabs items={tabs} active={view} onChange={(k) => setView(k as View)} ariaLabel="Filter cards" />
-          {hasColorInfo && (
+          {hasColorInfo && !byRecent && (
             <div className="gg-select-wrap">
               <select
                 className="gg-input gg-select gg-cubecheck__sort"
@@ -269,7 +339,12 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
           {visible.map((card, i) => {
             const prev = visible[i - 1];
             const showGroup =
-              sort === "color" && hasColorInfo && (!prev || prev.colorCategory !== card.colorCategory);
+              !byRecent &&
+              sort === "color" &&
+              hasColorInfo &&
+              (!prev || prev.colorCategory !== card.colorCategory);
+            const armed = armedId === card.id;
+            const found = card.foundAt != null;
             const open = panel?.cardId === card.id ? panel.kind : null;
             const toggle = (kind: "printings" | "swap") =>
               setPanel(open === kind ? null : { cardId: card.id, kind });
@@ -277,14 +352,30 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
               <li key={card.id} className="gg-cubecheck__item">
                 {showGroup && <div className="gg-cubecheck__group">{card.colorCategory ?? "Other"}</div>}
                 <div className={`gg-cubecheck__row ${card.foundAt ? "is-crossed" : ""}`}>
-                  <label className="gg-cubecheck__check">
-                    <input
-                      type="checkbox"
-                      checked={card.foundAt != null}
-                      onChange={(e) => void setFound(card, e.target.checked)}
-                    />
+                  <div className="gg-cubecheck__check">
+                    {/* Only this box marks a card, and it takes two taps (see tapFound). */}
+                    <button
+                      type="button"
+                      className={`gg-cubecheck__toggle ${found ? "is-found" : ""} ${armed ? "is-armed" : ""}`}
+                      aria-pressed={found}
+                      aria-label={
+                        armed
+                          ? `Tap again to ${found ? "unmark" : "mark"} ${card.name} ${found ? "" : "found"}`.trim()
+                          : found
+                            ? `${card.name} is found. Tap twice to unmark`
+                            : `Mark ${card.name} found (tap twice)`
+                      }
+                      onClick={() => tapFound(card)}
+                    >
+                      {(found || armed) && <Icon name={found && armed ? "close" : "check"} size={16} />}
+                    </button>
                     <span className="gg-cubecheck__text">
                       <span className="gg-cubecheck__name">{card.name}</span>
+                      {armed && (
+                        <span className="gg-cubecheck__confirmhint" role="status">
+                          Tap again to {found ? "unmark" : "confirm"}
+                        </span>
+                      )}
                       {card.typeLine && <span className="gg-cubecheck__type">{card.typeLine}</span>}
                       {card.foundBy && (
                         <span className="gg-cubecheck__who">
@@ -293,7 +384,7 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                         </span>
                       )}
                     </span>
-                  </label>
+                  </div>
                   <div className="gg-cubecheck__actions">
                     <Button size="sm" variant="ghost" aria-expanded={open === "swap"} onClick={() => toggle("swap")}>
                       Swap
@@ -351,6 +442,27 @@ function optionImages(o: SwapOption): CardImageUris {
   return { small: o.imageSmall, normal: o.imageNormal, large: o.imageNormal, png: null, artCrop: null };
 }
 
+/** One card in the comparison strip: picture, cost and type, and how widely it's played. */
+function CompareTile({ option, label, current = false, action }: {
+  option: SwapOption;
+  label?: string;
+  current?: boolean;
+  action?: ReactNode;
+}) {
+  return (
+    <li className={`gg-cubecheck__tile ${current ? "gg-cubecheck__tile--current" : ""}`}>
+      {label && <span className="gg-cubecheck__tilelabel">{label}</span>}
+      <CardImage images={optionImages(option)} alt={option.name} size="lg" />
+      <span className="gg-cubecheck__tilename">{option.name}</span>
+      <span className="gg-cubecheck__tilemeta">{[option.manaCost, option.typeLine].filter(Boolean).join(" · ")}</span>
+      <span className="gg-cubecheck__hint">
+        {option.edhrecRank != null ? `#${option.edhrecRank.toLocaleString()} most played` : "Not ranked"}
+      </span>
+      {action}
+    </li>
+  );
+}
+
 function SwapPanel({
   call,
   card,
@@ -363,6 +475,8 @@ function SwapPanel({
   onSwapped: (card: ChecklistCard) => void;
 }) {
   const [suggestions, setSuggestions] = useState<SwapOption[] | null>(null);
+  // The card on the list now, shown pinned beside the options to compare.
+  const [current, setCurrent] = useState<SwapOption | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SwapOption[] | null>(null);
@@ -372,9 +486,11 @@ function SwapPanel({
 
   useEffect(() => {
     let active = true;
-    call<{ options: SwapOption[] }>({ action: "suggest", cardId: card.id })
+    call<{ options: SwapOption[]; current?: SwapOption | null }>({ action: "suggest", cardId: card.id })
       .then((r) => {
-        if (active) setSuggestions(r.options);
+        if (!active) return;
+        setSuggestions(r.options);
+        setCurrent(r.current ?? null);
       })
       .catch((err: unknown) => {
         if (active) setSuggestError(err instanceof Error ? err.message : "Couldn't load suggestions.");
@@ -453,35 +569,52 @@ function SwapPanel({
           {error}
         </p>
       )}
-      {!showingSearch && suggestError ? (
-        <p className="gg-card-meta">{suggestError}</p>
-      ) : options == null || (showingSearch && searching && results == null) ? (
-        <Spinner label="Loading cards" />
-      ) : options.length === 0 ? (
-        <p className="gg-card-meta">
-          {showingSearch ? "No allowed cards match that name." : "No similar cards found. Try searching instead."}
-        </p>
-      ) : (
-        <ul className="gg-cubecheck__plist">
-          {options.map((o) => (
-            <li key={o.name} className="gg-cubecheck__printing">
-              <CardImage images={optionImages(o)} alt={o.name} size="sm" />
-              <div className="gg-cubecheck__pinfo">
-                <span className="gg-cubecheck__pset">{o.name}</span>
-                <span className="gg-cubecheck__pmeta">
-                  {[o.manaCost, o.typeLine].filter(Boolean).join(" · ")}
-                </span>
-                {o.edhrecRank != null && (
-                  <span className="gg-cubecheck__hint">#{o.edhrecRank.toLocaleString()} most played</span>
-                )}
-              </div>
-              <Button size="sm" variant="secondary" loading={busy === o.name} disabled={busy != null} onClick={() => void swapIn(o.name)}>
-                Swap in
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* The card on the list stays pinned on the left while the options scroll past it. */}
+      <ul className="gg-cubecheck__compare" aria-label={`${card.name} compared with ${showingSearch ? "search results" : "better options"}`}>
+        <CompareTile
+          option={
+            current ?? {
+              name: card.name,
+              typeLine: card.typeLine,
+              manaCost: null,
+              imageSmall: null,
+              imageNormal: null,
+              edhrecRank: null,
+            }
+          }
+          label="On the list now"
+          current
+        />
+        {!showingSearch && suggestError ? (
+          <li className="gg-cubecheck__tilenote">{suggestError}</li>
+        ) : options == null || (showingSearch && searching && results == null) ? (
+          <li className="gg-cubecheck__tilenote">
+            <Spinner label="Loading cards" />
+          </li>
+        ) : options.length === 0 ? (
+          <li className="gg-cubecheck__tilenote">
+            {showingSearch ? "No allowed cards match that name." : "No similar cards found. Try searching instead."}
+          </li>
+        ) : (
+          options.map((o) => (
+            <CompareTile
+              key={o.name}
+              option={o}
+              action={
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={busy === o.name}
+                  disabled={busy != null}
+                  onClick={() => void swapIn(o.name)}
+                >
+                  Swap in
+                </Button>
+              }
+            />
+          ))
+        )}
+      </ul>
     </div>
   );
 }

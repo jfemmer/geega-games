@@ -73,24 +73,91 @@ describe("shared checklist view", () => {
     return call;
   }
 
-  it("marks cards found and shows who found them", async () => {
+  it("takes two taps on the box to mark a card found, and shows who found it", async () => {
     const user = userEvent.setup();
     const call = setup({
       found: (b) => ({ card: c(String(b.cardId), 1, "Counterspell", { foundBy: "Sam", foundAt: T0, updatedAt: "2026-11-10T00:01:00.000Z" }) }),
     });
     await screen.findByText("Counterspell");
     await user.click(screen.getByRole("tab", { name: /^All/ }));
-    await user.click(screen.getByLabelText(/Counterspell/));
+
+    // Tapping the name does nothing any more; only the box marks a card.
+    await user.click(screen.getByText("Counterspell"));
+    // One tap on the box only asks for confirmation.
+    await user.click(screen.getByRole("button", { name: "Mark Counterspell found (tap twice)" }));
+    expect(call).not.toHaveBeenCalledWith(expect.objectContaining({ action: "found" }));
+    expect(screen.getByText("Tap again to confirm")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Tap again to mark Counterspell found" }));
     expect(call).toHaveBeenCalledWith({ action: "found", cardId: "b", found: true });
     expect(await screen.findByText(/Found by Sam/)).toBeTruthy();
     expect(screen.getByText("1 of 3 found (33%)")).toBeTruthy();
   });
 
-  it("Enter in search marks the single match found", async () => {
+  it("forgets a single tap after a few seconds", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const call = setup();
+    await screen.findByText("Ponder");
+    await user.click(screen.getByRole("button", { name: "Mark Ponder found (tap twice)" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_500);
+    });
+    await user.click(screen.getByRole("button", { name: "Mark Ponder found (tap twice)" }));
+    expect(call).not.toHaveBeenCalledWith(expect.objectContaining({ action: "found" }));
+  });
+
+  it("takes two taps to unmark a found card too", async () => {
+    const user = userEvent.setup();
+    const call = setup({
+      get: () => ({ view: { ...VIEW, cards: [c("d", 2, "Ponder", { foundBy: "Alex", foundAt: T0 })] } }),
+      found: () => ({ card: c("d", 2, "Ponder", { updatedAt: "2026-11-10T00:05:00.000Z" }) }),
+    });
+    await screen.findByText("Recently found");
+    await user.click(screen.getByRole("tab", { name: /^All/ }));
+    await user.click(screen.getByRole("button", { name: "Ponder is found. Tap twice to unmark" }));
+    expect(screen.getByText("Tap again to unmark")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Tap again to unmark Ponder" }));
+    expect(call).toHaveBeenCalledWith({ action: "found", cardId: "d", found: false });
+  });
+
+  it("shows the most recently found cards, newest first, with undo", async () => {
+    const user = userEvent.setup();
+    const call = setup({
+      get: () => ({
+        view: {
+          ...VIEW,
+          cards: [
+            c("a", 0, "Kor Skyfisher", { foundBy: "Sam", foundAt: "2026-11-10T00:01:00.000Z" }),
+            c("b", 1, "Counterspell", { foundBy: "Alex", foundAt: "2026-11-10T00:03:00.000Z" }),
+            c("d", 2, "Ponder"),
+          ],
+        },
+      }),
+      found: () => ({ card: c("b", 1, "Counterspell", { updatedAt: "2026-11-10T00:05:00.000Z" }) }),
+    });
+    const recent = within((await screen.findByText("Recently found")).closest("section")!);
+    expect(recent.getAllByRole("listitem").map((li) => li.querySelector(".gg-cubecheck__recentname")?.textContent)).toEqual([
+      "Counterspell",
+      "Kor Skyfisher",
+    ]);
+    expect(recent.getByText(/Alex ·/)).toBeTruthy();
+
+    await user.click(recent.getByRole("button", { name: "Undo: put Counterspell back on the list to find" }));
+    expect(call).toHaveBeenCalledWith({ action: "found", cardId: "b", found: false });
+
+    // "See all" opens the Found tab, newest first.
+    await user.click(recent.getByRole("button", { name: /See all/ }));
+    expect(screen.getByRole("tab", { name: /^Found/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("Enter twice in search marks the single match found", async () => {
     const user = userEvent.setup();
     const call = setup({ found: () => ({ card: c("d", 2, "Ponder", { foundBy: "Sam", foundAt: T0, updatedAt: "2026-11-10T00:01:00.000Z" }) }) });
     await screen.findByText("Ponder");
     await user.type(screen.getByLabelText("Search cards"), "pond{Enter}");
+    expect(call).not.toHaveBeenCalledWith(expect.objectContaining({ action: "found" }));
+    await user.keyboard("{Enter}");
     expect(call).toHaveBeenCalledWith({ action: "found", cardId: "d", found: true });
   });
 
@@ -109,14 +176,19 @@ describe("shared checklist view", () => {
       await vi.advanceTimersByTimeAsync(9_000);
     });
     expect(refreshed).toBe(true);
-    // Default view hides found cards.
-    await waitFor(() => expect(screen.queryByText("Ponder")).toBeNull());
+    // It leaves the to-find list and shows up under Recently found, with who found it.
+    const recent = within((await screen.findByText("Recently found")).closest("section")!);
+    expect(recent.getByText("Ponder")).toBeTruthy();
+    expect(recent.getByText(/Alex ·/)).toBeTruthy();
+    const list = document.querySelector(".gg-cubecheck__list")!;
+    expect(within(list as HTMLElement).queryByText("Ponder")).toBeNull();
   });
 
   it("offers better options, swaps one in, and can undo", async () => {
     const user = userEvent.setup();
     const call = setup({
       suggest: () => ({
+        current: { name: "Counterspell", typeLine: "Instant", manaCost: "{U}{U}", imageSmall: null, imageNormal: null, edhrecRank: 12 },
         options: [{ name: "Mana Leak", typeLine: "Instant", manaCost: "{1}{U}", imageSmall: null, imageNormal: null, edhrecRank: 120 }],
       }),
       swap: () => ({
@@ -129,6 +201,12 @@ describe("shared checklist view", () => {
     expect(await within(row).findByText("Better options")).toBeTruthy();
     expect(within(row).getByText(/Only commons that/)).toBeTruthy();
     expect(within(row).getByText("#120 most played")).toBeTruthy();
+    // The card on the list stays in view beside the options, to compare.
+    const pinned = within(row).getByText("On the list now").closest("li")!;
+    expect(within(pinned).getByText("Counterspell")).toBeTruthy();
+    expect(within(pinned).getByText("{U}{U} · Instant")).toBeTruthy();
+    expect(within(pinned).getByText("#12 most played")).toBeTruthy();
+    expect(within(pinned).queryByRole("button", { name: "Swap in" })).toBeNull();
 
     await user.click(within(row).getByRole("button", { name: "Swap in" }));
     expect(call).toHaveBeenCalledWith({ action: "swap", cardId: "b", newName: "Mana Leak" });
@@ -150,6 +228,8 @@ describe("shared checklist view", () => {
     await user.click(within(row).getByRole("button", { name: "Swap" }));
     await user.type(within(row).getByLabelText("Search for a card to swap in"), "bolt");
     expect(await within(row).findByText("Lightning Bolt")).toBeTruthy();
+    // Still pinned while searching (from the list's own data until Scryfall answers).
+    expect(within(within(row).getByText("On the list now").closest("li")!).getByText("Counterspell")).toBeTruthy();
     expect(call).toHaveBeenCalledWith({ action: "search", query: "bolt" });
   });
 
