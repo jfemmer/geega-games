@@ -635,6 +635,101 @@ export type Database = {
         }
         Relationships: []
       }
+      cube_checklist_cards: {
+        Row: {
+          checklist_id: string
+          color_category: string | null
+          found_at: string | null
+          found_by: string | null
+          id: string
+          name: string
+          original_color_category: string | null
+          original_name: string | null
+          original_type_line: string | null
+          position: number
+          swapped_at: string | null
+          swapped_by: string | null
+          type_line: string | null
+          updated_at: string
+        }
+        Insert: {
+          checklist_id: string
+          color_category?: string | null
+          found_at?: string | null
+          found_by?: string | null
+          id?: string
+          name: string
+          original_color_category?: string | null
+          original_name?: string | null
+          original_type_line?: string | null
+          position: number
+          swapped_at?: string | null
+          swapped_by?: string | null
+          type_line?: string | null
+          updated_at?: string
+        }
+        Update: {
+          checklist_id?: string
+          color_category?: string | null
+          found_at?: string | null
+          found_by?: string | null
+          id?: string
+          name?: string
+          original_color_category?: string | null
+          original_name?: string | null
+          original_type_line?: string | null
+          position?: number
+          swapped_at?: string | null
+          swapped_by?: string | null
+          type_line?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cube_checklist_cards_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "cube_checklists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cube_checklists: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          cube_id: string
+          id: string
+          name: string
+          rarity_rule: string
+          share_enabled: boolean
+          share_token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          cube_id: string
+          id?: string
+          name: string
+          rarity_rule?: string
+          share_enabled?: boolean
+          share_token: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          cube_id?: string
+          id?: string
+          name?: string
+          rarity_rule?: string
+          share_enabled?: boolean
+          share_token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customer_deck_cards: {
         Row: {
           card_name: string

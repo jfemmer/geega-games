@@ -263,6 +263,25 @@ export async function scryfallSearchPage(
   };
 }
 
+/**
+ * One page of card search with ONE result per card (`unique=cards`), in the
+ * given Scryfall order — for "find a card by name" and "similar cards" lists
+ * rather than printing pickers. No matches is an empty list, not an error.
+ */
+export async function scryfallSearchCards(
+  query: string,
+  order: "edhrec" | "name" | "released" = "edhrec",
+): Promise<ScryfallCard[]> {
+  const params = new URLSearchParams({ q: query, unique: "cards", order });
+  try {
+    const list = await scryfallGet<ScryfallList>(`/cards/search?${params.toString()}`);
+    return list.data ?? [];
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 404) return [];
+    throw err;
+  }
+}
+
 /** Fetch one printing by its Scryfall id. */
 export function scryfallById(id: string): Promise<ScryfallCard> {
   return scryfallGet<ScryfallCard>(`/cards/${encodeURIComponent(id)}`);

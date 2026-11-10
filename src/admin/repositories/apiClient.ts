@@ -31,7 +31,12 @@ async function getAccessToken(): Promise<string | null> {
 
 export async function adminFetch<T>(
   path: string,
-  init: { method: string; body?: unknown } = { method: "GET" },
+  init: {
+    method: string;
+    body?: unknown;
+    /** false for POSTs that only read (e.g. polling), so they don't refresh nav badges. */
+    notify?: boolean;
+  } = { method: "GET" },
 ): Promise<T> {
   const token = await getAccessToken();
   if (!token) {
@@ -72,7 +77,7 @@ export async function adminFetch<T>(
     }
     throw new Error(message);
   }
-  if (init.method.toUpperCase() !== "GET") notifyAdminDataChanged();
+  if (init.method.toUpperCase() !== "GET" && init.notify !== false) notifyAdminDataChanged();
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

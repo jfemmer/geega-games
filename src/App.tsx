@@ -1,3 +1,4 @@
+import { CUBE_CHECKLIST_PATH } from "./store/lib/cubeChecklist";
 import "./App.css";
 import "./foilShimmer.css";
 import "./store/store.css";
@@ -150,6 +151,10 @@ const TradeCardsPage = lazyPage(
 const TradeInPage = lazyPage(() => import("./store/pages/TradeInPage"), "src/store/pages/TradeInPage.tsx");
 const KioskPage = lazyPage(() => import("./store/pages/KioskPage"), "src/store/pages/KioskPage.tsx");
 const YardSalePage = lazyPage(() => import("./store/pages/YardSalePage"), "src/store/pages/YardSalePage.tsx");
+const CubeChecklistSharePage = lazyPage(
+  () => import("./store/pages/CubeChecklistSharePage"),
+  "src/store/pages/CubeChecklistSharePage.tsx",
+);
 const ConsignSignPage = lazyPage(
   () => import("./store/pages/ConsignSignPage"),
   "src/store/pages/ConsignSignPage.tsx",
@@ -196,6 +201,7 @@ const ALL_PAGES: LazyPage<never>[] = [
   KioskPage,
   YardSalePage,
   ConsignSignPage,
+  CubeChecklistSharePage,
 ] as LazyPage<never>[];
 
 /** The page element for a storefront path (kiosk and yard sale aside). */
@@ -256,6 +262,7 @@ function Routes() {
 function standaloneFor(pathname: string): ReactElement | null {
   if (pathname === "/kiosk") return <KioskPage />;
   if (pathname === "/yard-sale") return <YardSalePage />;
+  if (pathname === CUBE_CHECKLIST_PATH) return <CubeChecklistSharePage />;
   return null;
 }
 

@@ -4444,10 +4444,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  column-gap: 0.6rem;
-  row-gap: 0.1rem;
+  align-items: flex-start;
+  gap: 0.6rem;
   padding: 0.65rem 0.25rem;
   min-height: 44px; /* touch target */
   cursor: pointer;
@@ -4455,10 +4453,18 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-cubecheck__check input {
   width: 1.15rem;
   height: 1.15rem;
-  margin: 0;
-  align-self: center;
+  margin: 0.2rem 0 0;
+  flex-shrink: 0;
   accent-color: var(--gg-success);
   cursor: pointer;
+}
+.gg-cubecheck__text {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.6rem;
+  row-gap: 0.1rem;
 }
 .gg-cubecheck__name {
   font-weight: 600;
@@ -4476,7 +4482,7 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-cubecheck__row.is-crossed .gg-cubecheck__type {
   text-decoration: line-through;
 }
-.gg-cubecheck__printings {
+.gg-cubecheck__panel {
   padding: 0.6rem 0.25rem 0.9rem 1.9rem;
   border-bottom: 1px solid var(--gg-line);
   background: var(--gg-surface-2);
@@ -4535,10 +4541,160 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
   white-space: nowrap;
 }
 @media (max-width: 640px) {
-  .gg-cubecheck__printings {
+  .gg-cubecheck__panel {
     padding-left: 0.5rem;
   }
   .gg-cubecheck__plist {
     grid-template-columns: 1fr;
   }
+}
+.gg-cubecheck__row .gg-cubecheck__actions {
+  display: flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.gg-cubecheck__who {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  color: var(--gg-success);
+}
+.gg-cubecheck__identity {
+  font-size: 0.85rem;
+  color: var(--gg-text-soft);
+  margin-bottom: 0.6rem;
+}
+.gg-cubecheck__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--gg-brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.gg-cubecheck__swapnote {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0 0.25rem 0.55rem 2rem;
+  margin-top: -0.35rem;
+  font-size: 0.78rem;
+  color: var(--gg-text-soft);
+  border-bottom: 1px solid var(--gg-line);
+}
+.gg-cubecheck__row:has(+ .gg-cubecheck__swapnote) {
+  border-bottom: 0;
+}
+.gg-cubecheck__panelhead {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--gg-text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.gg-cubecheck__panel .gg-search {
+  width: 100%;
+}
+.gg-cubecheck__hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--gg-text-faint);
+}
+.gg-cubecheck__picker {
+  max-width: 420px;
+  margin-bottom: 1rem;
+}
+.gg-cubecheck__banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--gg-line-strong);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-brand-tint);
+  font-size: 0.9rem;
+  color: var(--gg-text);
+}
+.gg-cubecheck__banneractions,
+.gg-cubecheck__badges,
+.gg-cubecheck__shareactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.gg-cubecheck__share {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.gg-cubecheck__shareurl {
+  display: flex;
+  gap: 0.5rem;
+}
+.gg-cubecheck__shareurl .gg-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--gg-mono);
+  font-size: 0.8rem;
+}
+.gg-cubecheck__create {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 520px;
+}
+@media (max-width: 640px) {
+  .gg-cubecheck__swapnote {
+    padding-left: 0.25rem;
+  }
+  .gg-cubecheck__controls .gg-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .gg-cubecheck__controls .gg-tab {
+    padding: 6px 7px;
+    gap: 4px;
+    font-size: 0.8rem;
+  }
+}
+
+/* Public share page (/cube-checklist) — the admin design system, standalone. */
+.gg-admin.gg-cubeshare {
+  display: block;
+  font-family: var(--gg-sans);
+  color: var(--gg-text);
+}
+.gg-cubeshare__main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem calc(2rem + env(safe-area-inset-bottom));
+}
+.gg-cubeshare__head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.1rem;
+}
+.gg-cubeshare__logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: var(--gg-radius-sm);
+  flex-shrink: 0;
+}
+.gg-cubeshare__name {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 420px;
+  padding: 1.1rem;
+}
+.gg-cubeshare .gg-cubecheck__group {
+  top: 0;
 }
