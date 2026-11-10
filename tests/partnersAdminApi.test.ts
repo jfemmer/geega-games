@@ -15,10 +15,16 @@ let state: FakeState = createFakeState();
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => createFakeSupabase(state) }));
 
 const welcomeCalls: string[] = [];
+const messageCalls: string[] = [];
+let messageEmailStatus = "sent";
 vi.mock("../api/_lib/partnerEmails.js", () => ({
   sendPartnerApprovedEmail: vi.fn(async (id: string) => {
     welcomeCalls.push(id);
     return { status: "sent" };
+  }),
+  sendPartnerMessageEmail: vi.fn(async (id: string) => {
+    messageCalls.push(id);
+    return { status: messageEmailStatus };
   }),
 }));
 
@@ -70,6 +76,8 @@ beforeEach(() => {
   state = createFakeState();
   seedSessions();
   welcomeCalls.length = 0;
+  messageCalls.length = 0;
+  messageEmailStatus = "sent";
 });
 
 describe("POST /api/admin/partners", () => {
@@ -248,5 +256,52 @@ describe("DELETE /api/admin/partners/:id", () => {
     const p = addPartner({});
     expect((await call(partnerHandler, { method: "DELETE", token: STAFF, id: p.id })).statusCode).toBe(403);
     expect(state.tables.partners).toHaveLength(1);
+  });
+});
+
+describe("PATCH /api/admin/partners/:id — message", () => {
+  it("emails an applicant, keeps the message, leaves their status alone and logs it", async () => {
+    const p = addPartner({ kind: "referrer", categories: [], profession: "other", email: "chay@example.com" });
+    const res = await call(partnerHandler, {
+      method: "PATCH",
+      token: OWNER,
+      id: p.id,
+      body: { action: "message", subject: "  A few   questions ", message: "Hi there\r\n\r\n\r\n\r\nWhat do you do?   \n" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, email: "sent" });
+    const [row] = state.tables.partner_messages;
+    expect(row).toMatchObject({
+      partner_id: p.id,
+      sent_by: "owner-1",
+      sent_by_email: "owner@example.com",
+      to_email: "chay@example.com",
+      subject: "A few questions",
+      body: "Hi there\n\nWhat do you do?",
+    });
+    expect(messageCalls).toEqual([row.id]);
+    expect(p.status).toBe("applied");
+    expect(state.tables.admin_audit_log?.[0]).toMatchObject({ action: "partner.message", resource_id: p.id });
+  });
+
+  it("marks the message when the email fails, so staff know to email by hand", async () => {
+    messageEmailStatus = "failed";
+    const p = addPartner({});
+    const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "message", subject: "Hi", message: "Question" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.email).toBe("failed");
+    expect(state.tables.partner_messages[0].email_status).toBe("failed");
+  });
+
+  it("needs a subject and a message within the limits, and is owner-only", async () => {
+    const p = addPartner({});
+    const send = (token: string, body: Record<string, unknown>) =>
+      call(partnerHandler, { method: "PATCH", token, id: p.id, body: { action: "message", ...body } });
+    expect((await send(OWNER, { subject: " ", message: "x" })).statusCode).toBe(400);
+    expect((await send(OWNER, { subject: "Hi", message: "   " })).statusCode).toBe(400);
+    expect((await send(OWNER, { subject: "Hi", message: "x".repeat(5001) })).statusCode).toBe(400);
+    expect((await send(STAFF, { subject: "Hi", message: "x" })).statusCode).toBe(403);
+    expect(state.tables.partner_messages ?? []).toHaveLength(0);
+    expect(messageCalls).toEqual([]);
   });
 });

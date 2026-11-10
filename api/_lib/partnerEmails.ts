@@ -11,6 +11,7 @@ import {
   PartnerApplicationReceived,
   PartnerApproved,
   PartnerLeadForStore,
+  PartnerMessage,
   PartnerReferralCheckin,
   PartnerReferralSellerNotice,
   ReferralRewardEarned,
@@ -22,6 +23,8 @@ import {
   partnerApprovedText,
   partnerLeadForStoreSubject,
   partnerLeadForStoreText,
+  partnerMessageSubject,
+  partnerMessageText,
   partnerReferralCheckinSubject,
   partnerReferralCheckinText,
   partnerReferralSellerNoticeSubject,
@@ -348,8 +351,11 @@ function partnerSummary(partner: NonNullable<Awaited<ReturnType<typeof loadPartn
   if (partner.kind === "store") {
     return partner.categories.length ? `you buy ${listLabel(partner.categories.map(partnerCategoryLabel))}` : null;
   }
+  if (!partner.profession || partner.profession === "other") return null;
   const profession = PARTNER_PROFESSIONS.find((p) => p.value === partner.profession)?.label;
-  return profession ? `you're a ${profession.toLowerCase()}` : null;
+  if (!profession) return null;
+  const lower = profession.toLowerCase();
+  return `you're ${/^[aeiou]/.test(lower) ? "an" : "a"} ${lower}`;
 }
 
 export async function sendPartnerApplicationEmails(partnerId: string): Promise<{ admin: Result; applicant: Result }> {
@@ -471,6 +477,56 @@ export async function sendPartnerApprovedEmail(partnerId: string): Promise<Resul
         text: partnerApprovedText(data),
       }),
     "approval email",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Staff messages ("Message them" on the Partners page)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sends one staff-written message (a partner_messages row) to the partner's
+ * email. From the orders address, reply-to the store inbox, so their answer
+ * lands where staff already read email. Idempotent per message row.
+ */
+export async function sendPartnerMessageEmail(messageId: string): Promise<Result> {
+  const db = getSupabaseAdmin();
+  const { data: message, error } = await db
+    .from("partner_messages")
+    .select("id, partner_id, sent_by, to_email, subject, body")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (error || !message) return { status: "skipped", reason: "message-not-found" };
+  const partner = await loadPartner(message.partner_id);
+  if (!partner) return { status: "skipped", reason: "partner-not-found" };
+
+  let firstName: string | null = null;
+  if (message.sent_by) {
+    const { data: profile } = await db.from("profiles").select("first_name").eq("id", message.sent_by).maybeSingle();
+    firstName = profile?.first_name?.trim() || null;
+  }
+
+  const data = {
+    ...branding(),
+    contactName: partner.contact_name,
+    businessName: partner.business_name,
+    subject: message.subject,
+    body: message.body,
+    signature: firstName ? `${firstName}, Geega Games` : "The Geega Games team",
+  };
+  return settle(
+    () =>
+      sendTrackedEmail({
+        emailType: "partner_message",
+        idempotencyKey: `partner-message-${message.id}`,
+        to: message.to_email,
+        from: ServerEnv.fromOrders(),
+        replyTo: ServerEnv.replyTo(),
+        subject: partnerMessageSubject(data),
+        react: React.createElement(PartnerMessage, data),
+        text: partnerMessageText(data),
+      }),
+    "partner message",
   );
 }
 

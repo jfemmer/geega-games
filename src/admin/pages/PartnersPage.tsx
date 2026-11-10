@@ -22,18 +22,21 @@ import {
   referralRewardsRepository,
   type PartnerFieldsInput,
 } from "../repositories/partners.supabase";
-import type { Partner, PartnerReferral, ReferralReward } from "../types";
+import type { Partner, PartnerMessage, PartnerReferral, ReferralReward } from "../types";
 import {
   DEFAULT_REFERRER_FEE_PERCENT,
   DEFAULT_STORE_FEE_PERCENT,
   FEE_STATUSES,
   PARTNER_CATEGORIES,
+  PARTNER_MESSAGE_BODY_MAX,
+  PARTNER_MESSAGE_SUBJECT_MAX,
   PARTNER_PROFESSIONS,
   PARTNER_REFERRAL_OUTCOMES,
   PARTNER_STATUSES,
   SELL_HUB_PATH,
   formatPercent,
   partnerCategoryLabel,
+  partnerProfessionsByGroup,
   type PartnerKind,
   type PartnerStatus,
 } from "../../store/lib/partnerTypes";
@@ -417,10 +420,14 @@ function PartnerFields({
       ) : (
         <SelectField label="Works as" value={form.profession} disabled={disabled} onChange={(e) => onChange({ profession: e.target.value })}>
           <option value="">—</option>
-          {PARTNER_PROFESSIONS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
+          {partnerProfessionsByGroup().map((g) => (
+            <optgroup key={g.group} label={g.label}>
+              {g.options.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </SelectField>
       )}
@@ -668,6 +675,8 @@ function PartnerDrawer({
           </div>
         </section>
 
+        <PartnerMessagesSection partner={partner} />
+
         {partner.kind === "referrer" && (
           <section className="gg-leaddetail__section">
             <h3>Their referral link</h3>
@@ -810,5 +819,182 @@ function PartnerDrawer({
         onCancel={() => setConfirmDelete(false)}
       />
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Message them — email an applicant or partner from here, with a history
+// ---------------------------------------------------------------------------
+
+/** A starting point for asking an applicant to explain themselves. Staff edit it before sending. */
+function applicantQuestionsTemplate(partner: Pick<Partner, "kind" | "contactName">): { subject: string; message: string } {
+  if (partner.kind === "store") {
+    return {
+      subject: "A few questions about your partner store application",
+      message: [
+        "Thanks for applying to be a Geega Games partner store. Before we set you up, could you tell us a little more?",
+        "- Do you have a storefront, or do you buy online / at shows? Where are you based?",
+        "- What do you buy most, and roughly how much do you spend on collections in a month?",
+        "- How quickly can you usually reach a seller and make an offer?",
+        "- Is there a website or social page where we can see your business?",
+        "Thanks!",
+      ].join("\n\n"),
+    };
+  }
+  return {
+    subject: "A few questions about your referral partner application",
+    message: [
+      "Thanks for applying to be a Geega Games referral partner. Before we set you up, could you tell us a little more?",
+      "- What does your business do day to day, and where are you based?",
+      "- How do you come across people who want to sell trading cards, games or collections?",
+      "- How would you share our link with them (in person, on your website, social media, something else)?",
+      "- Roughly how many people do you think you'd send our way in a month?",
+      "- Is there a website or social page where we can learn more about you?",
+      "Thanks!",
+    ].join("\n\n"),
+  };
+}
+
+function PartnerMessagesSection({ partner }: { partner: Partner }) {
+  const toast = useToast();
+  const [history, setHistory] = useState<PartnerMessage[] | null>(null);
+  const [historyError, setHistoryError] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  function loadHistory() {
+    setHistoryError(false);
+    partnersRepository
+      .messages(partner.id)
+      .then(setHistory)
+      .catch(() => {
+        setHistory([]);
+        setHistoryError(true);
+      });
+  }
+
+  useEffect(() => {
+    setHistory(null);
+    setComposing(false);
+    setSubject("");
+    setMessage("");
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partner.id]);
+
+  function start(withTemplate: boolean) {
+    if (withTemplate) {
+      const t = applicantQuestionsTemplate(partner);
+      setSubject(t.subject);
+      setMessage(t.message);
+    } else if (!subject) {
+      setSubject(`About your Geega Games ${partner.kind === "store" ? "partner store" : "referral partner"} application`);
+    }
+    setComposing(true);
+  }
+
+  async function send() {
+    if (!subject.trim()) return toast.error("Please add a subject.");
+    if (!message.trim()) return toast.error("Please write a message.");
+    setSending(true);
+    try {
+      const result = await partnersRepository.sendMessage(partner.id, subject, message);
+      if (result.email === "sent") {
+        toast.success(`Sent to ${partner.email}. Their reply will come to your support inbox.`);
+      } else {
+        toast.error(`Saved, but the email didn't send. Email ${partner.email} yourself.`);
+      }
+      setComposing(false);
+      setSubject("");
+      setMessage("");
+      loadHistory();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't send the message.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="gg-leaddetail__section">
+      <h3>Message them</h3>
+      {!composing ? (
+        <>
+          <p className="gg-card-meta">
+            Email {partner.contactName} at {partner.email} from Geega Games. Their reply goes to your support inbox.
+          </p>
+          <div className="gg-drawer-actions__buttons">
+            {partner.status === "applied" && (
+              <Button size="sm" variant="primary" icon="message" onClick={() => start(true)}>
+                Ask about their application
+              </Button>
+            )}
+            <Button size="sm" variant={partner.status === "applied" ? "secondary" : "primary"} icon="mail" onClick={() => start(false)}>
+              Write a message
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="gg-partner-form">
+          <TextField
+            label="Subject"
+            value={subject}
+            maxLength={PARTNER_MESSAGE_SUBJECT_MAX}
+            disabled={sending}
+            onChange={(e) => setSubject(e.target.value)}
+            required
+          />
+          <TextArea
+            label={`Message to ${partner.contactName}`}
+            hint={`Starts with "Hi ${partner.contactName}," and ends with your name. ${message.length.toLocaleString("en-US")} / ${PARTNER_MESSAGE_BODY_MAX.toLocaleString("en-US")}`}
+            rows={9}
+            value={message}
+            maxLength={PARTNER_MESSAGE_BODY_MAX}
+            disabled={sending}
+            onChange={(e) => setMessage(e.target.value)}
+            required
+          />
+          <div className="gg-drawer-actions__buttons">
+            <Button size="sm" variant="primary" icon="mail" loading={sending} onClick={() => void send()}>
+              Send email
+            </Button>
+            <Button size="sm" variant="ghost" disabled={sending} onClick={() => setComposing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {historyError && (
+        <p className="gg-card-meta">
+          Couldn&rsquo;t load past messages.{" "}
+          <Button size="sm" variant="ghost" onClick={loadHistory}>
+            Try again
+          </Button>
+        </p>
+      )}
+      {history && history.length > 0 && (
+        <ul className="gg-referral-history" aria-label="Messages sent">
+          {history.map((m) => (
+            <li key={m.id} className="gg-referral-history__item">
+              <div className="gg-referral-history__head">
+                <strong>{m.subject}</strong>
+                {m.emailStatus === "failed" ? <Badge tone="danger">Didn&rsquo;t send</Badge> : <Badge tone="success">Sent</Badge>}
+              </div>
+              <span className="gg-card-meta">
+                {formatDateTime(m.createdAt)}
+                {m.sentByEmail ? ` · by ${m.sentByEmail}` : ""} · to {m.toEmail}
+              </span>
+              <details className="gg-partner-message">
+                <summary>Show message</summary>
+                <p style={{ whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{m.body}</p>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

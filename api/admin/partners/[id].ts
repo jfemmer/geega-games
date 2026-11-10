@@ -3,14 +3,19 @@ import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "../../_lib/
 import { requireStaff, type StaffContext } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { logAdminAction } from "../../_lib/auditLog.js";
-import { sendPartnerApprovedEmail } from "../../_lib/partnerEmails.js";
+import { sendPartnerApprovedEmail, sendPartnerMessageEmail } from "../../_lib/partnerEmails.js";
 import {
   ensurePartnerReferralCode,
   partnerFieldsFromInput,
   type PartnerFieldsInput,
   type PartnerUpdate,
 } from "../../_lib/partners.js";
-import type { PartnerKind, PartnerStatus } from "../../../src/store/lib/partnerTypes.js";
+import {
+  PARTNER_MESSAGE_BODY_MAX,
+  PARTNER_MESSAGE_SUBJECT_MAX,
+  type PartnerKind,
+  type PartnerStatus,
+} from "../../../src/store/lib/partnerTypes.js";
 
 // PATCH /api/admin/partners/:id  { action, fields?, sendWelcome? }
 //
@@ -23,6 +28,9 @@ import type { PartnerKind, PartnerStatus } from "../../../src/store/lib/partnerT
 //             crediting new sellers.
 //   activate  paused → active.
 //   update    edit fields: contact details, what they buy, where, fee %…
+//   message   { subject, body } — email them (any status, e.g. to ask an
+//             applicant questions before deciding). Saved to partner_messages;
+//             their reply goes to the store's reply-to inbox. Status unchanged.
 //
 // DELETE /api/admin/partners/:id — only for a partner with no fee records (no
 // lead ever sent to them, no referral fee earned). Removes their referral code
@@ -31,12 +39,14 @@ import type { PartnerKind, PartnerStatus } from "../../../src/store/lib/partnerT
 // Owner-only (app role "admin"): partners and their fees are business terms.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTIONS = new Set(["approve", "decline", "pause", "activate", "update"]);
+const ACTIONS = new Set(["approve", "decline", "pause", "activate", "update", "message"]);
 
 interface Body {
   action?: unknown;
   fields?: PartnerFieldsInput;
   sendWelcome?: unknown;
+  subject?: unknown;
+  message?: unknown;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -50,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const admin = getSupabaseAdmin();
     const { data: partner, error: readErr } = await admin
       .from("partners")
-      .select("id, kind, status, business_name, fee_percent, approved_at")
+      .select("id, kind, status, business_name, email, fee_percent, approved_at")
       .eq("id", id)
       .maybeSingle();
     if (readErr) throw new HttpError(500, readErr.message);
@@ -61,6 +71,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = (await readJsonBody(req, 16 * 1024)) as Body;
     const action = typeof body.action === "string" && ACTIONS.has(body.action) ? body.action : null;
     if (!action) throw new HttpError(400, "Invalid action.");
+
+    if (action === "message") return await messagePartner(res, staff, partner, body);
 
     const kind = partner.kind as PartnerKind;
     const current = partner.status as PartnerStatus;
@@ -152,4 +164,56 @@ async function deletePartner(
     after: null,
   });
   res.status(204).end();
+}
+
+function cleanText(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  // Normalise line endings, trim trailing spaces per line, cap blank runs.
+  const text = v.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (!text) return null;
+  if (text.length > max) throw new HttpError(400, `Please keep it under ${max.toLocaleString("en-US")} characters.`);
+  return text;
+}
+
+async function messagePartner(
+  res: VercelResponse,
+  staff: StaffContext,
+  partner: { id: string; email: string; business_name: string },
+  body: Body,
+) {
+  const subject = cleanText(body.subject, PARTNER_MESSAGE_SUBJECT_MAX)?.replace(/\s+/g, " ") ?? null;
+  const text = cleanText(body.message, PARTNER_MESSAGE_BODY_MAX);
+  if (!subject) throw new HttpError(400, "Please add a subject.");
+  if (!text) throw new HttpError(400, "Please write a message.");
+
+  const admin = getSupabaseAdmin();
+  const { data: row, error } = await admin
+    .from("partner_messages")
+    .insert({
+      partner_id: partner.id,
+      sent_by: staff.userId,
+      sent_by_email: staff.email,
+      to_email: partner.email,
+      subject,
+      body: text,
+    })
+    .select("id")
+    .single();
+  if (error || !row) throw new HttpError(500, "Could not save the message.");
+
+  const result = await sendPartnerMessageEmail(row.id);
+  const sent = result.status === "sent" || result.status === "deduped";
+  if (!sent) {
+    await admin.from("partner_messages").update({ email_status: "failed" }).eq("id", row.id);
+  }
+
+  await logAdminAction(admin, staff, {
+    action: "partner.message",
+    resourceType: "partner",
+    resourceId: partner.id,
+    before: null,
+    after: { message_id: row.id, subject, email_status: sent ? "sent" : "failed" },
+  });
+
+  return sendJson(res, 200, { ok: true, messageId: row.id, email: sent ? "sent" : "failed" });
 }

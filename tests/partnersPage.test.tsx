@@ -15,6 +15,8 @@ const repo = {
   update: vi.fn(),
   act: vi.fn(),
   remove: vi.fn(),
+  messages: vi.fn(),
+  sendMessage: vi.fn(),
   all: vi.fn(),
   forPartner: vi.fn(),
 };
@@ -25,6 +27,8 @@ vi.mock("../src/admin/repositories/partners.supabase", () => ({
     update: (...a: unknown[]) => repo.update(...a),
     act: (...a: unknown[]) => repo.act(...a),
     remove: (...a: unknown[]) => repo.remove(...a),
+    messages: (...a: unknown[]) => repo.messages(...a),
+    sendMessage: (...a: unknown[]) => repo.sendMessage(...a),
   },
   partnerReferralsRepository: { all: () => repo.all() },
   referralRewardsRepository: { forPartner: (id: string) => repo.forPartner(id) },
@@ -107,6 +111,8 @@ beforeEach(() => {
   ]);
   repo.all.mockResolvedValue([soldReferral]);
   repo.forPartner.mockResolvedValue([]);
+  repo.messages.mockResolvedValue([]);
+  repo.sendMessage.mockResolvedValue({ messageId: "m1", email: "sent" });
   repo.act.mockResolvedValue({ referralCode: null, welcome: "sent" });
   repo.create.mockResolvedValue({ id: "p9" });
   window.print = vi.fn();
@@ -187,5 +193,61 @@ describe("PartnersPage", () => {
       true,
     );
     expect(await screen.findByText("Lakeside Realty added and emailed.")).toBeInTheDocument();
+  });
+
+  it("asks an applicant about their application, and shows the message in their history", async () => {
+    const user = userEvent.setup();
+    renderPage("partner=p2");
+    const drawer = await screen.findByRole("dialog", { name: "Retro Rewind" });
+    await user.click(within(drawer).getByRole("button", { name: "Ask about their application" }));
+    const subject = within(drawer).getByLabelText(/^Subject/);
+    expect(subject).toHaveValue("A few questions about your partner store application");
+    const body = within(drawer).getByLabelText(/Message to Sam Ortiz/) as HTMLTextAreaElement;
+    expect(body.value).toContain("How quickly can you usually reach a seller");
+    await user.type(body, "{Control>}{End}{/Control} Talk soon.");
+
+    repo.messages.mockResolvedValueOnce([
+      {
+        id: "m1",
+        createdAt: "2026-11-10T22:30:00Z",
+        partnerId: "p2",
+        sentByEmail: "owner@geega-games.com",
+        toEmail: "pat@gateway.example",
+        subject: "A few questions about your partner store application",
+        body: "Hello",
+        emailStatus: "sent",
+      },
+    ]);
+    await user.click(within(drawer).getByRole("button", { name: "Send email" }));
+    expect(repo.sendMessage).toHaveBeenCalledWith(
+      "p2",
+      "A few questions about your partner store application",
+      expect.stringContaining("Talk soon."),
+    );
+    expect(await screen.findByText(/Sent to pat@gateway.example/)).toBeInTheDocument();
+    const history = await within(drawer).findByRole("list", { name: "Messages sent" });
+    expect(history).toHaveTextContent("A few questions about your partner store application");
+    expect(history).toHaveTextContent("by owner@geega-games.com");
+  });
+
+  it("only offers the application questions while they're still an applicant, and says when an email didn't send", async () => {
+    const user = userEvent.setup();
+    repo.sendMessage.mockResolvedValueOnce({ messageId: "m2", email: "failed" });
+    renderPage("partner=p3");
+    const drawer = await screen.findByRole("dialog", { name: "Heirloom Estate Sales" });
+    expect(within(drawer).queryByRole("button", { name: "Ask about their application" })).toBeNull();
+    await user.click(within(drawer).getByRole("button", { name: "Write a message" }));
+    await user.type(within(drawer).getByLabelText(/Message to Jo Park/), "Quick question");
+    await user.click(within(drawer).getByRole("button", { name: "Send email" }));
+    expect(await screen.findByText(/the email didn't send/)).toBeInTheDocument();
+  });
+
+  it("groups the trading-card professions in the Works as picker", async () => {
+    renderPage("partner=p3");
+    const drawer = await screen.findByRole("dialog", { name: "Heirloom Estate Sales" });
+    const select = within(drawer).getByLabelText("Works as");
+    const cards = select.querySelector('optgroup[label="Trading cards and games"]') as HTMLElement;
+    expect(within(cards).getByRole("option", { name: "Card or game shop" })).toBeInTheDocument();
+    expect(within(cards).getByRole("option", { name: /Card reseller/ })).toBeInTheDocument();
   });
 });

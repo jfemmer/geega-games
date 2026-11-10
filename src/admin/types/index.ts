@@ -1412,6 +1412,18 @@ export interface Partner {
   source: LeadSourceFields;
 }
 
+/** A staff-written email to a partner or applicant (partner_messages). */
+export interface PartnerMessage {
+  id: string;
+  createdAt: string;
+  partnerId: string;
+  sentByEmail: string | null;
+  toEmail: string;
+  subject: string;
+  body: string;
+  emailStatus: "sent" | "failed";
+}
+
 export interface PartnerReferral {
   id: string;
   createdAt: string;

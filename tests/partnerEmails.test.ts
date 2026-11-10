@@ -383,4 +383,66 @@ describe("partner email senders", () => {
     expect(sent[0]).toMatchObject({ to: "friend@example.com", subject: "You earned $10.00 in store credit" });
     expect(sent[0].text).toContain("Hi Alex,");
   });
+
+  it("sends a staff message from the orders address, reply-to support, signed with the sender's first name", async () => {
+    const applicant = {
+      id: fakeId(),
+      kind: "referrer",
+      status: "applied",
+      business_name: "NITE Run Delivery LLC",
+      contact_name: "Chayson",
+      email: "chay@example.com",
+      categories: [],
+      profession: "other",
+      fee_percent: 3,
+    };
+    state.tables.partners = [applicant];
+    state.tables.profiles = [{ id: "owner-1", first_name: "Jordan" }];
+    state.tables.partner_messages = [
+      {
+        id: "msg-1",
+        partner_id: applicant.id,
+        sent_by: "owner-1",
+        to_email: "chay@example.com",
+        subject: "A few questions",
+        body: "What does your business do?\n\n<b>not html</b>",
+      },
+    ];
+    expect((await senders.sendPartnerMessageEmail("msg-1")).status).toBe("sent");
+    expect(sent[0]).toMatchObject({
+      to: "chay@example.com",
+      subject: "A few questions",
+      idempotencyKey: "partner-message-msg-1",
+      replyTo: "support@geega-games.com",
+    });
+    expect(sent[0].text).toContain("Hi Chayson,");
+    expect(sent[0].text).toContain("Jordan, Geega Games");
+    expect((await senders.sendPartnerMessageEmail("nope")).status).toBe("skipped");
+  });
+
+  it("renders a staff message as text, never as HTML", async () => {
+    const html = await render(
+      emails.PartnerMessage({ ...branding, contactName: "Sam", businessName: "Retro", subject: "Hi", body: "<script>x</script>", signature: "Jordan, Geega Games" }),
+    );
+    expect(html).not.toContain("<script>x</script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("words the application receipt right for every profession", async () => {
+    for (const [profession, expected] of [
+      ["auction", "you're an auction house"],
+      ["card_shop", "you're a card or game shop"],
+    ] as const) {
+      sent.length = 0;
+      const p = { id: fakeId(), kind: "referrer", status: "applied", business_name: "X", contact_name: "Y", email: "y@example.com", categories: [], profession, fee_percent: 3 };
+      state.tables.partners = [p];
+      await senders.sendPartnerApplicationEmails(p.id);
+      expect(sent[1].text).toContain(expected);
+    }
+    sent.length = 0;
+    const other = { id: fakeId(), kind: "referrer", status: "applied", business_name: "X", contact_name: "Y", email: "z@example.com", categories: [], profession: "other", fee_percent: 3 };
+    state.tables.partners = [other];
+    await senders.sendPartnerApplicationEmails(other.id);
+    expect(sent[1].text).not.toContain("something else");
+  });
 });

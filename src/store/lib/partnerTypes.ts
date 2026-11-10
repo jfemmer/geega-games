@@ -56,20 +56,59 @@ export function partnerCategoryLabel(value: string): string {
   return PARTNER_CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }
 
-export const PARTNER_PROFESSIONS = [
-  { value: "estate_sale", label: "Estate sale company" },
-  { value: "estate_attorney", label: "Estate or probate attorney" },
-  { value: "realtor", label: "Real estate agent" },
-  { value: "move_manager", label: "Senior move manager / downsizing" },
-  { value: "auction", label: "Auction house" },
-  { value: "other", label: "Something else" },
+/**
+ * What a referral partner does, grouped for the "What do you do?" / "Works as"
+ * pickers. "other" stays last. Mirrors partners_profession_check
+ * (latest: 20261110233000_partner_card_professions_and_messages).
+ */
+export const PARTNER_PROFESSION_GROUPS = [
+  { value: "estates", label: "Estates, moving and resale" },
+  { value: "cards", label: "Trading cards and games" },
+  { value: "other", label: "Other" },
 ] as const;
+
+export type PartnerProfessionGroup = (typeof PARTNER_PROFESSION_GROUPS)[number]["value"];
+
+export const PARTNER_PROFESSIONS = [
+  { value: "estate_sale", label: "Estate sale company", group: "estates" },
+  { value: "estate_attorney", label: "Estate or probate attorney", group: "estates" },
+  { value: "realtor", label: "Real estate agent", group: "estates" },
+  { value: "move_manager", label: "Senior move manager / downsizing", group: "estates" },
+  { value: "auction", label: "Auction house", group: "estates" },
+  { value: "cleanout", label: "Cleanout, junk removal or storage auctions", group: "estates" },
+  { value: "pawn_resale", label: "Pawn, thrift or resale shop", group: "estates" },
+  { value: "card_shop", label: "Card or game shop", group: "cards" },
+  { value: "card_reseller", label: "Card reseller (eBay, TCGplayer, Whatnot…)", group: "cards" },
+  { value: "card_show", label: "Card show or convention organizer", group: "cards" },
+  { value: "tournament_organizer", label: "Tournament organizer or playgroup host", group: "cards" },
+  { value: "grading_consignment", label: "Grading, breaking or consignment service", group: "cards" },
+  { value: "content_creator", label: "Content creator or streamer", group: "cards" },
+  { value: "collector", label: "Collector or player", group: "cards" },
+  { value: "other", label: "Something else", group: "other" },
+] as const satisfies readonly { value: string; label: string; group: PartnerProfessionGroup }[];
 
 export type PartnerProfession = (typeof PARTNER_PROFESSIONS)[number]["value"];
 
 export function isPartnerProfession(value: unknown): value is PartnerProfession {
   return PARTNER_PROFESSIONS.some((p) => p.value === value);
 }
+
+/** The professions under each group heading, in order, skipping empty groups. */
+export function partnerProfessionsByGroup(): {
+  group: PartnerProfessionGroup;
+  label: string;
+  options: { value: PartnerProfession; label: string }[];
+}[] {
+  return PARTNER_PROFESSION_GROUPS.map((g) => ({
+    group: g.value,
+    label: g.label,
+    options: PARTNER_PROFESSIONS.filter((p) => p.group === g.value).map((p) => ({ value: p.value, label: p.label })),
+  })).filter((g) => g.options.length > 0);
+}
+
+/** Staff-written email to an applicant or partner (the "Message them" box on the Partners page). */
+export const PARTNER_MESSAGE_SUBJECT_MAX = 150;
+export const PARTNER_MESSAGE_BODY_MAX = 5000;
 
 /** What came of a lead sent to a store. "Waiting" until the store or seller tells us. */
 export const PARTNER_REFERRAL_OUTCOMES = [

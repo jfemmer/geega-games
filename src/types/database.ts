@@ -2699,6 +2699,50 @@ export type Database = {
           },
         ]
       }
+      partner_messages: {
+        Row: {
+          body: string
+          created_at: string
+          email_status: string
+          id: string
+          partner_id: string
+          sent_by: string | null
+          sent_by_email: string | null
+          subject: string
+          to_email: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          email_status?: string
+          id?: string
+          partner_id: string
+          sent_by?: string | null
+          sent_by_email?: string | null
+          subject: string
+          to_email: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          email_status?: string
+          id?: string
+          partner_id?: string
+          sent_by?: string | null
+          sent_by_email?: string | null
+          subject?: string
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_messages_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_referrals: {
         Row: {
           checkin_amount_cents: number | null

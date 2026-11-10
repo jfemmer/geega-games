@@ -3,7 +3,7 @@ import { UsStateSelect } from "./UsStateSelect";
 import { getAttribution } from "../lib/attributionStore";
 import {
   PARTNER_CATEGORIES,
-  PARTNER_PROFESSIONS,
+  partnerProfessionsByGroup,
   type PartnerCategory,
   type PartnerKind,
   type PartnerProfession,
@@ -226,10 +226,14 @@ export default function PartnerApplicationForm({ kind }: { kind: PartnerKind }) 
             onChange={(e) => setProfession(e.target.value as PartnerProfession | "")}
           >
             <option value="">Select one</option>
-            {PARTNER_PROFESSIONS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
+            {partnerProfessionsByGroup().map((g) => (
+              <optgroup key={g.group} label={g.label}>
+                {g.options.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

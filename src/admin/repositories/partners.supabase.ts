@@ -6,6 +6,7 @@ import type {
   FeeStatus,
   Partner,
   PartnerKind,
+  PartnerMessage,
   PartnerReferral,
   PartnerReferralOutcome,
   PartnerStatus,
@@ -27,6 +28,20 @@ import type { LeadSourceKind } from "../utils/marketing";
 type PartnerRow = Database["public"]["Tables"]["partners"]["Row"];
 type ReferralRow = Database["public"]["Tables"]["partner_referrals"]["Row"];
 type RewardRow = Database["public"]["Tables"]["referral_rewards"]["Row"];
+type MessageRow = Database["public"]["Tables"]["partner_messages"]["Row"];
+
+function mapMessage(row: MessageRow): PartnerMessage {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    partnerId: row.partner_id,
+    sentByEmail: row.sent_by_email,
+    toEmail: row.to_email,
+    subject: row.subject,
+    body: row.body,
+    emailStatus: row.email_status === "failed" ? "failed" : "sent",
+  };
+}
 
 export type LeadKind = "referral_lead" | "sell_submission";
 
@@ -154,6 +169,23 @@ export const partnersRepository = {
 
   async remove(id: string): Promise<void> {
     await adminFetch(`/api/admin/partners/${id}`, { method: "DELETE" });
+  },
+
+  /** Emails staff sent this partner from the drawer, newest first. */
+  async messages(id: string): Promise<PartnerMessage[]> {
+    const { data, error } = await supabase
+      .from("partner_messages")
+      .select("*")
+      .eq("partner_id", id)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as MessageRow[]).map(mapMessage);
+  },
+
+  /** Email the partner or applicant. Resolves even when the email fails to send (email: "failed"). */
+  async sendMessage(id: string, subject: string, message: string): Promise<{ messageId: string; email: "sent" | "failed" }> {
+    return adminFetch(`/api/admin/partners/${id}`, { method: "PATCH", body: { action: "message", subject, message } });
   },
 };
 

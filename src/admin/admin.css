@@ -3418,6 +3418,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-referral-history__item .gg-form-grid { margin-bottom: 0; }
 .gg-referral-history__item > .gg-btn { justify-self: start; }
 .gg-referral-history__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.gg-partner-message summary { cursor: pointer; color: var(--gg-text-muted, #6b7280); font-size: 0.85rem; min-height: 32px; display: flex; align-items: center; }
+.gg-partner-message p { overflow-wrap: anywhere; }
 .gg-referral-history .gg-referral-checkin {
   margin: 0; padding: 8px 10px; border-radius: var(--gg-radius-sm);
   background: rgba(47, 143, 91, 0.1); color: #1f5f3d; font-size: 0.86rem;

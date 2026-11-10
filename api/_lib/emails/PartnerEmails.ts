@@ -13,6 +13,8 @@ import { PARTNER_STORE_STANDARDS } from "../../../src/store/lib/partnerTypes.js"
 //   PartnerApproved                welcome + how it works (+ referral link)
 //   ReferralRewardEarned           store credit or a referral fee, to whoever
 //                                  referred a seller who sold
+//   PartnerMessage                 a staff-written message to an applicant or
+//                                  partner ("Message them" on the Partners page)
 //
 // Every seller-facing one says plainly that the store may pay Geega Games a
 // referral fee and that the seller is never charged — the same words as the
@@ -441,6 +443,46 @@ export function partnerApprovedText(d: PartnerApprovedData): string {
     "",
     "Questions? Just reply to this email.",
   ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// PartnerMessage — written by staff; the body is plain text, kept as typed
+// ---------------------------------------------------------------------------
+
+export type PartnerMessageData = Branding & {
+  contactName: string;
+  businessName: string;
+  subject: string;
+  /** Staff's words. Rendered as text (never HTML), line breaks kept. */
+  body: string;
+  /** Who's writing, e.g. "Jordan at Geega Games". */
+  signature: string;
+};
+
+export function partnerMessageSubject(d: PartnerMessageData): string {
+  return d.subject;
+}
+
+export function PartnerMessage(d: PartnerMessageData) {
+  const paragraphs = d.body.split(/\n{2,}/).map((x) => x.trim()).filter(Boolean);
+  return h(
+    BaseLayout,
+    {
+      previewText: paragraphs[0]?.slice(0, 120) ?? d.subject,
+      siteUrl: d.siteUrl,
+      logoUrl: d.logoUrl,
+      supportEmail: d.supportEmail,
+      reasonLine: `You received this because ${d.businessName} applied to or is part of the Geega Games partner program.`,
+    },
+    h(Text, { key: "hi", style: p }, `Hi ${d.contactName},`),
+    ...paragraphs.map((para, i) => h(Text, { key: `p${i}`, style: { ...p, whiteSpace: "pre-wrap" } }, para)),
+    h(Text, { key: "sig", style: p }, d.signature),
+    h(Text, { key: "q", style: muted }, "Just reply to this email — it comes straight to us."),
+  );
+}
+
+export function partnerMessageText(d: PartnerMessageData): string {
+  return [`Hi ${d.contactName},`, "", d.body.trim(), "", d.signature, "", "Just reply to this email — it comes straight to us."].join("\n");
 }
 
 // ---------------------------------------------------------------------------
