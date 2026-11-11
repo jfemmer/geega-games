@@ -22,9 +22,10 @@ import { ATTRIBUTION_TTL_MS } from "../src/store/lib/attributionStore";
 // fee only on a closed purchase Geega Games makes itself; nothing for a lead
 // passed to a partner store; a store owes its fee on every purchase from a
 // referred seller for 12 months), and parseable into the blocks the signing
-// page and PDF draw. The Referral Partner Agreement is version 2 (the
-// reviewed draft): countersigned by Geega Games, a 30-day Completion
-// Extension, Transaction Summaries, a Missouri venue with a fallback.
+// page and PDF draw. The Referral Partner Agreement is version 3 (the
+// reviewed draft with a mutual liability cap): countersigned by Geega Games,
+// a 30-day Completion Extension, Transaction Summaries, a Missouri venue with
+// a fallback.
 
 const base: PartnerAgreementContext = {
   kind: "referrer",
@@ -39,15 +40,15 @@ const base: PartnerAgreementContext = {
 
 const flat = (md: string) => md.replace(/\*\*/g, "").replace(/\s+/g, " ");
 
-describe("Referral Partner Agreement (version 2)", () => {
+describe("Referral Partner Agreement (version 3)", () => {
   const md = renderPartnerAgreement({ ...base, phone: "(919) 555-0100" });
   const text = flat(md);
 
-  it("is version 2, countersigned by Geega Games", () => {
-    expect(PARTNER_AGREEMENT_VERSION.referrer).toBe(2);
+  it("is version 3, countersigned by Geega Games", () => {
+    expect(PARTNER_AGREEMENT_VERSION.referrer).toBe(3);
     expect(PARTNER_AGREEMENT_COUNTERSIGNED.referrer).toBe(true);
     expect(PARTNER_AGREEMENT_COUNTERSIGNED.store).toBe(false);
-    expect(text).toContain("Version 2");
+    expect(text).toContain("Version 3");
     expect(text).toContain("Effective Date | The date Geega Games countersigns this Agreement (Section 16.6)");
     expect(text).toContain("It becomes binding only when Geega Games accepts it by countersigning in Missouri");
     expect(text).toContain("Your Referral Link is activated only after both parties have signed this Agreement.");
@@ -97,12 +98,33 @@ describe("Referral Partner Agreement (version 2)", () => {
       "within 270 days after the Referral Request",
       "the greater of $500 or the Referral Fees paid or payable",
       "This cap does not reduce Referral Fees actually earned",
+      "Each party's total liability to the other under this Agreement will not exceed",
       "Geega Games will not end this Agreement in order to avoid paying a fee that would otherwise be earned.",
       "A new version applies to you only once you sign it.",
       "IRS Form W-9",
     ]) {
       expect(text, phrase).toContain(phrase);
     }
+  });
+
+  it("version 3: a mutual cap, and the partner covers only the serious things, uncapped", () => {
+    expect(text).toContain("13.2 Mutual cap.");
+    expect(text).not.toContain("Geega Games' cap");
+    const indemnity = text.slice(text.indexOf("12.1 By you."), text.indexOf("12.2 By Geega Games."));
+    for (const phrase of [
+      "Telephone Consumer Protection Act",
+      "fake, duplicate or manipulated referrals",
+      "telling a Seller or anyone else that you act for Geega Games",
+      "misuse or unauthorized disclosure of Sellers' personal information",
+      "willful misconduct",
+    ]) {
+      expect(indemnity, phrase).toContain(phrase);
+    }
+    // Ordinary breaches and carelessness fall under the cap now.
+    expect(indemnity).not.toMatch(/your breach of this Agreement|your negligence/);
+    const exceptions = text.slice(text.indexOf("13.3 Exceptions."), text.indexOf("## 14."));
+    expect(exceptions).toContain("the indemnity obligations in Section 12");
+    expect(exceptions).toContain("breach of Section 9");
   });
 
   it("covers marketing law and disclosure, with sample wording", () => {

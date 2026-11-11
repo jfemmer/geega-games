@@ -1,11 +1,14 @@
 // The partner program's two agreements, signed electronically when the owner
 // approves a partner:
 //
-//   referrer  Referral Partner Agreement (version 2): a referral fee only when
+//   referrer  Referral Partner Agreement (version 3): a referral fee only when
 //             Geega Games itself buys a referred collection and the purchase
 //             closes. No fee when a lead is passed to a partner store or sold
 //             elsewhere. The partner signs first, with their legal entity
 //             details; it takes effect when Geega Games countersigns.
+//             Version 3: the liability cap is mutual, and the partner's
+//             indemnity covers unlawful outreach, fraud, claiming to act for
+//             Geega Games, misusing seller data and willful misconduct.
 //   store     Partner Store Agreement (version 1): the finder's fee a partner
 //             store owes Geega Games on every purchase from a seller it was
 //             sent, including later purchases (no going around Geega Games).
@@ -24,7 +27,7 @@ import { PARTNER_STORE_STANDARDS, type PartnerKind } from "./partnerTypes.js";
 // Same markdown subset and parser as the consignment agreement.
 export { parseAgreement, type AgreementBlock, type Inline } from "./consignmentAgreement.js";
 
-export const PARTNER_AGREEMENT_VERSION: Record<PartnerKind, number> = { referrer: 2, store: 1 };
+export const PARTNER_AGREEMENT_VERSION: Record<PartnerKind, number> = { referrer: 3, store: 1 };
 
 export const PARTNER_AGREEMENT_TITLE: Record<PartnerKind, string> = {
   referrer: "Geega Games Referral Partner Agreement",
@@ -261,7 +264,8 @@ function commonTerms(ctx: PartnerAgreementContext, n: { first: number }): string
 **${s + 3}.2 What we record.** When you sign, we keep with this Agreement: the full text and version shown to you; your typed full legal name, title and signature; each box you ticked; the date and time; the email address the signing link was sent to; and technical information about the signing session, including IP address and browser. We make a PDF of the signed Agreement with this information and a SHA-256 fingerprint of the text, so any later change can be detected, and email you a copy.`;
 }
 
-// Referral Partner Agreement, version 2 (reviewed draft, November 2026).
+// Referral Partner Agreement, version 3 (version 2, the reviewed draft of
+// November 2026, with a mutual liability cap and a narrower indemnity).
 function referrerTemplate(ctx: PartnerAgreementContext): string {
   const fee = formatFeePercent(ctx.feePercent);
   const days = REFERRAL_WINDOW_DAYS;
@@ -584,16 +588,13 @@ Geega Games will try to answer within 5 business days. No answer means not appro
 
 ## 12. Indemnification
 
-**12.1 By you.** You will defend, indemnify and hold harmless Geega Games and its owners, employees and agents. This covers third-party claims, losses, penalties and reasonable attorneys' fees arising from any of these:
+**12.1 By you.** You will defend, indemnify and hold harmless Geega Games and its owners, employees and agents against third-party claims, and the resulting losses, penalties and reasonable attorneys' fees, to the extent they arise from any of these by you or anyone acting for you:
 
-1. unlawful marketing or outreach;
-2. your misrepresentations;
-3. fraudulent or manipulated referrals;
-4. mishandling of Confidential Information or personal data, or privacy violations;
-5. intellectual-property infringement, except by Program Materials used as provided;
-6. unauthorized negotiation, or handling of Sellers' property;
-7. your negligence or misconduct; or
-8. your breach of this Agreement.
+1. unlawful marketing or outreach, including calls, texts or emails that violate the Telephone Consumer Protection Act, the Telemarketing Sales Rule, the CAN-SPAM Act or state telemarketing laws;
+2. fraud, or fake, duplicate or manipulated referrals;
+3. telling a Seller or anyone else that you act for Geega Games, or making offers, promises or statements about Geega Games that it did not authorize;
+4. misuse or unauthorized disclosure of Sellers' personal information or of Confidential Information; or
+5. willful misconduct.
 
 **12.2 By Geega Games.** Geega Games will defend and indemnify you against third-party claims that Program Materials, used exactly as provided, infringe intellectual-property rights.
 
@@ -608,13 +609,13 @@ Geega Games will try to answer within 5 business days. No answer means not appro
 
 **13.1 No indirect damages.** Neither party is liable for indirect, incidental, special, consequential or punitive damages, or lost profits.
 
-**13.2 Geega Games' cap.** Geega Games' total liability under this Agreement will not exceed the greater of $500 or the Referral Fees paid or payable to you in the 12 months before the claim. **This cap does not reduce Referral Fees actually earned under Sections 5 and 6; those are payable in full.**
+**13.2 Mutual cap.** Each party's total liability to the other under this Agreement will not exceed the greater of $500 or the Referral Fees paid or payable to you in the 12 months before the claim. **This cap does not reduce Referral Fees actually earned under Sections 5 and 6; those are payable in full.**
 
 **13.3 Exceptions.** Sections 13.1 and 13.2 do not apply to:
 
-- indemnity obligations
+- the indemnity obligations in Section 12
 - breach of Section 9
-- your repayment obligations
+- your repayment obligations under Section 5.5
 - fraud or willful misconduct
 - liability that cannot be limited by law
 

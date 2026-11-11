@@ -182,8 +182,8 @@ describe("sending the agreement", () => {
     expect(a.invite_token_hash).toBe(sha(token));
     expect(JSON.stringify(a)).not.toContain(token);
     expect(a.rendered_md).toContain("3% of the Net Purchase Price");
-    expect(a.rendered_md).toContain("Version 2");
-    expect(a.version_number).toBe(2);
+    expect(a.rendered_md).toContain("Version 3");
+    expect(a.version_number).toBe(3);
     expect(a.requires_countersign).toBe(true);
     expect(a.required_acks).toContain("countersign");
     expect(sent[0]).toMatchObject({ emailType: "partner_agreement_invite", to: "Chay@Example.com" });
@@ -207,7 +207,7 @@ describe("GET/POST /api/partner-agreement", () => {
       status: "pending",
       kind: "referrer",
       businessName: "NITE Run Delivery LLC",
-      versionNumber: 2,
+      versionNumber: 3,
       collectEntity: true,
       entityDefaults: { name: "NITE Run Delivery LLC", state: "NC" },
     });
