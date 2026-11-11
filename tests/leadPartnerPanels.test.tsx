@@ -237,13 +237,21 @@ describe("ReferralRewardPanel", () => {
     expect(await screen.findByText("Added $10.00 store credit and emailed them.")).toBeInTheDocument();
   });
 
-  it("counts a partner store sale as a sale, and lets the owner mark a partner's fee paid", async () => {
+  it("offers a referral partner's fee only when we bought it ourselves, and lets the owner mark a fee paid", async () => {
     repo.codeOwner.mockResolvedValue({ code: "heirloom", userId: null, partnerId: "p4", label: "Heirloom Estate Sales (referral partner)", email: null });
     repo.forLead.mockResolvedValue([referral({ outcome: "sold" })]);
     const user = userEvent.setup();
-    const { unmount } = wrap(<ReferralRewardPanel kind="referral_lead" leadId="lead-1" refCode="heirloom" />);
+    // Sold to a partner store: no referral fee under the agreement.
+    const first = wrap(<ReferralRewardPanel kind="referral_lead" leadId="lead-1" refCode="heirloom" />);
+    expect(await screen.findByText(/No referral fee: this sold to a partner store/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record their referral fee" })).toBeNull();
+    first.unmount();
+
+    // Bought by Geega Games and completed: the fee can be recorded.
+    repo.forLead.mockResolvedValue([]);
+    const second = wrap(<ReferralRewardPanel kind="sell_submission" leadId="sub-1" refCode="heirloom" soldToUs />);
     expect(await screen.findByRole("button", { name: "Record their referral fee" })).toBeInTheDocument();
-    unmount();
+    second.unmount();
 
     repo.rewardForLead.mockResolvedValue({
       id: "rw1",

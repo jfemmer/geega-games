@@ -3,8 +3,10 @@ import { createFakeState, createFakeSupabase, fakeId, fakeResponse, type FakeSta
 
 // /api/admin/referral-rewards: rewarding whoever referred a seller who sold.
 // A customer's code earns $10 of store credit; a referral partner earns their
-// fee % of the sale in cash. Owner-only, only after a real sale, never for a
-// seller who referred themselves, and never twice for one lead.
+// fee % in cash, but only when Geega Games bought the collection itself
+// (a completed submission), under a signed Referral Partner Agreement, at the
+// fee they signed for. Owner-only, only after a real sale, never for a seller
+// who referred themselves, and never twice for one lead.
 
 beforeAll(() => {
   process.env.SUPABASE_URL = "https://x.invalid";
@@ -78,6 +80,9 @@ beforeEach(() => {
   partnerCode = { id: fakeId(), code: "heirloom", user_id: null, partner_id: partner.id };
   state.tables.partners = [partner];
   state.tables.referral_codes = [customerCode, partnerCode];
+  state.tables.partner_agreements = [
+    { id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 3, signed_at: "2026-10-01T12:00:00.000Z", version_number: 1 },
+  ];
   installGrantRpc();
 });
 
@@ -89,6 +94,8 @@ function addSubmission(row: Record<string, unknown>) {
     email: "seller@example.com",
     status: "completed",
     purchase_amount_cents: 40000,
+    created_at: "2026-10-05T12:00:00.000Z",
+    closed_at: "2026-10-12T12:00:00.000Z",
     ...row,
   };
   (state.tables.sell_submissions ??= []).push(sub);
@@ -135,18 +142,52 @@ describe("POST /api/admin/referral-rewards", () => {
     expect(state.tables.admin_audit_log?.[0]).toMatchObject({ action: "referral_reward.grant" });
   });
 
-  it("gives a referral partner their fee % of what a partner store paid (3% of $500 = $15)", async () => {
+  it("pays a referral partner nothing when the collection went to a partner store", async () => {
     const lead = addPartnerLead({}, 50000);
     const res = await call({ token: OWNER, body: { leadType: "referral_lead", leadId: lead.id } });
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toMatchObject({ kind: "cash", amountCents: 1500 });
-    expect(state.tables.referral_rewards[0]).toMatchObject({ partner_id: partner.id, kind: "cash", status: "owed" });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toMatch(/only when Geega Games buys the collection itself/);
+    // A Magic submission passed to a store and sold there: also no fee.
+    const passedOn = addSubmission({ ref_code: "heirloom", status: "sent_to_partner" });
+    (state.tables.partner_referrals ??= []).push({
+      id: fakeId(),
+      referral_lead_id: null,
+      sell_submission_id: passedOn.id,
+      outcome: "sold",
+      outcome_at: "2026-10-10T12:00:00.000Z",
+      sale_amount_cents: 50000,
+    });
+    expect((await call({ token: OWNER, body: { leadType: "sell_submission", leadId: passedOn.id } })).statusCode).toBe(409);
+    expect(state.tables.referral_rewards ?? []).toHaveLength(0);
   });
 
-  it("rewards a partner for a Magic sale to us using what we paid", async () => {
+  it("still gives a customer store credit when the seller they referred sold to a partner store", async () => {
+    const lead = addPartnerLead({ ref_code: "friend22" }, 50000);
+    const res = await call({ token: OWNER, body: { leadType: "referral_lead", leadId: lead.id } });
+    expect(res.body).toMatchObject({ kind: "store_credit", amountCents: 1000 });
+  });
+
+  it("rewards a partner for a completed sale to us, at the fee in their signed agreement", async () => {
+    partner.fee_percent = 10; // changed on their profile since they signed for 3%
     const sub = addSubmission({ ref_code: "heirloom", purchase_amount_cents: 120000 });
     const res = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: sub.id } });
     expect(res.body).toMatchObject({ kind: "cash", amountCents: 3600 });
+    expect(state.tables.referral_rewards[0]).toMatchObject({ partner_id: partner.id, kind: "cash", status: "owed" });
+  });
+
+  it("pays a partner nothing without a signed agreement, or when the request was over 180 days before closing", async () => {
+    state.tables.partner_agreements = [{ id: fakeId(), partner_id: partner.id, status: "pending", fee_percent: 3, signed_at: null }];
+    const sub = addSubmission({ ref_code: "heirloom" });
+    const unsigned = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: sub.id } });
+    expect(unsigned.statusCode).toBe(409);
+    expect(unsigned.body.message).toMatch(/hasn't signed the Referral Partner Agreement/);
+
+    state.tables.partner_agreements = [{ id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 3, signed_at: "2026-01-01T00:00:00Z" }];
+    const old = addSubmission({ ref_code: "heirloom", created_at: "2026-01-02T00:00:00.000Z", closed_at: "2026-08-01T00:00:00.000Z" });
+    const late = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: old.id } });
+    expect(late.statusCode).toBe(409);
+    expect(late.body.message).toMatch(/180 days/);
+    expect(state.tables.referral_rewards ?? []).toHaveLength(0);
   });
 
   it("waits for a real sale", async () => {

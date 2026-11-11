@@ -3420,6 +3420,8 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-referral-history__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .gg-partner-message summary { cursor: pointer; color: var(--gg-text-muted, #6b7280); font-size: 0.85rem; min-height: 32px; display: flex; align-items: center; }
 .gg-partner-message p { overflow-wrap: anywhere; }
+.gg-partner-status { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gg-partner-agreement__warn { margin: 8px 0 0; padding: 8px 12px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 0.875rem; }
 .gg-referral-history .gg-referral-checkin {
   margin: 0; padding: 8px 10px; border-radius: var(--gg-radius-sm);
   background: rgba(47, 143, 91, 0.1); color: #1f5f3d; font-size: 0.86rem;

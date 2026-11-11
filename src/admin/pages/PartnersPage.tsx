@@ -22,7 +22,7 @@ import {
   referralRewardsRepository,
   type PartnerFieldsInput,
 } from "../repositories/partners.supabase";
-import type { Partner, PartnerMessage, PartnerReferral, ReferralReward } from "../types";
+import type { Partner, PartnerAgreement, PartnerMessage, PartnerReferral, ReferralReward } from "../types";
 import {
   DEFAULT_REFERRER_FEE_PERCENT,
   DEFAULT_STORE_FEE_PERCENT,
@@ -48,9 +48,11 @@ import { marketingPage, printedAddress, referralPartnerLink } from "../utils/mar
 // Partners: partner stores (buy the leads, pay a finder's fee when they buy)
 // and referral partners (send sellers, earn a referral fee). Applications
 // from /for-stores and /referral-partners land here as "New application";
-// the owner approves (which emails a welcome, and a referral partner's
-// personal link), declines, pauses or edits them, and sees what each store
-// owes. Every change goes through owner-only API endpoints.
+// the owner approves (which emails the partner agreement to sign; signing
+// makes them active and sends the welcome and a referral partner's personal
+// link), declines, pauses or edits them, and sees what each store owes.
+// Leads and referral fees need a signed agreement. Every change goes through
+// owner-only API endpoints.
 
 type TabKey = "applied" | "stores" | "referrers" | "declined";
 
@@ -107,6 +109,7 @@ function statsByPartner(referrals: PartnerReferral[]): Map<string, StoreStats> {
 export function PartnersPage({ query }: { query: URLSearchParams }) {
   const partners = useAsync(() => partnersRepository.list(), []);
   const referrals = useAsync(() => partnerReferralsRepository.all(), []);
+  const agreements = useAsync(() => partnersRepository.agreements(), []);
   const [tab, setTab] = useState<TabKey>("applied");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(() => query.get("partner"));
@@ -114,6 +117,11 @@ export function PartnersPage({ query }: { query: URLSearchParams }) {
 
   const rows = useMemo(() => partners.data ?? [], [partners.data]);
   const stats = useMemo(() => statsByPartner(referrals.data ?? []), [referrals.data]);
+  const agreementsByPartner = useMemo(() => {
+    const map = new Map<string, PartnerAgreement[]>();
+    for (const a of agreements.data ?? []) map.set(a.partnerId, [...(map.get(a.partnerId) ?? []), a]);
+    return map;
+  }, [agreements.data]);
 
   // Open on the tab that holds a deep-linked partner, or on Applications only when there are some.
   useEffect(() => {
@@ -204,7 +212,19 @@ export function PartnersPage({ query }: { query: URLSearchParams }) {
     {
       key: "status",
       header: "Status",
-      render: (p) => <Badge tone={STATUS_TONE[p.status]}>{optionLabel(PARTNER_STATUSES, p.status)}</Badge>,
+      render: (p) => {
+        const state = agreementState(agreementsByPartner.get(p.id) ?? []);
+        return (
+          <span className="gg-partner-status">
+            <Badge tone={STATUS_TONE[p.status]}>{optionLabel(PARTNER_STATUSES, p.status)}</Badge>
+            {agreements.data && p.status !== "declined" && state.kind !== "signed" && (
+              <Badge tone={state.kind === "pending" ? "info" : "warning"}>
+                {state.kind === "pending" ? (state.expired ? "Agreement expired" : "Agreement sent") : "Not signed"}
+              </Badge>
+            )}
+          </span>
+        );
+      },
     },
     { key: "date", header: "Since", secondary: true, render: (p) => formatDate(p.approvedAt ?? p.createdAt) },
   ];
@@ -212,6 +232,7 @@ export function PartnersPage({ query }: { query: URLSearchParams }) {
   function reloadAll() {
     partners.reload();
     referrals.reload();
+    agreements.reload();
   }
 
   return (
@@ -276,6 +297,7 @@ export function PartnersPage({ query }: { query: URLSearchParams }) {
         <PartnerDrawer
           partner={selected}
           referrals={(referrals.data ?? []).filter((r) => r.partnerId === selected.id)}
+          agreements={agreements.data ? (agreementsByPartner.get(selected.id) ?? []) : null}
           onClose={() => setSelectedId(null)}
           onChanged={reloadAll}
           onDeleted={() => {
@@ -521,12 +543,15 @@ function AddPartnerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 function PartnerDrawer({
   partner,
   referrals,
+  agreements,
   onClose,
   onChanged,
   onDeleted,
 }: {
   partner: Partner;
   referrals: PartnerReferral[];
+  /** null while loading. */
+  agreements: PartnerAgreement[] | null;
   onClose: () => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -553,10 +578,18 @@ function PartnerDrawer({
     setActing(action);
     try {
       const result = await partnersRepository.act(partner.id, action);
-      const verb = { approve: "Approved", decline: "Declined", pause: "Paused", activate: "Reactivated" }[action];
-      toast.success(
-        `${verb} ${partner.businessName}.${result.welcome === "sent" ? " Welcome email sent." : result.welcome === "failed" ? " The welcome email didn't send — email them yourself." : ""}`,
-      );
+      if (result.agreement) {
+        if (result.agreement.emailed) {
+          toast.success(`Approved. ${partner.businessName} has been emailed the agreement; they go live when they sign it.`);
+        } else {
+          toast.error("Approved, but the agreement email didn't send. Use “Copy signing link” to send it yourself.");
+        }
+      } else {
+        const verb = { approve: "Approved", decline: "Declined", pause: "Paused", activate: "Reactivated" }[action];
+        toast.success(
+          `${verb} ${partner.businessName}.${result.welcome === "sent" ? " Welcome email sent." : result.welcome === "failed" ? " The welcome email didn't send — email them yourself." : ""}`,
+        );
+      }
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't update the partner.");
@@ -578,6 +611,9 @@ function PartnerDrawer({
     }
   }
 
+  const agreementInfo = agreementState(agreements ?? []);
+  const hasSigned = agreementInfo.kind === "signed";
+  const pendingAgreement = agreementInfo.kind === "pending";
   const link = partner.referralCode ? referralPartnerLink(partner.referralCode) : null;
   const source = describeLeadSource(partner.source);
   const owed = referrals.filter((r) => r.feeStatus === "owed");
@@ -652,9 +688,9 @@ function PartnerDrawer({
           {source.length > 0 && <p className="gg-card-meta">Found us: {source.join(" · ")}</p>}
 
           <div className="gg-drawer-actions__buttons gg-partner-actions">
-            {partner.status !== "active" && (
-              <Button variant="primary" size="sm" loading={acting === "approve"} onClick={() => void act("approve")}>
-                {partner.status === "applied" ? "Approve & send welcome" : "Approve"}
+            {partner.status !== "active" && partner.status !== "paused" && !(partner.status === "applied" && pendingAgreement) && (
+              <Button variant="primary" size="sm" loading={acting === "approve"} disabled={agreements === null} onClick={() => void act("approve")}>
+                {hasSigned ? (partner.status === "applied" ? "Approve & send welcome" : "Approve") : "Approve & send agreement"}
               </Button>
             )}
             {partner.status === "applied" && (
@@ -674,6 +710,8 @@ function PartnerDrawer({
             )}
           </div>
         </section>
+
+        <PartnerAgreementSection key={partner.id} partner={partner} agreements={agreements} onChanged={onChanged} />
 
         <PartnerMessagesSection partner={partner} />
 
@@ -706,7 +744,7 @@ function PartnerDrawer({
                 </div>
               </div>
             ) : (
-              <p className="gg-card-meta">They get a personal link when you approve them.</p>
+              <p className="gg-card-meta">They get a personal link once they sign their agreement.</p>
             )}
             {rewards.length > 0 && (
               <ul className="gg-referral-history">
@@ -994,6 +1032,173 @@ function PartnerMessagesSection({ partner }: { partner: Partner }) {
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The partner agreement — sent on approval, signed online, PDF kept
+// ---------------------------------------------------------------------------
+
+type AgreementState =
+  | { kind: "none" }
+  | { kind: "pending"; agreement: PartnerAgreement; expired: boolean; signed: PartnerAgreement | null }
+  | { kind: "signed"; agreement: PartnerAgreement; pending: PartnerAgreement | null };
+
+/** Where a partner's agreement stands: newest signed one wins; an open one may sit on top of it. */
+function agreementState(list: PartnerAgreement[]): AgreementState {
+  const signed = list.filter((a) => a.status === "signed").sort((a, b) => (b.signedAt ?? "").localeCompare(a.signedAt ?? ""))[0] ?? null;
+  const pending = list.find((a) => a.status === "pending") ?? null;
+  if (signed) return { kind: "signed", agreement: signed, pending };
+  if (pending) return { kind: "pending", agreement: pending, expired: new Date(pending.expiresAt).getTime() <= Date.now(), signed: null };
+  return { kind: "none" };
+}
+
+function PartnerAgreementSection({
+  partner,
+  agreements,
+  onChanged,
+}: {
+  partner: Partner;
+  agreements: PartnerAgreement[] | null;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<"send" | "pdf" | null>(null);
+  const [signUrl, setSignUrl] = useState<string | null>(null);
+
+  if (agreements === null) {
+    return (
+      <section className="gg-leaddetail__section" aria-busy="true">
+        <h3>Partner agreement</h3>
+        <p className="gg-card-meta">Loading…</p>
+      </section>
+    );
+  }
+
+  const state = agreementState(agreements);
+  const what = partner.kind === "store" ? "Partner Store Agreement" : "Referral Partner Agreement";
+  const gate =
+    partner.kind === "store"
+      ? "No leads can be sent to them until they sign."
+      : "Their link stays off for new partners, and no referral fee can be paid, until they sign.";
+
+  async function send() {
+    setBusy("send");
+    try {
+      const { agreement } = await partnersRepository.sendAgreement(partner.id);
+      setSignUrl(agreement.signUrl);
+      if (agreement.emailed) toast.success(`${what} emailed to ${partner.email}.`);
+      else toast.error("The agreement was created, but the email didn't send. Copy the signing link below and send it yourself.");
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't send the agreement.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function download(agreementId: string) {
+    setBusy("pdf");
+    try {
+      const url = await partnersRepository.agreementPdfUrl(partner.id, agreementId);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't open the signed copy.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyLink() {
+    if (!signUrl) return;
+    try {
+      await navigator.clipboard.writeText(signUrl);
+      toast.success("Signing link copied. It's private to them, so send it only to their email.");
+    } catch {
+      toast.error("Couldn't copy. Press and hold the link to copy it instead.");
+    }
+  }
+
+  const canSend = partner.status !== "declined";
+  const signed = state.kind === "signed" ? state.agreement : null;
+  const open = state.kind === "pending" ? state.agreement : state.kind === "signed" ? state.pending : null;
+  const feeChanged = signed && Math.abs(signed.feePercent - partner.feePercent) > 0.001;
+
+  return (
+    <section className="gg-leaddetail__section">
+      <h3>
+        Partner agreement{" "}
+        {signed ? (
+          <Badge tone="success">Signed</Badge>
+        ) : open ? (
+          <Badge tone={state.kind === "pending" && state.expired ? "warning" : "info"}>
+            {state.kind === "pending" && state.expired ? "Link expired" : "Waiting for signature"}
+          </Badge>
+        ) : (
+          <Badge tone="warning">Not signed</Badge>
+        )}
+      </h3>
+
+      {signed && (
+        <>
+          <p>
+            <strong>{signed.signerName}</strong>
+            {signed.signerTitle ? ` (${signed.signerTitle})` : ""} signed the {signed.title} (version {signed.versionNumber}) on{" "}
+            {formatDateTime(signed.signedAt)}, at a {formatPercent(signed.feePercent)} fee.
+          </p>
+          <div className="gg-drawer-actions__buttons">
+            <Button size="sm" variant="secondary" icon="download" loading={busy === "pdf"} onClick={() => void download(signed.id)}>
+              Signed copy (PDF)
+            </Button>
+          </div>
+          {feeChanged && (
+            <p className="gg-partner-agreement__warn" role="note">
+              Their fee here is {formatPercent(partner.feePercent)}, but they signed for {formatPercent(signed.feePercent)}. The signed{" "}
+              {formatPercent(signed.feePercent)} is what applies until they sign a new agreement.
+            </p>
+          )}
+        </>
+      )}
+
+      {open && (
+        <p className={signed ? "gg-card-meta" : undefined}>
+          {signed ? "A newer agreement was " : "Sent "}
+          {signed ? `sent ${formatDate(open.createdAt)}` : formatDateTime(open.lastEmailedAt ?? open.createdAt)} to {open.invitedEmail}
+          {open.sentByEmail ? ` by ${open.sentByEmail}` : ""} at a {formatPercent(open.feePercent)} fee.{" "}
+          {new Date(open.expiresAt).getTime() <= Date.now()
+            ? "The link has expired; send a new one."
+            : `The link works until ${formatDate(open.expiresAt)}.`}
+        </p>
+      )}
+
+      {!signed && <p className="gg-card-meta">{open ? gate : `${partner.businessName} hasn't been sent the ${what} yet. ${gate}`}</p>}
+
+      {canSend && (
+        <div className="gg-drawer-actions__buttons">
+          <Button
+            size="sm"
+            variant={signed || open ? "ghost" : "primary"}
+            icon="mail"
+            loading={busy === "send"}
+            onClick={() => void send()}
+          >
+            {open ? "Resend agreement" : signed ? "Send a new agreement" : "Send agreement"}
+          </Button>
+          {signUrl && (
+            <Button size="sm" variant="ghost" icon="copy" onClick={() => void copyLink()}>
+              Copy signing link
+            </Button>
+          )}
+        </div>
+      )}
+      {canSend && (open || signed) && (
+        <p className="gg-card-meta">
+          {signed
+            ? "Send a new agreement after changing their fee. Their signed one stays in force until they sign the new one."
+            : "Resending makes a new link at their current fee; the old link stops working."}
+        </p>
       )}
     </section>
   );

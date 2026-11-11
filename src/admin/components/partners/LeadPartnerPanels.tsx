@@ -441,7 +441,13 @@ export function ReferralRewardPanel({
           )}
         </p>
       ) : owner ? (
-        sold ? (
+        !isCustomer && !soldToUs ? (
+          <p className="gg-card-meta">
+            {sold
+              ? "No referral fee: this sold to a partner store. Referral partners earn a fee only when Geega Games buys the collection itself."
+              : "They earn their referral fee only if Geega Games buys this collection itself and the purchase is completed (not if it goes to a partner store)."}
+          </p>
+        ) : sold ? (
           <Button size="sm" variant="primary" icon="dollar" loading={busy} onClick={grant}>
             {isCustomer
               ? `Give ${formatCents(SELLER_REFERRAL_REWARD_CENTS)} store credit`
@@ -451,7 +457,7 @@ export function ReferralRewardPanel({
           <p className="gg-card-meta">
             {isCustomer
               ? `They get ${formatCents(SELLER_REFERRAL_REWARD_CENTS)} in store credit once this seller sells.`
-              : "They earn their referral fee once this seller sells."}
+              : "They earn their referral fee once this purchase is completed."}
           </p>
         )
       ) : null}

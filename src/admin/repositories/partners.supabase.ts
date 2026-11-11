@@ -5,6 +5,7 @@ import type {
   CheckinAnswer,
   FeeStatus,
   Partner,
+  PartnerAgreement,
   PartnerKind,
   PartnerMessage,
   PartnerReferral,
@@ -29,6 +30,40 @@ type PartnerRow = Database["public"]["Tables"]["partners"]["Row"];
 type ReferralRow = Database["public"]["Tables"]["partner_referrals"]["Row"];
 type RewardRow = Database["public"]["Tables"]["referral_rewards"]["Row"];
 type MessageRow = Database["public"]["Tables"]["partner_messages"]["Row"];
+type AgreementRow = Database["public"]["Tables"]["partner_agreements"]["Row"];
+
+/** Everything but the text and the signing secret's hash. */
+const AGREEMENT_COLUMNS =
+  "id, partner_id, created_at, kind, title, version_number, fee_percent, status, invited_email, invite_expires_at, last_emailed_at, sent_by_email, signed_at, signer_legal_name, signer_title, voided_at, void_reason";
+
+function mapAgreement(row: Partial<AgreementRow>): PartnerAgreement {
+  return {
+    id: row.id!,
+    partnerId: row.partner_id!,
+    createdAt: row.created_at!,
+    kind: row.kind === "store" ? "store" : "referrer",
+    title: row.title ?? "",
+    versionNumber: row.version_number ?? 1,
+    feePercent: Number(row.fee_percent ?? 0),
+    status: row.status === "signed" ? "signed" : row.status === "void" ? "void" : "pending",
+    invitedEmail: row.invited_email ?? "",
+    expiresAt: row.invite_expires_at!,
+    lastEmailedAt: row.last_emailed_at ?? null,
+    sentByEmail: row.sent_by_email ?? null,
+    signedAt: row.signed_at ?? null,
+    signerName: row.signer_legal_name ?? null,
+    signerTitle: row.signer_title ?? null,
+    voidedAt: row.voided_at ?? null,
+    voidReason: row.void_reason ?? null,
+  };
+}
+
+export interface AgreementSent {
+  id: string;
+  emailed: boolean;
+  /** For copying to the partner when the email didn't go out. */
+  signUrl: string;
+}
 
 function mapMessage(row: MessageRow): PartnerMessage {
   return {
@@ -159,12 +194,41 @@ export const partnersRepository = {
     await adminFetch(`/api/admin/partners/${id}`, { method: "PATCH", body: { action: "update", fields } });
   },
 
+  /**
+   * Approving someone with no signed agreement emails them the agreement
+   * (`agreement` is set) instead of making them active.
+   */
   async act(
     id: string,
     action: "approve" | "decline" | "pause" | "activate",
     opts: { sendWelcome?: boolean } = {},
-  ): Promise<{ referralCode: string | null; welcome: string | null }> {
+  ): Promise<{ referralCode: string | null; welcome: string | null; agreement?: AgreementSent }> {
     return adminFetch(`/api/admin/partners/${id}`, { method: "PATCH", body: { action, ...opts } });
+  },
+
+  /** Every agreement sent to any partner, newest first (no text). */
+  async agreements(): Promise<PartnerAgreement[]> {
+    const { data, error } = await supabase
+      .from("partner_agreements")
+      .select(AGREEMENT_COLUMNS)
+      .order("created_at", { ascending: false })
+      .limit(2000);
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Partial<AgreementRow>[]).map(mapAgreement);
+  },
+
+  /** (Re)send the agreement to sign at their current fee. The previous link stops working. */
+  async sendAgreement(id: string): Promise<{ agreement: AgreementSent }> {
+    return adminFetch(`/api/admin/partners/${id}`, { method: "PATCH", body: { action: "send_agreement" } });
+  },
+
+  /** A five-minute download link for a signed agreement's PDF. */
+  async agreementPdfUrl(id: string, agreementId: string): Promise<string> {
+    const res = await adminFetch<{ url: string }>(`/api/admin/partners/${id}`, {
+      method: "PATCH",
+      body: { action: "agreement_pdf", agreementId },
+    });
+    return res.url;
   },
 
   async remove(id: string): Promise<void> {

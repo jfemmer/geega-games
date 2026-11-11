@@ -1412,6 +1412,27 @@ export interface Partner {
   source: LeadSourceFields;
 }
 
+/** An agreement sent to a partner to sign (partner_agreements), without its text. */
+export interface PartnerAgreement {
+  id: string;
+  partnerId: string;
+  createdAt: string;
+  kind: "store" | "referrer";
+  title: string;
+  versionNumber: number;
+  feePercent: number;
+  status: "pending" | "signed" | "void";
+  invitedEmail: string;
+  expiresAt: string;
+  lastEmailedAt: string | null;
+  sentByEmail: string | null;
+  signedAt: string | null;
+  signerName: string | null;
+  signerTitle: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+}
+
 /** A staff-written email to a partner or applicant (partner_messages). */
 export interface PartnerMessage {
   id: string;

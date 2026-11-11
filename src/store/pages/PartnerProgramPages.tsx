@@ -55,7 +55,7 @@ const STORE_FAQ = [
   {
     question: "How do I pay the finder's fee?",
     answer:
-      "Tell us when you buy and for how much. We send a statement for any fees owed, and you pay by invoice. We also check in with sellers afterwards, so both sides of every deal are on the record.",
+      "Tell us within 3 business days when you buy and for how much. We send a statement for any fees owed, and you pay it within 15 days. We also check in with sellers afterwards, so both sides of every deal are on the record.",
   },
   {
     question: "Do you send leads outside St. Louis?",
@@ -174,8 +174,8 @@ export function ForStoresPage() {
         <h2>The finder&rsquo;s fee</h2>
         <p className="gg-collect-lead">
           A percentage of what you pay the seller, and only when you buy. Nothing to join, nothing per
-          month, nothing for leads that don&rsquo;t buy. We agree your rate with you in writing before
-          we send any leads.
+          month, nothing for leads that don&rsquo;t buy. Your rate is set out in a Partner Store
+          Agreement you sign online before we send any leads.
         </p>
         <p className="gg-collect-lead">
           We&rsquo;re looking for stores in the St. Louis area and beyond that buy collections —
@@ -215,12 +215,17 @@ const REFERRER_FAQ = [
   {
     question: "How much is the referral fee?",
     answer:
-      "A percentage of what your client is paid, agreed with you when you join. You'll get it in writing, along with your personal link.",
+      "A percentage of what we pay your client, set out in a partner agreement you sign online before your link is turned on.",
   },
   {
     question: "When do I get paid?",
     answer:
-      "After your client's sale is complete. We email you when a referral sells and how much you've earned, then pay it.",
+      "After our purchase closes: we've received and checked the items and paid your client in full. We email you each time, and pay earned fees within 30 days after the end of that month.",
+  },
+  {
+    question: "Do I earn a fee on everything I refer?",
+    answer:
+      "Only on collections Geega Games buys itself, which today means Magic: The Gathering. If we pass your client's request to a partner store, or they sell somewhere else, there's no referral fee.",
   },
   {
     question: "Does my client pay anything?",
@@ -248,7 +253,7 @@ export function ReferralPartnersPage() {
   useSEO({
     title: "Referral Partners: Estate Sales, Attorneys & Realtors | Geega Games",
     description:
-      "Help your clients sell trading card and video game collections: free, no-obligation offers for them, and a referral fee for you when a collection sells.",
+      "Help your clients sell trading card and video game collections: free, no-obligation offers for them, and a referral fee for you when we buy a collection you send.",
     path: REFERRAL_PARTNERS_PATH,
     jsonLd: [faqJsonLd(REFERRER_FAQ)],
   });
@@ -260,14 +265,14 @@ export function ReferralPartnersPage() {
         <p className="gg-collect-hero-sub">
           Estate sale companies, estate attorneys, realtors and move managers come across collections
           all the time. We make it easy for your clients to get a free, no-obligation offer — and pay
-          you a referral fee when a collection sells.
+          you a referral fee when we buy a collection you send.
         </p>
         <HeroPoints
           points={[
             "Free for your clients, with no obligation",
             "Your own link and QR code, so every referral is credited to you",
             "Magic we buy ourselves; everything else goes to a vetted partner store",
-            "A referral fee when a collection you send sells",
+            "A referral fee when we buy a collection you send",
           ]}
         />
         <div className="gg-collect-hero-actions">
@@ -281,7 +286,8 @@ export function ReferralPartnersPage() {
         <h2>How it works</h2>
         <ol className="gg-collect-steps">
           <li>
-            <strong>Apply below.</strong> Once we&rsquo;ve said hello, we email you your personal link.
+            <strong>Apply below.</strong> If we approve you, we email you a short partner agreement to
+            sign online. Your personal link arrives as soon as it&rsquo;s signed.
           </li>
           <li>
             <strong>Give your client the link</strong> — or a flyer with your QR code. They tell us what
@@ -292,7 +298,8 @@ export function ReferralPartnersPage() {
             makes it for everything else. They&rsquo;re free to say no.
           </li>
           <li>
-            <strong>If they sell, you earn a referral fee</strong>, a percentage of the sale.
+            <strong>If we buy it, you earn a referral fee</strong>, a percentage of what we pay. A
+            collection that goes to a partner store doesn&rsquo;t earn a fee.
           </li>
         </ol>
       </section>
@@ -322,7 +329,8 @@ export function ReferralPartnersPage() {
       <section className="gg-collect-section" id="apply">
         <h2>Become a referral partner</h2>
         <p className="gg-collect-lead gg-collect-lead--center">
-          Tell us about yourself. We&rsquo;ll be in touch with your link and the details of your fee.
+          Tell us about yourself. If we approve you, we&rsquo;ll email you a partner agreement to sign,
+          with your fee in writing.
         </p>
         <div className="gg-referral-card">
           <PartnerApplicationForm kind="referrer" />

@@ -110,8 +110,9 @@ export default function PartnerApplicationForm({ kind }: { kind: PartnerKind }) 
       <div className="gg-referral-done" ref={doneRef} tabIndex={-1} role="status">
         <h3>Thanks{contactName ? `, ${contactName.split(" ")[0]}` : ""} — we got your application!</h3>
         <p>
-          We read every application ourselves and will be in touch by email
-          {kind === "referrer" ? " with your personal referral link" : ""}. We emailed you a copy.
+          We read every application ourselves and will be in touch by email. If we approve you,
+          you&rsquo;ll get a partner agreement to sign online
+          {kind === "referrer" ? ", then your personal referral link" : " before leads start"}. We emailed you a copy.
         </p>
       </div>
     );

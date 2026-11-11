@@ -4,6 +4,7 @@ import { requireStaff } from "../../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { logAdminAction } from "../../_lib/auditLog.js";
 import { sendLeadToPartnerEmails } from "../../_lib/partnerEmails.js";
+import { signedAgreementFor } from "../../_lib/partnerAgreements.js";
 import {
   leadPartnerCategories,
   partnerBuysAny,
@@ -91,6 +92,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
 
+    // No leads without a signed Partner Store Agreement; the fee is the one they signed for.
+    const agreement = await signedAgreementFor(admin, partner.id);
+    if (!agreement) {
+      throw new HttpError(
+        409,
+        `${partner.business_name} hasn't signed the Partner Store Agreement yet. Send it from their page under Partners, then send this lead once they've signed.`,
+      );
+    }
+
     const { data: referral, error: insertErr } = await admin
       .from("partner_referrals")
       .insert({
@@ -99,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sell_submission_id: leadType === "sell_submission" ? leadId : null,
         lead_reference: reference,
         sent_by: staff.userId,
-        fee_percent: partner.fee_percent,
+        fee_percent: agreement.fee_percent,
       })
       .select("id")
       .single();

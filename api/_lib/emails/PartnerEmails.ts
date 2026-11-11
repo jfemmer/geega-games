@@ -15,6 +15,8 @@ import { PARTNER_STORE_STANDARDS } from "../../../src/store/lib/partnerTypes.js"
 //                                  referred a seller who sold
 //   PartnerMessage                 a staff-written message to an applicant or
 //                                  partner ("Message them" on the Partners page)
+//   PartnerAgreementInvite         approved: review and sign the agreement
+//   PartnerAgreementSigned         the signed copy (PDF attached)
 //
 // Every seller-facing one says plainly that the store may pay Geega Games a
 // referral fee and that the seller is never charged — the same words as the
@@ -287,7 +289,7 @@ function applicationParagraphs(d: PartnerApplicationReceivedData): string[] {
   return [
     `Thanks, ${d.contactName}! We got your application for ${d.businessName} to become a Geega Games ${what}.`,
     d.summary ? `You told us: ${d.summary}.` : "",
-    "We read every application ourselves and will be in touch by email. If anything changes in the meantime, just reply to this email.",
+    "We read every application ourselves and will be in touch by email. If we approve you, we'll email you a partner agreement to sign online. If anything changes in the meantime, just reply to this email.",
   ].filter(Boolean);
 }
 
@@ -399,7 +401,7 @@ function approvedParagraphs(d: PartnerApprovedData): { heading: string; paras: s
     heading: "Here's your referral link",
     paras: [
       `Hi ${d.contactName}, thanks for partnering with Geega Games. When a client needs to sell cards or video games, send them to the link below. It lets them ask for a free, no-obligation offer, and tells us they came from ${d.businessName}.`,
-      `When someone you send sells — to us or to one of our partner stores — we pay you ${d.feePercentLabel} of the sale. We'll let you know when a referral sells.`,
+      `When Geega Games buys a collection from someone you sent and the purchase closes, we pay you ${d.feePercentLabel} of what we paid for it, as set out in your signed agreement. We'll let you know each time.`,
       "Please ask your client before sharing their details with anyone. The easiest way is to give them the link and let them fill it in themselves.",
     ],
     bullets: [],
@@ -486,6 +488,119 @@ export function partnerMessageText(d: PartnerMessageData): string {
 }
 
 // ---------------------------------------------------------------------------
+// PartnerAgreementInvite / PartnerAgreementSigned
+// ---------------------------------------------------------------------------
+
+export type PartnerAgreementInviteData = Branding & {
+  contactName: string;
+  businessName: string;
+  kind: "store" | "referrer";
+  agreementTitle: string;
+  feePercentLabel: string;
+  signUrl: string;
+  expiresOn: string;
+};
+
+export function partnerAgreementInviteSubject(d: PartnerAgreementInviteData): string {
+  return `You're approved, ${d.businessName}: please sign your partner agreement`;
+}
+
+function agreementInviteLines(d: PartnerAgreementInviteData): string[] {
+  return d.kind === "store"
+    ? [
+        `Good news: ${d.businessName} is approved as a Geega Games partner store. Before we send you any leads, please review and sign the ${d.agreementTitle}.`,
+        `It sets out the ${d.feePercentLabel} finder's fee you pay on purchases from sellers we send you, how purchases are reported and paid, and how sellers' information is protected.`,
+        "Leads start once it's signed. You'll get a signed copy by email.",
+      ]
+    : [
+        `Good news: ${d.businessName} is approved as a Geega Games referral partner. Before we turn on your referral link, please review and sign the ${d.agreementTitle}.`,
+        `It explains your ${d.feePercentLabel} referral fee: it's earned when Geega Games buys a collection you referred and the purchase closes, and it covers how you're paid.`,
+        "Your personal link and QR code arrive as soon as it's signed. You'll get a signed copy by email.",
+      ];
+}
+
+export function PartnerAgreementInvite(d: PartnerAgreementInviteData) {
+  const [a, b, c] = agreementInviteLines(d);
+  return h(
+    BaseLayout,
+    { previewText: `Review and sign your ${d.agreementTitle}`, siteUrl: d.siteUrl, logoUrl: d.logoUrl, supportEmail: d.supportEmail },
+    h(Heading, { key: "h1", style: h1 }, "You're approved. One last step."),
+    h(Text, { key: "hi", style: p }, `Hi ${d.contactName},`),
+    h(Text, { key: "a", style: p }, a),
+    h(Text, { key: "b", style: p }, b),
+    h(Section, { key: "cta", style: { margin: "8px 0 16px" } }, h(Button, { href: d.signUrl, style: primaryButton }, "Review and sign")),
+    h(Text, { key: "c", style: p }, c),
+    h(
+      Text,
+      { key: "exp", style: muted },
+      `The link works until ${d.expiresOn}. It's only for you, so please don't forward this email. Questions about the agreement? Just reply.`,
+    ),
+  );
+}
+
+export function partnerAgreementInviteText(d: PartnerAgreementInviteData): string {
+  const [a, b, c] = agreementInviteLines(d);
+  return [
+    `Hi ${d.contactName},`,
+    "",
+    a,
+    "",
+    b,
+    "",
+    `Review and sign: ${d.signUrl}`,
+    "",
+    c,
+    "",
+    `The link works until ${d.expiresOn}. It's only for you, so please don't forward this email. Questions about the agreement? Just reply.`,
+  ].join("\n");
+}
+
+export type PartnerAgreementSignedData = Branding & {
+  signerName: string;
+  businessName: string;
+  agreementTitle: string;
+  signedAt: string;
+  pdfSha256: string;
+  activated: boolean;
+  kind: "store" | "referrer";
+};
+
+export function partnerAgreementSignedSubject(d: PartnerAgreementSignedData): string {
+  return `Your signed ${d.agreementTitle}`;
+}
+
+function agreementSignedNext(d: PartnerAgreementSignedData): string {
+  if (!d.activated) return "Keep the attached PDF for your records.";
+  return d.kind === "store"
+    ? "You're now an active partner store. We'll send leads that match what you buy. Keep the attached PDF for your records."
+    : "Your referral link is on its way in a separate email. Keep the attached PDF for your records.";
+}
+
+export function PartnerAgreementSigned(d: PartnerAgreementSignedData) {
+  return h(
+    BaseLayout,
+    { previewText: `Signed ${d.signedAt}`, siteUrl: d.siteUrl, logoUrl: d.logoUrl, supportEmail: d.supportEmail },
+    h(Heading, { key: "h1", style: h1 }, "Thanks, it's signed"),
+    h(Text, { key: "hi", style: p }, `Hi ${d.signerName},`),
+    h(Text, { key: "a", style: p }, `You signed the ${d.agreementTitle} for ${d.businessName} on ${d.signedAt}. A PDF copy is attached.`),
+    h(Text, { key: "b", style: p }, agreementSignedNext(d)),
+    h(Text, { key: "fp", style: { ...muted, wordBreak: "break-all" } }, `PDF fingerprint (SHA-256): ${d.pdfSha256}`),
+  );
+}
+
+export function partnerAgreementSignedText(d: PartnerAgreementSignedData): string {
+  return [
+    `Hi ${d.signerName},`,
+    "",
+    `You signed the ${d.agreementTitle} for ${d.businessName} on ${d.signedAt}. A PDF copy is attached.`,
+    "",
+    agreementSignedNext(d),
+    "",
+    `PDF fingerprint (SHA-256): ${d.pdfSha256}`,
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // ReferralRewardEarned
 // ---------------------------------------------------------------------------
 
@@ -509,7 +624,7 @@ function rewardParagraphs(d: ReferralRewardEarnedData): string[] {
         "Thanks for spreading the word. Your referral link keeps working, so share it with anyone else who has cards or video games to sell.",
       ]
     : [
-        `${hi}someone you sent our way just sold their collection. Your referral fee is ${d.amountLabel}, and we'll be in touch about paying it.`,
+        `${hi}we just bought a collection from someone you sent our way. Your referral fee is ${d.amountLabel}, paid within 30 days after the end of this month (see your partner agreement).`,
         "Thank you for the referral.",
       ];
 }

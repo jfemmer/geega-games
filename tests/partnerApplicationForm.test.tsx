@@ -118,7 +118,7 @@ describe("PartnerApplicationForm — referral partners", () => {
 
     await user.selectOptions(screen.getByLabelText("What do you do?"), "estate_sale");
     await user.click(screen.getByRole("button", { name: "Apply to be a referral partner" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("with your personal referral link");
+    expect(await screen.findByRole("status")).toHaveTextContent("then your personal referral link");
     expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)).toMatchObject({
       kind: "referrer",
       profession: "estate_sale",

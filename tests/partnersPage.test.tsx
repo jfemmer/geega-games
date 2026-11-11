@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "../src/admin/components/ui/ToastProvider";
-import type { Partner, PartnerReferral } from "../src/admin/types";
+import type { Partner, PartnerAgreement, PartnerReferral } from "../src/admin/types";
 
 // Admin → Partners: applications to approve, partner stores with what they
 // owe, referral partners with their link and QR code, and adding a partner
@@ -17,6 +17,9 @@ const repo = {
   remove: vi.fn(),
   messages: vi.fn(),
   sendMessage: vi.fn(),
+  agreements: vi.fn(),
+  sendAgreement: vi.fn(),
+  agreementPdfUrl: vi.fn(),
   all: vi.fn(),
   forPartner: vi.fn(),
 };
@@ -29,6 +32,9 @@ vi.mock("../src/admin/repositories/partners.supabase", () => ({
     remove: (...a: unknown[]) => repo.remove(...a),
     messages: (...a: unknown[]) => repo.messages(...a),
     sendMessage: (...a: unknown[]) => repo.sendMessage(...a),
+    agreements: () => repo.agreements(),
+    sendAgreement: (...a: unknown[]) => repo.sendAgreement(...a),
+    agreementPdfUrl: (...a: unknown[]) => repo.agreementPdfUrl(...a),
   },
   partnerReferralsRepository: { all: () => repo.all() },
   referralRewardsRepository: { forPartner: (id: string) => repo.forPartner(id) },
@@ -86,6 +92,29 @@ const soldReferral: PartnerReferral = {
   notes: null,
 };
 
+function agreement(overrides: Partial<PartnerAgreement>): PartnerAgreement {
+  return {
+    id: "a1",
+    partnerId: "p1",
+    createdAt: "2026-10-05T00:00:00Z",
+    kind: "store",
+    title: "Geega Games Partner Store Agreement",
+    versionNumber: 1,
+    feePercent: 8,
+    status: "signed",
+    invitedEmail: "pat@gateway.example",
+    expiresAt: "2099-10-19T00:00:00Z",
+    lastEmailedAt: "2026-10-05T00:00:00Z",
+    sentByEmail: "owner@geega-games.com",
+    signedAt: "2026-10-06T15:00:00Z",
+    signerName: "Pat Lee",
+    signerTitle: "Owner",
+    voidedAt: null,
+    voidReason: null,
+    ...overrides,
+  };
+}
+
 function renderPage(query = "") {
   return render(
     <ToastProvider>
@@ -112,6 +141,10 @@ beforeEach(() => {
   repo.all.mockResolvedValue([soldReferral]);
   repo.forPartner.mockResolvedValue([]);
   repo.messages.mockResolvedValue([]);
+  // Gateway Games (p1) has signed; the others haven't been sent one.
+  repo.agreements.mockResolvedValue([agreement({})]);
+  repo.sendAgreement.mockResolvedValue({ agreement: { id: "a9", emailed: true, signUrl: "https://geega-games.com/partner-agreement?t=abc" } });
+  repo.agreementPdfUrl.mockResolvedValue("https://files.example/signed.pdf");
   repo.sendMessage.mockResolvedValue({ messageId: "m1", email: "sent" });
   repo.act.mockResolvedValue({ referralCode: null, welcome: "sent" });
   repo.create.mockResolvedValue({ id: "p9" });
@@ -133,14 +166,58 @@ describe("PartnersPage", () => {
     expect(screen.getByText("Finder's fees owed").closest(".gg-stat")).toHaveTextContent("$40.00");
   });
 
-  it("approves an application and says the welcome went out", async () => {
+  it("approving an application sends the agreement to sign", async () => {
+    repo.act.mockResolvedValueOnce({ referralCode: null, welcome: null, agreement: { id: "a9", emailed: true, signUrl: "x" } });
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByText("Retro Rewind"));
     const drawer = await screen.findByRole("dialog", { name: "Retro Rewind" });
-    await user.click(within(drawer).getByRole("button", { name: "Approve & send welcome" }));
+    expect(within(drawer).getByText(/hasn't been sent the Partner Store Agreement yet. No leads can be sent/)).toBeInTheDocument();
+    await user.click(within(drawer).getByRole("button", { name: "Approve & send agreement" }));
     expect(repo.act).toHaveBeenCalledWith("p2", "approve");
+    expect(await screen.findByText(/has been emailed the agreement; they go live when they sign it/)).toBeInTheDocument();
+  });
+
+  it("approves straight away (with the welcome) when a signed agreement is already on file", async () => {
+    repo.agreements.mockResolvedValue([agreement({ partnerId: "p2" })]);
+    const user = userEvent.setup();
+    renderPage("partner=p2");
+    const drawer = await screen.findByRole("dialog", { name: "Retro Rewind" });
+    await user.click(await within(drawer).findByRole("button", { name: "Approve & send welcome" }));
     expect(await screen.findByText("Approved Retro Rewind. Welcome email sent.")).toBeInTheDocument();
+  });
+
+  it("shows who signed, downloads the signed copy, and flags a fee changed since signing", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const user = userEvent.setup();
+    repo.list.mockResolvedValue([partner({ feePercent: 10 })]);
+    renderPage("partner=p1");
+    const drawer = await screen.findByRole("dialog", { name: "Gateway Games" });
+    expect(within(drawer).getByText(/signed the Geega Games Partner Store Agreement \(version 1\)/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Their fee here is 10%, but they signed for 8%/)).toBeInTheDocument();
+    await user.click(within(drawer).getByRole("button", { name: "Signed copy (PDF)" }));
+    expect(repo.agreementPdfUrl).toHaveBeenCalledWith("p1", "a1");
+    expect(open).toHaveBeenCalledWith("https://files.example/signed.pdf", "_blank", "noopener");
+    open.mockRestore();
+  });
+
+  it("marks partners with no signed agreement in the list, and resends an expired link", async () => {
+    repo.agreements.mockResolvedValue([
+      agreement({}),
+      agreement({ id: "a2", partnerId: "p3", kind: "referrer", status: "pending", signedAt: null, signerName: null, expiresAt: "2026-01-01T00:00:00Z" }),
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: /Referral partners/ }));
+    const row = screen.getByText("Heirloom Estate Sales").closest("tr") as HTMLElement;
+    expect(within(row).getByText("Agreement expired")).toBeInTheDocument();
+    await user.click(screen.getByText("Heirloom Estate Sales"));
+    const drawer = await screen.findByRole("dialog", { name: "Heirloom Estate Sales" });
+    expect(within(drawer).getByText(/The link has expired/)).toBeInTheDocument();
+    await user.click(within(drawer).getByRole("button", { name: "Resend agreement" }));
+    expect(repo.sendAgreement).toHaveBeenCalledWith("p3");
+    expect(await screen.findByText("Referral Partner Agreement emailed to pat@gateway.example.")).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Copy signing link" })).toBeInTheDocument();
   });
 
   it("shows a store's leads and fees owed, copies a statement, and keeps it from being deleted", async () => {

@@ -5,6 +5,12 @@ import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { logAdminAction } from "../../_lib/auditLog.js";
 import { sendPartnerApprovedEmail, sendPartnerMessageEmail } from "../../_lib/partnerEmails.js";
 import {
+  partnerAgreementPdfLink,
+  sendPartnerAgreement,
+  signedAgreementFor,
+  voidOpenAgreement,
+} from "../../_lib/partnerAgreements.js";
+import {
   ensurePartnerReferralCode,
   partnerFieldsFromInput,
   type PartnerFieldsInput,
@@ -19,11 +25,18 @@ import {
 
 // PATCH /api/admin/partners/:id  { action, fields?, sendWelcome? }
 //
-//   approve   applied/paused/declined → active. A referral partner gets its
-//             personal referral code. The welcome email goes out the first
-//             time (sendWelcome defaults to true when approving an application).
+//   approve   With no signed agreement yet: emails the partner agreement to
+//             sign (status stays "applied"; a declined one goes back to
+//             "applied"). Signing makes them active, gives a referral partner
+//             its code and sends the welcome (api/partner-agreement.ts).
+//             With a signed agreement on file: applied/paused/declined →
+//             active straight away, as before (sendWelcome defaults to true
+//             when approving an application).
 //   decline   → declined (no email; reply to their application email if you
-//             want to explain).
+//             want to explain). Cancels an unsigned agreement link.
+//   send_agreement  (re)send the agreement to sign, at their current fee: a
+//             new link, the old one stops working. Not for declined partners.
+//   agreement_pdf   { agreementId } → a five-minute link to a signed copy.
 //   pause     active → paused: no new leads go to them, their link stops
 //             crediting new sellers.
 //   activate  paused → active.
@@ -39,7 +52,7 @@ import {
 // Owner-only (app role "admin"): partners and their fees are business terms.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTIONS = new Set(["approve", "decline", "pause", "activate", "update", "message"]);
+const ACTIONS = new Set(["approve", "decline", "pause", "activate", "update", "message", "send_agreement", "agreement_pdf"]);
 
 interface Body {
   action?: unknown;
@@ -47,6 +60,7 @@ interface Body {
   sendWelcome?: unknown;
   subject?: unknown;
   message?: unknown;
+  agreementId?: unknown;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -73,9 +87,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!action) throw new HttpError(400, "Invalid action.");
 
     if (action === "message") return await messagePartner(res, staff, partner, body);
+    if (action === "agreement_pdf") {
+      const agreementId = typeof body.agreementId === "string" && UUID_RE.test(body.agreementId) ? body.agreementId : null;
+      if (!agreementId) throw new HttpError(400, "Choose an agreement.");
+      const { data: owns } = await admin.from("partner_agreements").select("id").eq("id", agreementId).eq("partner_id", id).maybeSingle();
+      if (!owns) throw new HttpError(404, "That signed agreement isn't there.");
+      return sendJson(res, 200, { ok: true, url: await partnerAgreementPdfLink(admin, agreementId) });
+    }
 
     const kind = partner.kind as PartnerKind;
     const current = partner.status as PartnerStatus;
+
+    if (action === "send_agreement" || (action === "approve" && current !== "active" && !(await signedAgreementFor(admin, id)))) {
+      if (action === "send_agreement" && current === "declined") {
+        throw new HttpError(409, "This application was declined. Approve it to send an agreement.");
+      }
+      if (current === "declined") {
+        const { error: reopenErr } = await admin.from("partners").update({ status: "applied" }).eq("id", id);
+        if (reopenErr) throw new HttpError(500, reopenErr.message);
+      }
+      const sent = await sendPartnerAgreement(admin, id, { userId: staff.userId, email: staff.email });
+      await logAdminAction(admin, staff, {
+        action: action === "approve" ? "partner.approve" : "partner.send_agreement",
+        resourceType: "partner",
+        resourceId: id,
+        before: { status: current, fee_percent: partner.fee_percent },
+        after: { agreement_id: sent.agreementId, emailed: sent.emailed, fee_percent: partner.fee_percent },
+      });
+      return sendJson(res, 200, {
+        ok: true,
+        agreement: { id: sent.agreementId, emailed: sent.emailed, signUrl: sent.signUrl },
+        referralCode: null,
+        welcome: null,
+      });
+    }
+
     let update: PartnerUpdate = {};
     let sendWelcome = false;
 
@@ -88,6 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "decline":
         if (current === "declined") throw new HttpError(409, "Already declined.");
         update = { status: "declined" };
+        await voidOpenAgreement(admin, id, "The application was declined.");
         break;
       case "pause":
         if (current !== "active") throw new HttpError(409, "Only an active partner can be paused.");
@@ -144,8 +191,12 @@ async function deletePartner(
     admin.from("partner_referrals").select("id", { count: "exact", head: true }).eq("partner_id", partner.id),
     admin.from("referral_rewards").select("id", { count: "exact", head: true }).eq("partner_id", partner.id),
   ]);
-  const countErr = referrals.error ?? rewards.error;
+  const agreements = await admin.from("partner_agreements").select("id", { count: "exact", head: true }).eq("partner_id", partner.id);
+  const countErr = referrals.error ?? rewards.error ?? agreements.error;
   if (countErr) throw new HttpError(500, countErr.message);
+  if ((agreements.count ?? 0) > 0) {
+    throw new HttpError(409, "An agreement was sent to this partner, so it's kept for the record. Decline or pause it instead.");
+  }
   if ((referrals.count ?? 0) > 0) {
     throw new HttpError(409, "Leads were sent to this partner, so it's kept for the fee records. Pause it instead.");
   }

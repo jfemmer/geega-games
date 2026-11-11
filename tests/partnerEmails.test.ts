@@ -163,7 +163,7 @@ describe("partner email templates", () => {
       }),
     );
     expect(referrer).toContain("https://geega-games.com/sell-cards-and-games?ref=heirloom");
-    expect(referrer).toContain("we pay you 3% of the sale");
+    expect(referrer).toContain("we pay you 3% of what we paid for it");
     expect(referrer).toContain("Please ask your client before sharing their details");
   });
 

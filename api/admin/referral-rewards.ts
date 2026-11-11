@@ -4,6 +4,8 @@ import { requireStaff } from "../_lib/adminAuth.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { logAdminAction } from "../_lib/auditLog.js";
 import { sendReferralRewardEmail } from "../_lib/partnerEmails.js";
+import { signedAgreementFor } from "../_lib/partnerAgreements.js";
+import { REFERRAL_WINDOW_DAYS } from "../../src/store/lib/partnerAgreement.js";
 import { SELLER_REFERRAL_REWARD_CENTS, feeCents } from "../../src/store/lib/partnerTypes.js";
 
 // POST  /api/admin/referral-rewards        { leadType, leadId }
@@ -11,7 +13,12 @@ import { SELLER_REFERRAL_REWARD_CENTS, feeCents } from "../../src/store/lib/part
 //   Magic submission) or to a partner store (a referral marked "Sold"):
 //     * a customer's code  → SELLER_REFERRAL_REWARD_CENTS of store credit,
 //       issued at once;
-//     * a referral partner → their fee % of the sale, as cash owed.
+//     * a referral partner → their fee % of the sale, as cash owed — only
+//       for a completed Magic submission (Geega Games bought it directly),
+//       only under a signed Referral Partner Agreement, at the fee in that
+//       agreement, and only within REFERRAL_WINDOW_DAYS of the request.
+//       Collections passed to a partner store earn a referral partner
+//       nothing (Referral Partner Agreement section 4.3).
 //   grant_referral_reward() does it in one transaction, and a lead can only
 //   ever be rewarded once (unique lead columns), so a double click is safe.
 // PATCH /api/admin/referral-rewards?id=…   { status: "paid" }
@@ -71,6 +78,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let refCode: string | null;
     let sellerEmail: string;
     let saleCents: number | null = null;
+    /** Geega Games itself bought it (a completed submission), not a partner store. */
+    let directPurchase = false;
+    let requestedAt: string | null = null;
+    let closedAt: string | null = null;
     const soldReferral = await admin
       .from("partner_referrals")
       .select("sale_amount_cents")
@@ -97,7 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else {
       const { data: sub, error } = await admin
         .from("sell_submissions")
-        .select("reference_number, ref_code, email, status, purchase_amount_cents")
+        .select("reference_number, ref_code, email, status, purchase_amount_cents, created_at, closed_at")
         .eq("id", leadId)
         .maybeSingle();
       if (error) throw new HttpError(500, error.message);
@@ -105,7 +116,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reference = sub.reference_number;
       refCode = sub.ref_code;
       sellerEmail = sub.email;
-      if (sub.status === "completed") saleCents = sub.purchase_amount_cents;
+      requestedAt = sub.created_at;
+      closedAt = sub.closed_at;
+      if (sub.status === "completed") {
+        saleCents = sub.purchase_amount_cents;
+        directPurchase = true;
+      }
       else if (soldReferral.data) saleCents = soldReferral.data.sale_amount_cents;
       else throw new HttpError(409, "Mark the purchase completed (or the partner store sale) first.");
     }
@@ -131,14 +147,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else if (code.partner_id) {
       const { data: partner, error } = await admin
         .from("partners")
-        .select("fee_percent")
+        .select("id, business_name")
         .eq("id", code.partner_id)
         .maybeSingle();
       if (error) throw new HttpError(500, error.message);
       if (!partner) throw new HttpError(409, "That referral partner no longer exists.");
+      if (!directPurchase) {
+        throw new HttpError(
+          409,
+          "No referral fee: under the Referral Partner Agreement, a fee is earned only when Geega Games buys the collection itself and the purchase is completed, not when it's sold to a partner store.",
+        );
+      }
+      const agreement = await signedAgreementFor(admin, partner.id);
+      if (!agreement) {
+        throw new HttpError(409, `No referral fee: ${partner.business_name} hasn't signed the Referral Partner Agreement.`);
+      }
+      const closedMs = closedAt ? new Date(closedAt).getTime() : Date.now();
+      if (requestedAt && closedMs - new Date(requestedAt).getTime() > REFERRAL_WINDOW_DAYS * 86_400_000) {
+        throw new HttpError(409, `No referral fee: the seller's request was more than ${REFERRAL_WINDOW_DAYS} days before the purchase closed (agreement section 4.1).`);
+      }
       if (!saleCents) throw new HttpError(409, "Enter what the seller was paid first, so the fee can be worked out.");
       kind = "cash";
-      amountCents = feeCents(saleCents, Number(partner.fee_percent));
+      amountCents = feeCents(saleCents, Number(agreement.fee_percent));
       if (amountCents <= 0) throw new HttpError(409, "This partner's fee works out to $0.");
     } else {
       throw new HttpError(409, "That referral code has no owner.");

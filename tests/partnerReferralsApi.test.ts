@@ -87,6 +87,9 @@ beforeEach(() => {
   };
   magic = { id: fakeId(), reference_number: "GG-S-100050", partner_consent_at: "2026-10-11T12:00:00.000Z" };
   state.tables.partners = [store];
+  state.tables.partner_agreements = [
+    { id: fakeId(), partner_id: store.id, status: "signed", fee_percent: 8, signed_at: "2026-10-10T12:00:00.000Z", version_number: 1 },
+  ];
   state.tables.referral_leads = [lead];
   state.tables.sell_submissions = [magic];
 });
@@ -161,10 +164,28 @@ describe("POST /api/admin/partner-referrals", () => {
     expect((await send({ leadType: "referral_lead", leadId: lead.id, partnerId: store.id })).statusCode).toBe(200);
     const other = { ...store, id: fakeId(), business_name: "Other Store" };
     state.tables.partners.push(other);
+    state.tables.partner_agreements.push({ id: fakeId(), partner_id: other.id, status: "signed", fee_percent: 8, signed_at: "2026-10-10T12:00:00.000Z" });
     const second = await send({ leadType: "referral_lead", leadId: lead.id, partnerId: other.id });
     expect(second.statusCode).toBe(409);
     expect(second.body.message).toMatch(/already with a partner store/);
     expect(sent).toHaveLength(1);
+  });
+
+  it("never sends a lead to a store that hasn't signed the Partner Store Agreement", async () => {
+    state.tables.partner_agreements = [{ id: fakeId(), partner_id: store.id, status: "pending", fee_percent: 8, signed_at: null }];
+    const res = await send({ leadType: "referral_lead", leadId: lead.id, partnerId: store.id });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toMatch(/hasn't signed the Partner Store Agreement/);
+    expect(state.tables.partner_referrals ?? []).toHaveLength(0);
+    expect(lead.status).toBe("new");
+    expect(sent).toEqual([]);
+  });
+
+  it("records the fee the store signed for, even if their profile fee changed since", async () => {
+    store.fee_percent = 12;
+    state.tables.partner_agreements[0].fee_percent = 9;
+    expect((await send({ leadType: "referral_lead", leadId: lead.id, partnerId: store.id })).statusCode).toBe(200);
+    expect(state.tables.partner_referrals[0].fee_percent).toBe(9);
   });
 
   it("validates the request", async () => {

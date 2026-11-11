@@ -28,6 +28,27 @@ vi.mock("../api/_lib/partnerEmails.js", () => ({
   }),
 }));
 
+const agreementCalls: string[] = [];
+const voided: string[] = [];
+vi.mock("../api/_lib/partnerAgreements.js", () => ({
+  sendPartnerAgreement: vi.fn(async (_admin: unknown, id: string) => {
+    agreementCalls.push(id);
+    return { agreementId: "agr-1", emailed: true, signUrl: "https://geega-games.com/partner-agreement?t=x" };
+  }),
+  signedAgreementFor: vi.fn(async (_admin: unknown, id: string) =>
+    (state.tables.partner_agreements ?? []).find((a) => a.partner_id === id && a.status === "signed") ?? null,
+  ),
+  voidOpenAgreement: vi.fn(async (_admin: unknown, id: string) => {
+    voided.push(id);
+  }),
+  partnerAgreementPdfLink: vi.fn(async () => "https://files.example/signed.pdf"),
+}));
+
+/** A signed agreement on file, so approving goes straight to active. */
+function signAgreement(partnerId: unknown) {
+  (state.tables.partner_agreements ??= []).push({ id: fakeId(), partner_id: partnerId, status: "signed", fee_percent: 8 });
+}
+
 const { default: createHandler } = await import("../api/admin/partners/index.ts");
 const { default: partnerHandler } = await import("../api/admin/partners/[id].ts");
 
@@ -78,6 +99,8 @@ beforeEach(() => {
   welcomeCalls.length = 0;
   messageCalls.length = 0;
   messageEmailStatus = "sent";
+  agreementCalls.length = 0;
+  voided.length = 0;
 });
 
 describe("POST /api/admin/partners", () => {
@@ -145,8 +168,66 @@ describe("PATCH /api/admin/partners/:id", () => {
     expect(p.status).toBe("applied");
   });
 
-  it("approves an application and sends the welcome by default", async () => {
+  it("approving a new application sends the agreement to sign, and leaves them waiting on it", async () => {
+    const p = addPartner({ kind: "referrer", categories: [], profession: "realtor", fee_percent: 3 });
+    const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "approve" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, agreement: { id: "agr-1", emailed: true }, referralCode: null, welcome: null });
+    expect(agreementCalls).toEqual([p.id]);
+    // Not live until they sign: no link, no welcome.
+    expect(p.status).toBe("applied");
+    expect(state.tables.referral_codes ?? []).toHaveLength(0);
+    expect(welcomeCalls).toEqual([]);
+    expect(state.tables.admin_audit_log?.[0]).toMatchObject({ action: "partner.approve" });
+  });
+
+  it("re-approving a declined application reopens it and sends the agreement", async () => {
+    const p = addPartner({ status: "declined" });
+    const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "approve" } });
+    expect(res.statusCode).toBe(200);
+    expect(p.status).toBe("applied");
+    expect(agreementCalls).toEqual([p.id]);
+  });
+
+  it("resends the agreement on request, but not to a declined partner", async () => {
+    const active = addPartner({ status: "active" });
+    const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: active.id, body: { action: "send_agreement" } });
+    expect(res.statusCode).toBe(200);
+    expect(active.status).toBe("active");
+    const declined = addPartner({ status: "declined" });
+    expect((await call(partnerHandler, { method: "PATCH", token: OWNER, id: declined.id, body: { action: "send_agreement" } })).statusCode).toBe(409);
+    expect((await call(partnerHandler, { method: "PATCH", token: STAFF, id: active.id, body: { action: "send_agreement" } })).statusCode).toBe(403);
+    expect(agreementCalls).toEqual([active.id]);
+  });
+
+  it("declining cancels an unsigned agreement link", async () => {
     const p = addPartner({});
+    await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "decline" } });
+    expect(voided).toEqual([p.id]);
+  });
+
+  it("gives a download link only for this partner's own agreement", async () => {
+    const p = addPartner({});
+    const other = addPartner({});
+    const agreement = { id: fakeId(), partner_id: other.id, status: "signed" };
+    state.tables.partner_agreements = [agreement];
+    const wrong = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "agreement_pdf", agreementId: agreement.id } });
+    expect(wrong.statusCode).toBe(404);
+    const right = await call(partnerHandler, { method: "PATCH", token: OWNER, id: other.id, body: { action: "agreement_pdf", agreementId: agreement.id } });
+    expect(right.body).toMatchObject({ ok: true, url: "https://files.example/signed.pdf" });
+  });
+
+  it("keeps a partner that was sent an agreement from being deleted", async () => {
+    const p = addPartner({});
+    state.tables.partner_agreements = [{ id: fakeId(), partner_id: p.id, status: "void" }];
+    const res = await call(partnerHandler, { method: "DELETE", token: OWNER, id: p.id });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toMatch(/kept for the record/);
+  });
+
+  it("approves an application with a signed agreement on file and sends the welcome by default", async () => {
+    const p = addPartner({});
+    signAgreement(p.id);
     const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "approve" } });
     expect(res.statusCode).toBe(200);
     expect(p.status).toBe("active");
@@ -157,6 +238,7 @@ describe("PATCH /api/admin/partners/:id", () => {
 
   it("can approve quietly, and gives an approved referral partner a code", async () => {
     const p = addPartner({ kind: "referrer", categories: [], profession: "realtor", fee_percent: 3 });
+    signAgreement(p.id);
     const res = await call(partnerHandler, {
       method: "PATCH",
       token: OWNER,

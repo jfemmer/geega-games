@@ -189,12 +189,12 @@ export const MARKETING_PAGES: MarketingPage[] = [
       sub: "Estate sale companies, attorneys, realtors and move managers: send them to Geega Games.",
       points: [
         "Free, no-obligation offers for your clients",
-        "A referral fee for you when a collection sells",
+        "A referral fee for you when we buy a collection you send",
         "Your own link and QR code to share",
       ],
       cta: "Scan to become a partner",
       finePrint:
-        "The referral fee is a percentage of what your client is paid, agreed with you in writing when you join.",
+        "The referral fee is a percentage of what Geega Games pays your client, set out in a partner agreement you sign when you join.",
       stripLabel: "Referral partners",
     },
   },

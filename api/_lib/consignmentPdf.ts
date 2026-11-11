@@ -37,15 +37,16 @@ export interface SignedAgreementPdfInput {
   additionalInsurance: boolean;
 }
 
-const PAGE_W = 612;
-const PAGE_H = 792;
-const MARGIN = 54;
+// Shared with the partner agreement PDF (partnerAgreementPdf.ts).
+export const PAGE_W = 612;
+export const PAGE_H = 792;
+export const MARGIN = 54;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const FOOTER_H = 30;
 const INK = rgb(0.1, 0.08, 0.15);
-const MUTED = rgb(0.42, 0.38, 0.46);
-const LINE = rgb(0.85, 0.82, 0.9);
-const BRAND = rgb(0.3, 0.16, 0.52);
+export const MUTED = rgb(0.42, 0.38, 0.46);
+export const LINE = rgb(0.85, 0.82, 0.9);
+export const BRAND = rgb(0.3, 0.16, 0.52);
 
 const REPLACEMENTS: Record<string, string> = {
   "−": "-",
@@ -75,11 +76,12 @@ export function pdfSafe(text: string, font: PDFFont): string {
   return out;
 }
 
-type Fonts = { regular: PDFFont; bold: PDFFont };
+export type Fonts = { regular: PDFFont; bold: PDFFont };
 /** A word, possibly in several runs ("**Title**," is bold "Title" + plain ","). */
 type Word = { segs: { text: string; bold: boolean }[] };
 
-class Writer {
+/** Lays out agreement blocks, wrapped text and label/value fields across US Letter pages. */
+export class Writer {
   pdf: PDFDocument;
   fonts: Fonts;
   page!: PDFPage;
@@ -263,7 +265,7 @@ class Writer {
   }
 }
 
-function centralTime(iso: string): string {
+export function centralTime(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     timeZone: "America/Chicago",
     dateStyle: "long",

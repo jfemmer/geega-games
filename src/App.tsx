@@ -155,6 +155,10 @@ const CubeChecklistSharePage = lazyPage(
   () => import("./store/pages/CubeChecklistSharePage"),
   "src/store/pages/CubeChecklistSharePage.tsx",
 );
+const PartnerAgreementPage = lazyPage(
+  () => import("./store/pages/PartnerAgreementPage"),
+  "src/store/pages/PartnerAgreementPage.tsx",
+);
 const ConsignSignPage = lazyPage(
   () => import("./store/pages/ConsignSignPage"),
   "src/store/pages/ConsignSignPage.tsx",
@@ -201,6 +205,7 @@ const ALL_PAGES: LazyPage<never>[] = [
   KioskPage,
   YardSalePage,
   ConsignSignPage,
+  PartnerAgreementPage,
   CubeChecklistSharePage,
 ] as LazyPage<never>[];
 
@@ -225,6 +230,7 @@ function routeFor(path: string): ReactElement {
   if (path === "/collection-sorting/quote") return <SortingQuotePage />;
   if (path === TRADE_PATH) return <TradeSummaryPage />;
   if (path === "/consign/sign") return <ConsignSignPage />;
+  if (path === "/partner-agreement") return <PartnerAgreementPage />;
   if (path === TRADE_CENTER_PATH) return <TradeCardsPage />;
   if (path === TRADE_IN_PATH) return <TradeInPage />;
   if (path === "/sell") return <SellPage />;

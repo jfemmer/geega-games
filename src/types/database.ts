@@ -2699,6 +2699,116 @@ export type Database = {
           },
         ]
       }
+      partner_agreements: {
+        Row: {
+          acknowledgments: Json | null
+          created_at: string
+          fee_percent: number
+          id: string
+          invite_expires_at: string
+          invite_token_hash: string
+          invited_email: string
+          kind: string
+          last_emailed_at: string | null
+          partner_id: string
+          pdf_generated_at: string | null
+          pdf_path: string | null
+          pdf_sha256: string | null
+          record_sha256: string | null
+          rendered_md: string
+          rendered_sha256: string
+          required_acks: string[]
+          sent_by: string | null
+          sent_by_email: string | null
+          signed_at: string | null
+          signed_copy_emailed_at: string | null
+          signer_ip: string | null
+          signer_legal_name: string | null
+          signer_title: string | null
+          signer_user_agent: string | null
+          status: string
+          title: string
+          typed_signature: string | null
+          version_number: number
+          void_reason: string | null
+          voided_at: string | null
+        }
+        Insert: {
+          acknowledgments?: Json | null
+          created_at?: string
+          fee_percent: number
+          id?: string
+          invite_expires_at: string
+          invite_token_hash: string
+          invited_email: string
+          kind: string
+          last_emailed_at?: string | null
+          partner_id: string
+          pdf_generated_at?: string | null
+          pdf_path?: string | null
+          pdf_sha256?: string | null
+          record_sha256?: string | null
+          rendered_md: string
+          rendered_sha256?: string
+          required_acks: string[]
+          sent_by?: string | null
+          sent_by_email?: string | null
+          signed_at?: string | null
+          signed_copy_emailed_at?: string | null
+          signer_ip?: string | null
+          signer_legal_name?: string | null
+          signer_title?: string | null
+          signer_user_agent?: string | null
+          status?: string
+          title: string
+          typed_signature?: string | null
+          version_number: number
+          void_reason?: string | null
+          voided_at?: string | null
+        }
+        Update: {
+          acknowledgments?: Json | null
+          created_at?: string
+          fee_percent?: number
+          id?: string
+          invite_expires_at?: string
+          invite_token_hash?: string
+          invited_email?: string
+          kind?: string
+          last_emailed_at?: string | null
+          partner_id?: string
+          pdf_generated_at?: string | null
+          pdf_path?: string | null
+          pdf_sha256?: string | null
+          record_sha256?: string | null
+          rendered_md?: string
+          rendered_sha256?: string
+          required_acks?: string[]
+          sent_by?: string | null
+          sent_by_email?: string | null
+          signed_at?: string | null
+          signed_copy_emailed_at?: string | null
+          signer_ip?: string | null
+          signer_legal_name?: string | null
+          signer_title?: string | null
+          signer_user_agent?: string | null
+          status?: string
+          title?: string
+          typed_signature?: string | null
+          version_number?: number
+          void_reason?: string | null
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_agreements_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_messages: {
         Row: {
           body: string
@@ -6541,6 +6651,36 @@ export type Database = {
         Returns: string
       }
       my_referral_code: { Args: never; Returns: string }
+      partner_create_agreement: {
+        Args: {
+          p_expires_at: string
+          p_fee_percent: number
+          p_invited_email: string
+          p_kind: string
+          p_partner_id: string
+          p_rendered_md: string
+          p_required_acks: string[]
+          p_sent_by: string | null
+          p_sent_by_email: string | null
+          p_title: string
+          p_token_hash: string
+          p_version_number: number
+        }
+        Returns: string
+      }
+      partner_sign_agreement: {
+        Args: {
+          p_acknowledgments: Json
+          p_agreement_id: string
+          p_agreement_sha256: string
+          p_ip: string
+          p_legal_name: string
+          p_title: string
+          p_typed_signature: string
+          p_user_agent: string
+        }
+        Returns: Json
+      }
       my_referral_summary: { Args: never; Returns: Json }
       my_store_credit_balance: { Args: never; Returns: number }
       my_wishlist: {
