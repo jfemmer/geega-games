@@ -20,6 +20,7 @@ const repo = {
   agreements: vi.fn(),
   sendAgreement: vi.fn(),
   agreementPdfUrl: vi.fn(),
+  countersign: vi.fn(),
   all: vi.fn(),
   forPartner: vi.fn(),
 };
@@ -35,6 +36,7 @@ vi.mock("../src/admin/repositories/partners.supabase", () => ({
     agreements: () => repo.agreements(),
     sendAgreement: (...a: unknown[]) => repo.sendAgreement(...a),
     agreementPdfUrl: (...a: unknown[]) => repo.agreementPdfUrl(...a),
+    countersign: (...a: unknown[]) => repo.countersign(...a),
   },
   partnerReferralsRepository: { all: () => repo.all() },
   referralRewardsRepository: { forPartner: (id: string) => repo.forPartner(id) },
@@ -109,6 +111,14 @@ function agreement(overrides: Partial<PartnerAgreement>): PartnerAgreement {
     signedAt: "2026-10-06T15:00:00Z",
     signerName: "Pat Lee",
     signerTitle: "Owner",
+    requiresCountersign: false,
+    entityName: null,
+    entityType: null,
+    entityState: null,
+    businessAddress: null,
+    countersignedAt: null,
+    countersignerName: null,
+    countersignerTitle: null,
     voidedAt: null,
     voidReason: null,
     ...overrides,
@@ -219,6 +229,49 @@ describe("PartnersPage", () => {
     expect(repo.sendAgreement).toHaveBeenCalledWith("p3");
     expect(await screen.findByText("Referral Partner Agreement emailed to pat@gateway.example.")).toBeInTheDocument();
     expect(within(drawer).getByRole("button", { name: "Copy signing link" })).toBeInTheDocument();
+  });
+
+  it("a referral partner who signed waits for your countersignature: it's flagged, checked, and countersigned", async () => {
+    repo.agreements.mockResolvedValue([
+      agreement({}),
+      agreement({
+        id: "a3",
+        partnerId: "p2",
+        kind: "referrer",
+        title: "Geega Games Referral Partner Agreement",
+        versionNumber: 2,
+        feePercent: 3,
+        status: "awaiting_countersign",
+        requiresCountersign: true,
+        signerName: "Sam Ortiz",
+        entityName: "Retro Rewind LLC",
+        entityType: "llc",
+        entityState: "MO",
+        businessAddress: "1 Market St, St. Louis, MO 63101",
+      }),
+    ]);
+    repo.countersign.mockResolvedValue({ activated: true, pdfEmailed: true, referralCode: "retro123" });
+    const user = userEvent.setup();
+    renderPage();
+    const row = (await screen.findByText("Retro Rewind")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Countersign needed")).toBeInTheDocument();
+    await user.click(screen.getByText("Retro Rewind"));
+    const drawer = await screen.findByRole("dialog", { name: "Retro Rewind" });
+    // No second agreement from Approve while one waits for you.
+    expect(within(drawer).queryByRole("button", { name: /Approve/ })).not.toBeInTheDocument();
+    expect(within(drawer).getByText("Retro Rewind LLC, a Missouri limited liability company")).toBeInTheDocument();
+    expect(within(drawer).getByText("1 Market St, St. Louis, MO 63101")).toBeInTheDocument();
+    expect((within(drawer).getByLabelText("Your full legal name") as HTMLInputElement).value).toBe("Jacob Femmer");
+
+    await user.click(within(drawer).getByRole("button", { name: "Countersign for Geega Games" }));
+    expect(within(drawer).getByRole("alert")).toHaveTextContent("Type your full name as your signature.");
+    expect(repo.countersign).not.toHaveBeenCalled();
+
+    await user.type(within(drawer).getByLabelText(/Signature: type your full legal name again/), "Jacob Femmer");
+    await user.click(within(drawer).getByRole("checkbox", { name: /authorized to sign for Geega Games LLC/ }));
+    await user.click(within(drawer).getByRole("button", { name: "Countersign for Geega Games" }));
+    expect(repo.countersign).toHaveBeenCalledWith("p2", "a3", { name: "Jacob Femmer", title: "Owner", typedSignature: "Jacob Femmer", authorized: true });
+    expect(await screen.findByText(/Countersigned. The Geega Games Referral Partner Agreement is in effect and Retro Rewind is now active/)).toBeInTheDocument();
   });
 
   it("shows a store's leads and fees owed, copies a statement, and keeps it from being deleted", async () => {

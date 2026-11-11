@@ -34,7 +34,9 @@ type AgreementRow = Database["public"]["Tables"]["partner_agreements"]["Row"];
 
 /** Everything but the text and the signing secret's hash. */
 const AGREEMENT_COLUMNS =
-  "id, partner_id, created_at, kind, title, version_number, fee_percent, status, invited_email, invite_expires_at, last_emailed_at, sent_by_email, signed_at, signer_legal_name, signer_title, voided_at, void_reason";
+  "id, partner_id, created_at, kind, title, version_number, fee_percent, status, requires_countersign, invited_email, invite_expires_at, last_emailed_at, sent_by_email, signed_at, signer_legal_name, signer_title, signer_entity_name, signer_entity_type, signer_entity_state, signer_business_address, countersigned_at, countersigner_name, countersigner_title, voided_at, void_reason";
+
+const AGREEMENT_STATUSES: readonly PartnerAgreement["status"][] = ["pending", "awaiting_countersign", "signed", "void"];
 
 function mapAgreement(row: Partial<AgreementRow>): PartnerAgreement {
   return {
@@ -45,7 +47,8 @@ function mapAgreement(row: Partial<AgreementRow>): PartnerAgreement {
     title: row.title ?? "",
     versionNumber: row.version_number ?? 1,
     feePercent: Number(row.fee_percent ?? 0),
-    status: row.status === "signed" ? "signed" : row.status === "void" ? "void" : "pending",
+    status: AGREEMENT_STATUSES.find((x) => x === row.status) ?? "pending",
+    requiresCountersign: row.requires_countersign === true,
     invitedEmail: row.invited_email ?? "",
     expiresAt: row.invite_expires_at!,
     lastEmailedAt: row.last_emailed_at ?? null,
@@ -53,6 +56,13 @@ function mapAgreement(row: Partial<AgreementRow>): PartnerAgreement {
     signedAt: row.signed_at ?? null,
     signerName: row.signer_legal_name ?? null,
     signerTitle: row.signer_title ?? null,
+    entityName: row.signer_entity_name ?? null,
+    entityType: row.signer_entity_type ?? null,
+    entityState: row.signer_entity_state ?? null,
+    businessAddress: row.signer_business_address ?? null,
+    countersignedAt: row.countersigned_at ?? null,
+    countersignerName: row.countersigner_name ?? null,
+    countersignerTitle: row.countersigner_title ?? null,
     voidedAt: row.voided_at ?? null,
     voidReason: row.void_reason ?? null,
   };
@@ -220,6 +230,15 @@ export const partnersRepository = {
   /** (Re)send the agreement to sign at their current fee. The previous link stops working. */
   async sendAgreement(id: string): Promise<{ agreement: AgreementSent }> {
     return adminFetch(`/api/admin/partners/${id}`, { method: "PATCH", body: { action: "send_agreement" } });
+  },
+
+  /** Geega Games countersigns an agreement the partner signed; it takes effect now. */
+  async countersign(
+    id: string,
+    agreementId: string,
+    signature: { name: string; title: string; typedSignature: string; authorized: boolean },
+  ): Promise<{ activated: boolean; pdfEmailed: boolean; referralCode: string | null }> {
+    return adminFetch(`/api/admin/partners/${id}`, { method: "PATCH", body: { action: "countersign", agreementId, ...signature } });
   },
 
   /** A five-minute download link for a signed agreement's PDF. */

@@ -14,7 +14,10 @@ import {
 //
 //   * A tagged link (utm_*) replaces what was remembered: the latest campaign
 //     the visitor came through is the one that gets the credit.
-//   * A ?ref= code is kept alongside, and replaced only by another ?ref=.
+//   * A ?ref= code is kept alongside, and replaced only by another ?ref=. It
+//     credits for 30 days after that link was last opened (its own clock, so
+//     a later tagged visit doesn't stretch it): the Referral Partner
+//     Agreement's Tracking Method (section 2.4, REFERRAL_TRACKING_DAYS).
 //   * An ordinary visit (no tags) never overwrites an earlier one, so the
 //     first page and referring site of the visit that started it all stick.
 //
@@ -26,6 +29,8 @@ export const ATTRIBUTION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface Stored extends Attribution {
   at: number;
+  /** When the ?ref= link was last opened (older entries: use `at`). */
+  refAt?: number;
 }
 
 function read(now: number): Stored | null {
@@ -34,7 +39,10 @@ function read(now: number): Stored | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Stored> | null;
     if (!parsed || typeof parsed.at !== "number" || now - parsed.at > ATTRIBUTION_TTL_MS) return null;
-    return { ...EMPTY_ATTRIBUTION, ...parsed, at: parsed.at } as Stored;
+    const stored = { ...EMPTY_ATTRIBUTION, ...parsed, at: parsed.at } as Stored;
+    const refAt = typeof parsed.refAt === "number" ? parsed.refAt : parsed.at;
+    if (stored.ref && now - refAt > ATTRIBUTION_TTL_MS) stored.ref = EMPTY_ATTRIBUTION.ref;
+    return stored;
   } catch {
     return null;
   }
@@ -73,7 +81,10 @@ export function recordVisit(location: VisitLocation, now: number = Date.now()): 
     next.landingPath = cleanLandingPath(location.pathname);
     next.referrerHost = externalReferrerHost(location.referrer, location.host);
   }
-  if (campaign.ref) next.ref = campaign.ref;
+  if (campaign.ref) {
+    next.ref = campaign.ref;
+    next.refAt = now;
+  }
   next.at = now;
   write(next);
 }
@@ -82,7 +93,7 @@ export function recordVisit(location: VisitLocation, now: number = Date.now()): 
 export function getAttribution(now: number = Date.now()): Attribution | null {
   const stored = read(now);
   if (!stored) return null;
-  const { at: _at, ...attribution } = stored;
+  const { at: _at, refAt: _refAt, ...attribution } = stored;
   return attribution;
 }
 

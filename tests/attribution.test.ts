@@ -181,6 +181,17 @@ describe("remembering a visit (attributionStore)", () => {
     expect(getAttribution(t0 + 4000)?.ref).toBe("friend22");
   });
 
+  it("a referral code credits for 30 days after its link was last opened, even if a later tagged visit keeps the rest", () => {
+    recordVisit({ pathname: "/sell-cards-and-games", search: "?ref=heirloom", referrer: "", host }, t0);
+    recordVisit({ pathname: "/", search: "?utm_source=facebook", referrer: "", host }, t0 + 20 * 86_400_000);
+    expect(getAttribution(t0 + ATTRIBUTION_TTL_MS - 1)).toMatchObject({ ref: "heirloom", utmSource: "facebook" });
+    expect(getAttribution(t0 + ATTRIBUTION_TTL_MS + 1)).toMatchObject({ ref: null, utmSource: "facebook" });
+    // Opening the link again restarts its 30 days.
+    recordVisit({ pathname: "/", search: "?ref=heirloom", referrer: "", host }, t0 + ATTRIBUTION_TTL_MS + 2);
+    expect(getAttribution(t0 + 2 * ATTRIBUTION_TTL_MS)?.ref).toBe("heirloom");
+    expect(getAttribution(t0 + 2 * ATTRIBUTION_TTL_MS)).not.toHaveProperty("refAt");
+  });
+
   it("forgets after 30 days", () => {
     recordVisit({ pathname: "/sell", search: "?utm_source=flyer", referrer: "", host }, t0);
     expect(getAttribution(t0 + ATTRIBUTION_TTL_MS - 1)).not.toBeNull();

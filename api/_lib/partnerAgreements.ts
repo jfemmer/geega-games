@@ -8,11 +8,15 @@ import { sendTrackedEmail } from "./emailService.js";
 import { notifyStaff } from "./staffPush.js";
 import { hashInviteToken, isWellFormedToken, newInviteToken } from "./consignments.js";
 import { buildPartnerAgreementPdf } from "./partnerAgreementPdf.js";
+import type { PartnerAgreementPdfInput } from "./partnerAgreementPdf.js";
 import { ensurePartnerReferralCode } from "./partners.js";
 import { sendPartnerApprovedEmail } from "./partnerEmails.js";
 import {
+  PartnerAgreementCountersignNeeded,
   PartnerAgreementInvite,
   PartnerAgreementSigned,
+  partnerAgreementCountersignNeededSubject,
+  partnerAgreementCountersignNeededText,
   partnerAgreementInviteSubject,
   partnerAgreementInviteText,
   partnerAgreementSignedSubject,
@@ -20,12 +24,16 @@ import {
 } from "./emails/PartnerEmails.js";
 import {
   PARTNER_AGREEMENT_ACKS,
+  PARTNER_AGREEMENT_COUNTERSIGNED,
   PARTNER_AGREEMENT_INVITE_DAYS,
   PARTNER_AGREEMENT_TITLE,
   PARTNER_AGREEMENT_VERSION,
+  agreementEffectiveAt,
+  describePartnerEntity,
   formatFeePercent,
   renderPartnerAgreement,
 } from "../../src/store/lib/partnerAgreement.js";
+import { usStateName } from "../../src/store/lib/usAddress.js";
 import type { PartnerKind } from "../../src/store/lib/partnerTypes.js";
 
 // Server side of partner agreements (see the partner_agreements migration):
@@ -35,12 +43,19 @@ import type { PartnerKind } from "../../src/store/lib/partnerTypes.js";
 //                            signing link. The link's secret is stored only as
 //                            a hash, so a resend makes a new link.
 //   agreementForToken        the open agreement behind a signing link
-//   completeSigning          after partner_sign_agreement(): their referral
-//                            code and welcome (if they just went live), the
-//                            signed PDF (stored privately, emailed to them),
-//                            and a heads-up to staff
-//   signedAgreementFor       a partner's signed agreement, if any: referral
-//                            fees and store leads need one
+//   completeSigning          after partner_sign_agreement(): for an agreement
+//                            Geega Games countersigns, a "countersign needed"
+//                            heads-up to the owner; otherwise the same as
+//                            completeExecution
+//   countersignAgreement     the owner countersigns (partner_countersign_agreement())
+//   completeExecution        once fully executed: their referral code and
+//                            welcome (if they just went live) and the signed
+//                            PDF (stored privately, emailed to them and to us)
+//   signedAgreementFor       a partner's newest fully executed agreement, if
+//                            any: store leads need one
+//   agreementInForce         the executed agreement in force on a date: a
+//                            referral falls under the version in force when
+//                            the seller's request came in (version 2, 15.2)
 
 type Admin = ReturnType<typeof getSupabaseAdmin>;
 
@@ -52,8 +67,15 @@ export const partnerSignUrl = (token: string) => `${siteUrl()}/partner-agreement
 /** Database error codes from the partner agreement functions, as HTTP statuses. */
 export function partnerAgreementDbError(error: { code?: string; message?: string } | null, fallback: string): HttpError {
   const code = error?.code ?? "";
-  if (/^GP0[01][0-9]$/.test(code)) {
-    const status = code === "GP010" || code === "GP013" ? 404 : code === "GP017" || code === "GP018" ? 400 : code === "GP015" ? 410 : 409;
+  if (/^GP0[0-2][0-9]$/.test(code)) {
+    const status =
+      code === "GP010" || code === "GP013"
+        ? 404
+        : ["GP017", "GP018", "GP020", "GP023"].includes(code)
+          ? 400
+          : code === "GP015"
+            ? 410
+            : 409;
     return new HttpError(status, error?.message ?? fallback);
   }
   return new HttpError(500, fallback);
@@ -83,7 +105,7 @@ export async function sendPartnerAgreement(
 ): Promise<SendAgreementResult> {
   const { data: partner, error } = await admin
     .from("partners")
-    .select("id, kind, status, business_name, contact_name, email, city, state, fee_percent")
+    .select("id, kind, status, business_name, contact_name, email, phone, city, state, fee_percent")
     .eq("id", partnerId)
     .maybeSingle();
   if (error) throw new HttpError(500, "Could not load the partner.");
@@ -99,6 +121,7 @@ export async function sendPartnerAgreement(
       businessName: partner.business_name,
       contactName: partner.contact_name,
       email: partner.email,
+      phone: partner.phone,
       location: [partner.city, partner.state].filter(Boolean).join(", ") || null,
       feePercent,
       sentAt: sentAt.toISOString(),
@@ -123,6 +146,7 @@ export async function sendPartnerAgreement(
     p_expires_at: expires.toISOString(),
     p_sent_by: actor.userId,
     p_sent_by_email: actor.email,
+    p_requires_countersign: PARTNER_AGREEMENT_COUNTERSIGNED[kind],
   });
   if (createErr || !agreementId) throw partnerAgreementDbError(createErr, "Could not create the agreement.");
 
@@ -166,7 +190,9 @@ export async function agreementForToken(admin: Admin, token: unknown) {
   if (!isWellFormedToken(token)) throw new HttpError(404, invalid);
   const { data, error } = await admin
     .from("partner_agreements")
-    .select("id, partner_id, kind, version_number, title, rendered_md, rendered_sha256, required_acks, status, invite_expires_at, signed_at, signer_legal_name")
+    .select(
+      "id, partner_id, kind, version_number, title, rendered_md, rendered_sha256, required_acks, status, requires_countersign, invite_expires_at, signed_at, signer_legal_name, countersigned_at",
+    )
     .eq("invite_token_hash", hashInviteToken(token))
     .maybeSingle();
   if (error) throw new HttpError(500, "Could not open the agreement.");
@@ -182,11 +208,127 @@ export interface CompleteSigningResult {
 }
 
 /**
- * Everything after the signature is recorded. Each step is safe to repeat and
- * none undoes the signature: a failure is logged and staff can resend from
- * the admin.
+ * After partner_sign_agreement(). Waiting for our countersignature: tell the
+ * owner (push and email), and nothing else happens yet. Otherwise the
+ * agreement is in effect: completeExecution().
  */
-export async function completeSigning(admin: Admin, agreementId: string, activated: boolean): Promise<CompleteSigningResult> {
+export async function completeSigning(
+  admin: Admin,
+  agreementId: string,
+  opts: { activated: boolean; awaitingCountersign: boolean },
+): Promise<CompleteSigningResult> {
+  if (!opts.awaitingCountersign) {
+    const result = await completeExecution(admin, agreementId, opts.activated);
+    await staffNotice(admin, agreementId, "Partner agreement signed", (name) => `${name}${opts.activated ? " is now active" : ""}`);
+    return result;
+  }
+  await staffNotice(admin, agreementId, "Countersign a partner agreement", (name) => `${name} signed. Countersign to make it take effect.`);
+  try {
+    await sendCountersignNeededEmail(admin, agreementId);
+  } catch (e) {
+    console.error("[partnerAgreements] countersign email failed", agreementId, e);
+  }
+  return { pdfReady: false, emailed: false };
+}
+
+async function staffNotice(admin: Admin, agreementId: string, title: string, body: (businessName: string) => string) {
+  try {
+    const { data: a } = await admin.from("partner_agreements").select("partner_id").eq("id", agreementId).single();
+    if (!a) return;
+    const { data: p } = await admin.from("partners").select("business_name").eq("id", a.partner_id).single();
+    await notifyStaff({
+      key: `${title === "Partner agreement signed" ? "partner_agreement_signed" : "partner_agreement_countersign"}:${agreementId}`,
+      kind: "partner_lead",
+      title,
+      body: body(p?.business_name ?? "A partner"),
+      url: `/admin_dashboard/partners?partner=${a.partner_id}`,
+      tag: `partner_agreement:${a.partner_id}`,
+    });
+  } catch (e) {
+    console.error("[partnerAgreements] staff notice failed", agreementId, e);
+  }
+}
+
+async function sendCountersignNeededEmail(admin: Admin, agreementId: string) {
+  const { data: a } = await admin
+    .from("partner_agreements")
+    .select("id, partner_id, title, signer_legal_name, signer_title, signer_entity_name, signer_entity_type, signer_entity_state, signer_business_address, signed_at, invited_email")
+    .eq("id", agreementId)
+    .single();
+  if (!a || !a.signed_at) return;
+  const { data: p } = await admin.from("partners").select("business_name").eq("id", a.partner_id).single();
+  const data = {
+    ...branding(),
+    businessName: p?.business_name ?? "A partner",
+    agreementTitle: a.title,
+    signerName: a.signer_legal_name ?? "",
+    signerTitle: a.signer_title ?? "",
+    entity: a.signer_entity_name
+      ? describePartnerEntityLine(a.signer_entity_name, a.signer_entity_type, a.signer_entity_state)
+      : "",
+    businessAddress: a.signer_business_address ?? "",
+    signedAt: centralLong(a.signed_at),
+    adminUrl: `${siteUrl()}/admin_dashboard/partners?partner=${a.partner_id}`,
+  };
+  await sendTrackedEmail({
+    emailType: "partner_agreement_countersign_needed",
+    idempotencyKey: `partner-agreement-countersign-needed-${a.id}`,
+    to: ServerEnv.sellLeadsNotificationEmail(),
+    from: ServerEnv.fromOrders(),
+    replyTo: a.invited_email,
+    subject: partnerAgreementCountersignNeededSubject(data),
+    react: React.createElement(PartnerAgreementCountersignNeeded, data),
+    text: partnerAgreementCountersignNeededText(data),
+  });
+}
+
+function centralLong(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "long", timeStyle: "short" });
+}
+
+function describePartnerEntityLine(name: string, type: string | null, state: string | null): string {
+  return describePartnerEntity({ name, type: type ?? "", stateName: state ? (usStateName(state) ?? state) : null });
+}
+
+export interface CountersignInput {
+  name: string;
+  title: string;
+  typedSignature: string;
+  userId: string | null;
+  email: string | null;
+  ip: string;
+  userAgent: string;
+}
+
+/** The owner countersigns: the agreement takes effect, then completeExecution(). */
+export async function countersignAgreement(
+  admin: Admin,
+  agreementId: string,
+  input: CountersignInput,
+): Promise<{ activated: boolean; kind: PartnerKind } & CompleteSigningResult> {
+  const { data, error } = await admin.rpc("partner_countersign_agreement", {
+    p_agreement_id: agreementId,
+    p_name: input.name.slice(0, 200),
+    p_title: input.title.slice(0, 200),
+    p_typed_signature: input.typedSignature.slice(0, 200),
+    p_user_id: input.userId,
+    p_user_email: input.email,
+    p_ip: input.ip.slice(0, 100),
+    p_user_agent: input.userAgent.slice(0, 400),
+  });
+  if (error || !data) throw partnerAgreementDbError(error, "Could not record the countersignature. Try again.");
+  const r = data as { activated?: boolean; kind?: string };
+  const activated = Boolean(r.activated);
+  const done = await completeExecution(admin, agreementId, activated);
+  return { activated, kind: r.kind === "store" ? "store" : "referrer", ...done };
+}
+
+/**
+ * Everything once an agreement is in effect. Each step is safe to repeat and
+ * none undoes a signature: a failure is logged and staff can resend from the
+ * admin.
+ */
+export async function completeExecution(admin: Admin, agreementId: string, activated: boolean): Promise<CompleteSigningResult> {
   const { data: a } = await admin.from("partner_agreements").select("partner_id, kind").eq("id", agreementId).single();
   if (!a) throw new HttpError(404, "That agreement isn't there.");
   if (activated) {
@@ -197,26 +339,12 @@ export async function completeSigning(admin: Admin, agreementId: string, activat
       console.error("[partnerAgreements] activation follow-up failed", agreementId, e);
     }
   }
-  let result: CompleteSigningResult = { pdfReady: false, emailed: false };
   try {
-    result = await finalizePartnerSignedCopy(admin, agreementId, { activated });
+    return await finalizePartnerSignedCopy(admin, agreementId, { activated });
   } catch (e) {
     console.error("[partnerAgreements] signed copy failed", agreementId, e);
+    return { pdfReady: false, emailed: false };
   }
-  try {
-    const { data: p } = await admin.from("partners").select("business_name").eq("id", a.partner_id).single();
-    await notifyStaff({
-      key: `partner_agreement_signed:${agreementId}`,
-      kind: "partner_lead",
-      title: "Partner agreement signed",
-      body: `${p?.business_name ?? "A partner"}${activated ? " is now active" : ""}`,
-      url: `/admin_dashboard/partners?partner=${a.partner_id}`,
-      tag: `partner_agreement:${a.partner_id}`,
-    });
-  } catch (e) {
-    console.error("[partnerAgreements] staff notice failed", agreementId, e);
-  }
-  return result;
 }
 
 /**
@@ -234,6 +362,9 @@ export async function finalizePartnerSignedCopy(
   if (a.status !== "signed" || !a.signed_at || !a.signer_legal_name || !a.typed_signature || !a.record_sha256) {
     throw new HttpError(409, "This agreement hasn't been signed.");
   }
+  if (a.requires_countersign && (!a.countersigned_at || !a.countersigner_name || !a.countersign_record_sha256)) {
+    throw new HttpError(409, "This agreement hasn't been countersigned.");
+  }
   const { data: partner } = await admin.from("partners").select("business_name").eq("id", a.partner_id).single();
   const businessName = partner?.business_name ?? "Partner";
 
@@ -244,7 +375,7 @@ export async function finalizePartnerSignedCopy(
     if (dlErr || !blob) throw new HttpError(500, "Could not load the signed PDF.");
     bytes = new Uint8Array(await blob.arrayBuffer());
   } else {
-    bytes = await buildPartnerAgreementPdf({
+    const input: PartnerAgreementPdfInput = {
       kind: a.kind as PartnerKind,
       title: a.title,
       versionNumber: a.version_number,
@@ -259,8 +390,29 @@ export async function finalizePartnerSignedCopy(
       signedAt: a.signed_at,
       ip: a.signer_ip,
       userAgent: a.signer_user_agent,
+      requiredAcks: a.required_acks,
       acknowledgments: (a.acknowledgments ?? {}) as Record<string, boolean>,
-    });
+      entity: a.signer_entity_name
+        ? {
+            description: describePartnerEntityLine(a.signer_entity_name, a.signer_entity_type, a.signer_entity_state),
+            address: a.signer_business_address ?? "",
+          }
+        : null,
+      countersign:
+        a.countersigned_at && a.countersigner_name && a.countersign_record_sha256
+          ? {
+              name: a.countersigner_name,
+              title: a.countersigner_title ?? "",
+              typedSignature: a.countersign_typed_signature ?? a.countersigner_name,
+              email: a.countersigned_by_email,
+              at: a.countersigned_at,
+              ip: a.countersign_ip,
+              userAgent: a.countersign_user_agent,
+              recordSha256: a.countersign_record_sha256,
+            }
+          : null,
+    };
+    bytes = await buildPartnerAgreementPdf(input);
     pdfSha256 = createHash("sha256").update(bytes).digest("hex");
     const path = `${a.partner_id}/${a.id}.pdf`;
     const { error: upErr } = await admin.storage.from(PARTNER_AGREEMENT_BUCKET).upload(path, Buffer.from(bytes), {
@@ -283,7 +435,8 @@ export async function finalizePartnerSignedCopy(
     signerName: a.signer_legal_name,
     businessName,
     agreementTitle: a.title,
-    signedAt: new Date(a.signed_at).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "long", timeStyle: "short" }),
+    signedAt: centralLong(a.signed_at),
+    countersignedAt: a.countersigned_at ? centralLong(a.countersigned_at) : null,
     pdfSha256: pdfSha256!,
     activated: Boolean(opts.activated),
     kind: a.kind as PartnerKind,
@@ -315,7 +468,9 @@ export async function finalizePartnerSignedCopy(
         replyTo: a.invited_email,
         subject: `Signed: ${a.title} — ${businessName}`,
         react: React.createElement(PartnerAgreementSigned, { ...data, signerName: "Geega Games" }),
-        text: `${a.signer_legal_name} (${a.signer_title ?? ""}) signed the ${a.title} for ${businessName} on ${data.signedAt}. Fee: ${formatFeePercent(Number(a.fee_percent))}. The signed PDF is attached.\n\nPDF SHA-256: ${pdfSha256}`,
+        text: `${a.signer_legal_name} (${a.signer_title ?? ""}) signed the ${a.title} for ${businessName} on ${data.signedAt}.${
+          data.countersignedAt ? ` Countersigned by ${a.countersigner_name} on ${data.countersignedAt}; in effect from then.` : ""
+        } Fee: ${formatFeePercent(Number(a.fee_percent))}. The signed PDF is attached.\n\nPDF SHA-256: ${pdfSha256}`,
         attachments: [attachment],
       });
     } catch (e) {
@@ -351,25 +506,58 @@ export async function partnerAgreementPdfLink(admin: Admin, agreementId: string)
 
 // ---------------------------------------------------------------- checks used elsewhere
 
-/** The partner's newest signed agreement, or null. */
-export async function signedAgreementFor(admin: Admin, partnerId: string) {
-  const { data, error } = await admin
-    .from("partner_agreements")
-    .select("id, fee_percent, signed_at, version_number")
-    .eq("partner_id", partnerId)
-    .eq("status", "signed")
-    .order("signed_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new HttpError(500, "Could not check the partner's agreement.");
-  return data;
+export interface ExecutedAgreement {
+  id: string;
+  fee_percent: number;
+  signed_at: string | null;
+  countersigned_at: string | null;
+  version_number: number;
+  /** When it took effect: the countersignature, or the partner's signature for one-step agreements. */
+  effective_at: string;
 }
 
-/** Voids an open agreement (the application was declined). */
+async function executedAgreements(admin: Admin, partnerId: string): Promise<ExecutedAgreement[]> {
+  const { data, error } = await admin
+    .from("partner_agreements")
+    .select("id, fee_percent, signed_at, countersigned_at, version_number")
+    .eq("partner_id", partnerId)
+    .eq("status", "signed")
+    .limit(100);
+  if (error) throw new HttpError(500, "Could not check the partner's agreement.");
+  return (data ?? [])
+    .map((row) => ({ ...row, fee_percent: Number(row.fee_percent), effective_at: agreementEffectiveAt(row) ?? "" }))
+    .filter((row) => row.effective_at)
+    .sort((x, y) => y.effective_at.localeCompare(x.effective_at));
+}
+
+/** The partner's newest fully executed agreement, or null. */
+export async function signedAgreementFor(admin: Admin, partnerId: string): Promise<ExecutedAgreement | null> {
+  return (await executedAgreements(admin, partnerId))[0] ?? null;
+}
+
+/**
+ * The executed agreement in force at a moment (a seller's request): the
+ * newest one that took effect on or before it. `earliest` is the first one
+ * ever in effect, for explaining a request that came in before it.
+ */
+export async function agreementInForce(
+  admin: Admin,
+  partnerId: string,
+  at: string,
+): Promise<{ agreement: ExecutedAgreement | null; earliest: ExecutedAgreement | null }> {
+  const all = await executedAgreements(admin, partnerId);
+  const t = new Date(at).getTime();
+  return {
+    agreement: all.find((a) => new Date(a.effective_at).getTime() <= t) ?? null,
+    earliest: all[all.length - 1] ?? null,
+  };
+}
+
+/** Voids an open agreement, sent or waiting for our countersignature (the application was declined). */
 export async function voidOpenAgreement(admin: Admin, partnerId: string, reason: string): Promise<void> {
   await admin
     .from("partner_agreements")
     .update({ status: "void", voided_at: new Date().toISOString(), void_reason: reason.slice(0, 500) })
     .eq("partner_id", partnerId)
-    .eq("status", "pending");
+    .in("status", ["pending", "awaiting_countersign"]);
 }

@@ -30,7 +30,18 @@ vi.mock("../api/_lib/partnerEmails.js", () => ({
 
 const agreementCalls: string[] = [];
 const voided: string[] = [];
+const countersigned: { agreementId: string; name: string; email: string | null; ip: string }[] = [];
 vi.mock("../api/_lib/partnerAgreements.js", () => ({
+  countersignAgreement: vi.fn(async (_admin: unknown, agreementId: string, input: { name: string; email: string | null; ip: string }) => {
+    countersigned.push({ agreementId, name: input.name, email: input.email, ip: input.ip });
+    const a = (state.tables.partner_agreements ?? []).find((r) => r.id === agreementId)!;
+    if (a.status !== "awaiting_countersign") {
+      const { HttpError } = await import("../api/_lib/http.js");
+      throw new HttpError(409, "This agreement isn't waiting for a countersignature.");
+    }
+    a.status = "signed";
+    return { activated: true, kind: "referrer", pdfReady: true, emailed: true };
+  }),
   sendPartnerAgreement: vi.fn(async (_admin: unknown, id: string) => {
     agreementCalls.push(id);
     return { agreementId: "agr-1", emailed: true, signUrl: "https://geega-games.com/partner-agreement?t=x" };
@@ -101,6 +112,7 @@ beforeEach(() => {
   messageEmailStatus = "sent";
   agreementCalls.length = 0;
   voided.length = 0;
+  countersigned.length = 0;
 });
 
 describe("POST /api/admin/partners", () => {
@@ -198,6 +210,39 @@ describe("PATCH /api/admin/partners/:id", () => {
     expect((await call(partnerHandler, { method: "PATCH", token: OWNER, id: declined.id, body: { action: "send_agreement" } })).statusCode).toBe(409);
     expect((await call(partnerHandler, { method: "PATCH", token: STAFF, id: active.id, body: { action: "send_agreement" } })).statusCode).toBe(403);
     expect(agreementCalls).toEqual([active.id]);
+  });
+
+  it("countersigning: owner-only, a matching signature and the authority box, then it takes effect", async () => {
+    const p = addPartner({ kind: "referrer" });
+    const agreement = { id: fakeId(), partner_id: p.id, status: "awaiting_countersign" };
+    state.tables.partner_agreements = [agreement];
+    (state.tables.referral_codes ??= []).push({ id: fakeId(), code: "niterun1", partner_id: p.id, user_id: null });
+    const body = { action: "countersign", agreementId: agreement.id, name: "Jacob Femmer", title: "Owner", typedSignature: "Jacob Femmer", authorized: true };
+
+    expect((await call(partnerHandler, { method: "PATCH", token: STAFF, id: p.id, body })).statusCode).toBe(403);
+    const unauthorized = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { ...body, authorized: false } });
+    expect(unauthorized.statusCode).toBe(400);
+    expect(unauthorized.body.message).toMatch(/authorized to sign for Geega Games LLC/);
+    expect((await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { ...body, typedSignature: "J. Femmer" } })).statusCode).toBe(400);
+    const other = addPartner({});
+    expect((await call(partnerHandler, { method: "PATCH", token: OWNER, id: other.id, body })).statusCode).toBe(404);
+    expect(countersigned).toEqual([]);
+
+    const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, activated: true, pdfEmailed: true, referralCode: "niterun1" });
+    expect(countersigned).toEqual([{ agreementId: agreement.id, name: "Jacob Femmer", email: "owner@example.com", ip: expect.any(String) }]);
+    expect(state.tables.admin_audit_log?.at(-1)).toMatchObject({ action: "partner.countersign", resource_id: p.id });
+    expect((await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body })).statusCode).toBe(409);
+  });
+
+  it("won't send a new agreement on Approve once they've signed and are waiting for the countersignature", async () => {
+    const p = addPartner({ kind: "referrer" });
+    state.tables.partner_agreements = [{ id: fakeId(), partner_id: p.id, status: "awaiting_countersign" }];
+    const res = await call(partnerHandler, { method: "PATCH", token: OWNER, id: p.id, body: { action: "approve" } });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toMatch(/Countersign their agreement/);
+    expect(agreementCalls).toEqual([]);
   });
 
   it("declining cancels an unsigned agreement link", async () => {

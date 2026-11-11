@@ -3,14 +3,21 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
-// Partner agreements (supabase/migrations/20261111010000_partner_agreements.sql)
-// in PGlite: sending freezes the text with its hash and replaces any open
-// link; signing checks the link is open, the exact text, every required box
-// and a signature matching the legal name, then records it and makes an
-// applicant active at the fee they signed for; a signed agreement can't be
-// changed or deleted; only the service role can send or sign.
+// Partner agreements (supabase/migrations/20261111010000_partner_agreements.sql
+// and 20261111020000_partner_agreement_countersign.sql) in PGlite: sending
+// freezes the text with its hash and replaces any open link; signing checks
+// the link is open, the exact text, every required box and a signature
+// matching the legal name, then records it and makes an applicant active at
+// the fee they signed for; an agreement Geega Games countersigns also takes
+// the partner's legal entity and waits, and only the countersignature makes
+// it take effect; a signed agreement can't be changed or deleted; only the
+// service role can send, sign or countersign.
 
 const MIGRATION = readFileSync(new URL("../supabase/migrations/20261111010000_partner_agreements.sql", import.meta.url), "utf8");
+const COUNTERSIGN_MIGRATION = readFileSync(
+  new URL("../supabase/migrations/20261111020000_partner_agreement_countersign.sql", import.meta.url),
+  "utf8",
+);
 
 const SETUP = `
 create role anon; create role authenticated; create role service_role;
@@ -101,10 +108,18 @@ async function sign(
   }
 }
 
+let openV1BeforeUpgrade: string;
+let signedV1BeforeUpgrade: string;
+
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(SETUP);
   await db.exec(MIGRATION);
+  // Version 1 links out when version 2 arrives: unsigned ones are voided, signed ones stay.
+  openV1BeforeUpgrade = await send(await addPartner());
+  signedV1BeforeUpgrade = await send(await addPartner());
+  await sign(signedV1BeforeUpgrade);
+  await db.exec(COUNTERSIGN_MIGRATION);
 });
 
 afterAll(async () => {
@@ -235,6 +250,169 @@ describe("the record", () => {
     expect(await one(`select public, allowed_mime_types from storage.buckets where id = 'partner-agreements'`)).toEqual({
       public: false,
       allowed_mime_types: ["application/pdf"],
+    });
+  });
+});
+
+// ------------------------------------------------------------ version 2: countersigned
+
+const ENTITY = { name: "NITE Run  Delivery LLC", type: "llc", state: "nc", address: "100 Main St, Fuquay-Varina, NC 27526" };
+
+async function sendCountersigned(partnerId: string, fee = 3): Promise<string> {
+  await asRole("service_role");
+  try {
+    return (
+      await one(
+        `select public.partner_create_agreement($1, 'referrer', 2, 'Geega Games Referral Partner Agreement', $2, $3, $4, 'chay@example.com', $5, now() + interval '14 days', null, 'owner@geega-games.com', true) as id`,
+        [partnerId, TEXT, fee, ACKS, nextHash()],
+      )
+    ).id;
+  } finally {
+    await asRole("");
+  }
+}
+
+async function signWithEntity(
+  agreementId: string,
+  entity: Partial<typeof ENTITY> | null = ENTITY,
+): Promise<{ result: Row | null; error: { code?: string; message?: string } | null }> {
+  await asRole("service_role");
+  try {
+    const e = entity ?? {};
+    const row = await one(
+      `select public.partner_sign_agreement($1, 'Chayson Ingram-Gray', 'Owner', 'Chayson Ingram-Gray', $2::jsonb, $3, '203.0.113.9', 'Mozilla/5.0', $4, $5, $6, $7) as r`,
+      [agreementId, JSON.stringify(ALL_TICKED), sha(TEXT), e.name ?? null, e.type ?? null, e.state ?? null, e.address ?? null],
+    );
+    return { result: row.r, error: null };
+  } catch (err) {
+    return { result: null, error: err as { code?: string; message?: string } };
+  } finally {
+    await asRole("");
+  }
+}
+
+async function countersign(
+  agreementId: string,
+  over: Partial<{ name: string; sig: string; role: string }> = {},
+): Promise<{ result: Row | null; error: { code?: string; message?: string } | null }> {
+  await asRole(over.role ?? "service_role");
+  try {
+    const row = await one(
+      `select public.partner_countersign_agreement($1, $2, 'Owner', $3, null, 'owner@geega-games.com', '198.51.100.7', 'Admin browser') as r`,
+      [agreementId, over.name ?? "Jacob Femmer", over.sig ?? "jacob femmer"],
+    );
+    return { result: row.r, error: null };
+  } catch (err) {
+    return { result: null, error: err as { code?: string; message?: string } };
+  } finally {
+    await asRole("");
+  }
+}
+
+describe("upgrading to version 2", () => {
+  it("voids unsigned version 1 referral links and keeps signed agreements", async () => {
+    expect(await one(`select status, void_reason from public.partner_agreements where id = $1`, [openV1BeforeUpgrade])).toMatchObject({
+      status: "void",
+      void_reason: expect.stringMatching(/version 2/),
+    });
+    expect((await one(`select status, requires_countersign from public.partner_agreements where id = $1`, [signedV1BeforeUpgrade]))).toEqual({
+      status: "signed",
+      requires_countersign: false,
+    });
+  });
+});
+
+describe("countersigned agreements", () => {
+  it("the partner's signature needs their legal entity, and doesn't make them active", async () => {
+    const p = await addPartner();
+    const id = await sendCountersigned(p);
+    expect((await signWithEntity(id, null)).error?.code).toBe("GP020");
+    expect((await signWithEntity(id, { ...ENTITY, type: "empire" })).error?.code).toBe("GP020");
+    expect((await signWithEntity(id, { ...ENTITY, state: "North Carolina" })).error?.code).toBe("GP020");
+    expect((await signWithEntity(id, { ...ENTITY, address: "short" })).error?.code).toBe("GP020");
+
+    const { result, error } = await signWithEntity(id);
+    expect(error).toBeNull();
+    expect(result).toMatchObject({ partnerId: p, activated: false, awaitingCountersign: true });
+    const a = await one(`select * from public.partner_agreements where id = $1`, [id]);
+    expect(a).toMatchObject({
+      status: "awaiting_countersign",
+      signer_entity_name: "NITE Run Delivery LLC",
+      signer_entity_type: "llc",
+      signer_entity_state: "NC",
+      signer_business_address: "100 Main St, Fuquay-Varina, NC 27526",
+      countersigned_at: null,
+    });
+    expect(a.record_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect((await one(`select status from public.partners where id = $1`, [p])).status).toBe("applied");
+    expect((await signWithEntity(id)).error?.code).toBe("GP014");
+  });
+
+  it("only the countersignature makes it take effect, at the fee they signed for", async () => {
+    const p = await addPartner({ fee: 3 });
+    const id = await sendCountersigned(p, 3);
+    expect((await countersign(id)).error?.code).toBe("GP022"); // not signed by them yet
+    await signWithEntity(id);
+    await db.query(`update public.partners set fee_percent = 9 where id = $1`, [p]);
+
+    expect((await countersign(id, { role: "authenticated" })).error?.code).toBe("42501");
+    expect((await countersign(id, { sig: "Someone Else" })).error?.code).toBe("GP023");
+    // Not by hand.
+    expect((await errorOf(`update public.partner_agreements set status = 'signed' where id = $1`, [id]))?.code).toBe("GP006");
+    expect((await errorOf(`update public.partner_agreements set countersigned_at = now() where id = $1`, [id]))?.code).toBe("GP006");
+    expect((await errorOf(`update public.partner_agreements set signer_entity_name = 'Other LLC' where id = $1`, [id]))?.code).toBe("GP004");
+
+    const { result, error } = await countersign(id);
+    expect(error).toBeNull();
+    expect(result).toMatchObject({ partnerId: p, kind: "referrer", activated: true });
+    const a = await one(`select * from public.partner_agreements where id = $1`, [id]);
+    expect(a).toMatchObject({
+      status: "signed",
+      countersigner_name: "Jacob Femmer",
+      countersigner_title: "Owner",
+      countersign_typed_signature: "jacob femmer",
+      countersigned_by_email: "owner@geega-games.com",
+      countersign_ip: "198.51.100.7",
+    });
+    expect(a.countersign_record_sha256).toMatch(/^[0-9a-f]{64}$/);
+    const partner = await one(`select status, fee_percent from public.partners where id = $1`, [p]);
+    expect(partner.status).toBe("active");
+    expect(Number(partner.fee_percent)).toBe(3);
+
+    expect((await countersign(id)).error?.code).toBe("GP021");
+    expect((await errorOf(`update public.partner_agreements set countersigner_name = 'X Y' where id = $1`, [id]))?.code).toBe("GP004");
+    expect((await errorOf(`update public.partner_agreements set status = 'void', voided_at = now() where id = $1`, [id]))?.code).toBe("GP004");
+  });
+
+  it("a new agreement replaces one waiting for our countersignature", async () => {
+    const p = await addPartner();
+    const first = await sendCountersigned(p);
+    await signWithEntity(first);
+    const second = await sendCountersigned(p);
+    expect((await one(`select status, signer_legal_name from public.partner_agreements where id = $1`, [first]))).toMatchObject({
+      status: "void",
+      signer_legal_name: "Chayson Ingram-Gray",
+    });
+    expect((await countersign(first)).error?.code).toBe("GP022");
+    expect((await one(`select status from public.partner_agreements where id = $1`, [second])).status).toBe("pending");
+  });
+
+  it("refuses to countersign for a partner declined after signing", async () => {
+    const p = await addPartner();
+    const id = await sendCountersigned(p);
+    await signWithEntity(id);
+    await db.query(`update public.partners set status = 'declined' where id = $1`, [p]);
+    expect((await countersign(id)).error?.code).toBe("GP019");
+  });
+
+  it("one-step agreements (stores) still go live when signed, ignoring entity details", async () => {
+    const p = await addPartner({ kind: "store" });
+    const id = await send(p, { kind: "store" });
+    const { result } = await signWithEntity(id);
+    expect(result).toMatchObject({ activated: true, awaitingCountersign: false });
+    expect(await one(`select status, signer_entity_name from public.partner_agreements where id = $1`, [id])).toEqual({
+      status: "signed",
+      signer_entity_name: null,
     });
   });
 });

@@ -384,6 +384,57 @@ describe("partner email senders", () => {
     expect(sent[0].text).toContain("Hi Alex,");
   });
 
+  it("gives a referral partner the Transaction Summary for a fee, without naming the seller", async () => {
+    const partner = { id: fakeId(), kind: "referrer", business_name: "Heirloom", contact_name: "Jo", email: "jo@heirloom.example" };
+    state.tables.partners = [partner];
+    state.tables.sell_submissions = [
+      { id: "sub-1", closed_at: "2026-11-09T18:00:00.000Z", purchase_amount_cents: 120000, name: "Seller Person", email: "seller@example.com" },
+    ];
+    state.tables.referral_rewards = [
+      {
+        id: "rw-2",
+        kind: "cash",
+        amount_cents: 3600,
+        user_id: null,
+        partner_id: partner.id,
+        lead_reference: "GG-S-100060",
+        sell_submission_id: "sub-1",
+        created_at: "2026-11-10T00:00:00.000Z",
+      },
+    ];
+    expect((await senders.sendReferralRewardEmail("rw-2", { feePercent: 3 })).status).toBe("sent");
+    const email = sent.at(-1)!;
+    expect(email).toMatchObject({ to: "jo@heirloom.example", subject: "A referral sold — you've earned $36.00" });
+    for (const line of [
+      "Request reference: GG-S-100060",
+      "Closing date: November 9, 2026",
+      "Net Purchase Price: $1,200.00",
+      "Referral fee: $36.00 (3% of the Net Purchase Price)",
+      "within 30 days after the end of November 2026",
+      "$25",
+      "reply within 60 days",
+    ]) {
+      expect(email.text, line).toContain(line);
+    }
+    expect(email.text).not.toContain("Seller Person");
+    expect(email.text).not.toContain("seller@example.com");
+  });
+
+  it("sends the payment statement when a referral fee is paid, and nothing for unpaid or store credit", async () => {
+    const partner = { id: fakeId(), kind: "referrer", business_name: "Heirloom", contact_name: "Jo", email: "jo@heirloom.example" };
+    state.tables.partners = [partner];
+    state.tables.referral_rewards = [
+      { id: "rw-3", kind: "cash", status: "paid", amount_cents: 3600, user_id: null, partner_id: partner.id, lead_reference: "GG-S-100060", paid_at: "2026-12-15T18:00:00.000Z" },
+      { id: "rw-4", kind: "cash", status: "owed", amount_cents: 3600, user_id: null, partner_id: partner.id, lead_reference: "GG-S-100061", paid_at: null },
+    ];
+    expect((await senders.sendReferralFeePaidEmail("rw-3")).status).toBe("sent");
+    const email = sent.at(-1)!;
+    expect(email).toMatchObject({ to: "jo@heirloom.example", subject: "Referral fee paid: $36.00", emailType: "referral_fee_paid" });
+    expect(email.text).toContain("Request reference: GG-S-100060");
+    expect(email.text).toContain("Paid on: December 15, 2026");
+    expect((await senders.sendReferralFeePaidEmail("rw-4")).status).toBe("skipped");
+  });
+
   it("sends a staff message from the orders address, reply-to support, signed with the sender's first name", async () => {
     const applicant = {
       id: fakeId(),

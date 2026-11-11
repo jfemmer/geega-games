@@ -5,11 +5,14 @@ import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
 import { logAdminAction } from "../../_lib/auditLog.js";
 import { sendPartnerApprovedEmail, sendPartnerMessageEmail } from "../../_lib/partnerEmails.js";
 import {
+  countersignAgreement,
   partnerAgreementPdfLink,
   sendPartnerAgreement,
   signedAgreementFor,
   voidOpenAgreement,
 } from "../../_lib/partnerAgreements.js";
+import { getClientIp } from "../../_lib/rateLimit.js";
+import { countersignProblems } from "../../../src/store/lib/partnerAgreement.js";
 import {
   ensurePartnerReferralCode,
   partnerFieldsFromInput,
@@ -36,6 +39,10 @@ import {
 //             want to explain). Cancels an unsigned agreement link.
 //   send_agreement  (re)send the agreement to sign, at their current fee: a
 //             new link, the old one stops working. Not for declined partners.
+//   countersign     { agreementId, name, title, typedSignature, authorized }
+//             Geega Games countersigns an agreement the partner signed (the
+//             Referral Partner Agreement takes effect then): an applicant goes
+//             live, gets their code and welcome, and both sides get the PDF.
 //   agreement_pdf   { agreementId } → a five-minute link to a signed copy.
 //   pause     active → paused: no new leads go to them, their link stops
 //             crediting new sellers.
@@ -52,7 +59,7 @@ import {
 // Owner-only (app role "admin"): partners and their fees are business terms.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTIONS = new Set(["approve", "decline", "pause", "activate", "update", "message", "send_agreement", "agreement_pdf"]);
+const ACTIONS = new Set(["approve", "decline", "pause", "activate", "update", "message", "send_agreement", "agreement_pdf", "countersign"]);
 
 interface Body {
   action?: unknown;
@@ -61,6 +68,10 @@ interface Body {
   subject?: unknown;
   message?: unknown;
   agreementId?: unknown;
+  name?: unknown;
+  title?: unknown;
+  typedSignature?: unknown;
+  authorized?: unknown;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -95,8 +106,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return sendJson(res, 200, { ok: true, url: await partnerAgreementPdfLink(admin, agreementId) });
     }
 
+    if (action === "countersign") return await countersign(req, res, staff, partner, body);
+
     const kind = partner.kind as PartnerKind;
     const current = partner.status as PartnerStatus;
+
+    if (action === "approve" && current !== "active") {
+      const { data: waiting } = await admin
+        .from("partner_agreements")
+        .select("id")
+        .eq("partner_id", id)
+        .eq("status", "awaiting_countersign")
+        .limit(1)
+        .maybeSingle();
+      if (waiting) throw new HttpError(409, "They've already signed. Countersign their agreement to approve them.");
+    }
 
     if (action === "send_agreement" || (action === "approve" && current !== "active" && !(await signedAgreementFor(admin, id)))) {
       if (action === "send_agreement" && current === "declined") {
@@ -176,6 +200,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!(err instanceof HttpError)) console.error("[/api/admin/partners/:id] error:", err);
     return sendJson(res, status, { ok: false, message });
   }
+}
+
+async function countersign(
+  req: VercelRequest,
+  res: VercelResponse,
+  staff: StaffContext,
+  partner: { id: string; business_name: string },
+  body: Body,
+) {
+  const admin = getSupabaseAdmin();
+  const agreementId = typeof body.agreementId === "string" && UUID_RE.test(body.agreementId) ? body.agreementId : null;
+  if (!agreementId) throw new HttpError(400, "Choose an agreement.");
+  const { data: owns } = await admin.from("partner_agreements").select("id").eq("id", agreementId).eq("partner_id", partner.id).maybeSingle();
+  if (!owns) throw new HttpError(404, "That agreement isn't there.");
+  const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 200) : "");
+  const input = { name: str(body.name), title: str(body.title), typedSignature: str(body.typedSignature), authorized: body.authorized === true };
+  const problems = countersignProblems(input);
+  if (problems.length) throw new HttpError(400, problems[0]);
+
+  const result = await countersignAgreement(admin, agreementId, {
+    name: input.name,
+    title: input.title,
+    typedSignature: input.typedSignature,
+    userId: staff.userId,
+    email: staff.email,
+    ip: getClientIp(req),
+    userAgent: String(req.headers["user-agent"] ?? ""),
+  });
+
+  let referralCode: string | null = null;
+  if (result.kind === "referrer") {
+    const { data: code } = await admin.from("referral_codes").select("code").eq("partner_id", partner.id).maybeSingle();
+    referralCode = code?.code ?? null;
+  }
+
+  await logAdminAction(admin, staff, {
+    action: "partner.countersign",
+    resourceType: "partner",
+    resourceId: partner.id,
+    before: { agreement_id: agreementId, status: "awaiting_countersign" },
+    after: { agreement_id: agreementId, status: "signed", activated: result.activated, pdf_emailed: result.emailed },
+  });
+
+  return sendJson(res, 200, { ok: true, activated: result.activated, pdfEmailed: result.emailed, referralCode });
 }
 
 async function deletePartner(

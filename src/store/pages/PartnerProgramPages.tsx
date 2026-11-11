@@ -220,7 +220,7 @@ const REFERRER_FAQ = [
   {
     question: "When do I get paid?",
     answer:
-      "After our purchase closes: we've received and checked the items and paid your client in full. We email you each time, and pay earned fees within 30 days after the end of that month.",
+      "After our purchase closes: we've received and checked the items and paid your client in full. We email you a summary each time, and pay earned fees within 30 days after the end of that month, once your balance reaches $25.",
   },
   {
     question: "Do I earn a fee on everything I refer?",
@@ -286,8 +286,8 @@ export function ReferralPartnersPage() {
         <h2>How it works</h2>
         <ol className="gg-collect-steps">
           <li>
-            <strong>Apply below.</strong> If we approve you, we email you a short partner agreement to
-            sign online. Your personal link arrives as soon as it&rsquo;s signed.
+            <strong>Apply below.</strong> If we approve you, we email you a partner agreement to sign
+            online. Once we countersign it, your personal link arrives by email.
           </li>
           <li>
             <strong>Give your client the link</strong> — or a flyer with your QR code. They tell us what

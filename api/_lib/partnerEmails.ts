@@ -14,6 +14,7 @@ import {
   PartnerMessage,
   PartnerReferralCheckin,
   PartnerReferralSellerNotice,
+  ReferralFeePaid,
   ReferralRewardEarned,
   partnerApplicationAdminSubject,
   partnerApplicationAdminText,
@@ -29,9 +30,17 @@ import {
   partnerReferralCheckinText,
   partnerReferralSellerNoticeSubject,
   partnerReferralSellerNoticeText,
+  referralFeePaidSubject,
+  referralFeePaidText,
   referralRewardEarnedSubject,
   referralRewardEarnedText,
+  type ReferralFeeSummary,
 } from "./emails/PartnerEmails.js";
+import {
+  REFERRAL_FEE_QUESTION_DAYS,
+  REFERRAL_MIN_PAYOUT_DOLLARS,
+  formatFeePercent,
+} from "../../src/store/lib/partnerAgreement.js";
 import {
   REFERRAL_CONTACT_METHODS,
   REFERRAL_HANDOFF_OPTIONS,
@@ -534,39 +543,70 @@ export async function sendPartnerMessageEmail(messageId: string): Promise<Result
 // Referral rewards
 // ---------------------------------------------------------------------------
 
-/** Tells a referrer they've earned a reward. Never names the seller. */
-export async function sendReferralRewardEmail(rewardId: string): Promise<Result> {
+const CENTRAL = "America/Chicago";
+const dayLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: CENTRAL, month: "long", day: "numeric", year: "numeric" });
+const monthLabel = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: CENTRAL, month: "long", year: "numeric" });
+
+async function rewardRecipient(
+  db: ReturnType<typeof getSupabaseAdmin>,
+  reward: { user_id: string | null; partner_id: string | null },
+): Promise<{ to: string | null; firstName: string | null }> {
+  if (reward.user_id) {
+    const { data: user } = await db.auth.admin.getUserById(reward.user_id);
+    const { data: profile } = await db.from("profiles").select("first_name").eq("id", reward.user_id).maybeSingle();
+    return { to: user?.user?.email ?? null, firstName: profile?.first_name ?? null };
+  }
+  if (reward.partner_id) {
+    const { data: partner } = await db.from("partners").select("email, contact_name").eq("id", reward.partner_id).maybeSingle();
+    return { to: partner?.email ?? null, firstName: partner?.contact_name ?? null };
+  }
+  return { to: null, firstName: null };
+}
+
+/**
+ * Tells a referrer they've earned a reward. Never names the seller. A
+ * referral partner's cash fee comes with its Transaction Summary (Referral
+ * Partner Agreement 2.16, 6.6): the request reference, closing date, Net
+ * Purchase Price and fee. `feePercent` is the fee in the agreement the
+ * referral fell under.
+ */
+export async function sendReferralRewardEmail(rewardId: string, opts: { feePercent?: number } = {}): Promise<Result> {
   const db = getSupabaseAdmin();
   const { data: reward, error } = await db
     .from("referral_rewards")
-    .select("id, kind, amount_cents, user_id, partner_id")
+    .select("id, kind, amount_cents, user_id, partner_id, lead_reference, sell_submission_id, created_at")
     .eq("id", rewardId)
     .maybeSingle();
   if (error || !reward) return { status: "skipped", reason: "reward-not-found" };
 
-  let to: string | null = null;
-  let firstName: string | null = null;
-  if (reward.user_id) {
-    const { data: user } = await db.auth.admin.getUserById(reward.user_id);
-    to = user?.user?.email ?? null;
-    const { data: profile } = await db.from("profiles").select("first_name").eq("id", reward.user_id).maybeSingle();
-    firstName = profile?.first_name ?? null;
-  } else if (reward.partner_id) {
-    const { data: partner } = await db
-      .from("partners")
-      .select("email, contact_name")
-      .eq("id", reward.partner_id)
-      .maybeSingle();
-    to = partner?.email ?? null;
-    firstName = partner?.contact_name ?? null;
-  }
+  const { to, firstName } = await rewardRecipient(db, reward);
   if (!to) return { status: "skipped", reason: "no-recipient" };
+
+  let summary: ReferralFeeSummary | null = null;
+  if (reward.kind === "cash" && reward.partner_id && reward.sell_submission_id) {
+    const { data: sub } = await db
+      .from("sell_submissions")
+      .select("closed_at, purchase_amount_cents")
+      .eq("id", reward.sell_submission_id)
+      .maybeSingle();
+    const closedAt = sub?.closed_at ?? reward.created_at;
+    summary = {
+      reference: reward.lead_reference,
+      closedOn: dayLabel(closedAt),
+      closedMonth: monthLabel(closedAt),
+      netPurchaseLabel: sub?.purchase_amount_cents != null ? usd(sub.purchase_amount_cents) : "—",
+      feePercentLabel: opts.feePercent != null ? `${formatFeePercent(opts.feePercent)} of the Net Purchase Price` : "per your agreement",
+      minPayoutLabel: `$${REFERRAL_MIN_PAYOUT_DOLLARS}`,
+      questionDays: REFERRAL_FEE_QUESTION_DAYS,
+    };
+  }
 
   const data = {
     ...branding(),
     firstName,
     kind: reward.kind as "store_credit" | "cash",
     amountLabel: usd(reward.amount_cents),
+    summary,
   };
   return settle(
     () =>
@@ -581,5 +621,43 @@ export async function sendReferralRewardEmail(rewardId: string): Promise<Result>
         text: referralRewardEarnedText(data),
       }),
     "reward email",
+  );
+}
+
+/** The payment statement when a referral partner's fee is marked paid (Referral Partner Agreement 6.6). */
+export async function sendReferralFeePaidEmail(rewardId: string): Promise<Result> {
+  const db = getSupabaseAdmin();
+  const { data: reward, error } = await db
+    .from("referral_rewards")
+    .select("id, kind, status, amount_cents, user_id, partner_id, lead_reference, paid_at")
+    .eq("id", rewardId)
+    .maybeSingle();
+  if (error || !reward) return { status: "skipped", reason: "reward-not-found" };
+  if (reward.kind !== "cash" || !reward.partner_id || reward.status !== "paid") return { status: "skipped", reason: "not-a-paid-fee" };
+
+  const { to, firstName } = await rewardRecipient(db, reward);
+  if (!to) return { status: "skipped", reason: "no-recipient" };
+
+  const data = {
+    ...branding(),
+    firstName,
+    amountLabel: usd(reward.amount_cents),
+    reference: reward.lead_reference,
+    paidOn: dayLabel(reward.paid_at ?? new Date().toISOString()),
+    questionDays: REFERRAL_FEE_QUESTION_DAYS,
+  };
+  return settle(
+    () =>
+      sendTrackedEmail({
+        emailType: "referral_fee_paid",
+        idempotencyKey: `referral-fee-paid-${reward.id}`,
+        to: to as string,
+        from: ServerEnv.fromOrders(),
+        replyTo: ServerEnv.replyTo(),
+        subject: referralFeePaidSubject(data),
+        react: React.createElement(ReferralFeePaid, data),
+        text: referralFeePaidText(data),
+      }),
+    "fee paid email",
   );
 }

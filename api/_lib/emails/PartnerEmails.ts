@@ -11,12 +11,15 @@ import { PARTNER_STORE_STANDARDS } from "../../../src/store/lib/partnerTypes.js"
 //   PartnerApplicationReceived     receipt for a store or referral partner
 //   PartnerApplicationAdmin        the new application, to staff
 //   PartnerApproved                welcome + how it works (+ referral link)
-//   ReferralRewardEarned           store credit or a referral fee, to whoever
-//                                  referred a seller who sold
+//   ReferralRewardEarned           store credit, or a referral fee with its
+//                                  Transaction Summary, to whoever referred a
+//                                  seller who sold
+//   ReferralFeePaid                payment statement when a referral fee is paid
 //   PartnerMessage                 a staff-written message to an applicant or
 //                                  partner ("Message them" on the Partners page)
 //   PartnerAgreementInvite         approved: review and sign the agreement
 //   PartnerAgreementSigned         the signed copy (PDF attached)
+//   PartnerAgreementCountersignNeeded  to us: a partner signed, countersign it
 //
 // Every seller-facing one says plainly that the store may pay Geega Games a
 // referral fee and that the seller is never charged — the same words as the
@@ -403,6 +406,7 @@ function approvedParagraphs(d: PartnerApprovedData): { heading: string; paras: s
       `Hi ${d.contactName}, thanks for partnering with Geega Games. When a client needs to sell cards or video games, send them to the link below. It lets them ask for a free, no-obligation offer, and tells us they came from ${d.businessName}.`,
       `When Geega Games buys a collection from someone you sent and the purchase closes, we pay you ${d.feePercentLabel} of what we paid for it, as set out in your signed agreement. We'll let you know each time.`,
       "Please ask your client before sharing their details with anyone. The easiest way is to give them the link and let them fill it in themselves.",
+      "Whenever you share your link, say you may earn a fee, right next to it. For example: \"Referral link: I may earn a fee.\" Schedule A of your agreement has more sample wording.",
     ],
     bullets: [],
   };
@@ -515,7 +519,7 @@ function agreementInviteLines(d: PartnerAgreementInviteData): string[] {
     : [
         `Good news: ${d.businessName} is approved as a Geega Games referral partner. Before we turn on your referral link, please review and sign the ${d.agreementTitle}.`,
         `It explains your ${d.feePercentLabel} referral fee: it's earned when Geega Games buys a collection you referred and the purchase closes, and it covers how you're paid.`,
-        "Your personal link and QR code arrive as soon as it's signed. You'll get a signed copy by email.",
+        "Once you've signed, we countersign it and it takes effect. You'll get the fully signed copy by email, and your personal link and QR code right after.",
       ];
 }
 
@@ -560,13 +564,21 @@ export type PartnerAgreementSignedData = Branding & {
   businessName: string;
   agreementTitle: string;
   signedAt: string;
+  /** When Geega Games countersigned (the Effective Date), for agreements that need it. */
+  countersignedAt?: string | null;
   pdfSha256: string;
   activated: boolean;
   kind: "store" | "referrer";
 };
 
 export function partnerAgreementSignedSubject(d: PartnerAgreementSignedData): string {
-  return `Your signed ${d.agreementTitle}`;
+  return d.countersignedAt ? `Your signed ${d.agreementTitle} is in effect` : `Your signed ${d.agreementTitle}`;
+}
+
+function agreementSignedLead(d: PartnerAgreementSignedData): string {
+  return d.countersignedAt
+    ? `You signed the ${d.agreementTitle} for ${d.businessName} on ${d.signedAt}, and Geega Games countersigned it on ${d.countersignedAt}. It's in effect from then. A PDF copy is attached.`
+    : `You signed the ${d.agreementTitle} for ${d.businessName} on ${d.signedAt}. A PDF copy is attached.`;
 }
 
 function agreementSignedNext(d: PartnerAgreementSignedData): string {
@@ -579,24 +591,73 @@ function agreementSignedNext(d: PartnerAgreementSignedData): string {
 export function PartnerAgreementSigned(d: PartnerAgreementSignedData) {
   return h(
     BaseLayout,
-    { previewText: `Signed ${d.signedAt}`, siteUrl: d.siteUrl, logoUrl: d.logoUrl, supportEmail: d.supportEmail },
-    h(Heading, { key: "h1", style: h1 }, "Thanks, it's signed"),
+    { previewText: d.countersignedAt ? `In effect ${d.countersignedAt}` : `Signed ${d.signedAt}`, siteUrl: d.siteUrl, logoUrl: d.logoUrl, supportEmail: d.supportEmail },
+    h(Heading, { key: "h1", style: h1 }, d.countersignedAt ? "Signed by both of us" : "Thanks, it's signed"),
     h(Text, { key: "hi", style: p }, `Hi ${d.signerName},`),
-    h(Text, { key: "a", style: p }, `You signed the ${d.agreementTitle} for ${d.businessName} on ${d.signedAt}. A PDF copy is attached.`),
+    h(Text, { key: "a", style: p }, agreementSignedLead(d)),
     h(Text, { key: "b", style: p }, agreementSignedNext(d)),
     h(Text, { key: "fp", style: { ...muted, wordBreak: "break-all" } }, `PDF fingerprint (SHA-256): ${d.pdfSha256}`),
   );
 }
 
 export function partnerAgreementSignedText(d: PartnerAgreementSignedData): string {
+  return [`Hi ${d.signerName},`, "", agreementSignedLead(d), "", agreementSignedNext(d), "", `PDF fingerprint (SHA-256): ${d.pdfSha256}`].join("\n");
+}
+
+export type PartnerAgreementCountersignNeededData = Branding & {
+  businessName: string;
+  agreementTitle: string;
+  signerName: string;
+  signerTitle: string;
+  /** "Acme Cards LLC, a Missouri limited liability company" */
+  entity: string;
+  businessAddress: string;
+  signedAt: string;
+  adminUrl: string;
+};
+
+export function partnerAgreementCountersignNeededSubject(d: PartnerAgreementCountersignNeededData): string {
+  return `Countersign: ${d.businessName} signed the ${d.agreementTitle}`;
+}
+
+function countersignRows(d: PartnerAgreementCountersignNeededData): [string, string][] {
   return [
-    `Hi ${d.signerName},`,
+    ["Signed by", `${d.signerName}${d.signerTitle ? `, ${d.signerTitle}` : ""}`],
+    ["For", d.entity || d.businessName],
+    ["Address", d.businessAddress],
+    ["Signed", d.signedAt],
+  ];
+}
+
+export function PartnerAgreementCountersignNeeded(d: PartnerAgreementCountersignNeededData) {
+  return h(
+    BaseLayout,
+    { previewText: `${d.businessName} is waiting for your countersignature`, siteUrl: d.siteUrl, logoUrl: d.logoUrl, supportEmail: d.supportEmail },
+    h(Heading, { key: "h1", style: h1 }, "Your countersignature is needed"),
+    h(
+      Text,
+      { key: "a", style: p },
+      `${d.businessName} signed the ${d.agreementTitle}. It takes effect, and their referral link turns on, when you countersign it on the Partners page.`,
+    ),
+    h(
+      Section,
+      { key: "rows", style: box },
+      ...countersignRows(d).map(([k, v]) => h(Text, { key: k, style: row }, h("strong", null, `${k}: `), v)),
+    ),
+    h(Text, { key: "b", style: muted }, "Check the legal entity and address look right before you countersign. If they don't, send them a new agreement instead."),
+    h(Section, { key: "cta", style: { margin: "8px 0 16px" } }, h(Button, { href: d.adminUrl, style: primaryButton }, "Review and countersign")),
+  );
+}
+
+export function partnerAgreementCountersignNeededText(d: PartnerAgreementCountersignNeededData): string {
+  return [
+    `${d.businessName} signed the ${d.agreementTitle}. It takes effect, and their referral link turns on, when you countersign it on the Partners page.`,
     "",
-    `You signed the ${d.agreementTitle} for ${d.businessName} on ${d.signedAt}. A PDF copy is attached.`,
+    ...countersignRows(d).map(([k, v]) => `${k}: ${v}`),
     "",
-    agreementSignedNext(d),
+    "Check the legal entity and address look right before you countersign. If they don't, send them a new agreement instead.",
     "",
-    `PDF fingerprint (SHA-256): ${d.pdfSha256}`,
+    `Review and countersign: ${d.adminUrl}`,
   ].join("\n");
 }
 
@@ -604,10 +665,24 @@ export function partnerAgreementSignedText(d: PartnerAgreementSignedData): strin
 // ReferralRewardEarned
 // ---------------------------------------------------------------------------
 
+/** The Transaction Summary for an earned referral fee (Referral Partner Agreement 2.16 and 6.6). Never names the seller. */
+export interface ReferralFeeSummary {
+  reference: string;
+  /** "November 9, 2026" */
+  closedOn: string;
+  /** "November 2026": fees are paid within 30 days after the end of this month. */
+  closedMonth: string;
+  netPurchaseLabel: string;
+  feePercentLabel: string;
+  minPayoutLabel: string;
+  questionDays: number;
+}
+
 export type ReferralRewardEarnedData = Branding & {
   firstName: string | null;
   kind: "store_credit" | "cash";
   amountLabel: string;
+  summary?: ReferralFeeSummary | null;
 };
 
 export function referralRewardEarnedSubject(d: ReferralRewardEarnedData): string {
@@ -618,18 +693,37 @@ export function referralRewardEarnedSubject(d: ReferralRewardEarnedData): string
 
 function rewardParagraphs(d: ReferralRewardEarnedData): string[] {
   const hi = d.firstName ? `Hi ${d.firstName}, ` : "";
-  return d.kind === "store_credit"
-    ? [
-        `${hi}someone you sent our way just sold their collection, so we've added ${d.amountLabel} in store credit to your Geega Games account. To use it, sign in and tick "Apply store credit" at checkout.`,
-        "Thanks for spreading the word. Your referral link keeps working, so share it with anyone else who has cards or video games to sell.",
-      ]
-    : [
-        `${hi}we just bought a collection from someone you sent our way. Your referral fee is ${d.amountLabel}, paid within 30 days after the end of this month (see your partner agreement).`,
-        "Thank you for the referral.",
-      ];
+  if (d.kind === "store_credit") {
+    return [
+      `${hi}someone you sent our way just sold their collection, so we've added ${d.amountLabel} in store credit to your Geega Games account. To use it, sign in and tick "Apply store credit" at checkout.`,
+      "Thanks for spreading the word. Your referral link keeps working, so share it with anyone else who has cards or video games to sell.",
+    ];
+  }
+  if (!d.summary) {
+    return [
+      `${hi}we just bought a collection from someone you sent our way. Your referral fee is ${d.amountLabel}, paid within 30 days after the end of the month the purchase closed (see your partner agreement).`,
+      "Thank you for the referral.",
+    ];
+  }
+  return [
+    `${hi}we just bought a collection from someone you sent our way. Here's the Transaction Summary for your referral fee.`,
+    `It's paid within 30 days after the end of ${d.summary.closedMonth}, once your unpaid balance reaches ${d.summary.minPayoutLabel} (smaller balances carry forward). If anything here looks wrong, reply within ${d.summary.questionDays} days and we'll check it.`,
+    "Thank you for the referral.",
+  ];
+}
+
+function summaryRows(s: ReferralFeeSummary, amountLabel: string): [string, string][] {
+  return [
+    ["Request reference", s.reference],
+    ["Closing date", s.closedOn],
+    ["Net Purchase Price", s.netPurchaseLabel],
+    ["Referral fee", `${amountLabel} (${s.feePercentLabel})`],
+  ];
 }
 
 export function ReferralRewardEarned(d: ReferralRewardEarnedData) {
+  const paras = rewardParagraphs(d);
+  const withSummary = d.kind === "cash" && d.summary;
   return h(
     BaseLayout,
     {
@@ -640,7 +734,15 @@ export function ReferralRewardEarned(d: ReferralRewardEarnedData) {
       reasonLine: "You received this because someone you referred to Geega Games sold their collection.",
     },
     h(Heading, { key: "h1", style: h1 }, d.kind === "store_credit" ? "You earned store credit" : "A referral sold"),
-    ...rewardParagraphs(d).map((para, i) => h(Text, { key: `p${i}`, style: p }, para)),
+    h(Text, { key: "p0", style: p }, paras[0]),
+    withSummary
+      ? h(
+          Section,
+          { key: "summary", style: box },
+          ...summaryRows(d.summary!, d.amountLabel).map(([k, v]) => h(Text, { key: k, style: row }, h("strong", null, `${k}: `), v)),
+        )
+      : null,
+    ...paras.slice(1).map((para, i) => h(Text, { key: `p${i + 1}`, style: p }, para)),
     d.kind === "store_credit"
       ? h(
           Section,
@@ -652,9 +754,70 @@ export function ReferralRewardEarned(d: ReferralRewardEarnedData) {
 }
 
 export function referralRewardEarnedText(d: ReferralRewardEarnedData): string {
-  return [`${referralRewardEarnedSubject(d)} — Geega Games`, "", ...rewardParagraphs(d).flatMap((x) => [x, ""])].join(
-    "\n",
+  const paras = rewardParagraphs(d);
+  const rows = d.kind === "cash" && d.summary ? summaryRows(d.summary, d.amountLabel).map(([k, v]) => `${k}: ${v}`) : [];
+  return [
+    `${referralRewardEarnedSubject(d)} — Geega Games`,
+    "",
+    paras[0],
+    "",
+    ...(rows.length ? [...rows, ""] : []),
+    ...paras.slice(1).flatMap((x) => [x, ""]),
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// ReferralFeePaid
+// ---------------------------------------------------------------------------
+
+export type ReferralFeePaidData = Branding & {
+  firstName: string | null;
+  amountLabel: string;
+  reference: string;
+  paidOn: string;
+  questionDays: number;
+};
+
+export function referralFeePaidSubject(d: ReferralFeePaidData): string {
+  return `Referral fee paid: ${d.amountLabel}`;
+}
+
+function feePaidRows(d: ReferralFeePaidData): [string, string][] {
+  return [
+    ["Request reference", d.reference],
+    ["Amount paid", d.amountLabel],
+    ["Paid on", d.paidOn],
+  ];
+}
+
+function feePaidParagraphs(d: ReferralFeePaidData): string[] {
+  return [
+    `${d.firstName ? `Hi ${d.firstName}, ` : ""}we've paid your referral fee. Here's the statement for this payment.`,
+    `Questions about it? Reply within ${d.questionDays} days and we'll check it.`,
+  ];
+}
+
+export function ReferralFeePaid(d: ReferralFeePaidData) {
+  const [a, b] = feePaidParagraphs(d);
+  return h(
+    BaseLayout,
+    {
+      previewText: referralFeePaidSubject(d),
+      siteUrl: d.siteUrl,
+      logoUrl: d.logoUrl,
+      supportEmail: d.supportEmail,
+      reasonLine: "You received this because you're a Geega Games referral partner.",
+    },
+    h(Heading, { key: "h1", style: h1 }, "Referral fee paid"),
+    h(Text, { key: "a", style: p }, a),
+    h(Section, { key: "rows", style: box }, ...feePaidRows(d).map(([k, v]) => h(Text, { key: k, style: row }, h("strong", null, `${k}: `), v))),
+    h(Text, { key: "b", style: muted }, b),
   );
+}
+
+export function referralFeePaidText(d: ReferralFeePaidData): string {
+  const [a, b] = feePaidParagraphs(d);
+  return [a, "", ...feePaidRows(d).map(([k, v]) => `${k}: ${v}`), "", b].join("\n");
 }
 
 // ---------------------------------------------------------------------------

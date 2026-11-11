@@ -7950,6 +7950,9 @@ html {
 .gg-tc-ack.is-locked { opacity: 0.55; cursor: not-allowed; }
 .gg-consign__sign { display: grid; gap: 0.75rem; }
 .gg-consign__sign .gg-field input { font-size: 16px; }
+/* Partner agreements: the legal entity signing (Referral Partner Agreement 3.1). */
+.gg-consign__entity { display: grid; gap: 0.75rem; margin: 0 0 0.25rem; padding: 0.85rem; border: 1px solid #e4dcec; border-radius: 10px; min-width: 0; }
+.gg-consign__entity legend { padding: 0 0.35rem; font-weight: 600; }
 .gg-consign__signature { font-family: "Brush Script MT", "Segoe Script", cursive; font-size: 1.35rem !important; }
 .gg-consign__summary { margin: 0; padding: 0.6rem 0.8rem; border-radius: 10px; background: #f6f3f8; font-size: 0.92rem; }
 .gg-consign__problems { margin: 0; padding-left: 2rem; }

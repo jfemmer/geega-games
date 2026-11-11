@@ -5,9 +5,11 @@ import { createFakeState, createFakeSupabase, fakeId, fakeResponse, type FakeSta
 
 // Sending a partner agreement (api/_lib/partnerAgreements.ts) and signing it
 // on the public page's API (api/partner-agreement.ts): the link's secret is
-// only stored hashed; signing goes through partner_sign_agreement(); then the
-// referral code and welcome (when they just went live), the signed PDF
-// (stored privately, emailed to them with a copy to us), and a staff push.
+// only stored hashed; signing goes through partner_sign_agreement(). A
+// Referral Partner Agreement (version 2) then waits for the owner: a push and
+// an email say to countersign, and countersignAgreement() makes it take
+// effect (referral code, welcome, the signed PDF with both signatures, to
+// them and to us). A Partner Store Agreement takes effect when signed.
 
 beforeAll(() => {
   process.env.SUPABASE_URL = "https://x.invalid";
@@ -44,7 +46,7 @@ vi.mock("../api/_lib/partnerEmails.js", () => ({
   }),
 }));
 
-const { sendPartnerAgreement } = await import("../api/_lib/partnerAgreements.ts");
+const { sendPartnerAgreement, countersignAgreement } = await import("../api/_lib/partnerAgreements.ts");
 const { default: handler } = await import("../api/partner-agreement.ts");
 
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
@@ -55,7 +57,9 @@ let partner: Record<string, unknown>;
 function installRpcs() {
   state.rpc.partner_create_agreement = (args) => {
     const rows = (state.tables.partner_agreements ??= []);
-    for (const r of rows) if (r.partner_id === args.p_partner_id && r.status === "pending") Object.assign(r, { status: "void", voided_at: "now" });
+    for (const r of rows) {
+      if (r.partner_id === args.p_partner_id && (r.status === "pending" || r.status === "awaiting_countersign")) Object.assign(r, { status: "void", voided_at: "now" });
+    }
     const id = fakeId();
     rows.push({
       id,
@@ -72,6 +76,8 @@ function installRpcs() {
       invited_email: String(args.p_invited_email).toLowerCase(),
       invite_token_hash: args.p_token_hash,
       invite_expires_at: args.p_expires_at,
+      requires_countersign: args.p_requires_countersign === true,
+      countersigned_at: null,
       pdf_path: null,
       pdf_sha256: null,
       signed_copy_emailed_at: null,
@@ -80,12 +86,18 @@ function installRpcs() {
   };
   state.rpc.partner_sign_agreement = (args) => {
     const a = state.tables.partner_agreements.find((r) => r.id === args.p_agreement_id)!;
-    if (a.status === "signed") return { data: null, error: { code: "GP014", message: "This agreement is already signed." } };
+    if (a.status === "signed" || a.status === "awaiting_countersign") {
+      return { data: null, error: { code: "GP014", message: "This agreement is already signed." } };
+    }
     if (args.p_agreement_sha256 !== a.rendered_sha256) return { data: null, error: { code: "GP016", message: "The agreement changed." } };
     const acks = args.p_acknowledgments as Record<string, boolean>;
     if ((a.required_acks as string[]).some((k) => acks[k] !== true)) return { data: null, error: { code: "GP017", message: "Tick every box before signing." } };
+    if (a.requires_countersign && (!args.p_entity_name || !args.p_entity_type || !/^[A-Z]{2}$/.test(String(args.p_entity_state)) || !args.p_business_address)) {
+      return { data: null, error: { code: "GP020", message: "Choose what kind of business it is." } };
+    }
+    const awaiting = a.requires_countersign === true;
     Object.assign(a, {
-      status: "signed",
+      status: awaiting ? "awaiting_countersign" : "signed",
       signed_at: "2026-11-11T15:00:00.000Z",
       signer_legal_name: args.p_legal_name,
       signer_title: args.p_title,
@@ -93,7 +105,30 @@ function installRpcs() {
       acknowledgments: acks,
       signer_ip: args.p_ip,
       signer_user_agent: args.p_user_agent,
+      signer_entity_name: awaiting ? args.p_entity_name : null,
+      signer_entity_type: awaiting ? args.p_entity_type : null,
+      signer_entity_state: awaiting ? args.p_entity_state : null,
+      signer_business_address: awaiting ? args.p_business_address : null,
       record_sha256: "f".repeat(64),
+    });
+    const p = state.tables.partners.find((r) => r.id === a.partner_id)!;
+    const activated = !awaiting && p.status === "applied";
+    if (activated) Object.assign(p, { status: "active", fee_percent: a.fee_percent });
+    return { data: { partnerId: p.id, kind: a.kind, activated, awaitingCountersign: awaiting }, error: null };
+  };
+  state.rpc.partner_countersign_agreement = (args) => {
+    const a = state.tables.partner_agreements.find((r) => r.id === args.p_agreement_id)!;
+    if (a.status !== "awaiting_countersign") return { data: null, error: { code: "GP022", message: "This agreement isn't waiting for a countersignature." } };
+    Object.assign(a, {
+      status: "signed",
+      countersigned_at: "2026-11-12T16:00:00.000Z",
+      countersigned_by_email: args.p_user_email,
+      countersigner_name: args.p_name,
+      countersigner_title: args.p_title,
+      countersign_typed_signature: args.p_typed_signature,
+      countersign_ip: args.p_ip,
+      countersign_user_agent: args.p_user_agent,
+      countersign_record_sha256: "c".repeat(64),
     });
     const p = state.tables.partners.find((r) => r.id === a.partner_id)!;
     const activated = p.status === "applied";
@@ -147,7 +182,10 @@ describe("sending the agreement", () => {
     expect(a.invite_token_hash).toBe(sha(token));
     expect(JSON.stringify(a)).not.toContain(token);
     expect(a.rendered_md).toContain("3% of the Net Purchase Price");
-    expect(a.required_acks).toContain("no_store_fee");
+    expect(a.rendered_md).toContain("Version 2");
+    expect(a.version_number).toBe(2);
+    expect(a.requires_countersign).toBe(true);
+    expect(a.required_acks).toContain("countersign");
     expect(sent[0]).toMatchObject({ emailType: "partner_agreement_invite", to: "Chay@Example.com" });
     expect(sent[0].subject).toContain("please sign your partner agreement");
     expect(sent[0].text).toContain(res.signUrl);
@@ -165,7 +203,14 @@ describe("GET/POST /api/partner-agreement", () => {
     const t = await invite();
     const view = await call({ method: "GET", query: { t } });
     expect(view.statusCode).toBe(200);
-    expect(view.body).toMatchObject({ status: "pending", kind: "referrer", businessName: "NITE Run Delivery LLC", versionNumber: 1 });
+    expect(view.body).toMatchObject({
+      status: "pending",
+      kind: "referrer",
+      businessName: "NITE Run Delivery LLC",
+      versionNumber: 2,
+      collectEntity: true,
+      entityDefaults: { name: "NITE Run Delivery LLC", state: "NC" },
+    });
     expect((view.body.acknowledgments as unknown[]).length).toBe(6);
     expect(view.body.agreementSha256).toBe(state.tables.partner_agreements[0].rendered_sha256);
     expect((await call({ method: "GET", query: { t: "x".repeat(43) } })).statusCode).toBe(404);
@@ -183,49 +228,112 @@ describe("GET/POST /api/partner-agreement", () => {
     expect(expired.body.message).toMatch(/expired/);
   });
 
-  it("signing makes them live: referral code, welcome, signed PDF to them and to us, and a push", async () => {
-    const t = await invite();
+  const ENTITY = { name: "NITE Run Delivery LLC", type: "llc", state: "North Carolina", address: "100 Main St, Fuquay-Varina, NC 27526" };
+
+  async function signAs(t: string, extra: Record<string, unknown> = { entity: ENTITY }) {
     const view = await call({ method: "GET", query: { t } });
     const acknowledgments = Object.fromEntries((view.body.acknowledgments as { key: string }[]).map((a) => [a.key, true]));
-    const res = await call({
-      method: "POST",
-      body: { t, legalName: "Chayson Ingram-Gray", title: "Owner", typedSignature: "Chayson Ingram-Gray", acknowledgments, agreementSha256: view.body.agreementSha256 },
-    });
+    const body = { t, legalName: "Chayson Ingram-Gray", title: "Owner", typedSignature: "Chayson Ingram-Gray", acknowledgments, agreementSha256: view.body.agreementSha256, ...extra };
+    return { res: await call({ method: "POST", body }), body };
+  }
+
+  it("a referral partner's signature waits for the owner: nothing goes live, the owner is told to countersign", async () => {
+    const t = await invite();
+    expect((await signAs(t, {})).res.statusCode).toBe(400); // no entity details
+    const { res, body } = await signAs(t);
     expect(res.statusCode).toBe(200);
-    expect(res.body).toMatchObject({ ok: true, activated: true, kind: "referrer", pdfEmailed: true });
+    expect(res.body).toMatchObject({ ok: true, activated: false, awaitingCountersign: true, kind: "referrer", pdfEmailed: false });
+
+    const a = state.tables.partner_agreements[0];
+    // "North Carolina" arrives as the code the database checks for.
+    expect(a).toMatchObject({ status: "awaiting_countersign", signer_entity_name: "NITE Run Delivery LLC", signer_entity_type: "llc", signer_entity_state: "NC" });
+    expect(partner.status).toBe("applied");
+    expect(state.tables.referral_codes ?? []).toEqual([]);
+    expect(welcomes).toEqual([]);
+    expect(a.pdf_path).toBeNull();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ emailType: "partner_agreement_countersign_needed", to: "leads@geega-games.com" });
+    expect(sent[0].text).toContain("NITE Run Delivery LLC, a North Carolina limited liability company");
+    expect(sent[0].text).toContain(`https://geega-games.com/admin_dashboard/partners?partner=${partner.id}`);
+    expect(pushes[0]).toMatchObject({ title: "Countersign a partner agreement", url: `/admin_dashboard/partners?partner=${partner.id}` });
+
+    // The link says it's waiting, and can't be signed again.
+    expect((await call({ method: "GET", query: { t } })).body).toMatchObject({ status: "awaiting", signerName: "Chayson Ingram-Gray" });
+    expect((await call({ method: "POST", body })).statusCode).toBe(409);
+  });
+
+  it("countersigning makes it take effect: referral code, welcome, the PDF with both signatures to them and to us", async () => {
+    const t = await invite();
+    await signAs(t);
+    sent.length = 0;
+    const a = state.tables.partner_agreements[0];
+    const result = await countersignAgreement(createFakeSupabase(state) as never, a.id as string, {
+      name: "Jacob Femmer",
+      title: "Owner",
+      typedSignature: "Jacob Femmer",
+      userId: "owner-1",
+      email: "owner@geega-games.com",
+      ip: "198.51.100.7",
+      userAgent: "Admin browser",
+    });
+    expect(result).toMatchObject({ activated: true, kind: "referrer", pdfReady: true, emailed: true });
 
     expect(partner.status).toBe("active");
     expect(state.tables.referral_codes?.[0]).toMatchObject({ partner_id: partner.id });
     expect(welcomes).toEqual([partner.id]);
 
-    const a = state.tables.partner_agreements[0];
-    expect(a).toMatchObject({ status: "signed", signer_user_agent: "Mozilla/5.0 (iPhone)" });
+    expect(a).toMatchObject({ status: "signed", countersigner_name: "Jacob Femmer" });
     expect(a.pdf_path).toBe(`${partner.id}/${a.id}.pdf`);
     const stored = state.files[a.pdf_path as string];
     expect(stored.contentType).toBe("application/pdf");
     expect(a.pdf_sha256).toBe(createHash("sha256").update(stored.data).digest("hex"));
-    // A real PDF: the agreement, then the signing record page.
     const pdf = await PDFDocument.load(stored.data);
     expect(pdf.getPageCount()).toBeGreaterThanOrEqual(3);
     expect(pdf.getTitle()).toBe("Geega Games Referral Partner Agreement - NITE Run Delivery LLC");
     expect(pdf.getKeywords()).toContain(`agreement-sha256:${a.rendered_sha256}`);
+    expect(pdf.getKeywords()).toContain(`countersign-sha256:${"c".repeat(64)}`);
 
     const [toThem, toUs] = sent;
     expect(toThem).toMatchObject({ emailType: "partner_agreement_signed", to: "chay@example.com" });
+    expect(toThem.subject).toBe("Your signed Geega Games Referral Partner Agreement is in effect");
     expect(toThem.attachments?.[0].filename).toBe("Geega-Games-Referral-Partner-Agreement-NITE-Run-Delivery-LLC.pdf");
+    expect(toThem.text).toContain("Geega Games countersigned it on");
     expect(toThem.text).toContain("Your referral link is on its way");
     expect(toUs).toMatchObject({ emailType: "partner_agreement_signed_admin", to: "leads@geega-games.com" });
-    expect(toUs.attachments).toHaveLength(1);
-    expect(pushes[0]).toMatchObject({ title: "Partner agreement signed", url: `/admin_dashboard/partners?partner=${partner.id}` });
+    expect(toUs.text).toContain("Countersigned by Jacob Femmer");
 
-    // The link now just says it's signed.
+    expect((await call({ method: "GET", query: { t } })).body).toMatchObject({ status: "signed", effectiveAt: "2026-11-12T16:00:00.000Z" });
+    // Once only.
+    await expect(
+      countersignAgreement(createFakeSupabase(state) as never, a.id as string, {
+        name: "Jacob Femmer",
+        title: "Owner",
+        typedSignature: "Jacob Femmer",
+        userId: null,
+        email: null,
+        ip: "",
+        userAgent: "",
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("a partner store's signature takes effect at once: live, signed PDF to them and to us, and a push", async () => {
+    Object.assign(partner, { kind: "store", fee_percent: 8 });
+    const t = await invite();
+    expect(state.tables.partner_agreements[0]).toMatchObject({ version_number: 1, requires_countersign: false });
+    const { res } = await signAs(t, {});
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, activated: true, awaitingCountersign: false, kind: "store", pdfEmailed: true });
+    expect(partner.status).toBe("active");
+    expect(welcomes).toEqual([partner.id]);
+    expect(state.tables.referral_codes ?? []).toEqual([]);
+    const [toThem, toUs] = sent;
+    expect(toThem).toMatchObject({ emailType: "partner_agreement_signed", to: "chay@example.com" });
+    expect(toThem.subject).toBe("Your signed Geega Games Partner Store Agreement");
+    expect(toUs).toMatchObject({ emailType: "partner_agreement_signed_admin" });
+    expect(pushes[0]).toMatchObject({ title: "Partner agreement signed" });
     expect((await call({ method: "GET", query: { t } })).body).toMatchObject({ status: "signed", signerName: "Chayson Ingram-Gray" });
-    // And can't be signed twice.
-    const again = await call({
-      method: "POST",
-      body: { t, legalName: "Chayson Ingram-Gray", title: "Owner", typedSignature: "Chayson Ingram-Gray", acknowledgments, agreementSha256: view.body.agreementSha256 },
-    });
-    expect(again.statusCode).toBe(409);
   });
 
   it("refuses a signature with a box unticked, and changes nothing", async () => {

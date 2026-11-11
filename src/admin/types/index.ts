@@ -1421,7 +1421,9 @@ export interface PartnerAgreement {
   title: string;
   versionNumber: number;
   feePercent: number;
-  status: "pending" | "signed" | "void";
+  /** awaiting_countersign: the partner signed; it takes effect when Geega Games countersigns. */
+  status: "pending" | "awaiting_countersign" | "signed" | "void";
+  requiresCountersign: boolean;
   invitedEmail: string;
   expiresAt: string;
   lastEmailedAt: string | null;
@@ -1429,6 +1431,14 @@ export interface PartnerAgreement {
   signedAt: string | null;
   signerName: string | null;
   signerTitle: string | null;
+  /** The legal entity the partner signed for (Referral Partner Agreement v2). */
+  entityName: string | null;
+  entityType: string | null;
+  entityState: string | null;
+  businessAddress: string | null;
+  countersignedAt: string | null;
+  countersignerName: string | null;
+  countersignerTitle: string | null;
   voidedAt: string | null;
   voidReason: string | null;
 }

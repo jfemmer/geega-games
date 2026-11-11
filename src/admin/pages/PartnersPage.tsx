@@ -42,17 +42,19 @@ import {
 } from "../../store/lib/partnerTypes";
 import { optionLabel } from "../../store/lib/referralTypes";
 import { describeLeadSource } from "../../store/lib/attribution";
-import { US_REGIONS } from "../../store/lib/usAddress";
+import { US_REGIONS, usStateName } from "../../store/lib/usAddress";
+import { countersignProblems, describePartnerEntity } from "../../store/lib/partnerAgreement";
+import { LEGAL_NAME, OWNER_NAME } from "../../seo/site";
 import { marketingPage, printedAddress, referralPartnerLink } from "../utils/marketing";
 
 // Partners: partner stores (buy the leads, pay a finder's fee when they buy)
 // and referral partners (send sellers, earn a referral fee). Applications
 // from /for-stores and /referral-partners land here as "New application";
-// the owner approves (which emails the partner agreement to sign; signing
-// makes them active and sends the welcome and a referral partner's personal
-// link), declines, pauses or edits them, and sees what each store owes.
-// Leads and referral fees need a signed agreement. Every change goes through
-// owner-only API endpoints.
+// the owner approves (which emails the partner agreement to sign), declines,
+// pauses or edits them, and sees what each store owes. A store goes live when
+// it signs; a referral partner signs first and goes live (welcome, personal
+// link) when the owner countersigns. Leads and referral fees need an
+// agreement in effect. Every change goes through owner-only API endpoints.
 
 type TabKey = "applied" | "stores" | "referrers" | "declined";
 
@@ -214,14 +216,20 @@ export function PartnersPage({ query }: { query: URLSearchParams }) {
       header: "Status",
       render: (p) => {
         const state = agreementState(agreementsByPartner.get(p.id) ?? []);
+        const badge =
+          !agreements.data || p.status === "declined"
+            ? null
+            : state.awaiting
+              ? { tone: "warning" as const, label: "Countersign needed" }
+              : state.signed
+                ? null
+                : state.pending
+                  ? { tone: "info" as const, label: state.expired ? "Agreement expired" : "Agreement sent" }
+                  : { tone: "warning" as const, label: "Not signed" };
         return (
           <span className="gg-partner-status">
             <Badge tone={STATUS_TONE[p.status]}>{optionLabel(PARTNER_STATUSES, p.status)}</Badge>
-            {agreements.data && p.status !== "declined" && state.kind !== "signed" && (
-              <Badge tone={state.kind === "pending" ? "info" : "warning"}>
-                {state.kind === "pending" ? (state.expired ? "Agreement expired" : "Agreement sent") : "Not signed"}
-              </Badge>
-            )}
+            {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
           </span>
         );
       },
@@ -612,8 +620,8 @@ function PartnerDrawer({
   }
 
   const agreementInfo = agreementState(agreements ?? []);
-  const hasSigned = agreementInfo.kind === "signed";
-  const pendingAgreement = agreementInfo.kind === "pending";
+  const hasSigned = agreementInfo.signed !== null;
+  const openAgreement = agreementInfo.pending !== null || agreementInfo.awaiting !== null;
   const link = partner.referralCode ? referralPartnerLink(partner.referralCode) : null;
   const source = describeLeadSource(partner.source);
   const owed = referrals.filter((r) => r.feeStatus === "owed");
@@ -688,7 +696,7 @@ function PartnerDrawer({
           {source.length > 0 && <p className="gg-card-meta">Found us: {source.join(" · ")}</p>}
 
           <div className="gg-drawer-actions__buttons gg-partner-actions">
-            {partner.status !== "active" && partner.status !== "paused" && !(partner.status === "applied" && pendingAgreement) && (
+            {partner.status !== "active" && partner.status !== "paused" && !(partner.status === "applied" && openAgreement) && (
               <Button variant="primary" size="sm" loading={acting === "approve"} disabled={agreements === null} onClick={() => void act("approve")}>
                 {hasSigned ? (partner.status === "applied" ? "Approve & send welcome" : "Approve") : "Approve & send agreement"}
               </Button>
@@ -1041,18 +1049,34 @@ function PartnerMessagesSection({ partner }: { partner: Partner }) {
 // The partner agreement — sent on approval, signed online, PDF kept
 // ---------------------------------------------------------------------------
 
-type AgreementState =
-  | { kind: "none" }
-  | { kind: "pending"; agreement: PartnerAgreement; expired: boolean; signed: PartnerAgreement | null }
-  | { kind: "signed"; agreement: PartnerAgreement; pending: PartnerAgreement | null };
+interface AgreementState {
+  /** In effect: the newest fully executed one. */
+  signed: PartnerAgreement | null;
+  /** Signed by the partner, waiting for our countersignature. */
+  awaiting: PartnerAgreement | null;
+  /** Sent, not signed yet. */
+  pending: PartnerAgreement | null;
+  /** The pending link has expired. */
+  expired: boolean;
+}
 
-/** Where a partner's agreement stands: newest signed one wins; an open one may sit on top of it. */
+const effectiveAt = (a: PartnerAgreement) => a.countersignedAt ?? a.signedAt ?? "";
+
+/** Where a partner's agreement stands: the one in effect, and any newer one in progress. */
 function agreementState(list: PartnerAgreement[]): AgreementState {
-  const signed = list.filter((a) => a.status === "signed").sort((a, b) => (b.signedAt ?? "").localeCompare(a.signedAt ?? ""))[0] ?? null;
+  const signed = list.filter((a) => a.status === "signed").sort((a, b) => effectiveAt(b).localeCompare(effectiveAt(a)))[0] ?? null;
+  const awaiting = list.find((a) => a.status === "awaiting_countersign") ?? null;
   const pending = list.find((a) => a.status === "pending") ?? null;
-  if (signed) return { kind: "signed", agreement: signed, pending };
-  if (pending) return { kind: "pending", agreement: pending, expired: new Date(pending.expiresAt).getTime() <= Date.now(), signed: null };
-  return { kind: "none" };
+  return { signed, awaiting, pending, expired: pending ? new Date(pending.expiresAt).getTime() <= Date.now() : false };
+}
+
+function entityLine(a: PartnerAgreement): string | null {
+  if (!a.entityName) return null;
+  return describePartnerEntity({
+    name: a.entityName,
+    type: a.entityType ?? "",
+    stateName: a.entityState ? (usStateName(a.entityState) ?? a.entityState) : null,
+  });
 }
 
 function PartnerAgreementSection({
@@ -1086,8 +1110,8 @@ function PartnerAgreementSection({
         ? "They go live when they sign. No leads can be sent to them until then."
         : "No leads can be sent to them until they sign."
       : applicant
-        ? "They go live when they sign: their referral link turns on and referral fees can be paid."
-        : "No referral fee can be paid to them until they sign.";
+        ? "They sign first, and it takes effect when you countersign. Then their referral link turns on and referral fees can be paid."
+        : "No referral fee can be paid to them until an agreement is in effect (signed by them, then countersigned by you).";
 
   async function send() {
     setBusy("send");
@@ -1127,31 +1151,35 @@ function PartnerAgreementSection({
   }
 
   const canSend = partner.status !== "declined";
-  const signed = state.kind === "signed" ? state.agreement : null;
-  const open = state.kind === "pending" ? state.agreement : state.kind === "signed" ? state.pending : null;
+  const { signed, awaiting, pending } = state;
   const feeChanged = signed && Math.abs(signed.feePercent - partner.feePercent) > 0.001;
+  const headBadge = awaiting ? (
+    <Badge tone="warning">Countersign needed</Badge>
+  ) : signed ? (
+    <Badge tone="success">{signed.requiresCountersign ? "In effect" : "Signed"}</Badge>
+  ) : pending ? (
+    <Badge tone={state.expired ? "warning" : "info"}>{state.expired ? "Link expired" : "Waiting for signature"}</Badge>
+  ) : (
+    <Badge tone="warning">Not signed</Badge>
+  );
 
   return (
     <section className="gg-leaddetail__section">
-      <h3>
-        Partner agreement{" "}
-        {signed ? (
-          <Badge tone="success">Signed</Badge>
-        ) : open ? (
-          <Badge tone={state.kind === "pending" && state.expired ? "warning" : "info"}>
-            {state.kind === "pending" && state.expired ? "Link expired" : "Waiting for signature"}
-          </Badge>
-        ) : (
-          <Badge tone="warning">Not signed</Badge>
-        )}
-      </h3>
+      <h3>Partner agreement {headBadge}</h3>
+
+      {awaiting && <CountersignPanel partner={partner} agreement={awaiting} replacing={signed} onChanged={onChanged} />}
 
       {signed && (
         <>
-          <p>
+          <p className={awaiting ? "gg-card-meta" : undefined}>
+            {awaiting ? "In effect until you countersign the new one: " : ""}
             <strong>{signed.signerName}</strong>
-            {signed.signerTitle ? ` (${signed.signerTitle})` : ""} signed the {signed.title} (version {signed.versionNumber}) on{" "}
-            {formatDateTime(signed.signedAt)}, at a {formatPercent(signed.feePercent)} fee.
+            {signed.signerTitle ? ` (${signed.signerTitle})` : ""} signed the {signed.title} (version {signed.versionNumber})
+            {entityLine(signed) ? ` for ${entityLine(signed)}` : ""} on {formatDateTime(signed.signedAt)}
+            {signed.countersignedAt
+              ? `; ${signed.countersignerName ?? "Geega Games"} countersigned on ${formatDateTime(signed.countersignedAt)}, when it took effect`
+              : ""}
+            , at a {formatPercent(signed.feePercent)} fee.
           </p>
           <div className="gg-drawer-actions__buttons">
             <Button size="sm" variant="secondary" icon="download" loading={busy === "pdf"} onClick={() => void download(signed.id)}>
@@ -1161,26 +1189,24 @@ function PartnerAgreementSection({
           {feeChanged && (
             <p className="gg-partner-agreement__warn" role="note">
               Their fee here is {formatPercent(partner.feePercent)}, but they signed for {formatPercent(signed.feePercent)}. The signed{" "}
-              {formatPercent(signed.feePercent)} is what applies until they sign a new agreement.
+              {formatPercent(signed.feePercent)} is what applies until a new agreement is in effect.
             </p>
           )}
         </>
       )}
 
-      {open && (
+      {pending && (
         <p className={signed ? "gg-card-meta" : undefined}>
           {signed ? "A newer agreement was " : "Sent "}
-          {signed ? `sent ${formatDate(open.createdAt)}` : formatDateTime(open.lastEmailedAt ?? open.createdAt)} to {open.invitedEmail}
-          {open.sentByEmail ? ` by ${open.sentByEmail}` : ""} at a {formatPercent(open.feePercent)} fee.{" "}
-          {new Date(open.expiresAt).getTime() <= Date.now()
-            ? "The link has expired; send a new one."
-            : `The link works until ${formatDate(open.expiresAt)}.`}
+          {signed ? `sent ${formatDate(pending.createdAt)}` : formatDateTime(pending.lastEmailedAt ?? pending.createdAt)} to {pending.invitedEmail}
+          {pending.sentByEmail ? ` by ${pending.sentByEmail}` : ""} at a {formatPercent(pending.feePercent)} fee (version {pending.versionNumber}).{" "}
+          {state.expired ? "The link has expired; send a new one." : `The link works until ${formatDate(pending.expiresAt)}.`}
         </p>
       )}
 
-      {!signed && (
+      {!signed && !awaiting && (
         <p className="gg-card-meta">
-          {open
+          {pending
             ? gate
             : applicant
               ? `Approving emails them the ${what} to sign. ${gate}`
@@ -1189,16 +1215,16 @@ function PartnerAgreementSection({
       )}
 
       {/* An applicant's first agreement goes out with "Approve & send agreement" above. */}
-      {canSend && !(applicant && !open && !signed) && (
+      {canSend && !(applicant && !pending && !signed && !awaiting) && (
         <div className="gg-drawer-actions__buttons">
           <Button
             size="sm"
-            variant={signed || open ? "ghost" : "primary"}
+            variant={signed || pending || awaiting ? "ghost" : "primary"}
             icon="mail"
             loading={busy === "send"}
             onClick={() => void send()}
           >
-            {open ? "Resend agreement" : signed ? "Send a new agreement" : "Send agreement"}
+            {awaiting ? "Send a new agreement instead" : pending ? "Resend agreement" : signed ? "Send a new agreement" : "Send agreement"}
           </Button>
           {signUrl && (
             <Button size="sm" variant="ghost" icon="copy" onClick={() => void copyLink()}>
@@ -1207,13 +1233,104 @@ function PartnerAgreementSection({
           )}
         </div>
       )}
-      {canSend && (open || signed) && (
+      {canSend && (pending || signed || awaiting) && (
         <p className="gg-card-meta">
-          {signed
-            ? "Send a new agreement after changing their fee. Their signed one stays in force until they sign the new one."
-            : "Resending makes a new link at their current fee; the old link stops working."}
+          {awaiting
+            ? "Only if their details are wrong: a new agreement cancels the one they signed, and they sign again."
+            : signed
+              ? "Send a new agreement after changing their fee, or to move them to the newest version. The one in effect stays in force until the new one is."
+              : "Resending makes a new link at their current fee; the old link stops working."}
         </p>
       )}
     </section>
+  );
+}
+
+/** Geega Games countersigns: the agreement takes effect, and an applicant goes live. */
+function CountersignPanel({
+  partner,
+  agreement,
+  replacing,
+  onChanged,
+}: {
+  partner: Partner;
+  agreement: PartnerAgreement;
+  replacing: PartnerAgreement | null;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(OWNER_NAME);
+  const [title, setTitle] = useState("Owner");
+  const [typedSignature, setTypedSignature] = useState("");
+  const [authorized, setAuthorized] = useState(false);
+  const [showProblems, setShowProblems] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const problems = countersignProblems({ name, title, typedSignature, authorized });
+  const entity = entityLine(agreement);
+
+  async function countersign() {
+    setShowProblems(true);
+    if (problems.length) return;
+    setBusy(true);
+    try {
+      const r = await partnersRepository.countersign(partner.id, agreement.id, { name, title, typedSignature, authorized });
+      toast.success(
+        `Countersigned. The ${agreement.title} is in effect${r.activated ? ` and ${partner.businessName} is now active` : ""}.${
+          r.pdfEmailed ? " The signed PDF was emailed to both of you." : " The signed PDF email didn't send; download it below and send it yourself."
+        }`,
+      );
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't countersign.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="gg-partner-countersign">
+      <p>
+        <strong>{agreement.signerName}</strong>
+        {agreement.signerTitle ? ` (${agreement.signerTitle})` : ""} signed the {agreement.title} (version {agreement.versionNumber}) on{" "}
+        {formatDateTime(agreement.signedAt)}, at a {formatPercent(agreement.feePercent)} fee. It takes effect when you countersign
+        {replacing ? ", replacing the one in effect now" : ""}.
+      </p>
+      <dl className="gg-partner-countersign__facts">
+        <dt>Signing for</dt>
+        <dd>{entity ?? partner.businessName}</dd>
+        <dt>Business address</dt>
+        <dd>{agreement.businessAddress ?? "Not given"}</dd>
+        <dt>Signing link sent to</dt>
+        <dd>{agreement.invitedEmail}</dd>
+      </dl>
+      <p className="gg-card-meta">Check the legal entity and address are real and match who applied before you countersign.</p>
+      <div className="gg-partner-countersign__form">
+        <TextField label="Your full legal name" value={name} maxLength={200} autoComplete="name" onChange={(e) => setName(e.target.value)} />
+        <TextField label="Your title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+        <TextField
+          label="Signature: type your full legal name again"
+          value={typedSignature}
+          maxLength={200}
+          autoComplete="off"
+          onChange={(e) => setTypedSignature(e.target.value)}
+        />
+        <label className="gg-check-inline">
+          <input type="checkbox" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
+          I&rsquo;m authorized to sign for {LEGAL_NAME}, and I&rsquo;ve checked the partner&rsquo;s details above.
+        </label>
+      </div>
+      {showProblems && problems.length > 0 && (
+        <ul className="gg-partner-agreement__warn" role="alert">
+          {problems.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
+      )}
+      <div className="gg-drawer-actions__buttons">
+        <Button size="sm" variant="primary" icon="check" loading={busy} onClick={() => void countersign()}>
+          Countersign for Geega Games
+        </Button>
+      </div>
+    </div>
   );
 }

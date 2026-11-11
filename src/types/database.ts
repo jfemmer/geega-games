@@ -2702,6 +2702,15 @@ export type Database = {
       partner_agreements: {
         Row: {
           acknowledgments: Json | null
+          countersign_ip: string | null
+          countersign_record_sha256: string | null
+          countersign_typed_signature: string | null
+          countersign_user_agent: string | null
+          countersigned_at: string | null
+          countersigned_by: string | null
+          countersigned_by_email: string | null
+          countersigner_name: string | null
+          countersigner_title: string | null
           created_at: string
           fee_percent: number
           id: string
@@ -2718,10 +2727,15 @@ export type Database = {
           rendered_md: string
           rendered_sha256: string
           required_acks: string[]
+          requires_countersign: boolean
           sent_by: string | null
           sent_by_email: string | null
           signed_at: string | null
           signed_copy_emailed_at: string | null
+          signer_business_address: string | null
+          signer_entity_name: string | null
+          signer_entity_state: string | null
+          signer_entity_type: string | null
           signer_ip: string | null
           signer_legal_name: string | null
           signer_title: string | null
@@ -2735,6 +2749,15 @@ export type Database = {
         }
         Insert: {
           acknowledgments?: Json | null
+          countersign_ip?: string | null
+          countersign_record_sha256?: string | null
+          countersign_typed_signature?: string | null
+          countersign_user_agent?: string | null
+          countersigned_at?: string | null
+          countersigned_by?: string | null
+          countersigned_by_email?: string | null
+          countersigner_name?: string | null
+          countersigner_title?: string | null
           created_at?: string
           fee_percent: number
           id?: string
@@ -2751,10 +2774,15 @@ export type Database = {
           rendered_md: string
           rendered_sha256?: string
           required_acks: string[]
+          requires_countersign?: boolean
           sent_by?: string | null
           sent_by_email?: string | null
           signed_at?: string | null
           signed_copy_emailed_at?: string | null
+          signer_business_address?: string | null
+          signer_entity_name?: string | null
+          signer_entity_state?: string | null
+          signer_entity_type?: string | null
           signer_ip?: string | null
           signer_legal_name?: string | null
           signer_title?: string | null
@@ -2768,6 +2796,15 @@ export type Database = {
         }
         Update: {
           acknowledgments?: Json | null
+          countersign_ip?: string | null
+          countersign_record_sha256?: string | null
+          countersign_typed_signature?: string | null
+          countersign_user_agent?: string | null
+          countersigned_at?: string | null
+          countersigned_by?: string | null
+          countersigned_by_email?: string | null
+          countersigner_name?: string | null
+          countersigner_title?: string | null
           created_at?: string
           fee_percent?: number
           id?: string
@@ -2784,10 +2821,15 @@ export type Database = {
           rendered_md?: string
           rendered_sha256?: string
           required_acks?: string[]
+          requires_countersign?: boolean
           sent_by?: string | null
           sent_by_email?: string | null
           signed_at?: string | null
           signed_copy_emailed_at?: string | null
+          signer_business_address?: string | null
+          signer_entity_name?: string | null
+          signer_entity_state?: string | null
+          signer_entity_type?: string | null
           signer_ip?: string | null
           signer_legal_name?: string | null
           signer_title?: string | null
@@ -6662,17 +6704,35 @@ export type Database = {
           p_required_acks: string[]
           p_sent_by: string | null
           p_sent_by_email: string | null
+          p_requires_countersign?: boolean
           p_title: string
           p_token_hash: string
           p_version_number: number
         }
         Returns: string
       }
+      partner_countersign_agreement: {
+        Args: {
+          p_agreement_id: string
+          p_ip: string
+          p_name: string
+          p_title: string
+          p_typed_signature: string
+          p_user_agent: string
+          p_user_email: string | null
+          p_user_id: string | null
+        }
+        Returns: Json
+      }
       partner_sign_agreement: {
         Args: {
           p_acknowledgments: Json
           p_agreement_id: string
           p_agreement_sha256: string
+          p_business_address?: string | null
+          p_entity_name?: string | null
+          p_entity_state?: string | null
+          p_entity_type?: string | null
           p_ip: string
           p_legal_name: string
           p_title: string

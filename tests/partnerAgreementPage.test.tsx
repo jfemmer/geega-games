@@ -6,7 +6,9 @@ import { PARTNER_AGREEMENT_ACKS } from "../src/store/lib/partnerAgreement";
 // The partner's signing page (/partner-agreement?t=…): no sign-in; nothing is
 // pre-ticked; "I have read this entire agreement" unlocks only once its end
 // has been on screen; signing sends what was entered with the hash of the
-// text shown, and says what happens next.
+// text shown, and says what happens next. The Referral Partner Agreement
+// (version 2) also asks who is signing up (the legal entity) and then waits
+// for Geega Games to countersign.
 
 let query = new URLSearchParams("t=TOKEN123");
 vi.mock("../src/store/lib/router", () => ({ useRouter: () => ({ navigate: () => {}, path: "/partner-agreement", query }) }));
@@ -59,6 +61,13 @@ afterEach(() => {
 function type(label: RegExp, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
+
+const PENDING_V2 = {
+  ...PENDING,
+  versionNumber: 2,
+  collectEntity: true,
+  entityDefaults: { name: "NITE Run Delivery LLC", state: "NC" },
+};
 
 describe("PartnerAgreementPage", () => {
   it("opens the agreement from the link, with nothing ticked", async () => {
@@ -132,6 +141,56 @@ describe("PartnerAgreementPage", () => {
     render(<PartnerAgreementPage />);
     expect(await screen.findByRole("heading", { name: "Already signed" })).toBeInTheDocument();
     expect(screen.getByText(/Joey Smith signed the Geega Games Partner Store Agreement for GamEuphoria/)).toBeInTheDocument();
+  });
+
+  it("version 2: asks who is signing up, sends it with the signature, and says Geega Games countersigns next", async () => {
+    fetchMock.mockReturnValueOnce(respond(200, PENDING_V2));
+    render(<PartnerAgreementPage />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("group", { name: "Who is signing up" })).toBeInTheDocument();
+    expect((screen.getByLabelText(/Legal name of the business/) as HTMLInputElement).value).toBe("NITE Run Delivery LLC");
+    expect((screen.getByLabelText(/State it's organized in/) as HTMLSelectElement).value).toBe("NC");
+
+    act(() => reveal?.());
+    for (const box of screen.getAllByRole("checkbox")) fireEvent.click(box);
+    type(/Full legal name/, "Chayson Ingram-Gray");
+    type(/Your title or role/, "Owner");
+    type(/^Electronic signature: type/, "Chayson Ingram-Gray");
+    fireEvent.click(screen.getByRole("button", { name: "Sign for NITE Run Delivery LLC" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose what kind of business it is.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText(/Type of business/), { target: { value: "llc" } });
+    type(/Business mailing address/, "100 Main St, Fuquay-Varina, NC 27526");
+    fetchMock.mockReturnValueOnce(respond(200, { ok: true, activated: false, awaitingCountersign: true, kind: "referrer", pdfEmailed: false }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign for NITE Run Delivery LLC" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).entity).toEqual({
+      name: "NITE Run Delivery LLC",
+      type: "llc",
+      state: "NC",
+      address: "100 Main St, Fuquay-Varina, NC 27526",
+    });
+    expect(await screen.findByRole("heading", { name: "Thanks, you've signed" })).toBeInTheDocument();
+    expect(screen.getByText(/Geega Games will review your details and countersign it/)).toBeInTheDocument();
+    expect(screen.getByText(/followed by your personal referral link/)).toBeInTheDocument();
+  });
+
+  it("an individual is asked for the state they live in", async () => {
+    fetchMock.mockReturnValueOnce(respond(200, PENDING_V2));
+    render(<PartnerAgreementPage />);
+    await screen.findByRole("heading", { level: 1 });
+    fireEvent.change(screen.getByLabelText(/Type of business/), { target: { value: "individual" } });
+    expect(screen.getByLabelText(/State you live in/)).toBeInTheDocument();
+  });
+
+  it("a link already signed and waiting for the countersignature says so", async () => {
+    fetchMock.mockReturnValueOnce(
+      respond(200, { ok: true, status: "awaiting", title: "Geega Games Referral Partner Agreement", businessName: "NITE Run Delivery LLC", signedAt: "2026-11-12T15:00:00Z", signerName: "Chayson Ingram-Gray", effectiveAt: null }),
+    );
+    render(<PartnerAgreementPage />);
+    expect(await screen.findByRole("heading", { name: "Already signed" })).toBeInTheDocument();
+    expect(screen.getByText(/waiting for Geega Games to countersign it/)).toBeInTheDocument();
   });
 
   it("explains a link with no code", async () => {

@@ -2,14 +2,17 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { AgreementText } from "../components/consignment/AgreementText";
-import { partnerSigningProblems, type PartnerAgreementAck } from "../lib/partnerAgreement";
+import { PARTNER_ENTITY_TYPES, partnerSigningProblems, type PartnerAgreementAck } from "../lib/partnerAgreement";
 import type { PartnerKind } from "../lib/partnerTypes";
+import { US_REGIONS } from "../lib/usAddress";
 
 // /partner-agreement?t=… — an approved partner reads and signs their
 // Referral Partner or Partner Store Agreement. No account needed: the link
 // from the approval email is the key (api/partner-agreement.ts). Same layout
 // and agreement renderer as the consignment signing page, so the text shown
-// is exactly what the signed PDF shows.
+// is exactly what the signed PDF shows. The Referral Partner Agreement also
+// asks for the legal entity signing, and takes effect when Geega Games
+// countersigns it.
 
 const PATH = "/partner-agreement";
 const API = "/api/partner-agreement";
@@ -25,16 +28,29 @@ type PendingView = {
   agreementSha256: string;
   acknowledgments: PartnerAgreementAck[];
   expiresAt: string;
+  /** Ask for the legal entity (agreements Geega Games countersigns). */
+  collectEntity?: boolean;
+  entityDefaults?: { name: string; state: string };
 };
-type SignedView = { status: "signed"; title: string; businessName: string; signedAt: string; signerName: string | null };
+type SignedView = {
+  status: "signed" | "awaiting";
+  title: string;
+  businessName: string;
+  signedAt: string;
+  signerName: string | null;
+  effectiveAt?: string | null;
+};
 type View = PendingView | SignedView;
+
+/** States, D.C. and territories, for "state of organization". */
+const STATE_OPTIONS = US_REGIONS.filter((r) => r.group !== "military");
 
 type State =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; view: PendingView }
   | { status: "signed"; view: SignedView }
-  | { status: "done"; kind: PartnerKind; title: string; activated: boolean; emailed: boolean };
+  | { status: "done"; kind: PartnerKind; title: string; activated: boolean; emailed: boolean; awaitingCountersign: boolean };
 
 async function request<T>(init: { method: "GET" | "POST"; query?: string; body?: unknown }): Promise<T> {
   let res: Response;
@@ -65,6 +81,12 @@ function SignForm({ token, view, onDone }: { token: string; view: PendingView; o
   const [legalName, setLegalName] = useState("");
   const [title, setTitle] = useState("");
   const [typedSignature, setTypedSignature] = useState("");
+  const [entity, setEntity] = useState({
+    name: view.entityDefaults?.name ?? "",
+    type: "",
+    state: view.entityDefaults?.state ?? "",
+    address: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showProblems, setShowProblems] = useState(false);
@@ -87,7 +109,13 @@ function SignForm({ token, view, onDone }: { token: string; view: PendingView; o
     return () => io.disconnect();
   }, [reachedEnd]);
 
-  const problems = partnerSigningProblems(view.kind, { legalName, title, typedSignature, acknowledgments: acks });
+  const collectEntity = view.collectEntity === true;
+  const problems = partnerSigningProblems(
+    view.kind,
+    { legalName, title, typedSignature, acknowledgments: acks, entity: collectEntity ? entity : undefined },
+    { collectEntity },
+  );
+  const setEntityField = (k: keyof typeof entity) => (e: { target: { value: string } }) => setEntity((prev) => ({ ...prev, [k]: e.target.value }));
 
   async function submit() {
     setShowProblems(true);
@@ -95,11 +123,26 @@ function SignForm({ token, view, onDone }: { token: string; view: PendingView; o
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await request<{ activated: boolean; pdfEmailed: boolean }>({
+      const res = await request<{ activated: boolean; pdfEmailed: boolean; awaitingCountersign?: boolean }>({
         method: "POST",
-        body: { t: token, agreementSha256: view.agreementSha256, acknowledgments: acks, legalName, title, typedSignature },
+        body: {
+          t: token,
+          agreementSha256: view.agreementSha256,
+          acknowledgments: acks,
+          legalName,
+          title,
+          typedSignature,
+          ...(collectEntity ? { entity } : {}),
+        },
       });
-      onDone({ status: "done", kind: view.kind, title: view.title, activated: res.activated, emailed: res.pdfEmailed });
+      onDone({
+        status: "done",
+        kind: view.kind,
+        title: view.title,
+        activated: res.activated,
+        emailed: res.pdfEmailed,
+        awaitingCountersign: res.awaitingCountersign === true,
+      });
       window.scrollTo({ top: 0 });
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "Could not record your signature. Try again.");
@@ -155,6 +198,49 @@ function SignForm({ token, view, onDone }: { token: string; view: PendingView; o
           })}
         </div>
         <div className="gg-form gg-consign__sign">
+          {collectEntity && (
+            <fieldset className="gg-consign__entity">
+              <legend>Who is signing up</legend>
+              <p className="gg-consign__hint">The legal entity this agreement binds and pays (Section 3.1).</p>
+              <label className="gg-field" htmlFor={`${ids}-ename`}>
+                <span>Legal name of the business (or your own name, if you're an individual)</span>
+                <input id={`${ids}-ename`} autoComplete="organization" value={entity.name} maxLength={200} onChange={setEntityField("name")} />
+              </label>
+              <label className="gg-field" htmlFor={`${ids}-etype`}>
+                <span>Type of business</span>
+                <select id={`${ids}-etype`} className="gg-state-select" value={entity.type} onChange={setEntityField("type")}>
+                  <option value="">Choose…</option>
+                  {PARTNER_ENTITY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="gg-field" htmlFor={`${ids}-estate`}>
+                <span>{entity.type === "individual" ? "State you live in" : "State it's organized in"}</span>
+                <select id={`${ids}-estate`} className="gg-state-select" autoComplete="address-level1" value={entity.state} onChange={setEntityField("state")}>
+                  <option value="">Choose…</option>
+                  {STATE_OPTIONS.map((r) => (
+                    <option key={r.code} value={r.code}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="gg-field" htmlFor={`${ids}-eaddr`}>
+                <span>Business mailing address</span>
+                <input
+                  id={`${ids}-eaddr`}
+                  autoComplete="street-address"
+                  placeholder="Street, city, state ZIP"
+                  value={entity.address}
+                  maxLength={300}
+                  onChange={setEntityField("address")}
+                />
+              </label>
+            </fieldset>
+          )}
           <label className="gg-field" htmlFor={`${ids}-name`}>
             <span>Full legal name</span>
             <input id={`${ids}-name`} autoComplete="name" value={legalName} maxLength={200} onChange={(e) => setLegalName(e.target.value)} />
@@ -198,8 +284,9 @@ function SignForm({ token, view, onDone }: { token: string; view: PendingView; o
           {submitting ? "Signing…" : `Sign for ${view.businessName}`}
         </button>
         <p className="gg-consign__fine">
-          Signing records your typed name, title, each box you ticked, the time, your IP address and browser with the exact text above. You'll
-          get a PDF copy by email.
+          {collectEntity
+            ? "Signing records the business details, your typed name, title, each box you ticked, the time, your IP address and browser with the exact text above. Geega Games then countersigns, and you'll get the fully signed PDF by email."
+            : "Signing records your typed name, title, each box you ticked, the time, your IP address and browser with the exact text above. You'll get a PDF copy by email."}
         </p>
       </section>
     </div>
@@ -224,7 +311,7 @@ export default function PartnerAgreementPage() {
     request<View>({ method: "GET", query: `?t=${encodeURIComponent(token)}` }).then(
       (view) => {
         if (cancelled) return;
-        setState(view.status === "signed" ? { status: "signed", view } : { status: "ready", view });
+        setState(view.status === "pending" ? { status: "ready", view } : { status: "signed", view });
       },
       (e: unknown) => !cancelled && setState({ status: "error", message: e instanceof Error ? e.message : "Something went wrong." }),
     );
@@ -262,12 +349,35 @@ export default function PartnerAgreementPage() {
     );
   }
   if (state.status === "signed") {
+    const v = state.view;
     return (
       <div className="gg-page gg-consign-page">
         <h1>Already signed</h1>
+        {v.status === "awaiting" ? (
+          <p>
+            {v.signerName ?? "Someone"} signed the {v.title} for {v.businessName} on {longDate(v.signedAt)}. It's waiting for Geega Games to
+            countersign it, and we'll email you the fully signed PDF then. Questions? Reply to any email from Geega Games.
+          </p>
+        ) : (
+          <p>
+            {v.signerName ?? "Someone"} signed the {v.title} for {v.businessName} on {longDate(v.signedAt)}
+            {v.effectiveAt && v.effectiveAt !== v.signedAt ? `, and it took effect on ${longDate(v.effectiveAt)}` : ""}. A PDF copy was
+            emailed then. Need another copy? Reply to any email from Geega Games.
+          </p>
+        )}
+      </div>
+    );
+  }
+  if (state.status === "done" && state.awaitingCountersign) {
+    return (
+      <div className="gg-page gg-consign-page">
+        <h1>Thanks, you've signed</h1>
+        <p className="gg-alert gg-alert-ok" role="status">
+          We've got your signature on the {state.title}.
+        </p>
         <p>
-          {state.view.signerName ?? "Someone"} signed the {state.view.title} for {state.view.businessName} on {longDate(state.view.signedAt)}.
-          A PDF copy was emailed when it was signed. Need another copy? Reply to any email from Geega Games.
+          Geega Games will review your details and countersign it. The agreement takes effect then: you'll get
+          the fully signed PDF by email{state.kind === "referrer" ? ", followed by your personal referral link and QR code" : ""}.
         </p>
       </div>
     );

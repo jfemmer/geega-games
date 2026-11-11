@@ -4,9 +4,12 @@ import { createFakeState, createFakeSupabase, fakeId, fakeResponse, type FakeSta
 // /api/admin/referral-rewards: rewarding whoever referred a seller who sold.
 // A customer's code earns $10 of store credit; a referral partner earns their
 // fee % in cash, but only when Geega Games bought the collection itself
-// (a completed submission), under a signed Referral Partner Agreement, at the
-// fee they signed for. Owner-only, only after a real sale, never for a seller
-// who referred themselves, and never twice for one lead.
+// (a completed submission), for a request made while a Referral Partner
+// Agreement was in effect (version 2: countersigned), at the fee in that
+// agreement, closed in time (version 2 adds the 30-day Completion
+// Extension). Owner-only, only after a real sale, never for a seller who
+// referred themselves, and never twice for one lead. Marking a fee paid
+// emails the payment statement.
 
 beforeAll(() => {
   process.env.SUPABASE_URL = "https://x.invalid";
@@ -17,9 +20,16 @@ let state: FakeState = createFakeState();
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => createFakeSupabase(state) }));
 
 const rewardEmails: string[] = [];
+const rewardEmailOpts: ({ feePercent?: number } | undefined)[] = [];
+const paidEmails: string[] = [];
 vi.mock("../api/_lib/partnerEmails.js", () => ({
-  sendReferralRewardEmail: vi.fn(async (id: string) => {
+  sendReferralRewardEmail: vi.fn(async (id: string, opts?: { feePercent?: number }) => {
     rewardEmails.push(id);
+    rewardEmailOpts.push(opts);
+    return { status: "sent" };
+  }),
+  sendReferralFeePaidEmail: vi.fn(async (id: string) => {
+    paidEmails.push(id);
     return { status: "sent" };
   }),
 }));
@@ -72,10 +82,12 @@ let partner: Record<string, unknown>;
 beforeEach(() => {
   state = createFakeState();
   rewardEmails.length = 0;
+  rewardEmailOpts.length = 0;
+  paidEmails.length = 0;
   state.sessions[OWNER] = { id: "owner-1", email: "owner@example.com", app_metadata: { role: "admin" } };
   state.sessions[STAFF] = { id: "staff-1", email: "staff@example.com", app_metadata: { role: "staff" } };
   state.users["cust-1"] = { id: "cust-1", email: "friend@example.com" };
-  partner = { id: fakeId(), kind: "referrer", status: "active", fee_percent: 3, email: "jo@heirloom.example" };
+  partner = { id: fakeId(), kind: "referrer", status: "active", fee_percent: 3, email: "jo@heirloom.example", business_name: "Heirloom Estate Sales" };
   customerCode = { id: fakeId(), code: "friend22", user_id: "cust-1", partner_id: null };
   partnerCode = { id: fakeId(), code: "heirloom", user_id: null, partner_id: partner.id };
   state.tables.partners = [partner];
@@ -173,21 +185,95 @@ describe("POST /api/admin/referral-rewards", () => {
     const res = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: sub.id } });
     expect(res.body).toMatchObject({ kind: "cash", amountCents: 3600 });
     expect(state.tables.referral_rewards[0]).toMatchObject({ partner_id: partner.id, kind: "cash", status: "owed" });
+    // The Transaction Summary shows the fee they signed for.
+    expect(rewardEmailOpts[0]).toEqual({ feePercent: 3 });
   });
 
-  it("pays a partner nothing without a signed agreement, or when the request was over 180 days before closing", async () => {
+  it("pays a partner nothing without an agreement in effect, or when the request was over 180 days before closing", async () => {
     state.tables.partner_agreements = [{ id: fakeId(), partner_id: partner.id, status: "pending", fee_percent: 3, signed_at: null }];
     const sub = addSubmission({ ref_code: "heirloom" });
     const unsigned = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: sub.id } });
     expect(unsigned.statusCode).toBe(409);
-    expect(unsigned.body.message).toMatch(/hasn't signed the Referral Partner Agreement/);
+    expect(unsigned.body.message).toMatch(/Heirloom Estate Sales has no Referral Partner Agreement in effect/);
 
-    state.tables.partner_agreements = [{ id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 3, signed_at: "2026-01-01T00:00:00Z" }];
+    state.tables.partner_agreements = [
+      { id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 3, signed_at: "2026-01-01T00:00:00Z", version_number: 1 },
+    ];
     const old = addSubmission({ ref_code: "heirloom", created_at: "2026-01-02T00:00:00.000Z", closed_at: "2026-08-01T00:00:00.000Z" });
     const late = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: old.id } });
     expect(late.statusCode).toBe(409);
     expect(late.body.message).toMatch(/180 days/);
     expect(state.tables.referral_rewards ?? []).toHaveLength(0);
+  });
+
+  it("version 2 counts only once we've countersigned, and only for requests made after that", async () => {
+    const v2 = {
+      id: fakeId(),
+      partner_id: partner.id,
+      status: "awaiting_countersign",
+      fee_percent: 3,
+      signed_at: "2026-09-01T12:00:00.000Z",
+      countersigned_at: null,
+      version_number: 2,
+    };
+    state.tables.partner_agreements = [v2];
+    const sub = addSubmission({ ref_code: "heirloom", created_at: "2026-09-10T12:00:00.000Z", closed_at: "2026-09-20T12:00:00.000Z" });
+    expect((await call({ token: OWNER, body: { leadType: "sell_submission", leadId: sub.id } })).body.message).toMatch(/no Referral Partner Agreement in effect/);
+
+    Object.assign(v2, { status: "signed", countersigned_at: "2026-09-15T12:00:00.000Z" });
+    const before = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: sub.id } });
+    expect(before.statusCode).toBe(409);
+    expect(before.body.message).toMatch(/came in before Heirloom Estate Sales's Referral Partner Agreement took effect \(September 15, 2026\)/);
+
+    const after = addSubmission({ ref_code: "heirloom", created_at: "2026-09-16T12:00:00.000Z", closed_at: "2026-09-30T12:00:00.000Z" });
+    const ok = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: after.id } });
+    expect(ok.body).toMatchObject({ kind: "cash", amountCents: 1200 });
+  });
+
+  it("each referral falls under the version in force when the seller's request came in", async () => {
+    state.tables.partner_agreements = [
+      { id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 3, signed_at: "2026-01-01T00:00:00Z", countersigned_at: null, version_number: 1 },
+      { id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 5, signed_at: "2026-09-30T00:00:00Z", countersigned_at: "2026-10-01T00:00:00Z", version_number: 2 },
+    ];
+    const underV1 = addSubmission({ ref_code: "heirloom", created_at: "2026-09-20T12:00:00.000Z", closed_at: "2026-10-12T12:00:00.000Z" });
+    expect((await call({ token: OWNER, body: { leadType: "sell_submission", leadId: underV1.id } })).body).toMatchObject({ amountCents: 1200 });
+    const underV2 = addSubmission({ ref_code: "heirloom", created_at: "2026-10-05T12:00:00.000Z", closed_at: "2026-10-12T12:00:00.000Z" });
+    expect((await call({ token: OWNER, body: { leadType: "sell_submission", leadId: underV2.id } })).body).toMatchObject({ amountCents: 2000 });
+    expect(rewardEmailOpts).toEqual([{ feePercent: 3 }, { feePercent: 5 }]);
+  });
+
+  it("version 2: 30 more days to close when the seller accepted our offer within 180 days", async () => {
+    state.tables.partner_agreements = [
+      { id: fakeId(), partner_id: partner.id, status: "signed", fee_percent: 3, signed_at: "2025-12-30T00:00:00Z", countersigned_at: "2025-12-31T00:00:00Z", version_number: 2 },
+    ];
+    const extended = addSubmission({
+      ref_code: "heirloom",
+      created_at: "2026-01-02T00:00:00.000Z",
+      offer_response: "accepted",
+      offer_responded_at: "2026-06-20T00:00:00.000Z", // day 169
+      closed_at: "2026-07-20T00:00:00.000Z", // day 199
+    });
+    expect((await call({ token: OWNER, body: { leadType: "sell_submission", leadId: extended.id } })).statusCode).toBe(200);
+
+    const tooLate = addSubmission({
+      ref_code: "heirloom",
+      created_at: "2026-01-02T00:00:00.000Z",
+      offer_response: "accepted",
+      offer_responded_at: "2026-06-20T00:00:00.000Z",
+      closed_at: "2026-08-05T00:00:00.000Z", // day 215
+    });
+    const late = await call({ token: OWNER, body: { leadType: "sell_submission", leadId: tooLate.id } });
+    expect(late.statusCode).toBe(409);
+    expect(late.body.message).toMatch(/more than 210 days/);
+
+    const notAccepted = addSubmission({
+      ref_code: "heirloom",
+      created_at: "2026-01-02T00:00:00.000Z",
+      offer_response: "countered",
+      offer_responded_at: "2026-06-20T00:00:00.000Z",
+      closed_at: "2026-07-20T00:00:00.000Z",
+    });
+    expect((await call({ token: OWNER, body: { leadType: "sell_submission", leadId: notAccepted.id } })).body.message).toMatch(/more than 180 days/);
   });
 
   it("waits for a real sale", async () => {
@@ -246,8 +332,11 @@ describe("PATCH /api/admin/referral-rewards?id=", () => {
     expect(res.statusCode).toBe(200);
     expect(reward.status).toBe("paid");
     expect(typeof reward.paid_at).toBe("string");
+    // The payment statement goes to the partner (agreement 6.6).
+    expect(paidEmails).toEqual([reward.id]);
     const again = await call({ method: "PATCH", token: OWNER, id: reward.id, body: { status: "paid" } });
     expect(again.body).toEqual({ ok: true, unchanged: true });
+    expect(paidEmails).toHaveLength(1);
   });
 
   it("validates the request", async () => {
