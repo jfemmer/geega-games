@@ -7975,6 +7975,9 @@ html {
 .gg-agreement__table th,
 .gg-agreement__table td { padding: 0.45rem 0.55rem; border: 1px solid #e4dcec; text-align: left; vertical-align: top; }
 .gg-agreement__table th { background: #f6f3f8; }
+/* Two-column tables (the partner agreements' parties table) wrap instead of scrolling on a phone. */
+.gg-agreement__table table:not(:has(th:nth-child(3))) { min-width: 0; }
+.gg-agreement__table td { overflow-wrap: anywhere; }
 
 /* Account > Consignments */
 .gg-myconsign-list { display: grid; gap: 1rem; }

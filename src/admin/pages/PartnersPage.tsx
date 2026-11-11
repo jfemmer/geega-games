@@ -1079,10 +1079,15 @@ function PartnerAgreementSection({
 
   const state = agreementState(agreements);
   const what = partner.kind === "store" ? "Partner Store Agreement" : "Referral Partner Agreement";
+  const applicant = partner.status === "applied";
   const gate =
     partner.kind === "store"
-      ? "No leads can be sent to them until they sign."
-      : "Their link stays off for new partners, and no referral fee can be paid, until they sign.";
+      ? applicant
+        ? "They go live when they sign. No leads can be sent to them until then."
+        : "No leads can be sent to them until they sign."
+      : applicant
+        ? "They go live when they sign: their referral link turns on and referral fees can be paid."
+        : "No referral fee can be paid to them until they sign.";
 
   async function send() {
     setBusy("send");
@@ -1173,9 +1178,18 @@ function PartnerAgreementSection({
         </p>
       )}
 
-      {!signed && <p className="gg-card-meta">{open ? gate : `${partner.businessName} hasn't been sent the ${what} yet. ${gate}`}</p>}
+      {!signed && (
+        <p className="gg-card-meta">
+          {open
+            ? gate
+            : applicant
+              ? `Approving emails them the ${what} to sign. ${gate}`
+              : `${partner.businessName} hasn't been sent the ${what} yet. ${gate}`}
+        </p>
+      )}
 
-      {canSend && (
+      {/* An applicant's first agreement goes out with "Approve & send agreement" above. */}
+      {canSend && !(applicant && !open && !signed) && (
         <div className="gg-drawer-actions__buttons">
           <Button
             size="sm"

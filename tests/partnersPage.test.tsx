@@ -172,7 +172,8 @@ describe("PartnersPage", () => {
     renderPage();
     await user.click(await screen.findByText("Retro Rewind"));
     const drawer = await screen.findByRole("dialog", { name: "Retro Rewind" });
-    expect(within(drawer).getByText(/hasn't been sent the Partner Store Agreement yet. No leads can be sent/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Approving emails them the Partner Store Agreement to sign. They go live when they sign/)).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "Send agreement" })).toBeNull();
     await user.click(within(drawer).getByRole("button", { name: "Approve & send agreement" }));
     expect(repo.act).toHaveBeenCalledWith("p2", "approve");
     expect(await screen.findByText(/has been emailed the agreement; they go live when they sign it/)).toBeInTheDocument();
