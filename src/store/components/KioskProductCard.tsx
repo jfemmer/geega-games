@@ -3,6 +3,7 @@ import type { CatalogCard } from "../lib/useCatalog";
 import { scryfallSrcSet } from "../../cards";
 import { formatCents } from "../lib/money";
 import { CONDITION_LABELS } from "../lib/conditionLabels";
+import { FoilShimmer } from "./SurgeFoilShimmer";
 
 // Visually identical to ProductCard (same brand-grade card grid the real
 // shop uses, foil shimmer and special-printing ribbon included) but
@@ -62,7 +63,7 @@ export default function KioskProductCard({
               width={488}
               height={680}
             />
-            {foil && <span className="gg-card-foil-shimmer" aria-hidden="true" />}
+            {foil && <FoilShimmer finish={card.finish} seedKey={card.id} />}
           </>
         ) : (
           <div className="gg-card-img gg-card-img--none" role="img" aria-label={`${card.name} (no image available)`}>

@@ -59,18 +59,119 @@
   }
 }
 
+/* Surge foil (data-finish="surge"). A real surge foil is covered in thin
+   streaks of saturated rainbow that run diagonally from the top of the card
+   toward the bottom, and flow sideways as it tilts. Each streak is a full
+   magenta → violet run. Three sets of streaks repeat at different spacings
+   and widths, so where they overlap they come out uneven, like the real
+   foil, not a regular stripe. A soft glint sweeps over them. Stops are in
+   the 300%-sized image, so on the card each streak is 3× its % here
+   (about 1–3% of the card's width). */
+.gg-card-foil-shimmer[data-finish="surge"] {
+  opacity: .8;
+  background:
+    linear-gradient(
+      112deg,
+      transparent 42%,
+      rgba(255, 255, 255, .4) 49%,
+      transparent 56%
+    ),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 60, 170, 0) 0%,
+      rgba(255, 60, 170, 0) 0.4%,
+      rgba(255, 60, 170, 0.6) 0.45%,
+      rgba(255, 150, 50, 0.6) 0.55%,
+      rgba(255, 238, 80, 0.6) 0.65%,
+      rgba(80, 240, 130, 0.6) 0.75%,
+      rgba(50, 200, 255, 0.6) 0.85%,
+      rgba(130, 95, 255, 0.6) 0.95%,
+      rgba(130, 95, 255, 0) 1.00%,
+      rgba(130, 95, 255, 0) 4%
+    ),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 60, 170, 0) 0%,
+      rgba(255, 60, 170, 0) 2.5%,
+      rgba(255, 60, 170, 0.65) 2.52%,
+      rgba(255, 150, 50, 0.65) 2.58%,
+      rgba(255, 238, 80, 0.65) 2.62%,
+      rgba(80, 240, 130, 0.65) 2.67%,
+      rgba(50, 200, 255, 0.65) 2.73%,
+      rgba(130, 95, 255, 0.65) 2.77%,
+      rgba(130, 95, 255, 0) 2.80%,
+      rgba(130, 95, 255, 0) 6.5%
+    ),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 60, 170, 0) 0%,
+      rgba(255, 60, 170, 0) 6%,
+      rgba(255, 60, 170, 0.5) 6.08%,
+      rgba(255, 150, 50, 0.5) 6.25%,
+      rgba(255, 238, 80, 0.5) 6.42%,
+      rgba(80, 240, 130, 0.5) 6.58%,
+      rgba(50, 200, 255, 0.5) 6.75%,
+      rgba(130, 95, 255, 0.5) 6.92%,
+      rgba(130, 95, 255, 0) 7.00%,
+      rgba(130, 95, 255, 0) 11%
+    );
+  background-size: 300% 300%, 300% 300%, 300% 300%, 300% 300%;
+  background-position: 0% 0%, 0% 50%, 100% 50%, 30% 50%;
+  filter: saturate(1.4);
+  animation: gg-surge-shimmer 4.2s ease-in-out infinite;
+}
+
+@keyframes gg-surge-shimmer {
+  0%,
+  100% {
+    background-position: 0% 0%, 0% 50%, 100% 50%, 30% 50%;
+  }
+  50% {
+    background-position: 100% 100%, 60% 50%, 50% 50%, 75% 50%;
+  }
+}
+
 /* No hover on touch screens, so the resting state carries a little more. */
 @media (hover: none), (pointer: coarse) {
   .gg-card-foil-shimmer {
     opacity: .72;
     animation-duration: 3.6s;
   }
+  .gg-card-foil-shimmer[data-finish="surge"] {
+    opacity: .85;
+    animation-duration: 3s;
+  }
+}
+
+/* The realistic surge foil (src/store/components/SurgeFoilShimmer.tsx): a
+   WebGL-drawn canvas, blended hard-light so mid-gray leaves the artwork
+   untouched, light bands brighten it and the troughs darken it slightly.
+   Hidden until the shader is actually running; the CSS layer above shows
+   until then (and for good where there's no WebGL). */
+.gg-surge-foil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: none;
+  pointer-events: none;
+  border-radius: inherit;
+  mix-blend-mode: hard-light;
+}
+.gg-surge-foil--on {
+  display: block;
+}
+/* No extra glow over a surge foil: the shader carries the whole look. */
+.gg-card-imgwrap--foil:has(.gg-surge-foil--on)::after {
+  opacity: 0 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gg-card-foil-shimmer {
+  .gg-card-foil-shimmer,
+  .gg-card-foil-shimmer[data-finish="surge"] {
     animation: none;
-    background-position: 50% 50%, 50% 50%;
+    background-position: 50% 50%;
     opacity: .5;
   }
 }

@@ -10,6 +10,7 @@ import { CONDITION_LABELS } from "../lib/conditionLabels";
 import { useTradeTerms } from "../lib/tradeCenterApi";
 import { tradeCart, useTradeCart } from "../lib/tradeCart";
 import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
+import { FoilShimmer } from "./SurgeFoilShimmer";
 
 export default function ProductCard({ card }: { card: CatalogCard }) {
   const { addItem } = useCart();
@@ -69,7 +70,7 @@ export default function ProductCard({ card }: { card: CatalogCard }) {
               height={680}
             />
             {card.finish !== "nonfoil" && (
-              <span className="gg-card-foil-shimmer" aria-hidden="true" />
+              <FoilShimmer finish={card.finish} seedKey={card.id} />
             )}
           </>
         ) : (

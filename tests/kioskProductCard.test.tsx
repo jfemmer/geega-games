@@ -56,4 +56,12 @@ describe("the kiosk and yard sale card", () => {
     const { container } = render(<KioskProductCard card={card({ finish: "etched", foil: true })} quantityInList={0} onAdd={() => {}} />);
     expect(container.querySelector(".gg-card-foil-shimmer")).not.toBeNull();
   });
+
+  it("keeps the CSS shimmer on a surge foil where the shader can't run", () => {
+    // jsdom has no WebGL, like a browser without it: the surge card must
+    // still shimmer, and the shader canvas stays hidden.
+    const { container } = render(<KioskProductCard card={card({ finish: "surge" as CatalogCard["finish"], foil: true })} quantityInList={0} onAdd={() => {}} />);
+    expect(container.querySelector('.gg-card-foil-shimmer[data-finish="surge"]')).not.toBeNull();
+    expect(container.querySelector(".gg-surge-foil")).not.toHaveClass("gg-surge-foil--on");
+  });
 });
