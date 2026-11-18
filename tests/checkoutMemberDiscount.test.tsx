@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 const state = vi.hoisted(() => ({
   user: null as { id: string; email: string } | null,
   priceCents: 1059,
+  creditBalanceCents: 0,
 }));
 
 /** A query builder that answers every chained call, then resolves empty. */
@@ -28,7 +29,7 @@ vi.mock("../src/supabase", () => ({
   supabase: {
     auth: { getSession: async () => ({ data: { session: { access_token: "token" } } }) },
     from: () => emptyQuery(),
-    rpc: async () => ({ data: 0, error: null }),
+    rpc: async () => ({ data: state.creditBalanceCents, error: null }),
   },
 }));
 
@@ -100,6 +101,7 @@ const fetchSpy = vi.fn();
 beforeEach(() => {
   state.user = null;
   state.priceCents = 1059;
+  state.creditBalanceCents = 0;
   fetchSpy.mockReset();
   fetchSpy.mockResolvedValue({
     ok: true,
@@ -160,6 +162,30 @@ describe("checkout for a signed-in customer", () => {
     expect(url).toBe("/api/checkout/create-payment-intent");
     expect(init.body).not.toMatch(/discount/i);
     expect(JSON.parse(init.body)).not.toHaveProperty("guest");
+  });
+});
+
+describe("checkout with store credit", () => {
+  beforeEach(() => {
+    state.user = { id: "user-1", email: "jordan@example.com" };
+    state.creditBalanceCents = 500;
+  });
+
+  it("warns before credit is applied that it removes the member discount", async () => {
+    render(<CheckoutPage />);
+    await screen.findByLabelText("Apply store credit ($5.00)");
+    expect(screen.getByText(/Orders using store credit don.t get the 5% member discount/)).toBeTruthy();
+    expect(summaryRow("Member discount (5%)")).toBe("Member discount (5%)-$0.53");
+  });
+
+  it("drops the member discount once any credit is applied, and says what paying by card would save", async () => {
+    render(<CheckoutPage />);
+    fireEvent.click(await screen.findByLabelText("Apply store credit ($5.00)"));
+    // $10.59 + $5.50 shipping, full price, less $5.00 credit.
+    expect(screen.queryByText("Member discount (5%)")).toBeNull();
+    expect(summaryRow("Store credit")).toBe("Store credit-$5.00");
+    expect(summaryRow("Amount due")).toBe("Amount due$11.09");
+    expect(screen.getByText(/Uncheck to pay by card and save \$0\.53 \(5%\) instead/)).toBeTruthy();
   });
 });
 

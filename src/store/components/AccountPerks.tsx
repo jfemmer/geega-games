@@ -13,7 +13,7 @@ const ACCOUNT_PERKS: { icon: StoreIconName; title: string; body: string }[] = [
   {
     icon: "percent",
     title: `${MEMBER_DISCOUNT_PERCENT}% off every order`,
-    body: `Sign in when you check out and your cards are ${MEMBER_DISCOUNT_PERCENT}% off, on top of sale prices.`,
+    body: `Sign in when you check out and your cards are ${MEMBER_DISCOUNT_PERCENT}% off, on top of sale prices (not on orders paid with store credit).`,
   },
   {
     icon: "deck",

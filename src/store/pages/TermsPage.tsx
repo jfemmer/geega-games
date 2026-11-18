@@ -84,8 +84,8 @@ export function TermsPage() {
         <strong>Member discount.</strong> Online orders placed while you are signed in to a Geega
         Games account get {MEMBER_DISCOUNT_PERCENT}% off the price of the cards, on top of any sale
         price; it doesn&rsquo;t apply to shipping. It is applied automatically at checkout and
-        shown in your order summary. It isn&rsquo;t applied to orders placed as a guest, to
-        in-person purchases, or to orders already placed, and we may change or end it at any
+        shown in your order summary. It isn&rsquo;t applied to orders that use any store credit,
+        to orders placed as a guest, to in-person purchases, or to orders already placed, and we may change or end it at any
         time. A refund is of the amount you actually paid.
       </p>
       <p>

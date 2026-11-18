@@ -198,7 +198,8 @@ export default function CartDrawer({
               <strong>{formatCents(subtotalCents)}</strong>
             </div>
             {user && memberSavingsCents > 0 && (
-              // Signed in: the database takes this off at checkout.
+              // Signed in: the database takes this off at checkout, unless the
+              // order uses store credit (then there's no member discount).
               <div className="gg-drawer-member">
                 <span>Member discount ({MEMBER_DISCOUNT_PERCENT}%)</span>
                 <span>−{formatCents(memberSavingsCents)}</span>
@@ -209,6 +210,7 @@ export default function CartDrawer({
               {qualifiesForFreeShipping(subtotalCents)
                 ? "Store credit is applied at checkout."
                 : "Shipping & store credit are calculated at checkout."}
+              {user && memberSavingsCents > 0 && " Orders using store credit don't get the member discount."}
             </p>
             {ordersPaused && (
               <p className="gg-paused-note" role="status">

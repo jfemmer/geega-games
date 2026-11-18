@@ -85,8 +85,12 @@ describe("the browser's shipping numbers match the server's", () => {
     // on the cards that aren't consigned (consigned cards are never discounted).
     expect(sql).toContain("(((v_subtotal - v_consigned_subtotal)::bigint * c_member_discount_percent + 50) / 100)::integer");
     expect(sql).toMatch(/if v_inv\.ownership = 'consigned' then\s+v_consigned_subtotal := v_consigned_subtotal \+ v_line;/);
-    // Only for a signed-in customer (guest checkout passes no user).
-    expect(sql).toMatch(/if p_uid is not null\s+and not exists \(select 1 from auth\.users u where u\.id = p_uid and u\.is_anonymous\) then\s+v_discount :=/);
+    // Only for a signed-in customer (guest checkout passes no user) who uses
+    // no store credit: the discount is for cash orders only.
+    expect(sql).toMatch(/if p_uid is not null\s+and v_credit_used = 0\s+and not exists \(select 1 from auth\.users u where u\.id = p_uid and u\.is_anonymous\) then\s+v_discount :=/);
+    // Credit is worked out first, against the undiscounted total.
+    expect(sql.indexOf("v_credit_used := least(")).toBeLessThan(sql.indexOf("v_discount := (("));
+    expect(sql).toContain("greatest(v_credit_balance, 0), v_subtotal + v_shipping");
     // Free shipping is decided before the discount, on the cards' full price,
     // and the total takes the discount off the cards only.
     expect(sql.indexOf("if v_subtotal >= c_free_shipping_threshold then")).toBeLessThan(sql.indexOf("v_discount := (("));
@@ -207,7 +211,7 @@ describe("the member discount", () => {
     expect(previewOrderTotals({ subtotalCents: 7600, method: "pwe" }).totalCents).toBeGreaterThan(t.totalCents);
   });
 
-  it("lets store credit pay toward the discounted total, never beyond it", () => {
+  it("doesn't apply to an order paid with store credit: credit pays the full total", () => {
     const t = previewOrderTotals({
       subtotalCents: 2000,
       method: "pwe",
@@ -215,7 +219,29 @@ describe("the member discount", () => {
       storeCreditBalanceCents: 5000,
       storeCreditRequestedCents: 5000,
     });
-    expect(t).toMatchObject({ discountCents: 100, totalCents: 2050, storeCreditUsedCents: 2050, amountDueCents: 0 });
+    expect(t).toMatchObject({ discountCents: 0, totalCents: 2150, storeCreditUsedCents: 2150, amountDueCents: 0 });
+  });
+
+  it("doesn't apply when any credit is used, even a little", () => {
+    const t = previewOrderTotals({
+      subtotalCents: 5000,
+      method: "tracked",
+      member: true,
+      storeCreditBalanceCents: 200,
+      storeCreditRequestedCents: 200,
+    });
+    expect(t).toMatchObject({ discountCents: 0, totalCents: 5550, storeCreditUsedCents: 200, amountDueCents: 5350 });
+  });
+
+  it("still applies when credit is asked for but there's no balance", () => {
+    const t = previewOrderTotals({
+      subtotalCents: 2000,
+      method: "pwe",
+      member: true,
+      storeCreditBalanceCents: 0,
+      storeCreditRequestedCents: 500,
+    });
+    expect(t).toMatchObject({ discountCents: 100, storeCreditUsedCents: 0, amountDueCents: 2050 });
   });
 });
 

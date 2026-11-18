@@ -57,8 +57,9 @@ import {
 //     customer sees it before paying (ShippingMethodPicker, `shipMethod`).
 //   - So is the member discount: a signed-in customer's cards are
 //     MEMBER_DISCOUNT_PERCENT off, taken by the database from whoever's
-//     session placed the order. The page shows it (and, to a guest, what
-//     signing in would save) but never sends it.
+//     session placed the order — unless the order uses any store credit
+//     (the discount is for cash orders only). The page shows it (and, to a
+//     guest, what signing in would save) but never sends it.
 //   - A zero-balance order (fully covered by store credit) is marked paid by
 //     that trusted DB path — no Stripe involved.
 //   - A balance-due order gets a Stripe PaymentIntent for EXACTLY the
@@ -351,6 +352,9 @@ export default function CheckoutPage() {
   // What signing in would take off this order, for a guest, and what they'd
   // pay then. Consigned cards are never discounted.
   const guestSavingsCents = isGuest ? memberDiscountCents(discountableSubtotalCents) : 0;
+  // What a signed-in customer gives up by paying with store credit: the
+  // member discount is for orders that use none (checkout_place_order_core).
+  const creditForfeitsCents = user && creditBalance > 0 ? memberDiscountCents(discountableSubtotalCents) : 0;
   const memberAmountDueCents = useMemo(
     () => previewOrderTotals({ subtotalCents, discountableSubtotalCents, method: shipMethod, member: true }).amountDueCents,
     [subtotalCents, discountableSubtotalCents, shipMethod],
@@ -957,6 +961,18 @@ export default function CheckoutPage() {
               />
               Apply store credit ({formatCents(creditBalance)})
             </label>
+          )}
+          {creditForfeitsCents > 0 && (
+            <p className="gg-card-meta" style={{ margin: "0 0 0.5rem" }} role={useCredit ? "status" : undefined}>
+              {useCredit ? (
+                <>
+                  No member discount on orders using store credit. Uncheck to pay by card and save{" "}
+                  {formatCents(creditForfeitsCents)} ({MEMBER_DISCOUNT_PERCENT}%) instead.
+                </>
+              ) : (
+                <>Orders using store credit don&rsquo;t get the {MEMBER_DISCOUNT_PERCENT}% member discount.</>
+              )}
+            </p>
           )}
           {totals.storeCreditUsedCents > 0 && (
             <SummaryRow
