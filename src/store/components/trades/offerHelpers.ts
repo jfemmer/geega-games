@@ -31,6 +31,7 @@ export function printingPrice(printing: SellPrinting, finish: TradeFinish): numb
 
 /** The finishes a printing comes in that trades price (non-foil, foil, etched). */
 export function finishesOf(printing: SellPrinting): TradeFinish[] {
-  const offered = printing.availableFinishes.filter(isTradeFinish);
+  // A surge foil trades as a foil: it is priced from the same usd_foil.
+  const offered = [...new Set(printing.availableFinishes.map((f) => (f === "surge" ? "foil" : f)))].filter(isTradeFinish);
   return offered.length > 0 ? offered : ["nonfoil"];
 }

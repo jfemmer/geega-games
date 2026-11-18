@@ -1331,7 +1331,7 @@ export async function loadPrintings(admin: Admin, ids: string[]): Promise<Map<st
       setName: row.set_name,
       collectorNumber: row.collector_number,
       imageUrl: imageFromJson(row.images),
-      finishes: row.available_finishes ?? [],
+      finishes: tradeFinishes(row.available_finishes ?? []),
       prices: { usd: row.price_usd_cents, usdFoil: row.price_usd_foil_cents, usdEtched: row.price_usd_etched_cents },
       checkedAt: row.prices_updated_at,
       releasedAt: row.released_at ?? null,
@@ -1355,7 +1355,7 @@ export async function loadPrintings(admin: Admin, ids: string[]): Promise<Map<st
         setName: p.setName,
         collectorNumber: p.collectorNumber,
         imageUrl: p.imageUrl || null,
-        finishes: p.availableFinishes,
+        finishes: tradeFinishes(p.availableFinishes),
         prices: { usd: p.prices.usd, usdFoil: p.prices.usdFoil, usdEtched: p.prices.usdEtched },
         checkedAt,
         releasedAt: p.releasedAt ?? null,
@@ -1368,6 +1368,11 @@ export async function loadPrintings(admin: Admin, ids: string[]): Promise<Map<st
     console.error("[tradeCenter] Scryfall lookup failed", err instanceof Error ? err.message : err);
   }
   return out;
+}
+
+/** A surge foil trades as a foil (same usd_foil price), so list it as one. */
+function tradeFinishes(finishes: readonly string[]): string[] {
+  return [...new Set(finishes.map((f) => (f === "surge" ? "foil" : f)))];
 }
 
 /** The market reference for the exact finish: no stand-in from another finish. */

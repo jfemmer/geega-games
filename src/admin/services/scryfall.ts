@@ -175,15 +175,45 @@ export function primaryImageUrl(card: ScryfallCard): string {
  * foil/nonfoil booleans for older objects that omit `finishes`.
  */
 export function extractAvailableFinishes(card: ScryfallCard): CardFinish[] {
+  let out: CardFinish[];
   if (Array.isArray(card.finishes) && card.finishes.length > 0) {
-    return card.finishes.filter((f): f is CardFinish =>
+    out = card.finishes.filter((f): f is CardFinish =>
       (KNOWN_FINISHES as readonly string[]).includes(f),
     );
+  } else {
+    out = [];
+    if (card.nonfoil !== false) out.push("nonfoil");
+    if (card.foil) out.push("foil");
+    if (out.length === 0) out = ["nonfoil"];
   }
-  const out: CardFinish[] = [];
-  if (card.nonfoil !== false) out.push("nonfoil");
-  if (card.foil) out.push("foil");
-  return out.length > 0 ? out : ["nonfoil"];
+  // Scryfall gives a special foil (surge, …) its own printing, with
+  // finishes ["foil"] and the kind of foil in promo_types. On that printing
+  // "foil" IS the special foil, so name it, or it can only be stocked as a
+  // plain foil.
+  const special = specialFoilFinish(card);
+  return special ? out.map((f) => (f === "foil" ? special : f)) : out;
+}
+
+/**
+ * Scryfall promo_types that mark a printing's foil as a special foil, and the
+ * Geega finish it is stocked as. Each of these is priced from usd_foil.
+ */
+const SPECIAL_FOIL_PROMO_TYPES: Readonly<Record<string, CardFinish>> = {
+  surgefoil: "surge",
+};
+
+/** The special foil this printing's foil is (e.g. "surge"), or null. */
+export function specialFoilFinish(card: Pick<ScryfallCard, "promo_types">): CardFinish | null {
+  for (const type of card.promo_types ?? []) {
+    const finish = SPECIAL_FOIL_PROMO_TYPES[type];
+    if (finish) return finish;
+  }
+  return null;
+}
+
+/** True for a finish whose market price is Scryfall's usd_foil. */
+export function isFoilPricedFinish(finish: CardFinish | string): boolean {
+  return finish === "foil" || Object.values(SPECIAL_FOIL_PROMO_TYPES).includes(finish as CardFinish);
 }
 
 export function extractPrices(card: ScryfallCard): CardPrices {
@@ -195,7 +225,8 @@ export function extractPrices(card: ScryfallCard): CardPrices {
 }
 
 /**
- * The reference price in cents for a specific finish. Foil → usd_foil, etched →
+ * The reference price in cents for a specific finish. Foil (and a special foil
+ * such as surge) → usd_foil, etched →
  * usd_etched, everything else → usd. Falls back to plain usd when a
  * finish-specific price is missing.
  */
@@ -204,9 +235,8 @@ export function extractPriceForFinish(
   finish: CardFinish,
 ): number | null {
   const prices = extractPrices(card);
+  if (isFoilPricedFinish(finish)) return prices.usdFoil ?? prices.usd;
   switch (finish) {
-    case "foil":
-      return prices.usdFoil ?? prices.usd;
     case "etched":
       return prices.usdEtched ?? prices.usd;
     default:

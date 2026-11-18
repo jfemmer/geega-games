@@ -148,6 +148,18 @@ describe("extractAvailableFinishes", () => {
     const card = baseCard({ finishes: [] });
     expect(extractAvailableFinishes(card)).toEqual(["nonfoil"]);
   });
+  it("names a surge foil printing's foil as surge", () => {
+    const card = baseCard({ finishes: ["foil"], promo_types: ["surgefoil", "universesbeyond"] });
+    expect(extractAvailableFinishes(card)).toEqual(["surge"]);
+  });
+  it("keeps nonfoil beside surge when Scryfall lists both", () => {
+    const card = baseCard({ finishes: ["nonfoil", "foil"], promo_types: ["surgefoil"] });
+    expect(extractAvailableFinishes(card)).toEqual(["nonfoil", "surge"]);
+  });
+  it("leaves an ordinary foil printing alone", () => {
+    const card = baseCard({ finishes: ["nonfoil", "foil"], promo_types: ["universesbeyond"] });
+    expect(extractAvailableFinishes(card)).toEqual(["nonfoil", "foil"]);
+  });
 });
 
 describe("extractPriceForFinish", () => {
@@ -165,6 +177,7 @@ describe("extractPriceForFinish", () => {
     expect(extractPriceForFinish(card, "nonfoil")).toBe(200);
     expect(extractPriceForFinish(card, "foil")).toBe(500);
     expect(extractPriceForFinish(card, "etched")).toBe(800);
+    expect(extractPriceForFinish(card, "surge")).toBe(500);
   });
   it("falls back to usd when finish price missing", () => {
     const card = baseCard({
