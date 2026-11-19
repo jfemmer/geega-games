@@ -13,8 +13,8 @@ import {
   exactNameTerm,
   mainType,
   CHECKLIST_LIMITS as LIMITS,
-  UPGRADE_RULES,
   cardKey,
+  hasDraftRating,
   listOptionsFor,
   pairUpgrades,
   suggestionOption,
@@ -38,13 +38,18 @@ import {
 // duplicates) are enforced once, here.
 
 const CARD_COLUMNS =
-  "id, position, name, type_line, color_category, original_name, original_type_line, original_color_category, swapped_by, swapped_at, found_by, found_at, elo, pick_count, mana_value, updated_at";
+  "id, position, name, type_line, color_category, original_name, original_type_line, original_color_category, swapped_by, swapped_at, found_by, found_at, elo, pick_count, mana_value, price_cents, edhrec_rank, updated_at";
 const LIST_COLUMNS =
-  "id, name, cube_id, rarity_rule, share_token, share_enabled, created_at, updated_at, ratings_updated_at";
+  "id, name, cube_id, rarity_rule, share_token, share_enabled, created_at, updated_at, ratings_updated_at, stats_updated_at, prices_as_of";
 const SUGGESTION_COLUMNS =
   "position, name, card_name, type_line, colors, mana_value, mana_cost, image_small, image_normal, edhrec_rank, paper_common, paper_uncommon";
 /** CubeCobra ratings move slowly; fetch them again at most this often. */
 const RATINGS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Prices and EDHREC ranks come from the local Scryfall data, which changes
+ * only when `npm run scryfall:refresh` runs; look again at most this often.
+ */
+const STATS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Re-send a little of what came just before `since`, so nothing in flight is missed. */
 const SYNC_OVERLAP_MS = 15_000;
@@ -69,6 +74,8 @@ type CardRow = {
   elo: number | null;
   pick_count: number | null;
   mana_value: number | null;
+  price_cents: number | null;
+  edhrec_rank: number | null;
   updated_at: string;
 };
 
@@ -82,6 +89,8 @@ export type ListRow = {
   created_at: string;
   updated_at: string;
   ratings_updated_at: string | null;
+  stats_updated_at: string | null;
+  prices_as_of: string | null;
 };
 
 type SuggestionRow = {
@@ -136,6 +145,8 @@ function toCard(r: CardRow): ChecklistCard {
     foundAt: r.found_at,
     elo: r.elo,
     pickCount: r.pick_count,
+    priceCents: r.price_cents ?? null,
+    edhrecRank: r.edhrec_rank ?? null,
     updatedAt: r.updated_at,
   };
 }
@@ -222,6 +233,7 @@ export async function loadView(list: ListRow, since?: unknown): Promise<Checklis
     rarityRule: asRule(list.rarity_rule),
     cards: ((data ?? []) as CardRow[]).map(toCard),
     syncedAt,
+    pricesAsOf: list.prices_as_of ?? null,
   };
 }
 
@@ -265,6 +277,12 @@ async function updateCard(list: ListRow, cardId: string, patch: Partial<CardRow>
  * Scryfall helpers
  * ------------------------------------------------------------------ */
 
+/** A Scryfall price string ("0.25") in cents. */
+function priceToCents(v: string | null | undefined): number | null {
+  const n = v == null ? Number.NaN : Number.parseFloat(v);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+}
+
 function toOption(c: ScryfallCardExtra): SwapOption {
   const face = c.card_faces?.[0];
   const images = c.image_uris ?? face?.image_uris;
@@ -275,7 +293,37 @@ function toOption(c: ScryfallCardExtra): SwapOption {
     imageSmall: images?.small ?? null,
     imageNormal: images?.normal ?? null,
     edhrecRank: typeof c.edhrec_rank === "number" ? c.edhrec_rank : null,
+    // This printing's price; withPrices() swaps in the cheapest printing's when it knows it.
+    priceCents: priceToCents(c.prices?.usd) ?? priceToCents(c.prices?.usd_foil) ?? priceToCents(c.prices?.usd_etched),
   };
+}
+
+type PriceRow = { requested: string; price_cents: number | null; edhrec_rank: number | null };
+
+/**
+ * Give swap options the same price the list shows — the cheapest paper
+ * printing, from the local Scryfall data — and fill in any missing EDHREC
+ * rank. Extra: if the lookup fails, the options go out as they are.
+ */
+async function withPrices(options: SwapOption[]): Promise<SwapOption[]> {
+  if (options.length === 0) return options;
+  try {
+    const { data, error } = await db().rpc("cube_checklist_prices", { p_names: options.map((o) => o.name) });
+    if (error) throw new Error(error.message);
+    const byKey = new Map(((data ?? []) as PriceRow[]).map((r) => [dbCardKey(r.requested), r]));
+    return options.map((o) => {
+      const r = byKey.get(dbCardKey(o.name));
+      if (!r) return o;
+      return {
+        ...o,
+        priceCents: r.price_cents ?? o.priceCents ?? null,
+        edhrecRank: o.edhrecRank ?? r.edhrec_rank ?? null,
+      };
+    });
+  } catch (err) {
+    console.warn("cube checklist: option prices failed", err instanceof Error ? err.message : err);
+    return options;
+  }
 }
 
 /** The card by exact name, only if it's printed in paper at an allowed rarity. */
@@ -454,16 +502,23 @@ export async function runCardAction(
       ).map(suggestionOption);
       const listed = new Set(fromList.map((o) => cardKey(o.name)));
       const similar = (await scryfallSearchCards(similarCardsQuery(sc, rule), "edhrec")) as ScryfallCardExtra[];
+      const options = await withPrices([
+        ...fromList,
+        ...similar
+          .filter((c) => !onList.has(cardKey(c.name)) && !listed.has(cardKey(c.name)))
+          .slice(0, SUGGESTION_COUNT)
+          .map(toOption),
+      ]);
+      const current = toOption(sc);
       return {
-        // The card on the list now, so people can compare it with the options.
-        current: toOption(sc),
-        options: [
-          ...fromList,
-          ...similar
-            .filter((c) => !onList.has(cardKey(c.name)) && !listed.has(cardKey(c.name)))
-            .slice(0, SUGGESTION_COUNT)
-            .map(toOption),
-        ],
+        // The card on the list now, so people can compare it with the options
+        // (with the same price and rank the list shows for it).
+        current: {
+          ...current,
+          priceCents: card.price_cents ?? current.priceCents ?? null,
+          edhrecRank: card.edhrec_rank ?? current.edhrecRank,
+        },
+        options,
       };
     }
 
@@ -475,10 +530,12 @@ export async function runCardAction(
       const onList = await listKeys(list);
       const found = (await scryfallSearchCards(`${term} game:paper ${rarityClause(rule)}`, "edhrec")) as ScryfallCardExtra[];
       return {
-        options: found
-          .filter((c) => !onList.has(cardKey(c.name)))
-          .slice(0, SEARCH_COUNT)
-          .map(toOption),
+        options: await withPrices(
+          found
+            .filter((c) => !onList.has(cardKey(c.name)))
+            .slice(0, SEARCH_COUNT)
+            .map(toOption),
+        ),
       };
     }
 
@@ -536,6 +593,7 @@ export async function listSummaries(): Promise<ChecklistAdminSummary[]> {
         cardCount: all.count ?? 0,
         foundCount: found.count ?? 0,
         ratingsUpdatedAt: l.ratings_updated_at,
+        pricesAsOf: l.prices_as_of ?? null,
       };
     }),
   );
@@ -798,9 +856,36 @@ export async function refreshRatings(
   }
 }
 
-/** Suggested upgrades for a checklist (see pairUpgrades in src/store/lib/cubeChecklist.ts). */
+/**
+ * Refresh every card's price and EDHREC rank from the local Scryfall data,
+ * when they're missing or a day old (or always, with force). Only cards whose
+ * values change are written, so everyone's page picks up just those. Best
+ * effort: if it fails, the stored stats are used.
+ */
+export async function refreshCardStats(
+  list: ListRow,
+  force = false,
+): Promise<{ list: ListRow; updated: number | null }> {
+  const fresh = list.stats_updated_at != null && Date.now() - Date.parse(list.stats_updated_at) < STATS_MAX_AGE_MS;
+  if (fresh && !force) return { list, updated: null };
+  try {
+    const { data, error } = await db().rpc("cube_checklist_refresh_card_stats", { p_checklist_id: list.id });
+    if (error) throw new Error(error.message);
+    return { list: { ...list, stats_updated_at: new Date().toISOString() }, updated: Number(data ?? 0) };
+  } catch (err) {
+    if (force) throw new HttpError(500, "Couldn't update the card prices. Please try again.");
+    console.warn("cube checklist: stats refresh failed", err instanceof Error ? err.message : err);
+    return { list, updated: null };
+  }
+}
+
+/**
+ * Suggested upgrades for a checklist (see pairUpgrades in src/store/lib/cubeChecklist.ts).
+ * Every page asks for these once when it opens, so this is also where the
+ * day-old ratings and prices get refreshed.
+ */
 export async function loadUpgrades(listIn: ListRow): Promise<UpgradesView> {
-  const { list } = await refreshRatings(listIn);
+  const [{ list }] = await Promise.all([refreshRatings(listIn), refreshCardStats(listIn)]);
   const [cardsRes, suggestions] = await Promise.all([
     db().from("cube_checklist_cards").select(CARD_COLUMNS).eq("checklist_id", list.id).limit(5000),
     loadSuggestions(list),
@@ -809,12 +894,14 @@ export async function loadUpgrades(listIn: ListRow): Promise<UpgradesView> {
   const rows = (cardsRes.data ?? []) as CardRow[];
   const cards = rows.map((r) => ({ ...toCard(r), manaValue: r.mana_value == null ? null : Number(r.mana_value) }));
   const pool = suggestionPool(suggestions, new Set(cards.map((c) => cardKey(c.name))), asRule(list.rarity_rule));
+  const pairs = pairUpgrades(cards, pool);
+  const adds = await withPrices(pairs.map(({ add }) => suggestionOption(add)));
   return {
-    upgrades: pairUpgrades(cards, pool).map(({ cut, add }) => {
+    upgrades: pairs.map(({ cut }, i) => {
       const { manaValue: _manaValue, ...card } = cut;
-      return { cut: card, add: suggestionOption(add) };
+      return { cut: card, add: adds[i] };
     }),
-    ratedCount: cards.filter((c) => c.elo != null && (c.pickCount ?? 0) >= UPGRADE_RULES.minPicks).length,
+    ratedCount: cards.filter(hasDraftRating).length,
     poolSize: pool.length,
     ratingsUpdatedAt: list.ratings_updated_at,
   };

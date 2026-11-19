@@ -488,7 +488,7 @@ function SuggestionListEditor({ list, onChanged }: { list: ChecklistAdminSummary
     setBusy("ratings");
     try {
       await adminFetch(ENDPOINT, { method: "POST", body: { action: "refresh-ratings", id: list.id } });
-      toast.success("Ratings updated from CubeCobra.");
+      toast.success("Ratings updated from CubeCobra, and prices from the Scryfall data.");
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't get ratings from CubeCobra.");
@@ -523,6 +523,7 @@ function SuggestionListEditor({ list, onChanged }: { list: ChecklistAdminSummary
         cube's lowest-rated cards, and first in each card's Better options. Only cards that aren't on the list and
         fit the rarity rule ({RARITY_RULE_LABELS[list.rarityRule].toLowerCase()}) are suggested.{" "}
         Ratings from CubeCobra {list.ratingsUpdatedAt ? `updated ${timeAgo(list.ratingsUpdatedAt)}` : "not fetched yet"}
+        {list.pricesAsOf ? `; prices from Scryfall data downloaded ${timeAgo(list.pricesAsOf)}` : ""}
         {" · "}
         <button
           type="button"

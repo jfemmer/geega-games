@@ -639,6 +639,7 @@ export type Database = {
         Row: {
           checklist_id: string
           color_category: string | null
+          edhrec_rank: number | null
           elo: number | null
           found_at: string | null
           found_by: string | null
@@ -650,6 +651,7 @@ export type Database = {
           original_type_line: string | null
           pick_count: number | null
           position: number
+          price_cents: number | null
           swapped_at: string | null
           swapped_by: string | null
           type_line: string | null
@@ -658,6 +660,7 @@ export type Database = {
         Insert: {
           checklist_id: string
           color_category?: string | null
+          edhrec_rank?: number | null
           elo?: number | null
           found_at?: string | null
           found_by?: string | null
@@ -669,6 +672,7 @@ export type Database = {
           original_type_line?: string | null
           pick_count?: number | null
           position: number
+          price_cents?: number | null
           swapped_at?: string | null
           swapped_by?: string | null
           type_line?: string | null
@@ -677,6 +681,7 @@ export type Database = {
         Update: {
           checklist_id?: string
           color_category?: string | null
+          edhrec_rank?: number | null
           elo?: number | null
           found_at?: string | null
           found_by?: string | null
@@ -688,6 +693,7 @@ export type Database = {
           original_type_line?: string | null
           pick_count?: number | null
           position?: number
+          price_cents?: number | null
           swapped_at?: string | null
           swapped_by?: string | null
           type_line?: string | null
@@ -766,10 +772,12 @@ export type Database = {
           cube_id: string
           id: string
           name: string
+          prices_as_of: string | null
           rarity_rule: string
           ratings_updated_at: string | null
           share_enabled: boolean
           share_token: string
+          stats_updated_at: string | null
           updated_at: string
         }
         Insert: {
@@ -778,10 +786,12 @@ export type Database = {
           cube_id: string
           id?: string
           name: string
+          prices_as_of?: string | null
           rarity_rule?: string
           ratings_updated_at?: string | null
           share_enabled?: boolean
           share_token: string
+          stats_updated_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -790,10 +800,12 @@ export type Database = {
           cube_id?: string
           id?: string
           name?: string
+          prices_as_of?: string | null
           rarity_rule?: string
           ratings_updated_at?: string | null
           share_enabled?: boolean
           share_token?: string
+          stats_updated_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -6179,6 +6191,15 @@ export type Database = {
           set_name: string
         }[]
       }
+      cube_checklist_card_stats: {
+        Args: { p_key: string }
+        Returns: {
+          price_cents: number | null
+          edhrec_rank: number | null
+          mana_value: number | null
+          prices_as_of: string | null
+        }[]
+      }
       cube_checklist_lookup_cards: {
         Args: { p_names: string[] }
         Returns: {
@@ -6194,6 +6215,18 @@ export type Database = {
           paper_common: boolean
           paper_uncommon: boolean
         }[]
+      }
+      cube_checklist_prices: {
+        Args: { p_names: string[] }
+        Returns: {
+          requested: string
+          price_cents: number | null
+          edhrec_rank: number | null
+        }[]
+      }
+      cube_checklist_refresh_card_stats: {
+        Args: { p_checklist_id: string }
+        Returns: number
       }
       cube_checklist_set_ratings: {
         Args: { p_checklist_id: string; p_ratings: Json }

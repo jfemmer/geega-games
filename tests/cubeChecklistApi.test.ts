@@ -68,6 +68,8 @@ function card(id: string, position: number, name: string, extra: Record<string, 
     elo: null,
     pick_count: null,
     mana_value: null,
+    price_cents: null,
+    edhrec_rank: null,
     updated_at: "2026-11-10T00:00:00.000Z",
     ...extra,
   };
@@ -144,9 +146,13 @@ beforeEach(() => {
       created_at: "2026-11-10T00:00:00.000Z",
       updated_at: "2026-11-10T00:00:00.000Z",
       ratings_updated_at: new Date().toISOString(),
+      stats_updated_at: new Date().toISOString(),
+      prices_as_of: "2026-09-16T03:22:29.000Z",
     },
   ];
   state.tables.cube_checklist_suggestions = [];
+  // No local Scryfall prices unless a test adds some.
+  state.rpc.cube_checklist_prices = () => ({ data: [], error: null });
   state.tables.cube_checklist_cards = [
     card(SKYFISHER, 0, "Kor Skyfisher", { color_category: "White" }),
     card(COUNTERSPELL, 1, "Counterspell", { type_line: "Instant", color_category: "Blue" }),
@@ -292,6 +298,84 @@ describe("share link", () => {
   });
 });
 
+describe("prices and popularity", () => {
+  it("sends each card's price and EDHREC rank, and when the prices are from", async () => {
+    Object.assign(row(COUNTERSPELL), { price_cents: 150, edhrec_rank: 120 });
+    const { body } = await post(share, { token: TOKEN, action: "get" });
+    expect(body.view.pricesAsOf).toBe("2026-09-16T03:22:29.000Z");
+    expect(body.view.cards[1]).toMatchObject({ name: "Counterspell", priceCents: 150, edhrecRank: 120 });
+    expect(body.view.cards[0]).toMatchObject({ priceCents: null, edhrecRank: null });
+  });
+
+  it("prices swap options like the list (cheapest printing), else with Scryfall's price for that printing", async () => {
+    Object.assign(row(COUNTERSPELL), { price_cents: 150, edhrec_rank: 120 });
+    const prices = vi.fn((args: Record<string, unknown>) => ({
+      data: (args.p_names as string[]).map((n) =>
+        n === "Mana Leak" ? { requested: n, price_cents: 30, edhrec_rank: 95 } : { requested: n, price_cents: null, edhrec_rank: null },
+      ),
+      error: null,
+    }));
+    state.rpc.cube_checklist_prices = prices;
+    scry.searchCards
+      .mockResolvedValueOnce([scryCard("Counterspell", { prices: { usd: "4.99" } })])
+      .mockResolvedValueOnce([
+        scryCard("Mana Leak", { prices: { usd: "2.00" } }),
+        scryCard("Exclude", { prices: { usd: null, usd_foil: "1.10" } }),
+      ]);
+    const { body } = await post(share, { token: TOKEN, action: "suggest", cardId: COUNTERSPELL });
+    expect(prices).toHaveBeenCalledWith({ p_names: ["Mana Leak", "Exclude"] });
+    expect(body.options.map((o: { name: string; priceCents: number | null }) => [o.name, o.priceCents])).toEqual([
+      ["Mana Leak", 30],
+      ["Exclude", 110],
+    ]);
+    // The card on the list shows the same price and rank as its row.
+    expect(body.current).toMatchObject({ name: "Counterspell", priceCents: 150, edhrecRank: 120 });
+
+    scry.searchCards.mockResolvedValueOnce([scryCard("Mana Leak")]);
+    const search = await post(share, { token: TOKEN, action: "search", query: "leak" });
+    expect(search.body.options[0]).toMatchObject({ name: "Mana Leak", priceCents: 30 });
+  });
+
+  it("still offers options when the price lookup fails", async () => {
+    state.rpc.cube_checklist_prices = () => ({ data: null, error: { message: "boom" } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    scry.searchCards.mockResolvedValueOnce([scryCard("Mana Leak", { prices: { usd: "0.25" } })]);
+    const { status, body } = await post(share, { token: TOKEN, action: "search", query: "leak" });
+    warn.mockRestore();
+    expect(status).toBe(200);
+    expect(body.options[0]).toMatchObject({ name: "Mana Leak", priceCents: 25 });
+  });
+
+  it("refreshes the list's prices once a day, and carries on if that fails", async () => {
+    const refresh = vi.fn(() => ({ data: 3, error: null }));
+    state.rpc.cube_checklist_refresh_card_stats = refresh;
+    // Fresh: left alone.
+    expect((await post(share, { token: TOKEN, action: "upgrades" })).status).toBe(200);
+    expect(refresh).not.toHaveBeenCalled();
+
+    state.tables.cube_checklists[0].stats_updated_at = "2026-01-01T00:00:00.000Z";
+    expect((await post(share, { token: TOKEN, action: "upgrades" })).status).toBe(200);
+    expect(refresh).toHaveBeenCalledWith({ p_checklist_id: LIST });
+
+    state.tables.cube_checklists[0].stats_updated_at = null;
+    state.rpc.cube_checklist_refresh_card_stats = () => ({ data: null, error: { message: "timeout" } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await post(share, { token: TOKEN, action: "upgrades" })).status).toBe(200);
+    warn.mockRestore();
+  });
+
+  it("lets staff refresh ratings and prices now", async () => {
+    state.rpc.cube_checklist_set_ratings = () => ({ data: 0, error: null });
+    const refresh = vi.fn(() => ({ data: 7, error: null }));
+    state.rpc.cube_checklist_refresh_card_stats = refresh;
+    cube.fetchCubeRatings.mockResolvedValueOnce([]);
+    const { status, body } = await post(admin, { id: LIST, action: "refresh-ratings" }, STAFF);
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ updated: 0, statsUpdated: 7 });
+    expect(refresh).toHaveBeenCalledWith({ p_checklist_id: LIST });
+  });
+});
+
 describe("suggestion list and upgrades", () => {
   it("puts cards from the suggestion list first in Better options, with their place on the list", async () => {
     state.tables.cube_checklist_suggestions = [
@@ -323,6 +407,7 @@ describe("suggestion list and upgrades", () => {
       suggestion(0, "Memory Lapse"), // blue spell, 2 -> replaces Consider (1)
       suggestion(1, "Man-o'-War", { type_line: "Creature — Jellyfish", mana_value: 3 }), // blue creature 3 -> Mist Raven (4)
     ];
+    state.rpc.cube_checklist_prices = () => ({ data: [{ requested: "Memory Lapse", price_cents: 45, edhrec_rank: 2000 }], error: null });
     const { status, body } = await post(share, { token: TOKEN, action: "upgrades" });
     expect(status).toBe(200);
     expect(cube.fetchCubeRatings).not.toHaveBeenCalled(); // ratings are fresh
@@ -331,7 +416,7 @@ describe("suggestion list and upgrades", () => {
       ["Consider", "Memory Lapse"],
     ]);
     expect(body.upgradesView).toMatchObject({ ratedCount: 4, poolSize: 2 });
-    expect(body.upgradesView.upgrades[0].add.listRank).toBe(1);
+    expect(body.upgradesView.upgrades[0].add).toMatchObject({ listRank: 1, priceCents: 45 });
   });
 
   it("fetches CubeCobra ratings when they're a day old, and carries on if CubeCobra is down", async () => {

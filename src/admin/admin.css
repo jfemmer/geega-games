@@ -4929,6 +4929,242 @@ ul.gg-partner-agreement__warn { padding-left: 28px; }
   font-weight: 700;
   color: var(--gg-success);
 }
+.gg-cubecheck__upgrades .gg-cubecheck__recenthead {
+  flex-wrap: wrap;
+}
+.gg-cubecheck__upgradelinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem 0.75rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Sort and filters: color chips, card type, swap candidates. */
+.gg-cubecheck__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.gg-cubecheck__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.gg-cubecheck__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--gg-line);
+  border-radius: 999px;
+  background: var(--gg-surface);
+  color: var(--gg-text-soft);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.gg-cubecheck__chip:hover {
+  border-color: var(--gg-line-strong);
+  color: var(--gg-text);
+}
+.gg-cubecheck__chip:focus-visible {
+  outline: 2px solid var(--gg-brand);
+  outline-offset: 2px;
+}
+.gg-cubecheck__chip.is-on {
+  border-color: var(--gg-brand);
+  background: var(--gg-brand-tint);
+  color: var(--gg-brand);
+}
+.gg-cubecheck__chipcount {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--gg-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.gg-cubecheck__chip.is-on .gg-cubecheck__chipcount {
+  color: inherit;
+}
+.gg-cubecheck__chip--weak.is-on {
+  border-color: var(--gg-warning);
+  background: #fbefdd;
+  color: #8a5a10;
+}
+/* A dot in each color's own color, so chips read at a glance. */
+.gg-cubecheck__pip {
+  flex-shrink: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(36, 29, 49, 0.25);
+  background: #b9b4c2;
+}
+.gg-cubecheck__pip--white { background: #f7f0d6; }
+.gg-cubecheck__pip--blue { background: #2f7fd8; }
+.gg-cubecheck__pip--black { background: #3a3340; }
+.gg-cubecheck__pip--red { background: #d8432f; }
+.gg-cubecheck__pip--green { background: #2f9a5a; }
+.gg-cubecheck__pip--colorless { background: #c9c4d1; }
+.gg-cubecheck__pip--multicolored { background: linear-gradient(135deg, #e8c14a, #c9962a); }
+.gg-cubecheck__pip--hybrid { background: linear-gradient(135deg, #2f7fd8 50%, #d8432f 50%); }
+.gg-cubecheck__pip--lands { background: #a47b4f; }
+.gg-cubecheck__filterrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+}
+.gg-cubecheck__type {
+  min-width: 10rem;
+}
+.gg-cubecheck__clear {
+  font-size: 0.85rem;
+}
+.gg-cubecheck__sorthint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--gg-text-faint);
+}
+
+/* A card's draft rank, price and popularity, under its name. */
+.gg-cubecheck__stats {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.35rem;
+  margin-top: 0.15rem;
+}
+.gg-cubecheck__stat {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--gg-surface-3);
+  color: var(--gg-text-soft);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.gg-cubecheck__stat.is-price {
+  color: var(--gg-text);
+}
+.gg-cubecheck__stat.is-weak {
+  background: #fbefdd;
+  color: #8a5a10;
+}
+.gg-cubecheck__row.is-crossed .gg-cubecheck__stats {
+  opacity: 0.6;
+}
+
+/* Swap panel: where the card stands in its role, and how to order the options. */
+.gg-cubecheck__role {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--gg-text-soft);
+}
+.gg-cubecheck__role.is-weak {
+  color: #8a5a10;
+}
+.gg-cubecheck__optionshead {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.gg-cubecheck__seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  overflow: hidden;
+  background: var(--gg-surface);
+}
+.gg-cubecheck__seg button {
+  min-height: 1.9rem;
+  padding: 0.2rem 0.65rem;
+  border: 0;
+  border-left: 1px solid var(--gg-line);
+  background: none;
+  color: var(--gg-text-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gg-cubecheck__seg button:first-child {
+  border-left: 0;
+}
+.gg-cubecheck__seg button.is-on {
+  background: var(--gg-brand-tint);
+  color: var(--gg-brand);
+}
+.gg-cubecheck__seg button:focus-visible {
+  outline: 2px solid var(--gg-brand);
+  outline-offset: -2px;
+}
+.gg-cubecheck__tilestats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.gg-cubecheck__tileprice {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gg-text);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  /* On a phone the row's buttons go under the card, so its name, type and
+   * stats get the full width instead of a narrow column. */
+  .gg-cubecheck__row {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .gg-cubecheck__check {
+    flex-basis: 100%;
+    padding-bottom: 0.2rem;
+  }
+  .gg-cubecheck__row .gg-cubecheck__actions {
+    width: 100%;
+    padding: 0 0 0.4rem 1.95rem;
+  }
+  /* One scrolling row of chips instead of three wrapped ones. */
+  .gg-cubecheck__chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 0 -0.25rem;
+    padding: 0 0.25rem 0.1rem;
+  }
+  .gg-cubecheck__chips::-webkit-scrollbar {
+    display: none;
+  }
+  .gg-cubecheck__filterrow .gg-select-wrap {
+    flex: 1 1 10rem;
+  }
+  .gg-cubecheck__type {
+    width: 100%;
+    min-width: 0;
+  }
+  .gg-cubecheck__seg {
+    width: 100%;
+  }
+  .gg-cubecheck__seg button {
+    flex: 1;
+    padding-inline: 0.35rem;
+  }
+}
 .gg-cubecheck__suggestions {
   max-width: 640px;
   margin-top: 0.75rem;

@@ -9,6 +9,7 @@ import {
   getListById,
   listSummaries,
   markFoundByName,
+  refreshCardStats,
   refreshRatings,
   runCardAction,
   setSuggestions,
@@ -26,7 +27,7 @@ import {
 //   POST { action: "import-found", id, names } -> { marked }  (this browser's old ticks)
 //   POST { action: "suggestions-get", id }     -> { names, summary }  (the suggestion list)
 //   POST { action: "suggestions-set", id, names } -> { summary }  (names: pasted text or array)
-//   POST { action: "refresh-ratings", id }     -> { updated }  (CubeCobra draft ratings, now)
+//   POST { action: "refresh-ratings", id }     -> { updated, statsUpdated }  (CubeCobra draft ratings and card prices, now)
 //   POST { id, action: get|found|swap|unswap|suggest|search|printings, ... }
 //        -> the same card actions as the share link, credited to the staff member.
 
@@ -93,8 +94,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return sendJson(res, 200, { ok: true, summary: await setSuggestions(list, body.names) });
     }
     if (action === "refresh-ratings") {
-      const { updated } = await refreshRatings(list, true);
-      return sendJson(res, 200, { ok: true, updated });
+      // CubeCobra's draft ratings, then prices and popularity from the local Scryfall data.
+      const { list: rated, updated } = await refreshRatings(list, true);
+      const { updated: statsUpdated } = await refreshCardStats(rated, true);
+      return sendJson(res, 200, { ok: true, updated, statsUpdated });
     }
     if (action === "import-found") {
       const marked = await markFoundByName(list, body.names, staffLabel(staff.email));

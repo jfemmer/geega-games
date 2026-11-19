@@ -23,9 +23,17 @@ export interface ChecklistCard {
   swappedAt: string | null;
   foundBy: string | null;
   foundAt: string | null;
-  /** CubeCobra draft rating, and how many picks it rests on (null = not rated). */
+  /**
+   * CubeCobra draft rating of the cube's own card in this slot, and how many
+   * picks it rests on (null = not rated). It stays with the slot when the card
+   * is swapped, so use hasDraftRating() before treating it as this card's.
+   */
   elo: number | null;
   pickCount: number | null;
+  /** Cheapest paper printing in US cents (non-foil when there is one); null = no price. */
+  priceCents: number | null;
+  /** EDHREC popularity rank (1 = most played across Magic); null = not ranked. */
+  edhrecRank: number | null;
   updatedAt: string;
 }
 
@@ -40,6 +48,8 @@ export interface ChecklistView extends ChecklistSummary {
   cards: ChecklistCard[];
   /** Pass back as `since` to get only cards changed after this moment. */
   syncedAt: string;
+  /** When the Scryfall data behind the prices was downloaded (null = no prices yet). */
+  pricesAsOf: string | null;
 }
 
 /** Admin-only extras (never sent to the share page). */
@@ -51,6 +61,8 @@ export interface ChecklistAdminSummary extends ChecklistSummary {
   foundCount: number;
   /** When CubeCobra's draft ratings were last fetched. */
   ratingsUpdatedAt: string | null;
+  /** When the Scryfall data behind the prices was downloaded. */
+  pricesAsOf: string | null;
 }
 
 /** A card offered as a swap: a similar, popular card, or a search result. */
@@ -64,6 +76,8 @@ export interface SwapOption {
   edhrecRank: number | null;
   /** Its place on the checklist's suggestion list (1 = top), when it came from there. */
   listRank?: number | null;
+  /** Cheapest paper printing in US cents, when known. */
+  priceCents?: number | null;
 }
 
 /** A card on the suggestion list, as looked up in the local Scryfall data. */
@@ -275,6 +289,86 @@ function manaGap(a: number | null, b: number | null): number {
   return a == null || b == null ? 0 : Math.abs(a - b);
 }
 
+/* ------------------------------------------------------------------ *
+ * Draft ratings: who's weakest, and where each card ranks
+ * ------------------------------------------------------------------ */
+
+/**
+ * A draft rating good enough to judge this card by: the cube's own card (a
+ * card swapped in has no rating of its own — the slot keeps the old card's)
+ * with enough CubeCobra picks behind it.
+ */
+export function hasDraftRating(c: Pick<ChecklistCard, "elo" | "pickCount" | "originalName">): boolean {
+  return c.elo != null && (c.pickCount ?? 0) >= UPGRADE_RULES.minPicks && !c.originalName;
+}
+
+/** The cards with a usable draft rating, lowest-rated first. */
+export function ratedWeakestFirst<T extends ChecklistCard>(cards: T[]): T[] {
+  return cards.filter(hasDraftRating).sort((a, b) => (a.elo ?? 0) - (b.elo ?? 0) || a.position - b.position);
+}
+
+/** How many of the lowest-rated cards count as swap candidates. */
+export function weakCount(ratedCount: number): number {
+  return Math.ceil(ratedCount * UPGRADE_RULES.cutShare);
+}
+
+export interface DraftRank {
+  /** 1 = the card drafters take earliest of everything on the list. */
+  rank: number;
+  /** How many cards on the list have a usable rating. */
+  of: number;
+  /** Among the lowest-rated UPGRADE_RULES.cutShare: a swap candidate. */
+  weak: boolean;
+  /** The card's role (see swapGroup): the same color and kind of card. */
+  role: string;
+  /** 1 = the lowest-rated card in its role. */
+  roleWeakest: number;
+  /** Rated cards in its role. */
+  roleOf: number;
+}
+
+/** Each rated card's place in the cube, by id. Cards without a usable rating aren't in the map. */
+export function draftRanks(cards: ChecklistCard[]): Map<string, DraftRank> {
+  const rated = ratedWeakestFirst(cards);
+  const weak = weakCount(rated.length);
+  const roles = rated.map((c) => swapGroup(c.colorCategory, c.typeLine));
+  const roleTotals = new Map<string, number>();
+  for (const role of roles) roleTotals.set(role, (roleTotals.get(role) ?? 0) + 1);
+  const roleSeen = new Map<string, number>();
+  const ranks = new Map<string, DraftRank>();
+  rated.forEach((c, i) => {
+    const role = roles[i];
+    const n = (roleSeen.get(role) ?? 0) + 1;
+    roleSeen.set(role, n);
+    ranks.set(c.id, {
+      rank: rated.length - i,
+      of: rated.length,
+      weak: i < weak,
+      role,
+      roleWeakest: n,
+      roleOf: roleTotals.get(role) ?? n,
+    });
+  });
+  return ranks;
+}
+
+const ROLE_KIND_LABELS: Record<string, string> = {
+  Creature: "creatures",
+  Spell: "instants and sorceries",
+  Artifact: "artifacts",
+  Enchantment: "enchantments",
+  Land: "lands",
+  Planeswalker: "planeswalkers",
+  Battle: "battles",
+};
+
+/** A role (swapGroup key) in words: "Blue creatures", "lands". */
+export function roleLabel(role: string): string {
+  const [color, kind] = role.split("|");
+  const what = ROLE_KIND_LABELS[kind] ?? "cards";
+  return color === "Lands" || color === "?" ? what : `${color} ${what}`;
+}
+
 /**
  * Suggested upgrades: the lowest-rated cards on the checklist, each paired
  * with the highest card on the suggestion list that fills the same role
@@ -287,10 +381,8 @@ export function pairUpgrades(
   cards: (ChecklistCard & { manaValue?: number | null })[],
   pool: SuggestionInfo[],
 ): { cut: ChecklistCard & { manaValue?: number | null }; add: SuggestionInfo }[] {
-  const rated = cards
-    .filter((c) => c.elo != null && (c.pickCount ?? 0) >= UPGRADE_RULES.minPicks && !c.originalName)
-    .sort((a, b) => (a.elo ?? 0) - (b.elo ?? 0) || a.position - b.position);
-  const weakest = rated.slice(0, Math.ceil(rated.length * UPGRADE_RULES.cutShare));
+  const rated = ratedWeakestFirst(cards);
+  const weakest = rated.slice(0, weakCount(rated.length));
   const used = new Set<number>();
   const pairs: { cut: ChecklistCard & { manaValue?: number | null }; add: SuggestionInfo }[] = [];
   for (const cut of weakest) {

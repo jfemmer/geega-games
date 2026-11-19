@@ -14,17 +14,32 @@ import { formatCents, timeAgo } from "../../utils/format";
 import type { CardImageUris, CardPrinting } from "../../types";
 import {
   RARITY_RULE_LABELS,
+  UPGRADE_RULES,
   cardKey,
-  colorRank,
+  draftRanks,
   mergeCards,
-  normalizeName,
+  roleLabel,
   type ChecklistCard,
   type ChecklistView,
+  type DraftRank,
   type SwapOption,
   type UpgradeSuggestion,
   type UpgradesView,
 } from "../../../store/lib/cubeChecklist";
 import type { CubeChecklistCaller } from "../../../store/lib/cubeChecklistApi";
+import {
+  SORT_OPTIONS,
+  colorsOnList,
+  facetCounts,
+  isSortKey,
+  matchesFilters,
+  ordinal,
+  sortCards,
+  typesOnList,
+  type ChecklistFilters,
+  type SortKey,
+  type View,
+} from "./checklistFilters";
 
 // One shared cube checklist, as everyone working on it sees it — the admin
 // Cube Checklist page and the public share page both render this, each with
@@ -32,16 +47,65 @@ import type { CubeChecklistCaller } from "../../../store/lib/cubeChecklistApi";
 //
 // Everyone's changes show up within a few seconds: while the tab is visible
 // it asks for cards changed since the last refresh and merges them in.
+//
+// Choosing swaps: every card shows its CubeCobra draft rank, price and how
+// widely it's played; the list sorts by any of them and filters by color,
+// type and "swap candidates" (the lowest-rated cards, the same ones Suggested
+// upgrades works from).
 
 const REFRESH_MS = 8_000;
 /** Marking found (or not) takes a second tap within this long, so a stray tap does nothing. */
 const CONFIRM_MS = 4_000;
 const RECENT_COUNT = 5;
 const UPGRADES_SHOWN = 4;
+const WEAK_PERCENT = Math.round(UPGRADE_RULES.cutShare * 100);
 
-type View = "remaining" | "all" | "found" | "swapped";
-type SortKey = "color" | "name";
 type Panel = { cardId: string; kind: "printings" | "swap" } | null;
+
+/** What a sort means, shown under the toolbar while it's on. */
+function sortHint(sort: SortKey, pricesAsOf: string | null): string | null {
+  switch (sort) {
+    case "weakest":
+    case "strongest":
+      return `Draft rank comes from CubeCobra's ratings of real drafts: #1 is the card drafters take earliest. Swap candidates are the lowest-rated ${WEAK_PERCENT}%. Cards swapped in have no rating yet.`;
+    case "played":
+      return "Most played is EDHREC's rank of how many decks across Magic run the card (#1 is the most played).";
+    case "priceHigh":
+    case "priceLow":
+      return `Price is the cheapest paper printing on Scryfall${pricesAsOf ? `, as of ${formatDay(pricesAsOf)}` : ""}.`;
+    default:
+      return null;
+  }
+}
+
+function formatDay(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** A class-safe slug for a color category's pip ("Multicolored" -> "multicolored"). */
+function pipSlug(color: string): string {
+  return color.toLowerCase().replace(/[^a-z]+/g, "");
+}
+
+/** A card's draft rank, price and popularity, as one line under its name. */
+function CardStats({ card, rank }: { card: ChecklistCard; rank: DraftRank | undefined }) {
+  if (!rank && card.priceCents == null && card.edhrecRank == null) return null;
+  return (
+    <span className="gg-cubecheck__stats">
+      {rank?.weak && <span className="gg-cubecheck__stat is-weak">Swap candidate</span>}
+      {rank && (
+        <span className="gg-cubecheck__stat" title={`CubeCobra draft rating ${card.elo}`}>
+          Draft rank #{rank.rank} of {rank.of}
+        </span>
+      )}
+      {card.priceCents != null && <span className="gg-cubecheck__stat is-price">{formatCents(card.priceCents)}</span>}
+      {card.edhrecRank != null && (
+        <span className="gg-cubecheck__stat">#{card.edhrecRank.toLocaleString()} most played</span>
+      )}
+    </span>
+  );
+}
 
 export interface CubeChecklistViewProps {
   call: CubeChecklistCaller;
@@ -59,6 +123,9 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
   const [search, setSearch] = useState("");
   const [view, setView] = useState<View>("remaining");
   const [sort, setSort] = useState<SortKey>("color");
+  const [color, setColor] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
+  const [weakOnly, setWeakOnly] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   // The card whose found box was tapped once and is waiting for the confirming tap.
   const [armedId, setArmedId] = useState<string | null>(null);
@@ -151,29 +218,41 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
 
   // The Found tab lists the most recently found first.
   const byRecent = view === "found";
-  const cards = useMemo(() => {
-    const all = list?.cards ?? [];
-    return [...all].sort((a, b) => {
-      if (byRecent) return (b.foundAt ?? "").localeCompare(a.foundAt ?? "") || a.name.localeCompare(b.name);
-      if (sort === "color") {
-        const d = colorRank(a.colorCategory) - colorRank(b.colorCategory);
-        if (d !== 0) return d;
-      }
-      return a.name.localeCompare(b.name);
-    });
-  }, [list, sort, byRecent]);
+  const cards = useMemo(() => list?.cards ?? [], [list]);
+  // Each rated card's place in the cube (and whether it's a swap candidate).
+  const ranks = useMemo(() => draftRanks(cards), [cards]);
+  const filters = useMemo<ChecklistFilters>(
+    () => ({ view, search, color, type, weakOnly }),
+    [view, search, color, type, weakOnly],
+  );
+  const facets = useMemo(() => facetCounts(cards, filters, ranks), [cards, filters, ranks]);
+  const colors = useMemo(() => colorsOnList(cards), [cards]);
+  const types = useMemo(() => typesOnList(cards), [cards]);
+  const filtersOn = color != null || type != null || weakOnly;
+
+  function clearFilters() {
+    setColor(null);
+    setType(null);
+    setWeakOnly(false);
+  }
+
+  /** Show only swap candidates, weakest first (or stop). */
+  function toggleWeak(on: boolean) {
+    setWeakOnly(on);
+    if (on && (sort === "color" || sort === "name")) setSort("weakest");
+  }
 
   // Every card on the list right now (kept fresh by the refresh), so the swap
   // panel never offers one that's already on it — one of each card.
-  const onList = useMemo(() => new Set((list?.cards ?? []).map((c) => cardKey(c.name))), [list]);
+  const onList = useMemo(() => new Set(cards.map((c) => cardKey(c.name))), [cards]);
 
   const recent = useMemo(
     () =>
-      (list?.cards ?? [])
+      cards
         .filter((c) => c.foundAt)
         .sort((a, b) => (b.foundAt ?? "").localeCompare(a.foundAt ?? ""))
         .slice(0, RECENT_COUNT),
-    [list],
+    [cards],
   );
 
   const counts = useMemo(() => {
@@ -190,21 +269,16 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
     if (list) onProgress?.(counts.found, counts.total);
   }, [list, counts.found, counts.total, onProgress]);
 
-  const visible = useMemo(() => {
-    const q = normalizeName(search);
-    return cards.filter((c) => {
-      if (view === "remaining" && c.foundAt) return false;
-      if (view === "found" && !c.foundAt) return false;
-      if (view === "swapped" && !c.originalName) return false;
-      if (!q) return true;
-      return (
-        normalizeName(c.name).includes(q) ||
-        (c.typeLine != null && normalizeName(c.typeLine).includes(q)) ||
-        (c.originalName != null && normalizeName(c.originalName).includes(q)) ||
-        (c.foundBy != null && normalizeName(c.foundBy).includes(q))
-      );
-    });
-  }, [cards, search, view]);
+  const visible = useMemo(
+    () =>
+      sortCards(
+        cards.filter((c) => matchesFilters(c, filters, ranks)),
+        sort,
+        ranks,
+        byRecent,
+      ),
+    [cards, filters, ranks, sort, byRecent],
+  );
 
   /** First tap arms the box; a second tap on the same box within CONFIRM_MS does it. */
   function tapFound(card: ChecklistCard) {
@@ -267,9 +341,20 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
 
   /** Open the card's Swap panel (the list card is first in its Better options). */
   function compareUpgrade(u: UpgradeSuggestion) {
+    // Nothing may hide the card.
+    clearFilters();
     setView("all");
     setSearch(u.cut.name);
     setPanel({ cardId: u.cut.id, kind: "swap" });
+  }
+
+  /** Every swap candidate, weakest first, found or not. */
+  function showSwapCandidates() {
+    clearFilters();
+    setSearch("");
+    setView("all");
+    toggleWeak(true);
+    setSort("weakest");
   }
 
   function onSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -292,12 +377,15 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
 
   const pct = counts.total > 0 ? Math.round((counts.found / counts.total) * 100) : 0;
   const hasColorInfo = cards.some((c) => c.colorCategory);
+  const hasRatings = ranks.size > 0;
+  // Tab counts follow the color, type and search filters (the header stays the whole list).
   const tabs = [
-    { key: "remaining", label: "To find", count: counts.total - counts.found },
-    { key: "all", label: "All", count: counts.total },
-    { key: "found", label: "Found", count: counts.found },
-    { key: "swapped", label: "Swapped", count: counts.swapped },
+    { key: "remaining", label: "To find", count: facets.views.remaining },
+    { key: "all", label: "All", count: facets.views.all },
+    { key: "found", label: "Found", count: facets.views.found },
+    { key: "swapped", label: "Swapped", count: facets.views.swapped },
   ];
+  const hint = byRecent ? null : sortHint(sort, list?.pricesAsOf ?? null);
 
   return (
     <SectionCard
@@ -355,24 +443,39 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                 Lowest-rated cards on CubeCobra, each with a card from your list that fills the same role
               </span>
             </h3>
-            {upgrades.upgrades.length > UPGRADES_SHOWN && (
-              <button type="button" className="gg-cubecheck__link" onClick={() => setShowAllUpgrades((v) => !v)}>
-                {showAllUpgrades ? "Show fewer" : `Show all ${upgrades.upgrades.length}`}
-              </button>
-            )}
+            <span className="gg-cubecheck__upgradelinks">
+              {hasRatings && (
+                <button type="button" className="gg-cubecheck__link" onClick={showSwapCandidates}>
+                  All swap candidates
+                </button>
+              )}
+              {upgrades.upgrades.length > UPGRADES_SHOWN && (
+                <button type="button" className="gg-cubecheck__link" onClick={() => setShowAllUpgrades((v) => !v)}>
+                  {showAllUpgrades ? "Show fewer" : `Show all ${upgrades.upgrades.length}`}
+                </button>
+              )}
+            </span>
           </div>
           <ul className="gg-cubecheck__recentlist">
-            {(showAllUpgrades ? upgrades.upgrades : upgrades.upgrades.slice(0, UPGRADES_SHOWN)).map((u) => (
+            {(showAllUpgrades ? upgrades.upgrades : upgrades.upgrades.slice(0, UPGRADES_SHOWN)).map((u) => {
+              const cutRank = ranks.get(u.cut.id);
+              return (
               <li key={u.cut.id} className="gg-cubecheck__upgrade">
                 <span className="gg-cubecheck__upgradepair">
                   <span>
                     <span className="gg-cubecheck__upgradeout">{u.cut.name}</span>
-                    <span className="gg-cubecheck__hint"> rating {u.cut.elo}</span>
+                    <span className="gg-cubecheck__hint">
+                      {cutRank ? ` draft rank #${cutRank.rank} of ${cutRank.of}` : ` rating ${u.cut.elo}`}
+                      {u.cut.priceCents != null ? ` · ${formatCents(u.cut.priceCents)}` : ""}
+                    </span>
                   </span>
                   <Icon name="chevronRight" size={14} className="gg-cubecheck__upgradearrow" />
                   <span>
                     <span className="gg-cubecheck__recentname">{u.add.name}</span>
-                    {u.add.listRank != null && <span className="gg-cubecheck__hint"> #{u.add.listRank} on your list</span>}
+                    <span className="gg-cubecheck__hint">
+                      {u.add.listRank != null ? ` #${u.add.listRank} on your list` : ""}
+                      {u.add.priceCents != null ? ` · ${formatCents(u.add.priceCents)}` : ""}
+                    </span>
                   </span>
                 </span>
                 <span className="gg-cubecheck__upgradeactions">
@@ -391,7 +494,8 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                   </Button>
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </section>
       )}
@@ -407,33 +511,114 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
         />
         <div className="gg-cubecheck__controls">
           <Tabs items={tabs} active={view} onChange={(k) => setView(k as View)} ariaLabel="Filter cards" />
-          {hasColorInfo && !byRecent && (
+          {!byRecent && (
             <div className="gg-select-wrap">
               <select
                 className="gg-input gg-select gg-cubecheck__sort"
                 aria-label="Sort cards"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
+                value={!hasColorInfo && sort === "color" ? "name" : sort}
+                onChange={(e) => {
+                  if (isSortKey(e.target.value)) setSort(e.target.value);
+                }}
               >
-                <option value="color">Sort: Color</option>
-                <option value="name">Sort: Name</option>
+                {SORT_OPTIONS.filter((o) => hasColorInfo || o.key !== "color").map((o) => (
+                  <option key={o.key} value={o.key}>
+                    Sort: {o.label}
+                  </option>
+                ))}
               </select>
               <Icon name="chevronDown" size={16} className="gg-select-caret" />
             </div>
           )}
         </div>
+
+        {list && (colors.length > 1 || types.length > 1 || hasRatings) && (
+          <div className="gg-cubecheck__filters">
+            {hasColorInfo && colors.length > 1 && (
+              <div className="gg-cubecheck__chips" role="group" aria-label="Filter by color">
+                <button
+                  type="button"
+                  className={`gg-cubecheck__chip ${color == null ? "is-on" : ""}`}
+                  aria-pressed={color == null}
+                  onClick={() => setColor(null)}
+                >
+                  All colors
+                </button>
+                {colors.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`gg-cubecheck__chip ${color === c ? "is-on" : ""}`}
+                    aria-pressed={color === c}
+                    onClick={() => setColor(color === c ? null : c)}
+                  >
+                    <span className={`gg-cubecheck__pip gg-cubecheck__pip--${pipSlug(c)}`} aria-hidden="true" />
+                    {c}
+                    <span className="gg-cubecheck__chipcount">{facets.colors.get(c) ?? 0}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="gg-cubecheck__filterrow">
+              {types.length > 1 && (
+                <div className="gg-select-wrap">
+                  <select
+                    className="gg-input gg-select gg-cubecheck__type"
+                    aria-label="Filter by card type"
+                    value={type ?? ""}
+                    onChange={(e) => setType(e.target.value || null)}
+                  >
+                    <option value="">All types</option>
+                    {types.map((t) => (
+                      <option key={t} value={t}>
+                        {t} ({facets.types.get(t) ?? 0})
+                      </option>
+                    ))}
+                  </select>
+                  <Icon name="chevronDown" size={16} className="gg-select-caret" />
+                </div>
+              )}
+              {hasRatings && (
+                <button
+                  type="button"
+                  className={`gg-cubecheck__chip gg-cubecheck__chip--weak ${weakOnly ? "is-on" : ""}`}
+                  aria-pressed={weakOnly}
+                  title={`The lowest-rated ${WEAK_PERCENT}% of the cube on CubeCobra: the best cards to replace`}
+                  onClick={() => toggleWeak(!weakOnly)}
+                >
+                  <Icon name="swap" size={14} />
+                  Swap candidates
+                  <span className="gg-cubecheck__chipcount">{facets.weak}</span>
+                </button>
+              )}
+              {filtersOn && (
+                <button type="button" className="gg-cubecheck__link gg-cubecheck__clear" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {hint && <p className="gg-cubecheck__sorthint">{hint}</p>}
       </div>
 
       {!list ? (
         <TableSkeleton rows={10} cols={3} />
       ) : visible.length === 0 ? (
         <EmptyState
-          icon={view === "remaining" && !search ? "checkCircle" : "search"}
-          title={view === "remaining" && !search ? "All found!" : "No cards match"}
+          icon={view === "remaining" && !search && !filtersOn ? "checkCircle" : "search"}
+          title={view === "remaining" && !search && !filtersOn ? "All found!" : "No cards match"}
           message={
-            view === "remaining" && !search
+            view === "remaining" && !search && !filtersOn
               ? "Every card on the list has been found."
               : "Try a different search or filter."
+          }
+          action={
+            filtersOn ? (
+              <Button size="sm" variant="secondary" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -479,6 +664,7 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                         </span>
                       )}
                       {card.typeLine && <span className="gg-cubecheck__type">{card.typeLine}</span>}
+                      <CardStats card={card} rank={ranks.get(card.id)} />
                       {card.foundBy && (
                         <span className="gg-cubecheck__who">
                           Found by {card.foundBy}
@@ -519,6 +705,7 @@ export function CubeChecklistView({ call, identity, onProgress }: CubeChecklistV
                   <SwapPanel
                     call={call}
                     card={card}
+                    rank={ranks.get(card.id)}
                     onList={onList}
                     rarityLabel={list.rarityRule === "common" ? "commons" : "commons and uncommons"}
                     onSwapped={(saved) => {
@@ -562,28 +749,50 @@ function CompareTile({ option, label, current = false, action }: {
       {option.listRank != null && (
         <span className="gg-cubecheck__fromlist">From your list · #{option.listRank}</span>
       )}
-      <span className="gg-cubecheck__hint">
-        {option.edhrecRank != null ? `#${option.edhrecRank.toLocaleString()} most played` : "Not ranked"}
+      <span className="gg-cubecheck__tilestats">
+        <span className="gg-cubecheck__tileprice">{option.priceCents != null ? formatCents(option.priceCents) : "No price"}</span>
+        <span className="gg-cubecheck__hint">
+          {option.edhrecRank != null ? `#${option.edhrecRank.toLocaleString()} most played` : "Not ranked"}
+        </span>
       </span>
       {action}
     </li>
   );
 }
 
+type OptionOrder = "best" | "played" | "cheapest";
+
+const OPTION_ORDERS: { key: OptionOrder; label: string }[] = [
+  { key: "best", label: "Best match" },
+  { key: "played", label: "Most played" },
+  { key: "cheapest", label: "Cheapest" },
+];
+
+/** Options in the chosen order; "best" keeps the server's (your list first, then most played). */
+function orderOptions(options: SwapOption[], order: OptionOrder): SwapOption[] {
+  if (order === "best") return options;
+  const key = (o: SwapOption) => (order === "played" ? o.edhrecRank : o.priceCents) ?? Number.POSITIVE_INFINITY;
+  return [...options].sort((a, b) => key(a) - key(b) || a.name.localeCompare(b.name));
+}
+
 function SwapPanel({
   call,
   card,
+  rank,
   onList,
   rarityLabel,
   onSwapped,
 }: {
   call: CubeChecklistCaller;
   card: ChecklistCard;
+  /** Its draft rank in the cube, when it has a usable rating. */
+  rank: DraftRank | undefined;
   /** cardKeys of everything on the list now. */
   onList: Set<string>;
   rarityLabel: string;
   onSwapped: (card: ChecklistCard) => void;
 }) {
+  const [order, setOrder] = useState<OptionOrder>("best");
   const [suggestions, setSuggestions] = useState<SwapOption[] | null>(null);
   // The card on the list now, shown pinned beside the options to compare.
   const [current, setCurrent] = useState<SwapOption | null>(null);
@@ -651,13 +860,28 @@ function SwapPanel({
   // The server already leaves out cards on the list; this also drops any that
   // someone has swapped in since these options loaded.
   const loaded = showingSearch ? results : suggestions;
-  const options = useMemo(() => loaded?.filter((o) => !onList.has(cardKey(o.name))) ?? null, [loaded, onList]);
+  const options = useMemo(
+    () => (loaded ? orderOptions(loaded.filter((o) => !onList.has(cardKey(o.name))), order) : null),
+    [loaded, onList, order],
+  );
 
   return (
     <div className="gg-cubecheck__panel">
       <p className="gg-card-meta">
         Swap <strong>{card.name}</strong> for another card. Only {rarityLabel} that aren't already on the list.
       </p>
+      {rank && (
+        <p className={`gg-cubecheck__role ${rank.weak ? "is-weak" : ""}`}>
+          Draft rank #{rank.rank} of {rank.of}
+          {" · "}
+          {rank.roleWeakest === 1 && rank.roleOf > 1
+            ? `the lowest-rated of ${rank.roleOf} ${roleLabel(rank.role)}`
+            : rank.roleOf > 1
+              ? `${ordinal(rank.roleWeakest)} lowest-rated of ${rank.roleOf} ${roleLabel(rank.role)}`
+              : `the only rated card among ${roleLabel(rank.role)}`}
+          {rank.weak ? ` · a swap candidate (lowest ${WEAK_PERCENT}%)` : ""}
+        </p>
+      )}
       <SearchInput
         label="Search for a card to swap in"
         placeholder="Search any card by name…"
@@ -669,15 +893,30 @@ function SwapPanel({
         }}
         autoComplete="off"
       />
-      <h3 className="gg-cubecheck__panelhead">
-        {showingSearch ? "Search results" : "Better options"}
-        {!showingSearch && (
-          <span className="gg-cubecheck__hint">
-            Cards from your list first, then similar cards (same colors, type and about the same cost), most played
-            first
-          </span>
-        )}
-      </h3>
+      <div className="gg-cubecheck__optionshead">
+        <h3 className="gg-cubecheck__panelhead">
+          {showingSearch ? "Search results" : "Better options"}
+          {!showingSearch && order === "best" && (
+            <span className="gg-cubecheck__hint">
+              Cards from your list first, then similar cards (same colors, type and about the same cost), most played
+              first
+            </span>
+          )}
+        </h3>
+        <div className="gg-cubecheck__seg" role="group" aria-label="Order the options">
+          {OPTION_ORDERS.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={order === o.key ? "is-on" : ""}
+              aria-pressed={order === o.key}
+              onClick={() => setOrder(o.key)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
       {error && (
         <p className="gg-field__error" role="alert">
           {error}
@@ -693,7 +932,8 @@ function SwapPanel({
               manaCost: null,
               imageSmall: null,
               imageNormal: null,
-              edhrecRank: null,
+              edhrecRank: card.edhrecRank,
+              priceCents: card.priceCents,
             }
           }
           label="On the list now"

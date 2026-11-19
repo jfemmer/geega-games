@@ -33,6 +33,8 @@ function c(id: string, position: number, name: string, extra: Partial<ChecklistC
     foundAt: null,
     elo: null,
     pickCount: null,
+    priceCents: null,
+    edhrecRank: null,
     updatedAt: T0,
     ...extra,
   };
@@ -43,6 +45,7 @@ const VIEW: ChecklistView = {
   cubeId: "thepaupercube",
   rarityRule: "common",
   syncedAt: T0,
+  pricesAsOf: "2026-09-16T03:22:29.000Z",
   cards: [
     c("a", 0, "Kor Skyfisher", { colorCategory: "White", typeLine: "Creature — Kor Soldier" }),
     c("b", 1, "Counterspell", { typeLine: "Instant" }),
@@ -343,6 +346,178 @@ describe("shared checklist view", () => {
     await user.click(within(row).getByRole("button", { name: /Load more printings/ }));
     expect(await within(row).findByText("Alpha")).toBeTruthy();
     expect(call).toHaveBeenCalledWith({ action: "printings", name: "Counterspell", page: 2 });
+  });
+});
+
+describe("choosing swaps: sort, filters and stats", () => {
+  // Four rated cube cards (the weakest quarter is Ponder), a swapped-in card
+  // whose slot still holds the old card's rating, and a red card with no price.
+  const RATED: ChecklistView = {
+    ...VIEW,
+    cards: [
+      c("a", 0, "Kor Skyfisher", { colorCategory: "White", typeLine: "Creature — Kor Soldier", elo: 1500, pickCount: 900, priceCents: 25, edhrecRank: 3000 }),
+      c("b", 1, "Counterspell", { typeLine: "Instant", elo: 1400, pickCount: 900, priceCents: 150, edhrecRank: 120 }),
+      c("d", 2, "Ponder", { typeLine: "Sorcery", elo: 1100, pickCount: 900, priceCents: 10, edhrecRank: 50 }),
+      c("e", 3, "Lightning Bolt", { colorCategory: "Red", typeLine: "Instant", elo: 1600, pickCount: 900, edhrecRank: 5 }),
+      c("f", 4, "Mana Leak", { typeLine: "Instant", originalName: "Exclude", swappedAt: T0, elo: 1700, pickCount: 900, priceCents: 40 }),
+    ],
+  };
+
+  function setup(handlers: Record<string, (body: Record<string, unknown>) => unknown> = {}) {
+    const call = vi.fn(async (body: Record<string, unknown>) => {
+      const h = handlers[String(body.action)];
+      if (h) return h(body);
+      if (body.action === "get") return { view: body.since ? { ...RATED, cards: [] } : RATED };
+      throw new Error(`unexpected ${String(body.action)}`);
+    });
+    render(
+      <ToastProvider>
+        <CubeChecklistView call={call as never} />
+      </ToastProvider>,
+    );
+    return call;
+  }
+  const listed = () =>
+    Array.from(document.querySelectorAll(".gg-cubecheck__list .gg-cubecheck__name")).map((n) => n.textContent);
+  const sortBy = (user: ReturnType<typeof userEvent.setup>, label: string) =>
+    user.selectOptions(screen.getByLabelText("Sort cards"), screen.getByRole("option", { name: `Sort: ${label}` }));
+
+  it("shows each card's draft rank, price and popularity, and marks swap candidates", async () => {
+    setup();
+    const ponder = (await screen.findByText("Ponder", { selector: ".gg-cubecheck__name" })).closest("li")!;
+    expect(within(ponder).getByText("Swap candidate")).toBeTruthy();
+    expect(within(ponder).getByText("Draft rank #4 of 4")).toBeTruthy();
+    expect(within(ponder).getByText("$0.10")).toBeTruthy();
+    expect(within(ponder).getByText("#50 most played")).toBeTruthy();
+    // A swapped-in card has no rating of its own.
+    const leak = screen.getByText("Mana Leak", { selector: ".gg-cubecheck__name" }).closest("li")!;
+    expect(within(leak).queryByText(/Draft rank/)).toBeNull();
+    expect(within(leak).getByText("$0.40")).toBeTruthy();
+  });
+
+  it("sorts by price, draft rating and most played", async () => {
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText("Ponder", { selector: ".gg-cubecheck__name" });
+
+    await sortBy(user, "Price, high to low");
+    expect(listed()).toEqual(["Counterspell", "Mana Leak", "Kor Skyfisher", "Ponder", "Lightning Bolt"]);
+    // (The day is in the viewer's time zone.)
+    expect(screen.getByText(/cheapest paper printing on Scryfall, as of Sep 1[56], 2026/)).toBeTruthy();
+    await sortBy(user, "Price, low to high");
+    expect(listed()).toEqual(["Ponder", "Kor Skyfisher", "Mana Leak", "Counterspell", "Lightning Bolt"]);
+
+    await sortBy(user, "Lowest rated first");
+    expect(listed()).toEqual(["Ponder", "Counterspell", "Kor Skyfisher", "Lightning Bolt", "Mana Leak"]);
+    await sortBy(user, "Highest rated first");
+    expect(listed()).toEqual(["Lightning Bolt", "Kor Skyfisher", "Counterspell", "Ponder", "Mana Leak"]);
+
+    await sortBy(user, "Most played");
+    expect(listed()).toEqual(["Lightning Bolt", "Ponder", "Counterspell", "Kor Skyfisher", "Mana Leak"]);
+  });
+
+  it("filters by color and type, with counts that follow the other filters", async () => {
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText("Ponder", { selector: ".gg-cubecheck__name" });
+    const colors = within(screen.getByRole("group", { name: "Filter by color" }));
+    expect(colors.getByRole("button", { name: /Blue/ }).textContent).toBe("Blue3");
+
+    await user.click(colors.getByRole("button", { name: /Blue/ }));
+    expect(listed()).toEqual(["Counterspell", "Mana Leak", "Ponder"]);
+    expect(screen.getByRole("tab", { name: /^To find/ }).textContent).toBe("To find3");
+
+    const types = screen.getByLabelText("Filter by card type") as HTMLSelectElement;
+    expect(within(types).getByRole("option", { name: "Instant (2)" })).toBeTruthy();
+    await user.selectOptions(types, "Instant");
+    expect(listed()).toEqual(["Counterspell", "Mana Leak"]);
+
+    // The header still counts the whole list.
+    expect(screen.getByText("0 of 5 found (0%)")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(listed()).toHaveLength(5);
+  });
+
+  it("Swap candidates shows the lowest-rated cards, weakest first", async () => {
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText("Ponder", { selector: ".gg-cubecheck__name" });
+    const chip = screen.getByRole("button", { name: /Swap candidates/ });
+    expect(chip.textContent).toContain("1");
+    await user.click(chip);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(listed()).toEqual(["Ponder"]);
+    expect((screen.getByLabelText("Sort cards") as HTMLSelectElement).value).toBe("weakest");
+
+    // Nothing left with the red filter: a way out.
+    await user.click(within(screen.getByRole("group", { name: "Filter by color" })).getByRole("button", { name: /Red/ }));
+    expect(screen.getByText("No cards match")).toBeTruthy();
+    await user.click(within(document.querySelector(".gg-empty") as HTMLElement).getByRole("button", { name: "Clear filters" }));
+    expect(listed()).toHaveLength(5);
+  });
+
+  it("the Swap panel says where the card stands in its role, and orders options by price or popularity", async () => {
+    const user = userEvent.setup();
+    setup({
+      suggest: () => ({
+        current: null,
+        options: [
+          { name: "Preordain", typeLine: "Sorcery", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 30, priceCents: 300, listRank: 2 },
+          { name: "Brainstorm", typeLine: "Instant", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 2, priceCents: null },
+          { name: "Opt", typeLine: "Instant", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 400, priceCents: 15 },
+        ],
+      }),
+    });
+    const row = (await screen.findByText("Ponder", { selector: ".gg-cubecheck__name" })).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "Swap" }));
+    expect(
+      within(row).getByText(
+        "Draft rank #4 of 4 · the lowest-rated of 2 Blue instants and sorceries · a swap candidate (lowest 25%)",
+      ),
+    ).toBeTruthy();
+    const strip = await within(row).findByRole("list", { name: /compared with/ });
+    const tiles = () => Array.from(strip.querySelectorAll(".gg-cubecheck__tile:not(.gg-cubecheck__tile--current) .gg-cubecheck__tilename")).map((n) => n.textContent);
+    expect(tiles()).toEqual(["Preordain", "Brainstorm", "Opt"]);
+    // The card on the list shows its own price to compare against.
+    expect(within(within(strip).getByText("On the list now").closest("li")!).getByText("$0.10")).toBeTruthy();
+    expect(within(strip).getByText("$3.00")).toBeTruthy();
+
+    await user.click(within(row).getByRole("button", { name: "Cheapest" }));
+    expect(tiles()).toEqual(["Opt", "Preordain", "Brainstorm"]);
+    await user.click(within(row).getByRole("button", { name: "Most played" }));
+    expect(tiles()).toEqual(["Brainstorm", "Preordain", "Opt"]);
+  });
+
+  it("Compare and All swap candidates clear filters that would hide the card", async () => {
+    const user = userEvent.setup();
+    setup({
+      upgrades: () => ({
+        upgradesView: {
+          ratedCount: 4,
+          poolSize: 1,
+          ratingsUpdatedAt: T0,
+          upgrades: [
+            {
+              cut: RATED.cards[2],
+              add: { name: "Preordain", typeLine: "Sorcery", manaCost: "{U}", imageSmall: null, imageNormal: null, edhrecRank: 30, listRank: 12, priceCents: 300 },
+            },
+          ],
+        },
+      }),
+      suggest: () => ({ current: null, options: [] }),
+    });
+    const section = within((await screen.findByText("Suggested upgrades")).closest("section")!);
+    expect(section.getByText(/draft rank #4 of 4 · \$0\.10/)).toBeTruthy();
+    expect(section.getByText(/#12 on your list · \$3\.00/)).toBeTruthy();
+
+    await user.click(within(screen.getByRole("group", { name: "Filter by color" })).getByRole("button", { name: /Red/ }));
+    await user.click(section.getByRole("button", { name: "Compare" }));
+    expect(await screen.findByRole("list", { name: /Ponder compared with/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+
+    await user.click(section.getByRole("button", { name: "All swap candidates" }));
+    expect(listed()).toEqual(["Ponder"]);
+    expect(screen.getByRole("tab", { name: /^All/ }).getAttribute("aria-selected")).toBe("true");
   });
 });
 
