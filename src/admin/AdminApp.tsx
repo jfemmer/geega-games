@@ -26,6 +26,7 @@ import { TrendsPage } from "./pages/TrendsPage";
 import { MarketInsightsPage } from "./pages/MarketInsightsPage";
 import { StorewideSalePage } from "./pages/StorewideSalePage";
 import { VacationModePage } from "./pages/VacationModePage";
+import { CheckoutSettingsPage } from "./pages/CheckoutSettingsPage";
 import { YardSaleModePage } from "./pages/YardSaleModePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { CubeChecklistPage } from "./pages/CubeChecklistPage";
@@ -135,6 +136,8 @@ function AdminDashboard() {
         return <YardSaleModePage onNavigate={navigate} />;
       case "vacation":
         return <VacationModePage />;
+      case "checkout-settings":
+        return <CheckoutSettingsPage />;
       case "audit-log":
         return <AuditLogPage />;
       case "cube-checklist":

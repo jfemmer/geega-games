@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { supabase } from "../../supabase";
 
-// Vacation mode, as seen by the storefront. One shared snapshot for every
+// Vacation mode and the order-size limit, as seen by the storefront. One shared snapshot for every
 // component (banner, cart drawer, checkout), refreshed every minute and when
 // the tab regains focus, so turning vacation mode on or off in the admin
 // reaches open tabs without a reload.
@@ -14,16 +14,32 @@ export type StoreStatus = {
   message: string;
   /** When ordering reopens by itself, if a date was set. */
   pausedUntil: string | null;
+  /**
+   * The most different cards one order may have (admin Checkout Settings),
+   * or null until it's known. Also only drives the UI: checkout enforces it.
+   */
+  maxOrderLines: number | null;
 };
 
-const OPEN: StoreStatus = { ordersPaused: false, message: "", pausedUntil: null };
+const OPEN: StoreStatus = { ordersPaused: false, message: "", pausedUntil: null, maxOrderLines: null };
 const REFRESH_MS = 60_000;
 
 let snapshot: StoreStatus = OPEN;
 let reopenTimer: number | undefined;
 const listeners = new Set<() => void>();
 
+function sameStatus(a: StoreStatus, b: StoreStatus): boolean {
+  return (
+    a.ordersPaused === b.ordersPaused &&
+    a.message === b.message &&
+    a.pausedUntil === b.pausedUntil &&
+    a.maxOrderLines === b.maxOrderLines
+  );
+}
+
 function publish(next: StoreStatus) {
+  // Nothing changed: keep the same snapshot so nothing re-renders.
+  if (sameStatus(next, snapshot)) return;
   snapshot = next;
   listeners.forEach((l) => l());
   // Reopen on time in open tabs instead of waiting for the next refresh.
@@ -40,10 +56,11 @@ export async function refreshStoreStatus(): Promise<StoreStatus> {
   // by the server either way.
   if (error) return snapshot;
   const row = Array.isArray(data) ? data[0] : null;
+  const maxOrderLines = typeof row?.max_order_lines === "number" ? row.max_order_lines : snapshot.maxOrderLines;
   publish(
     row?.paused
-      ? { ordersPaused: true, message: row.message, pausedUntil: row.paused_until ?? null }
-      : OPEN,
+      ? { ordersPaused: true, message: row.message, pausedUntil: row.paused_until ?? null, maxOrderLines }
+      : { ...OPEN, maxOrderLines },
   );
   return snapshot;
 }

@@ -4,6 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import { Link, useRouter } from "../lib/router";
 import { MEMBER_DISCOUNT_PERCENT, formatCents, memberDiscountCents, qualifiesForFreeShipping } from "../lib/money";
 import { formatReopenDate, useStoreStatus } from "../lib/storeStatus";
+import { tooManyCardsMessage } from "../lib/orderLimits";
 import { FreeShippingNote } from "./FreeShippingNote";
 
 // Accessible slide-over cart. Focus is trapped while open; Escape closes;
@@ -20,7 +21,9 @@ export default function CartDrawer({
     useCart();
   const memberSavingsCents = memberDiscountCents(discountableSubtotalCents);
   const { user } = useAuth();
-  const { ordersPaused, message: pausedMessage, pausedUntil } = useStoreStatus();
+  const { ordersPaused, message: pausedMessage, pausedUntil, maxOrderLines } = useStoreStatus();
+  // More different cards than one order may have (admin Checkout Settings).
+  const overLineLimit = maxOrderLines != null && lines.length > maxOrderLines;
   const { navigate } = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -218,10 +221,15 @@ export default function CartDrawer({
                 {pausedUntil && <> Checkout reopens {formatReopenDate(pausedUntil)}.</>}
               </p>
             )}
+            {!ordersPaused && overLineLimit && maxOrderLines != null && (
+              <p className="gg-paused-note" role="status">
+                {tooManyCardsMessage(lines.length, maxOrderLines)}
+              </p>
+            )}
             <button
               className="gg-btn"
               style={{ width: "100%", marginBottom: "0.5rem" }}
-              disabled={ordersPaused}
+              disabled={ordersPaused || overLineLimit}
               onClick={() => {
                 onClose();
                 navigate("/checkout");

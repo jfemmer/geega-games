@@ -11,6 +11,12 @@ import { normalizeEmail } from "../_lib/tokens.js";
 import { guestTokensAvailable, signGuestToken, verifyGuestToken } from "../_lib/guestAccess.js";
 import { checkRateLimit, getClientIp } from "../_lib/rateLimit.js";
 import { checkUsAddress, US_ONLY_MESSAGE } from "../../src/store/lib/usAddress.js";
+import {
+  DEFAULT_MAX_ORDER_LINES,
+  MAX_ORDER_LINES_CEILING,
+  parseTooManyItems,
+  tooManyCardsMessage,
+} from "../../src/store/lib/orderLimits.js";
 
 // POST /api/checkout/create-payment-intent
 //
@@ -92,6 +98,8 @@ type ShipTo = {
 type ShipToResult = { ok: true; address: ShipTo } | { ok: false; message: string };
 
 const trimmed = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+/** The longest any one part of a shipping address may be. */
+const MAX_ADDRESS_FIELD = 200;
 
 /**
  * The address the browser sent, checked: it must be complete and in the
@@ -110,6 +118,12 @@ function shipToFrom(ship: ShipBody | undefined, opts: { recipientRequired: boole
         ? "Please provide your name and a complete shipping address."
         : "Please provide a complete shipping address.",
     };
+  }
+  // The request may be big (a guest's cart rides in it), but no one part of
+  // an address needs to be.
+  const fields = [recipient, line1, trimmed(ship?.line2), city, postalCode, trimmed(ship?.state), trimmed(ship?.country)];
+  if (fields.some((f) => f.length > MAX_ADDRESS_FIELD)) {
+    return { ok: false, message: `Please shorten your address: each line can be up to ${MAX_ADDRESS_FIELD} characters.` };
   }
   const check = checkUsAddress({ state: ship?.state, postalCode, country: ship?.country });
   if (!check.ok) return { ok: false, message: check.message };
@@ -133,18 +147,46 @@ function addressRefused(res: VercelResponse, message: string) {
 }
 
 const ID_RE = /^[0-9a-f-]{36}$/i;
-const MAX_GUEST_LINES = 100;
-// A guest's cart arrives in the request itself: up to MAX_GUEST_LINES lines
-// of about 72 bytes each, plus the address. (readJsonBody's default cap is
-// sized for an email form, and cut guests off at about 50 different cards.)
-const MAX_BODY_BYTES = 16 * 1024;
+// A guest's cart arrives in the request itself: up to MAX_ORDER_LINES_CEILING
+// lines (the highest the store's limit can be set) of about 72 bytes each,
+// plus the address. (readJsonBody's default cap is sized for an email form.)
+const MAX_BODY_BYTES = 96 * 1024;
 // Guest checkout creates a stock hold without an account, so cap how fast one
 // visitor can do it (each hold still expires on its own after 30 minutes).
 const GUEST_CHECKOUTS_PER_WINDOW = 8;
 const GUEST_WINDOW_MS = 10 * 60_000;
 
+/**
+ * More different cards than one order may have (the admin's Checkout Settings
+ * limit). The page shows `message` as it is: both numbers and what to do.
+ */
+function tooManyItems(res: VercelResponse, lines: number, limit: number) {
+  return sendJson(res, 400, {
+    ok: false,
+    code: "too_many_items",
+    lines,
+    limit,
+    message: tooManyCardsMessage(lines, limit),
+  });
+}
+
 function checkoutErrorResponse(res: VercelResponse, rawMessage: string) {
   const msg = rawMessage.toLowerCase();
+  if (msg.includes("too many items")) {
+    const counts = parseTooManyItems(rawMessage);
+    if (counts) return tooManyItems(res, counts.lines, counts.limit);
+    return sendJson(res, 400, {
+      ok: false,
+      code: "too_many_items",
+      message: "Your cart has more different cards than one order can hold. Please check out in two orders.",
+    });
+  }
+  if (msg.includes("invalid quantity")) {
+    return sendJson(res, 400, {
+      ok: false,
+      message: "Each card can be ordered 1 to 99 at a time. Please adjust the quantities in your cart.",
+    });
+  }
   if (msg.includes("orders paused")) {
     return sendJson(res, 503, {
       ok: false,
@@ -178,9 +220,9 @@ function checkoutErrorResponse(res: VercelResponse, rawMessage: string) {
   return sendJson(res, 400, { ok: false, message: "Could not create order." });
 }
 
-/** Cart lines from the browser: inventory ids + quantities only. */
+/** Cart lines from the browser: inventory ids + quantities only (at most MAX_ORDER_LINES_CEILING). */
 function parseGuestItems(raw: unknown): { inventory_item_id: string; quantity: number }[] | null {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_GUEST_LINES) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_ORDER_LINES_CEILING) return null;
   const items: { inventory_item_id: string; quantity: number }[] = [];
   for (const line of raw) {
     const id = (line as { inventoryItemId?: unknown })?.inventoryItemId;
@@ -315,7 +357,10 @@ async function guestCheckout(req: VercelRequest, res: VercelResponse, body: Crea
   if (!email) {
     return sendJson(res, 400, { ok: false, message: "Please enter a valid email address." });
   }
-  const items = parseGuestItems(guest.items);
+  // More lines than the limit can ever be set to: certainly too many, so it's
+  // answered below with the store's limit rather than "couldn't be read".
+  const overCeiling = Array.isArray(guest.items) && guest.items.length > MAX_ORDER_LINES_CEILING;
+  const items = overCeiling ? [] : parseGuestItems(guest.items);
   if (!items) {
     return sendJson(res, 400, { ok: false, message: "Your cart is empty or couldn’t be read. Please refresh and try again." });
   }
@@ -331,6 +376,15 @@ async function guestCheckout(req: VercelRequest, res: VercelResponse, body: Crea
   if (storeRow?.paused) {
     return sendJson(res, 503, { ok: false, code: "orders_paused", message: storeRow.message });
   }
+
+  // The store's limit on different cards per order, also before touching the
+  // earlier hold. (checkout_place_order_core enforces it either way.)
+  const maxLines: number =
+    typeof storeRow?.max_order_lines === "number" ? storeRow.max_order_lines : DEFAULT_MAX_ORDER_LINES;
+  const lines = overCeiling
+    ? (guest.items as unknown[]).length
+    : new Set(items.map((i) => i.inventory_item_id)).size;
+  if (lines > maxLines) return tooManyItems(res, lines, maxLines);
 
   // "Back to checkout" then "Continue to payment" again: release this
   // browser's previous guest hold so its cards aren't blocked by itself.

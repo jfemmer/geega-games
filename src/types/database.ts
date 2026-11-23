@@ -2525,6 +2525,7 @@ export type Database = {
       store_settings: {
         Row: {
           id: boolean
+          max_order_lines: number
           orders_paused: boolean
           orders_paused_message: string
           orders_paused_until: string | null
@@ -2533,6 +2534,7 @@ export type Database = {
         }
         Insert: {
           id?: boolean
+          max_order_lines?: number
           orders_paused?: boolean
           orders_paused_message?: string
           orders_paused_until?: string | null
@@ -2541,6 +2543,7 @@ export type Database = {
         }
         Update: {
           id?: boolean
+          max_order_lines?: number
           orders_paused?: boolean
           orders_paused_message?: string
           orders_paused_until?: string | null
@@ -6541,9 +6544,17 @@ export type Database = {
       store_ordering_status: {
         Args: never
         Returns: {
+          max_order_lines: number
           message: string
           paused: boolean
           paused_until: string | null
+        }[]
+      }
+      admin_cart_size_summary: {
+        Args: { p_limit: number }
+        Returns: {
+          carts_over_limit: number
+          largest_lines: number
         }[]
       }
       cart_item_availability: {

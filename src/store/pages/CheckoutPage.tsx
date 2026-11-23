@@ -20,6 +20,7 @@ import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
 import { formatReopenDate, refreshStoreStatus, useStoreStatus } from "../lib/storeStatus";
+import { parseTooManyItems, tooManyCardsMessage } from "../lib/orderLimits";
 import { ShippingMethodPicker } from "../components/ShippingMethodPicker";
 import { UsStateSelect } from "../components/UsStateSelect";
 import { useReveal } from "../lib/useReveal";
@@ -183,6 +184,9 @@ export default function CheckoutPage() {
   const { lines, subtotalCents, discountableSubtotalCents, hasSaleOnly, loading: cartLoading, refresh, clear } = useCart();
   useRouter();
   const storeStatus = useStoreStatus();
+  // More different cards than one order may have (admin Checkout Settings).
+  // The server refuses it too; this says so before the customer fills in payment.
+  const overLineLimit = storeStatus.maxOrderLines != null && lines.length > storeStatus.maxOrderLines;
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddr, setSelectedAddr] = useState<string | "new">("new");
@@ -432,9 +436,12 @@ export default function CheckoutPage() {
     }
     setPlacing(true);
     try {
-      // Re-check vacation mode right before ordering (the page may have been
-      // open since before it was switched on). The server enforces it too.
-      if ((await refreshStoreStatus()).ordersPaused) return;
+      // Re-check vacation mode and the order-size limit right before ordering
+      // (the page may have been open since either changed). The server
+      // enforces both too; the page shows why it stopped.
+      const latest = await refreshStoreStatus();
+      if (latest.ordersPaused) return;
+      if (latest.maxOrderLines != null && lines.length > latest.maxOrderLines) return;
 
       // Persist a new address if entered inline (so it's saved for reuse).
       if (selectedAddr === "new" && user) {
@@ -540,6 +547,11 @@ export default function CheckoutPage() {
       }
       if (body?.code === "shipping_address" && typeof body.message === "string") {
         // The server's own words: which part of the address it can't ship to.
+        throw new Error(body.message);
+      }
+      if (body?.code === "too_many_items" && typeof body.message === "string") {
+        // How many different cards one order may have, and how many to remove.
+        await refreshStoreStatus();
         throw new Error(body.message);
       }
       throw new Error(friendlyCheckoutError(body?.message || ""));
@@ -1025,6 +1037,12 @@ export default function CheckoutPage() {
             </p>
           )}
 
+          {!storeStatus.ordersPaused && overLineLimit && storeStatus.maxOrderLines != null && (
+            <p className="gg-paused-note" role="status" style={{ marginTop: "0.75rem" }}>
+              {tooManyCardsMessage(lines.length, storeStatus.maxOrderLines)}
+            </p>
+          )}
+
           <button
             className="gg-btn"
             style={{ width: "100%", marginTop: "0.5rem" }}
@@ -1032,7 +1050,8 @@ export default function CheckoutPage() {
               placing ||
               !addressValid ||
               (isGuest && (!guestEmailValid || !canPayOnline)) ||
-              storeStatus.ordersPaused
+              storeStatus.ordersPaused ||
+              overLineLimit
             }
             onClick={placeOrder}
           >
@@ -1440,6 +1459,12 @@ function SummaryRow({
 
 function friendlyCheckoutError(msg: string): string {
   const m = msg.toLowerCase();
+  if (m.includes("too many items")) {
+    const counts = parseTooManyItems(msg);
+    return counts
+      ? tooManyCardsMessage(counts.lines, counts.limit)
+      : "Your cart has more different cards than one order can hold. Please check out in two orders.";
+  }
   if (m.includes("orders paused"))
     return "We’re not taking orders right now. Your cart is saved — please check back soon.";
   if (m.includes("insufficient stock") || m.includes("stock_conflict"))

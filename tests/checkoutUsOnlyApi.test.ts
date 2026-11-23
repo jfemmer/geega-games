@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { US_ONLY_MESSAGE, US_STATE_MESSAGE, US_ZIP_MESSAGE } from "../src/store/lib/usAddress";
+import { MAX_ORDER_LINES_CEILING, tooManyCardsMessage } from "../src/store/lib/orderLimits";
 
 // POST /api/checkout/create-payment-intent only starts an order that ships
 // within the United States. The real handler runs here against mocked
@@ -9,7 +10,8 @@ import { US_ONLY_MESSAGE, US_STATE_MESSAGE, US_ZIP_MESSAGE } from "../src/store/
 // an address it accepts reaches the database tidied.
 // (The database refuses a foreign address on its own as well:
 // supabase/migrations/20261005150000_us_shipping_only.sql.)
-// Also here, since it is the same endpoint: how big a guest's cart may be.
+// Also here, since it is the same endpoint: how many different cards one
+// order may have.
 
 const calls = vi.hoisted(() => ({
   adminRpc: vi.fn(),
@@ -258,25 +260,89 @@ describe("guest checkout", () => {
   });
 });
 
-describe("a guest's cart size", () => {
-  // A guest's cart travels in the request. The endpoint allows 100 different
-  // cards, so the request must be allowed to be big enough to hold them: it
-  // used to be cut off at about 50, and those guests could not check out.
-  it("can hold 100 different cards", async () => {
+describe("how many different cards one order may have", () => {
+  // The limit is the store's setting (admin Checkout Settings), read through
+  // store_ordering_status(). A guest's cart travels in the request, so the
+  // request must be allowed to be big enough to hold the most it can be set to.
+  const limitIs = (max: number | undefined) =>
+    calls.adminRpc.mockImplementation(async (fn: string) =>
+      fn === "store_ordering_status"
+        ? { data: [{ paused: false, message: "", max_order_lines: max }], error: null }
+        : { data: [{ order_id: ORDER_ID, amount_due_cents: 1550 }], error: null },
+    );
+
+  it("lets a guest order as many as the store allows, up to the most it can be set to", async () => {
+    limitIs(MAX_ORDER_LINES_CEILING);
     const res = await guestOrder(
       { ...US_ADDRESS, recipient: "Jordan Alexander Vega-Martinez", line1: "12345 North Example Boulevard", line2: "Apartment 1234", postalCode: "63011-1234" },
-      100,
+      MAX_ORDER_LINES_CEILING,
     );
 
     expect(res.statusCode).toBe(200);
     const sent = orderArgs(calls.adminRpc, "checkout_create_guest_order")?.p_items as unknown[];
-    expect(sent).toHaveLength(100);
+    expect(sent).toHaveLength(MAX_ORDER_LINES_CEILING);
   });
 
-  it("still stops at 100", async () => {
-    const res = await guestOrder(US_ADDRESS, 101);
+  it("tells a guest over the limit how many to remove, without holding anything", async () => {
+    limitIs(100);
+    const res = await guestOrder(US_ADDRESS, 121);
     expect(res.statusCode).toBe(400);
-    expect(res.body.message).toMatch(/cart is empty or couldn.t be read/);
+    expect(res.body).toEqual({
+      ok: false,
+      code: "too_many_items",
+      lines: 121,
+      limit: 100,
+      message: tooManyCardsMessage(121, 100),
+    });
+    expect(res.body.message).toBe(
+      "Orders can have up to 100 different cards, and your cart has 121. Remove 21 of them, or check out in two orders.",
+    );
+    expect(orderArgs(calls.adminRpc, "checkout_create_guest_order")).toBeUndefined();
+    expect(calls.releaseHold).not.toHaveBeenCalled();
+  });
+
+  it("answers a cart bigger than any limit the same way, and assumes 500 if the setting can't be read", async () => {
+    const res = await guestOrder(US_ADDRESS, MAX_ORDER_LINES_CEILING + 1);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ code: "too_many_items", lines: MAX_ORDER_LINES_CEILING + 1, limit: 500 });
+    expect(orderArgs(calls.adminRpc, "checkout_create_guest_order")).toBeUndefined();
+  });
+
+  it("tells a signed-in customer the same, from the database's own check", async () => {
+    calls.userRpc.mockImplementation(async (fn: string) =>
+      fn === "store_ordering_status"
+        ? { data: [{ paused: false, message: "", max_order_lines: 100 }], error: null }
+        : { data: null, error: { message: "too many items: 121 different cards, limit 100" } },
+    );
+    const res = await memberOrder(US_ADDRESS);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      code: "too_many_items",
+      lines: 121,
+      limit: 100,
+      message: tooManyCardsMessage(121, 100),
+    });
+  });
+
+  it("explains a quantity the database won't take", async () => {
+    calls.userRpc.mockImplementation(async (fn: string) =>
+      fn === "store_ordering_status"
+        ? { data: [{ paused: false, message: "" }], error: null }
+        : { data: null, error: { message: "invalid quantity" } },
+    );
+    const res = await memberOrder(US_ADDRESS);
+    expect(res.body.message).toMatch(/1 to 99/);
+  });
+
+  it("refuses an address line no one needs, without touching the database", async () => {
+    const res = await guestOrder({ ...US_ADDRESS, line2: "x".repeat(20_000) });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      ok: false,
+      code: "shipping_address",
+      message: "Please shorten your address: each line can be up to 200 characters.",
+    });
     expect(calls.adminRpc).not.toHaveBeenCalled();
   });
 
@@ -284,7 +350,7 @@ describe("a guest's cart size", () => {
     const res = await post({
       shippingMethod: "tracked",
       guest: { email: "buyer@example.com", items: [{ inventoryItemId: ITEM_ID, quantity: 1 }] },
-      ship: { ...US_ADDRESS, line2: "x".repeat(20_000) },
+      ship: { ...US_ADDRESS, line2: "x".repeat(100_000) },
     });
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({ ok: false, message: "Bad request body." });
