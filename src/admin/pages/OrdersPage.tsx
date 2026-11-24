@@ -44,6 +44,25 @@ import {
   trackingStatusLabel,
   type PweLabelFormat,
 } from "../utils/shippingLabels";
+import {
+  ORDER_SORTS,
+  PULL_SORTS,
+  cardCount,
+  defaultOrderSort,
+  groupPullItems,
+  isOrderSort,
+  isPullSort,
+  loadHidePacked,
+  loadOrderSort,
+  loadPullSort,
+  saveHidePacked,
+  saveOrderSort,
+  savePullSort,
+  serverOrderFor,
+  sortOrders,
+  type OrderSort,
+  type PullSort,
+} from "../components/orders/orderSorts";
 import type { Order, OrderQuery, OrderStatus } from "../types";
 
 type TabKey =
@@ -76,6 +95,10 @@ export function OrdersPage({
   const currentAdmin = useCurrentAdmin();
   const [tab, setTab] = useState<TabKey>("needs_packing");
   const [search, setSearch] = useState("");
+  // Null until staff pick one: then each tab uses its own default (the queue
+  // oldest first, history newest first). A pick is remembered on this device.
+  const [sortChoice, setSortChoice] = useState<OrderSort | null>(() => loadOrderSort());
+  const sort = sortChoice ?? defaultOrderSort(tab);
   const [detail, setDetail] = useState<Order | null>(null);
   const [shipOpen, setShipOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
@@ -127,10 +150,10 @@ export function OrdersPage({
     () => ({
       status: TAB_TO_STATUS[tab],
       search: search.trim() || undefined,
-      sortBy: tab === "needs_packing" ? "waiting" : "created",
-      sortDir: "desc",
+      // Date and total sorts run on the server too, so the right 500 come back.
+      ...serverOrderFor(sort),
     }),
-    [tab, search],
+    [tab, search, sort],
   );
 
   const orders = useAsync(() => orderRepository.list(q), [q]);
@@ -175,7 +198,7 @@ export function OrdersPage({
     refreshCounts();
   }
 
-  const rows = orders.data ?? [];
+  const rows = useMemo(() => sortOrders(orders.data ?? [], sort), [orders.data, sort]);
 
   const columns: Column<Order>[] = [
     {
@@ -192,7 +215,14 @@ export function OrdersPage({
       key: "items",
       header: "Items",
       align: "right",
-      render: (o) => o.items.reduce((a, it) => a + it.quantity, 0),
+      render: (o) => cardCount(o),
+    },
+    {
+      key: "shipping",
+      header: "Ship",
+      secondary: true,
+      render: (o) =>
+        o.shippingMethod === "pwe" ? "Envelope" : o.shippingMethod === "tracked" ? "Tracked" : "—",
     },
     {
       key: "total",
@@ -249,12 +279,33 @@ export function OrdersPage({
             onChange={(k) => setTab(k as TabKey)}
             ariaLabel="Order status"
           />
-          <SearchInput
-            label="Search orders"
-            placeholder="Order # or customer…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="gg-orders-toolbar__right">
+            <SearchInput
+              label="Search orders"
+              placeholder="Order # or customer…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="gg-select-wrap">
+              <select
+                className="gg-input gg-select gg-orders-sort"
+                aria-label="Sort orders"
+                value={sort}
+                onChange={(e) => {
+                  if (!isOrderSort(e.target.value)) return;
+                  setSortChoice(e.target.value);
+                  saveOrderSort(e.target.value);
+                }}
+              >
+                {ORDER_SORTS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    Sort: {o.label}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevronDown" size={16} className="gg-select-caret" />
+            </div>
+          </div>
         </div>
 
         {orders.loading ? (
@@ -375,10 +426,17 @@ function OrderDetail({
   const currentAdmin = useCurrentAdmin();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  // How the cards are listed for pulling, and whether packed ones drop out of
+  // the way; both remembered on this device.
+  const [pullSort, setPullSort] = useState<PullSort>(() => loadPullSort());
+  const [hidePacked, setHidePacked] = useState<boolean>(() => loadHidePacked());
 
   useEffect(() => {
     setNote(order?.internalNotes ?? "");
   }, [order]);
+
+  const items = order?.items;
+  const groups = useMemo(() => groupPullItems(items ?? [], pullSort), [items, pullSort]);
 
   if (!order) return null;
 
@@ -396,6 +454,11 @@ function OrderDetail({
   const canPrintEnvelope =
     isPwe && addressOk && ["packing", "ready_to_ship", "shipped", "delivered"].includes(order.status);
   const canPrintPostage = !isPwe && Boolean(order.labelUrl);
+  // Packed cards only hide while packing (before that nothing is packed).
+  const hiding = hidePacked && order.status === "packing";
+  const shownGroups = hiding
+    ? groups.map((g) => ({ ...g, items: g.items.filter((it) => !it.packed) })).filter((g) => g.items.length > 0)
+    : groups;
   const trackingLine =
     !isPwe && (order.status === "shipped" || order.status === "delivered")
       ? trackingStatusLabel(order.trackingStatus)
@@ -525,56 +588,110 @@ function OrderDetail({
                 />
               </div>
             </div>
-            <ul className="gg-packlist">
-              {order.items.map((it) => (
-                <li
-                  key={it.id}
-                  className={`gg-packitem ${it.packed ? "gg-packitem--done" : ""}`}
-                >
-                  <label className="gg-packitem__check">
+            {order.items.length > 1 && (
+              <div className="gg-packcontrols">
+                <div className="gg-select-wrap">
+                  <select
+                    className="gg-input gg-select gg-packcontrols__sort"
+                    aria-label="Sort cards"
+                    value={pullSort}
+                    onChange={(e) => {
+                      if (!isPullSort(e.target.value)) return;
+                      setPullSort(e.target.value);
+                      savePullSort(e.target.value);
+                    }}
+                  >
+                    {PULL_SORTS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        Sort: {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Icon name="chevronDown" size={16} className="gg-select-caret" />
+                </div>
+                {order.status === "packing" && (
+                  <label className="gg-packcontrols__hide">
                     <input
                       type="checkbox"
-                      checked={it.packed}
-                      disabled={order.status !== "packing"}
-                      onChange={() => toggleItem(it.id)}
+                      checked={hidePacked}
+                      onChange={(e) => {
+                        setHidePacked(e.target.checked);
+                        saveHidePacked(e.target.checked);
+                      }}
                     />
-                    <OrderCardImage
-                      item={it}
-                      size="xs"
-                      className="gg-packitem__img"
-                    />
-                    <span className="gg-packitem__text">
-                      <span className="gg-packitem__name">
-                        {it.quantity}× {it.cardName}
-                        {it.variantType && (
-                          <Badge tone="gold">{it.variantType}</Badge>
+                    Hide packed cards
+                  </label>
+                )}
+              </div>
+            )}
+            {shownGroups.length === 0 && hiding && (
+              <p className="gg-muted gg-orderdetail__hint">Every card is packed.</p>
+            )}
+            {shownGroups.map((group, gi) => (
+              <div key={`${gi}-${group.label ?? "all"}`} className="gg-packgroup">
+                {group.label && (
+                  <h4 className="gg-packgroup__head">
+                    {group.label}
+                    <span className="gg-packgroup__count">
+                      {group.items.reduce((n, it) => n + it.quantity, 0)}
+                    </span>
+                  </h4>
+                )}
+                <ul className="gg-packlist">
+                  {group.items.map((it) => (
+                    <li
+                      key={it.id}
+                      className={`gg-packitem ${it.packed ? "gg-packitem--done" : ""}`}
+                    >
+                      <label className="gg-packitem__check">
+                        <input
+                          type="checkbox"
+                          checked={it.packed}
+                          disabled={order.status !== "packing"}
+                          onChange={() => toggleItem(it.id)}
+                        />
+                        <OrderCardImage
+                          item={it}
+                          size="xs"
+                          className="gg-packitem__img"
+                        />
+                        <span className="gg-packitem__text">
+                          <span className="gg-packitem__name">
+                            {it.quantity}× {it.cardName}
+                            {it.variantType && (
+                              <Badge tone="gold">{it.variantType}</Badge>
+                            )}
+                          </span>
+                          <span className="gg-packitem__meta">
+                            {(it.setName ?? it.setCode) ? `${it.setName ?? it.setCode} · ` : ""}
+                            {it.collectorNumber ? `#${it.collectorNumber} · ` : ""}
+                            {it.condition} · {FINISH_LABELS[it.finish]}
+                          </span>
+                          <CardPrintingBadges
+                            card={{
+                              scryfallId: null,
+                              setCode: it.setCode ?? "",
+                              collectorNumber: it.collectorNumber ?? "",
+                              imageUrl: it.imageUrl,
+                              cardName: it.cardName,
+                              finish: it.finish,
+                            }}
+                            showFinish
+                            max={3}
+                          />
+                        </span>
+                      </label>
+                      <span className="gg-packitem__price">
+                        {formatCents(it.lineTotalCents)}
+                        {it.quantity > 1 && (
+                          <span className="gg-packitem__each">{formatCents(it.unitPriceCents)} each</span>
                         )}
                       </span>
-                      <span className="gg-packitem__meta">
-                        {(it.setName ?? it.setCode) ? `${it.setName ?? it.setCode} · ` : ""}
-                        {it.collectorNumber ? `#${it.collectorNumber} · ` : ""}
-                        {it.condition} · {FINISH_LABELS[it.finish]}
-                      </span>
-                      <CardPrintingBadges
-                        card={{
-                          scryfallId: null,
-                          setCode: it.setCode ?? "",
-                          collectorNumber: it.collectorNumber ?? "",
-                          imageUrl: it.imageUrl,
-                          cardName: it.cardName,
-                          finish: it.finish,
-                        }}
-                        showFinish
-                        max={3}
-                      />
-                    </span>
-                  </label>
-                  <span className="gg-packitem__price">
-                    {formatCents(it.lineTotalCents)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
             {order.status === "paid" && (
               <p className="gg-muted gg-orderdetail__hint">
                 Start packing to enable the checklist.

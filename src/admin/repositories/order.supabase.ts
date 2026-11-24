@@ -39,10 +39,19 @@ import type {
 import type { OrderRepository } from "./types";
 
 type OrderRowDb = Database["public"]["Tables"]["orders"]["Row"];
-type OrderItemRowDb = Database["public"]["Tables"]["order_items"]["Row"];
+type OrderItemRowDb = Database["public"]["Tables"]["order_items"]["Row"] & {
+  /** The inventory line the card was sold from (null if it was deleted). */
+  inventory_items?: Pick<
+    Database["public"]["Tables"]["inventory_items"]["Row"],
+    "colors" | "type_line" | "rarity"
+  > | null;
+};
 type OrderRowWithItems = OrderRowDb & { order_items: OrderItemRowDb[] };
 
-const ORDER_SELECT = "*, order_items(*)";
+// Each card's color, type and rarity come from its inventory line, so the
+// packing checklist can sort the way cards are pulled (order_items keeps only
+// what was printed on the receipt).
+const ORDER_SELECT = "*, order_items(*, inventory_items(colors, type_line, rarity))";
 
 function orderNumberFromId(id: string): string {
   return `#${id.slice(0, 8).toUpperCase()}`;
@@ -72,6 +81,9 @@ function mapItem(row: OrderItemRowDb): OrderItem {
     unitPriceCents: row.unit_price_cents,
     lineTotalCents: row.line_total_cents,
     packed: row.packed,
+    colors: row.inventory_items?.colors ?? null,
+    typeLine: row.inventory_items?.type_line ?? null,
+    rarity: row.inventory_items?.rarity ?? null,
   };
 }
 

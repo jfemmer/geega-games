@@ -442,6 +442,13 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-subtabs { margin-bottom: 4px; }
 .gg-orders-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .gg-orders-toolbar .gg-search { min-width: 220px; }
+.gg-orders-toolbar__right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gg-orders-sort { min-width: 12.5rem; }
+@media (max-width: 640px) {
+  .gg-orders-toolbar__right { width: 100%; }
+  .gg-orders-toolbar__right > * { flex: 1 1 100%; }
+  .gg-orders-sort { width: 100%; }
+}
 
 /* ------------------------------- Fields ------------------------------- */
 
@@ -776,7 +783,21 @@ button.gg-stat { cursor: pointer; font: inherit; color: inherit; }
 .gg-packitem__name { font-weight: 600; font-size: 0.87rem; }
 .gg-packitem--done .gg-packitem__name { text-decoration: line-through; color: var(--gg-text-soft); }
 .gg-packitem__meta { font-size: 0.78rem; color: var(--gg-text-soft); }
-.gg-packitem__price { font-weight: 600; font-size: 0.85rem; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.gg-packitem__price { font-weight: 600; font-size: 0.85rem; font-variant-numeric: tabular-nums; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; }
+.gg-packitem__each { font-size: 0.72rem; font-weight: 500; color: var(--gg-text-faint); }
+
+/* Sorting the checklist the way cards are pulled, with a heading per color / set / rarity. */
+.gg-packcontrols { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 12px 0 4px; }
+.gg-packcontrols__sort { min-width: 12rem; }
+.gg-packcontrols__hide { display: inline-flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 500; color: var(--gg-text-soft); cursor: pointer; min-height: 2.25rem; }
+.gg-packcontrols__hide input { width: 17px; height: 17px; accent-color: var(--gg-brand); }
+.gg-packgroup { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.gg-packgroup__head { margin: 0; display: flex; align-items: baseline; gap: 8px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gg-text-soft); }
+.gg-packgroup__count { font-size: 0.72rem; font-weight: 600; color: var(--gg-text-faint); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .gg-packcontrols .gg-select-wrap { flex: 1 1 100%; }
+  .gg-packcontrols__sort { width: 100%; min-width: 0; }
+}
 
 .gg-note-actions { display: flex; justify-content: flex-end; }
 

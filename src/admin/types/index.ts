@@ -584,6 +584,14 @@ export interface OrderItem {
   lineTotalCents: number;
   /** Packing checklist state (client-side workflow). */
   packed: boolean;
+  /**
+   * From the inventory line the card was sold from, for sorting the packing
+   * checklist: color letters (WUBRG; [] for colorless and lands), type line
+   * and rarity. Null or absent when that line is gone or never had them.
+   */
+  colors?: string[] | null;
+  typeLine?: string | null;
+  rarity?: string | null;
 }
 
 export type ShippingCarrier = "USPS" | "UPS" | "FedEx" | "Other";
