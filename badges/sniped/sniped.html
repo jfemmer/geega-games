@@ -116,17 +116,26 @@ function loadImage(src) {
 }
 
 // ---------------------------------------------------------------- layout (design units)
+// The rifle is drawn side-on in its own frame: origin at the butt, x along
+// the barrel (toward the target), y down. rifleToWorld maps it into the badge.
+const RIFLE = { x: 255, y: 482, ang: -0.215, k: 1.12, scopeY: -56 };
+function rifleToWorld(x, y) {
+  const c = Math.cos(RIFLE.ang), s = Math.sin(RIFLE.ang);
+  x *= RIFLE.k;
+  y *= RIFLE.k;
+  return { x: RIFLE.x + x * c - y * s, y: RIFLE.y + x * s + y * c };
+}
 const L = {
-  eye: { x: 688, y: 420, r: 30 }, // scope eyepiece = the camera's portal
-  objective: { x: 792, y: 262, r: 21 },
-  muzzle: { x: 872, y: 190 },
-  headBack: { x: 496, y: 362 },
-  // face cutout placement in the final pose
-  face: { x: 440, y: 392, s: 0.665, rot: -0.11 },
-  banner: { y: 655 },
-  paw: { x: 500, y: 818 },
+  // scope eyepiece = the camera's portal (rear of the scope, next to the eye)
+  eye: { ...rifleToWorld(185, RIFLE.scopeY), r: 27 },
+  muzzle: rifleToWorld(606, -1),
+  headBack: { x: 380, y: 318, rot: 0.15 }, // cheek down on the stock, eye at the scope
+  // face cutout placement in the final pose: head up, rifle still under the chin
+  face: { x: 345, y: 280, s: 0.56, rot: -0.06 },
+  banner: { y: 672 },
+  paw: { x: 500, y: 834 },
 };
-const S0 = 13.4; // starting zoom: eyepiece fills the frame
+const S0 = 14.4; // starting zoom: eyepiece fills the frame
 // dog-head.png landmarks (asset px)
 const FACE = {
   nose: { x: 388, y: 318 },
@@ -186,17 +195,17 @@ function bannerPath(c, grow = 0) {
   c.closePath();
 }
 
-function bodyPath(c) {
-  c.beginPath();
-  c.moveTo(236, 1000);
-  c.lineTo(242, 720);
-  c.bezierCurveTo(246, 612, 296, 548, 362, 522);
-  c.bezierCurveTo(404, 504, 428, 484, 440, 458);
-  c.lineTo(560, 458);
-  c.bezierCurveTo(572, 484, 598, 504, 640, 522);
-  c.bezierCurveTo(706, 548, 756, 612, 760, 720);
-  c.lineTo(766, 1000);
-  c.closePath();
+function makeBodyPath() {
+  const p = new Path2D();
+  p.moveTo(90, 680);
+  p.lineTo(100, 520);
+  p.bezierCurveTo(108, 440, 160, 388, 232, 366); // left shoulder hump
+  p.bezierCurveTo(282, 352, 322, 354, 352, 366); // neck
+  p.bezierCurveTo(424, 388, 524, 404, 622, 424); // right shoulder, arm reaching forward
+  p.bezierCurveTo(704, 440, 764, 476, 774, 540); // forearm under the forend
+  p.lineTo(786, 680);
+  p.closePath();
+  return p;
 }
 
 // back of the head, in coordinates local to L.headBack
@@ -274,64 +283,70 @@ function buildBody() {
   const cv = makeCanvas(1000 * s, 1000 * s);
   const c = cv.getContext("2d");
   c.scale(s, s);
-  const probe = new Path2D();
-  // same outline as bodyPath(), as a Path2D for hit testing
-  probe.moveTo(236, 1000); probe.lineTo(242, 720);
-  probe.bezierCurveTo(246, 612, 296, 548, 362, 522);
-  probe.bezierCurveTo(404, 504, 428, 484, 440, 458);
-  probe.lineTo(560, 458);
-  probe.bezierCurveTo(572, 484, 598, 504, 640, 522);
-  probe.bezierCurveTo(706, 548, 756, 612, 760, 720);
-  probe.lineTo(766, 1000); probe.closePath();
+  const probe = makeBodyPath();
 
   c.save();
   c.lineJoin = "round";
   c.lineWidth = 12;
   c.strokeStyle = "#07040b";
   c.stroke(probe);
-  const g = c.createLinearGradient(0, 450, 0, 760);
-  g.addColorStop(0, "#221d2b");
+  const g = c.createLinearGradient(0, 350, 0, 640);
+  g.addColorStop(0, "#241e2d");
   g.addColorStop(1, "#0e0b13");
   c.fillStyle = g;
   c.fill(probe);
   c.restore();
 
-  const collar = (x, y) => {
-    const dx = (x - 500) / 172, dy = (y - 508) / 58;
+  const ruff = (x, y) => {
+    const dx = (x - 330) / 160, dy = (y - 412) / 58;
     return dx * dx + dy * dy < 1;
+  };
+  const armA = { x: 575, y: 670 }, armB = rifleToWorld(420, -10);
+  const arm = (x, y) => {
+    const vx = armB.x - armA.x, vy = armB.y - armA.y;
+    const u = clamp(((x - armA.x) * vx + (y - armA.y) * vy) / (vx * vx + vy * vy));
+    return Math.hypot(x - armA.x - vx * u, y - armA.y - vy * u) < 62 - u * 24;
   };
   const inside = (x, y) => c.isPointInPath(probe, x * s, y * s);
   c.save();
   c.clip(probe);
-  // dark back fur flowing down/outward from the spine
+  // dark coat flowing down and back from the neck
   paintFur(c, {
-    path: probe, n: 2600, seed: 5, bounds: [236, 450, 766, 1000], inside,
-    dir: (x, y) => Math.PI / 2 + (x - 500) / 420,
-    color: (x, y, r) => FUR_DARK[Math.floor(r() * (y < 640 ? 7 : 5))],
+    n: 2600, seed: 5, bounds: [90, 340, 790, 680], inside,
+    dir: (x, y) => (x > 560 ? Math.PI / 2 + 0.5 : Math.PI / 2 + (x - 330) / 520),
+    color: (x, y, r) => FUR_DARK[Math.floor(r() * (y < 520 ? 7 : 5))],
     len: [14, 34], width: [1.6, 4.2],
   });
-  // collar: white ruff
+  // white neck ruff (border collie collar)
   paintFur(c, {
-    path: probe, n: 1500, seed: 6, bounds: [320, 440, 680, 580], inside: (x, y) => inside(x, y) && collar(x, y),
-    dir: (x, y) => Math.PI / 2 + (x - 500) / 160,
-    color: (x, y, r) => FUR_LIGHT[Math.floor(r() * (y > 540 ? 5 : 3))],
+    n: 1400, seed: 6, bounds: [160, 350, 500, 480], inside: (x, y) => inside(x, y) && ruff(x, y),
+    dir: (x, y) => Math.PI / 2 + (x - 330) / 200,
+    color: (x, y, r) => FUR_LIGHT[Math.floor(r() * (y > 440 ? 5 : 3))],
     len: [12, 30], width: [1.6, 4.0],
+  });
+  // white foreleg reaching up to the forend
+  paintFur(c, {
+    n: 1300, seed: 8, bounds: [480, 340, 790, 700], inside: (x, y) => inside(x, y) && arm(x, y),
+    dir: () => -1.1,
+    // shaded on the side away from the light so it reads as a round leg
+    color: (x, y, r) => FUR_LIGHT[Math.min(4, Math.floor(r() * 3 + (x - (armA.x + (armB.x - armA.x) * (armA.y - y) / (armA.y - armB.y))) / 30 + 1))],
+    len: [12, 28], width: [1.6, 3.8],
   });
   // a few white streaks in the dark coat (the reference has them in the hair)
   paintFur(c, {
-    path: probe, n: 90, seed: 7, bounds: [250, 560, 750, 760], inside,
-    dir: (x, y) => Math.PI / 2 + (x - 500) / 380,
+    n: 70, seed: 7, bounds: [100, 430, 560, 640], inside,
+    dir: (x, y) => Math.PI / 2 + (x - 330) / 480,
     color: (x, y, r) => FUR_LIGHT[2 + Math.floor(r() * 3)],
     len: [16, 30], width: [1.0, 2.0],
   });
   // shadow under the head
-  const sh = c.createRadialGradient(500, 470, 10, 500, 470, 200);
-  sh.addColorStop(0, "rgba(6,3,10,0.55)");
+  const sh = c.createRadialGradient(380, 400, 10, 380, 400, 190);
+  sh.addColorStop(0, "rgba(6,3,10,0.5)");
   sh.addColorStop(1, "rgba(6,3,10,0)");
   c.fillStyle = sh;
-  c.fillRect(250, 440, 500, 240);
-  // purple rim light on the shoulders
+  c.fillRect(150, 340, 470, 250);
   c.restore();
+  // purple rim light along the back
   c.save();
   c.clip(probe);
   c.shadowColor = "rgba(190,120,255,0.9)";
@@ -343,11 +358,11 @@ function buildBody() {
   // soft bottom edge so the body melts away before the banner covers it
   c.save();
   c.globalCompositeOperation = "destination-out";
-  const fadeG = c.createLinearGradient(0, 610, 0, 700);
+  const fadeG = c.createLinearGradient(0, 575, 0, 660);
   fadeG.addColorStop(0, "rgba(0,0,0,0)");
   fadeG.addColorStop(1, "rgba(0,0,0,1)");
   c.fillStyle = fadeG;
-  c.fillRect(0, 610, 1000, 390);
+  c.fillRect(0, 575, 1000, 425);
   c.restore();
   C.body = cv;
   C.bodyScale = s;
@@ -614,11 +629,11 @@ function buildParticles() {
   }
   // ambient shield sparkles (match the reference's 4-point stars)
   C.sparkles = [
-    { x: 500, y: 104, s: 22, ph: 0 },
-    { x: 186, y: 330, s: 17, ph: 1.7 },
-    { x: 814, y: 330, s: 17, ph: 3.1 },
-    { x: 262, y: 186, s: 10, ph: 4.4 },
-    { x: 742, y: 520, s: 11, ph: 2.3 },
+    { x: 650, y: 118, s: 22, ph: 0 },
+    { x: 805, y: 215, s: 17, ph: 1.7 },
+    { x: 700, y: 262, s: 10, ph: 3.1 },
+    { x: 585, y: 170, s: 9, ph: 4.4 },
+    { x: 846, y: 470, s: 12, ph: 2.3 },
   ];
 }
 
@@ -1210,92 +1225,149 @@ function star4(c, x, y, s, a) {
 }
 
 // truncated cone between two points; caps are ellipses facing the camera
-function tube(c, x0, y0, r0, x1, y1, r1, dark, light, opts = {}) {
-  const dx = x1 - x0, dy = y1 - y0;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len, uy = dy / len;
-  const nx = -uy, ny = ux;
-  const ang = Math.atan2(dy, dx);
-  const fs = opts.fs ?? 0.55; // cap foreshortening
-  c.save();
-  const g = c.createLinearGradient(x0 + nx * r0, y0 + ny * r0, x0 - nx * r0, y0 - ny * r0);
-  g.addColorStop(0, dark);
-  g.addColorStop(0.28, light);
-  g.addColorStop(0.45, dark);
-  g.addColorStop(1, "#050308");
-  c.fillStyle = g;
+function poly(c, pts) {
   c.beginPath();
-  c.moveTo(x0 + nx * r0, y0 + ny * r0);
-  c.lineTo(x1 + nx * r1, y1 + ny * r1);
-  c.ellipse(x1, y1, r1 * fs, r1, ang, Math.PI / 2 * -1 + Math.PI, Math.PI / 2 * -1 + Math.PI * 2, true);
-  c.lineTo(x0 - nx * r0, y0 - ny * r0);
-  c.ellipse(x0, y0, r0 * fs, r0, ang, Math.PI / 2, Math.PI * 1.5, false);
+  c.moveTo(pts[0][0], pts[0][1]);
+  for (let k = 1; k < pts.length; k++) c.lineTo(pts[k][0], pts[k][1]);
   c.closePath();
+}
+
+// gunmetal, lit from above with a purple rim (rifle-local y range)
+function metalGrad(c, y0, y1, lift = 0) {
+  const g = c.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, lift ? "#8f7fb4" : "#6b5f88");
+  g.addColorStop(0.12, "#3a3247");
+  g.addColorStop(0.45, "#1c1724");
+  g.addColorStop(0.8, "#100c15");
+  g.addColorStop(1, "#060408");
+  return g;
+}
+
+function rpart(c, pts, y0, y1, lift = 0) {
+  poly(c, pts);
+  c.fillStyle = metalGrad(c, y0, y1, lift);
   c.fill();
-  c.lineWidth = 3;
-  c.strokeStyle = "#060309";
+  c.lineJoin = "round";
+  c.lineWidth = 2.6;
+  c.strokeStyle = "#040206";
   c.stroke();
-  // purple rim light on the upper-left edge
+}
+
+function rim(c, pts, a = 0.75) {
+  c.save();
+  c.globalCompositeOperation = "lighter";
+  c.lineCap = "round";
+  c.lineJoin = "round";
   c.lineWidth = 2.2;
-  c.strokeStyle = "rgba(190,130,255,0.65)";
+  c.strokeStyle = `rgba(205,150,255,${a})`;
   c.beginPath();
-  c.moveTo(x0 + nx * r0 * 0.92, y0 + ny * r0 * 0.92);
-  c.lineTo(x1 + nx * r1 * 0.92, y1 + ny * r1 * 0.92);
+  c.moveTo(pts[0][0], pts[0][1]);
+  for (let k = 1; k < pts.length; k++) c.lineTo(pts[k][0], pts[k][1]);
   c.stroke();
   c.restore();
 }
 
+// Bolt-action sniper rifle, side-on, in rifle space.
 function drawRifle(c, t) {
-  const E = L.eye, O = L.objective, M = L.muzzle;
-  // stock + receiver (goes into the shoulder; mostly hidden by the body)
-  tube(c, 700, 600, 34, 780, 368, 22, "#17121f", "#4a4258", { fs: 0.6 });
-  // barrel
-  tube(c, 778, 372, 12, M.x, M.y, 8, "#141019", "#5a5270", { fs: 0.7 });
-  // muzzle brake
-  tube(c, M.x - 14, M.y + 22, 12, M.x + 4, M.y - 6, 11, "#0e0b13", "#6e6585", { fs: 0.75 });
-  // muzzle bore
+  const cy = RIFLE.scopeY;
   c.save();
-  c.fillStyle = "#020103";
+  c.translate(RIFLE.x, RIFLE.y);
+  c.rotate(RIFLE.ang);
+  c.scale(RIFLE.k, RIFLE.k);
+
+  // folded bipod under the forend
+  c.save();
+  c.lineCap = "round";
+  c.strokeStyle = "#0a070d";
+  c.lineWidth = 6;
   c.beginPath();
-  c.ellipse(M.x + 4, M.y - 6, 7.5, 5, -1.0, 0, Math.PI * 2);
-  c.fill();
+  c.moveTo(470, 12); c.lineTo(556, 18);
+  c.moveTo(470, 12); c.lineTo(552, 25);
+  c.stroke();
   c.restore();
-  // bolt knob
+
+  // butt pad + stock with cheek rest and pistol grip
+  rpart(c, [[-9, -28], [3, -28], [3, 46], [-9, 46]], -28, 46);
+  rpart(c, [[0, -26], [14, -31], [120, -31], [150, -25], [186, -21], [186, 14], [170, 16],
+    [160, 54], [134, 58], [139, 19], [72, 31], [10, 46], [0, 44]], -31, 58);
+  rpart(c, [[38, -31], [48, -42], [116, -42], [124, -31]], -42, -31, 1);
+  rim(c, [[14, -31], [48, -42], [116, -42], [150, -25], [186, -21]]);
+  // trigger guard
   c.save();
-  const bg = c.createRadialGradient(806, 420, 2, 812, 426, 15);
-  bg.addColorStop(0, "#8d84a6");
-  bg.addColorStop(1, "#110d17");
-  c.strokeStyle = "#16111d";
-  c.lineWidth = 7;
-  c.beginPath(); c.moveTo(776, 430); c.lineTo(806, 424); c.stroke();
-  c.fillStyle = bg;
-  c.beginPath(); c.arc(810, 424, 13, 0, Math.PI * 2); c.fill();
-  c.lineWidth = 2.5; c.strokeStyle = "#060309"; c.stroke();
+  c.strokeStyle = "#0a070d";
+  c.lineWidth = 4;
+  c.beginPath();
+  c.arc(172, 20, 12, 0.1, Math.PI - 0.1);
+  c.stroke();
   c.restore();
-  // scope mounts
-  for (const k of [0.32, 0.72]) {
-    const x = lerp(E.x, O.x, k), y = lerp(E.y, O.y, k);
-    c.save();
-    c.strokeStyle = "#0e0b13";
-    c.lineWidth = 14;
-    c.beginPath(); c.moveTo(x, y); c.lineTo(x + 40, y + 34); c.stroke();
-    c.restore();
+  // magazine
+  rpart(c, [[232, 12], [274, 12], [270, 50], [236, 50]], 12, 50);
+  // receiver
+  rpart(c, [[182, -23], [332, -23], [338, -17], [338, 13], [182, 15]], -23, 15);
+  rim(c, [[182, -23], [332, -23]]);
+  // forend / handguard with vent slots
+  rpart(c, [[332, -19], [500, -17], [506, -12], [506, 12], [332, 15]], -19, 15);
+  rim(c, [[334, -19], [500, -17]]);
+  c.fillStyle = "#040206";
+  for (let k = 0; k < 4; k++) {
+    roundRect(c, 352 + k * 36, -6, 22, 8, 4);
+    c.fill();
   }
-  // scope: objective bell, tube, eyepiece bell
-  tube(c, lerp(E.x, O.x, 0.8), lerp(E.y, O.y, 0.8), 17, O.x, O.y, 25, "#141019", "#6a6185", { fs: 0.6 });
-  tube(c, lerp(E.x, O.x, 0.16), lerp(E.y, O.y, 0.16), 17, lerp(E.x, O.x, 0.82), lerp(E.y, O.y, 0.82), 17, "#141019", "#5d5576", { fs: 0.6 });
-  // turret
+  // barrel + muzzle brake
+  rpart(c, [[504, -8], [570, -7], [570, 6], [504, 7]], -8, 7);
+  rim(c, [[506, -8], [568, -7]], 0.6);
+  rpart(c, [[566, -12], [606, -12], [606, 10], [566, 10]], -12, 10, 1);
+  c.fillStyle = "#040206";
+  for (let k = 0; k < 3; k++) c.fillRect(574 + k * 10, -8, 4, 15);
+  rim(c, [[566, -12], [606, -12]]);
+
+  // scope mounts
+  for (const x of [256, 380]) rpart(c, [[x - 12, cy + 13], [x + 12, cy + 13], [x + 14, -21], [x - 14, -21]], cy + 13, -21);
+  // scope: eyepiece bell, tube, objective bell
+  rpart(c, [[185, cy - 28], [206, cy - 27], [230, cy - 16], [398, cy - 15], [464, cy - 28], [480, cy - 28],
+    [480, cy + 28], [464, cy + 28], [398, cy + 15], [230, cy + 16], [206, cy + 27], [185, cy + 28]], cy - 28, cy + 28);
+  rim(c, [[187, cy - 28], [206, cy - 27], [230, cy - 16], [398, cy - 15], [464, cy - 28], [480, cy - 28]], 0.9);
+  // scope bands
+  c.strokeStyle = "rgba(0,0,0,0.6)";
+  c.lineWidth = 2;
+  for (const x of [214, 236, 452]) {
+    c.beginPath(); c.moveTo(x, cy - 24); c.lineTo(x, cy + 24); c.stroke();
+  }
+  // turrets: elevation on top, windage knob facing us
+  rpart(c, [[298, cy - 31], [322, cy - 31], [322, cy - 14], [298, cy - 14]], cy - 31, cy - 14, 1);
   c.save();
-  const tx = lerp(E.x, O.x, 0.5), ty = lerp(E.y, O.y, 0.5);
-  tube(c, tx, ty, 9, tx - 22, ty - 18, 9, "#141019", "#77709a", { fs: 0.8 });
+  const kg = c.createRadialGradient(306, cy - 4, 2, 310, cy, 13);
+  kg.addColorStop(0, "#9b8cc2");
+  kg.addColorStop(0.5, "#2a2335");
+  kg.addColorStop(1, "#08060b");
+  c.fillStyle = kg;
+  c.beginPath(); c.arc(310, cy, 12, 0, Math.PI * 2); c.fill();
+  c.lineWidth = 2.4; c.strokeStyle = "#040206"; c.stroke();
   c.restore();
-  tube(c, E.x, E.y, E.r + 4, lerp(E.x, O.x, 0.18), lerp(E.y, O.y, 0.18), 19, "#120e17", "#5a5272", { fs: 0.9 });
-  // objective lens glint
+  // objective lens: glowing purple glass at the far end
   c.save();
-  c.fillStyle = "#0b0716";
-  c.beginPath();
-  c.ellipse(O.x, O.y, 25 * 0.6, 25, Math.atan2(O.y - E.y, O.x - E.x), 0, Math.PI * 2);
-  c.fill();
+  c.shadowColor = "rgba(200,90,255,1)";
+  c.shadowBlur = 18 * K;
+  const lg = c.createLinearGradient(480, cy - 26, 480, cy + 26);
+  lg.addColorStop(0, "#f2c9ff");
+  lg.addColorStop(0.35, "#b04dff");
+  lg.addColorStop(1, "#3a0a6a");
+  c.fillStyle = lg;
+  c.beginPath(); c.ellipse(481, cy, 6, 25, 0, 0, Math.PI * 2); c.fill();
+  c.restore();
+  // bolt handle (near side)
+  c.save();
+  c.lineCap = "round";
+  c.strokeStyle = "#0b080f";
+  c.lineWidth = 6;
+  c.beginPath(); c.moveTo(312, 2); c.lineTo(328, 26); c.stroke();
+  const bg = c.createRadialGradient(326, 27, 2, 330, 31, 10);
+  bg.addColorStop(0, "#9b8cc2");
+  bg.addColorStop(1, "#0b080f");
+  c.fillStyle = bg;
+  c.beginPath(); c.arc(330, 31, 8.5, 0, Math.PI * 2); c.fill();
+  c.lineWidth = 2; c.strokeStyle = "#040206"; c.stroke();
+  c.restore();
   c.restore();
 }
 
@@ -1303,6 +1375,14 @@ function drawRifle(c, t) {
 // portal the camera starts in).
 function drawEyepiece(c, t, sv, cam) {
   const E = L.eye;
+  // head-on while we look through it; seen at an angle once we are outside
+  const q = lerp(1, 0.6, smooth(clamp((1 - cam.zoomK) * 1.25)));
+  c.save();
+  c.translate(E.x, E.y);
+  c.rotate(RIFLE.ang);
+  c.scale(q, 1);
+  c.rotate(-RIFLE.ang);
+  c.translate(-E.x, -E.y);
   // cup
   c.save();
   const g = c.createRadialGradient(E.x - 8, E.y - 10, E.r * 0.6, E.x, E.y, E.r + 8);
@@ -1347,6 +1427,7 @@ function drawEyepiece(c, t, sv, cam) {
     c.stroke();
   }
   c.restore();
+  c.restore();
 }
 
 function drawBody(c, alpha) {
@@ -1363,17 +1444,22 @@ function drawBody(c, alpha) {
 }
 
 // the mascot's own paw (from the reference) wrapped over the rifle grip
-function drawGripPaw(c, alpha) {
+// the mascot's own paws (from the reference) wrapped over the stock and forend
+function drawGripPaws(c, alpha) {
   if (alpha <= 0) return;
-  c.save();
-  c.globalAlpha = alpha;
-  c.translate(728, 548);
-  c.rotate(-0.95);
-  const w = 112, h = w * A.paw.height / A.paw.width;
-  c.shadowColor = "rgba(6,2,12,0.95)";
-  c.shadowBlur = 6 * K;
-  c.drawImage(A.paw, -w / 2, -h / 2, w, h);
-  c.restore();
+  for (const p of [{ x: 104, y: -31, w: 94, r: 0.04 }, { x: 420, y: -18, w: 100, r: -0.06 }]) {
+    const at = rifleToWorld(p.x, p.y);
+    const h = p.w * A.paw.height / A.paw.width;
+    c.save();
+    c.globalAlpha = alpha;
+    c.translate(at.x, at.y);
+    c.rotate(RIFLE.ang + p.r);
+    c.shadowColor = "rgba(6,2,12,0.95)";
+    c.shadowBlur = 6 * K;
+    c.scale(RIFLE.k, RIFLE.k);
+    c.drawImage(A.paw, -p.w / 2, -h * 0.62, p.w, h);
+    c.restore();
+  }
 }
 
 // quick swoosh arcs that sell the head snap
@@ -1412,9 +1498,9 @@ function drawHeadBack(c, t, alpha) {
   const breathe = Math.sin(t * Math.PI * 2 * 0.5) * 1.5;
   const lean = Math.sin(a * Math.PI) * 1; // small dip toward the scope
   const ew = easeInCubic(w);
-  const x = L.headBack.x + lean * 6 - ew * 70;
-  const y = L.headBack.y + breathe * 0.5 + lean * 5;
-  const rot = lean * 0.04 - ew * 0.25;
+  const x = L.headBack.x + lean * 6 - ew * 50;
+  const y = L.headBack.y + breathe * 0.5 + lean * 5 - ew * 24;
+  const rot = L.headBack.rot + lean * 0.04 - ew * 0.4;
   const sx = 1 - ew * 0.55;
   const fade = alpha * (1 - smooth(seg(w, 0.46, 0.66)));
   if (fade <= 0) return;
@@ -1423,7 +1509,7 @@ function drawHeadBack(c, t, alpha) {
     c.globalAlpha = al;
     c.translate(x + ox, y);
     c.rotate(rot);
-    c.scale(sx * 1.22, 1.22);
+    c.scale(sx * 1.08, 1.08);
     c.drawImage(hb.cv, -hb.ox, -hb.oy, hb.cv.width / hb.s, hb.cv.height / hb.s);
     c.restore();
   };
@@ -1739,7 +1825,9 @@ function drawBanner(c, t) {
       g.addColorStop(0, `rgba(230,200,255,${0.6 * fl})`);
       g.addColorStop(1, "rgba(150,60,255,0)");
       c.fillStyle = g;
-      c.fillRect(60, y - 200, 880, 360);
+      c.beginPath();
+      c.arc(500, y - 20, 420, 0, Math.PI * 2);
+      c.fill();
       c.restore();
     }
   }
@@ -1949,14 +2037,15 @@ function render(t) {
   }
 
   if (worldA > 0) {
+    drawBody(ctx, worldA);
+    drawHeadBack(ctx, t, worldA);
+    drawFace(ctx, t);
+    drawWhipLines(ctx, t);
     ctx.save();
     ctx.globalAlpha = worldA;
     drawRifle(ctx, t);
     ctx.restore();
-    drawBody(ctx, worldA);
-    drawGripPaw(ctx, worldA);
-    drawHeadBack(ctx, t, worldA);
-    drawWhipLines(ctx, t);
+    drawGripPaws(ctx, worldA);
   }
 
   // eyepiece / scope view (the portal). Iris mask during the opening.
@@ -1969,11 +2058,7 @@ function render(t) {
   drawEyepiece(ctx, t, sv, cam);
   ctx.restore();
 
-  if (worldA > 0) {
-    // re-draw the head's right hair over the eyepiece edge for depth
-    drawFace(ctx, t);
-    drawSmoke(ctx, t, worldA);
-  }
+  if (worldA > 0) drawSmoke(ctx, t, worldA);
   drawBanner(ctx, t);
   drawPaw(ctx, t, smooth(seg(t, T.bannerIn + 0.2, T.bannerIn + 0.5)));
 
@@ -1982,7 +2067,7 @@ function render(t) {
   if (gk > 0 && gk < 1) {
     const F = L.face;
     const ang = F.rot;
-    const ex = FACE.eyeL.x - FACE.nose.x + 16, ey = FACE.eyeL.y - FACE.nose.y - 14;
+    const ex = FACE.eyeL.x - FACE.nose.x + 18, ey = FACE.eyeL.y - FACE.nose.y - 16;
     const gx = F.x + (ex * Math.cos(ang) - ey * Math.sin(ang)) * F.s;
     const gy = F.y + (ex * Math.sin(ang) + ey * Math.cos(ang)) * F.s;
     const a = Math.sin(gk * Math.PI);

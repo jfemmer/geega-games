@@ -6,8 +6,8 @@ Plays when someone snipes an auction. 8.75 s, 60 fps, transparent background, pl
 | --- | --- |
 | 0.00–2.10 | Scope opens, the focus pulls onto the Magic card, the crosshair drifts with the shooter's breathing and locks on |
 | 2.10–2.90 | Shot: muzzle-flash blowout, recoil kick with motion blur, tracer, then the card shatters in slow motion (shards, sparks, debris, shockwave) |
-| 2.86–4.72 | One continuous pull-out through the eyepiece: the dog is revealed from behind on the rifle, the badge assembles, SNIPED slams in |
-| 4.98–5.75 | Head snaps over the shoulder: half-lidded eyes, one-sided smirk, eye glint |
+| 2.86–4.72 | One continuous pull-out through the eyepiece: the dog is revealed from behind in a firing stance — cheek on the stock, paws on the rifle — the badge assembles, SNIPED slams in |
+| 4.98–5.75 | Head comes up off the stock and snaps toward the viewer, still holding the rifle: half-lidded eyes, one-sided smirk, eye glint |
 | 5.75–8.75 | 3.0 s hold: smoke drift, light sweeps across SNIPED, sparkle twinkle, slow blink. Then it ends. |
 
 ## Files (`dist/`)
