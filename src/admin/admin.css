@@ -5203,3 +5203,191 @@ ul.gg-partner-agreement__warn { padding-left: 28px; }
 .gg-cubecheck__summary p {
   margin: 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * Tournaments — pages/TournamentsPage.tsx, components/tournaments/*
+ * ------------------------------------------------------------------ */
+.gg-tourney-create { display: grid; gap: 16px; max-width: 640px; }
+.gg-tourney-formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gg-tourney-format {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+  color: var(--gg-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.gg-tourney-format span { font-size: 0.8rem; color: var(--gg-text-soft); }
+.gg-tourney-format:hover { border-color: var(--gg-line-strong); }
+.gg-tourney-format.is-selected { border-color: var(--gg-brand); background: var(--gg-brand-tint); }
+.gg-tourney-format.is-selected strong { color: var(--gg-brand); }
+.gg-tourney-format:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-tourney-preview {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--gg-line-strong);
+  border-radius: var(--gg-radius-sm);
+}
+.gg-tourney-preview__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.gg-tourney-preview__teams { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.gg-tourney-preview__teams li {
+  padding: 3px 10px;
+  border: 1px solid var(--gg-line);
+  border-radius: 999px;
+  background: var(--gg-surface-2);
+  font-size: 0.85rem;
+}
+
+.gg-tourney-picker { max-width: 460px; }
+.gg-tourney-head-actions { justify-content: flex-end; }
+.gg-tourney-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--gg-text-soft); font-size: 0.9rem; }
+.gg-tourney-champion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-brand-tint);
+  color: var(--gg-brand-deep);
+}
+.gg-tourney-champion svg { flex: none; color: var(--gg-brand); }
+.gg-tourney-note { margin-bottom: 12px; }
+
+.gg-tourney-start { display: grid; gap: 12px; justify-items: start; }
+.gg-tourney-start p { margin: 0; }
+
+.gg-tourney-matches { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.gg-tourney-match {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+}
+.gg-tourney-match.is-decided { background: var(--gg-surface-2); }
+.gg-tourney-match--bye { grid-template-columns: 4.5rem minmax(0, 1fr); }
+.gg-tourney-match__table {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gg-text-soft);
+}
+.gg-tourney-match__sides { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 8px; }
+.gg-tourney-match__vs { align-self: center; font-size: 0.8rem; color: var(--gg-text-faint); }
+.gg-tourney-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+  color: var(--gg-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.gg-tourney-side__name { min-width: 0; overflow-wrap: anywhere; }
+.gg-tourney-side__tag { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 0.75rem; }
+.gg-tourney-side:hover:not(:disabled) { border-color: var(--gg-success); }
+.gg-tourney-side.is-winner { border-color: var(--gg-success); background: rgba(47, 143, 91, 0.12); color: #1f6b43; }
+.gg-tourney-side.is-loser { color: var(--gg-text-faint); font-weight: 500; }
+.gg-tourney-side.is-draw { border-color: var(--gg-warning); }
+.gg-tourney-draw {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1.5px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+  color: var(--gg-text-soft);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.gg-tourney-draw:hover:not(:disabled) { border-color: var(--gg-warning); }
+.gg-tourney-draw.is-selected { border-color: var(--gg-warning); background: #fbefdd; color: #7a5210; font-weight: 600; }
+.gg-tourney-side:disabled,
+.gg-tourney-draw:disabled { cursor: default; }
+.gg-tourney-side:focus-visible,
+.gg-tourney-draw:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-tourney-bye { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.gg-tourney-next { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.gg-tourney-next .gg-muted { flex-basis: 100%; margin: 0; }
+.gg-tourney-next .gg-inline-note { flex-basis: 100%; }
+
+.gg-tourney-round { border-top: 1px solid var(--gg-line); }
+.gg-tourney-round:first-child { border-top: 0; }
+.gg-tourney-round summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gg-tourney-round[open] { padding-bottom: 12px; }
+
+/* Fits a phone without sideways scrolling (opts out of the 640px table minimum). */
+.gg-table.gg-tourney-standings { min-width: 0; }
+.gg-tourney-standings td { vertical-align: top; }
+.gg-tourney-standings__record { display: none; white-space: nowrap; }
+.gg-tourney-standings abbr { text-decoration: none; }
+.gg-tourney-standings__rank { font-weight: 700; color: var(--gg-text-soft); }
+.gg-tourney-standings__name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gg-tourney-standings__played { margin-top: 2px; font-size: 0.8rem; color: var(--gg-text-faint); }
+.gg-tourney-standings__dropped td:not(:last-child) { opacity: 0.6; }
+.gg-tourney-standings__actions { display: flex; justify-content: flex-end; gap: 2px; white-space: nowrap; margin: -6px 0; }
+.gg-tourney-add { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gg-line); }
+.gg-tourney-add__fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.gg-tourney-add__fields .gg-field { flex: 1 1 180px; }
+.gg-tourney-add .gg-field__hint,
+.gg-tourney-add .gg-field__error { margin: 6px 0 0; }
+.gg-tourney-scoring { margin: 12px 0 0; }
+.gg-tourney-editfields { display: grid; gap: 12px; }
+
+@media (max-width: 640px) {
+  .gg-tourney-formats { grid-template-columns: 1fr; }
+  .gg-tourney-match,
+  .gg-tourney-match--bye { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .gg-tourney-draw { width: 100%; min-height: 40px; }
+  .gg-tourney-headcard .gg-section__head { flex-wrap: wrap; }
+  .gg-tourney-headcard .gg-section__title { flex: 1 1 100%; }
+  .gg-tourney-head-actions { justify-content: flex-start; }
+  .gg-tourney-standings__omw,
+  .gg-tourney-standings__wld { display: none; }
+  .gg-tourney-standings__record { display: table-cell; }
+  .gg-tourney-standings__actions { flex-direction: column; align-items: flex-end; margin: -4px 0; }
+  .gg-tourney-standings__restore > span { display: none; }
+  .gg-table.gg-tourney-standings th,
+  .gg-table.gg-tourney-standings td { padding-left: 6px; padding-right: 6px; }
+  .gg-table.gg-tourney-standings th:first-child,
+  .gg-table.gg-tourney-standings td:first-child { padding-left: 2px; }
+  .gg-table.gg-tourney-standings th:last-child,
+  .gg-table.gg-tourney-standings td:last-child { padding-right: 0; }
+  .gg-tourney-standings thead th { letter-spacing: 0; }
+  .gg-tourney-add__fields .gg-btn { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-tourney-side,
+  .gg-tourney-format { transition: none; }
+}

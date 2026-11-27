@@ -117,6 +117,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: `${ADMIN_BASE}/checkout-settings`,
   },
   {
+    key: "tournaments",
+    label: "Tournaments",
+    icon: "trophy",
+    path: `${ADMIN_BASE}/tournaments`,
+  },
+  {
     key: "cube-checklist",
     label: "Cube Checklist",
     icon: "check",
@@ -155,4 +161,5 @@ export const SECTION_TITLES: Record<string, string> = {
   "checkout-settings": "Checkout Settings",
   "audit-log": "Audit Log",
   "cube-checklist": "Cube Checklist",
+  tournaments: "Tournaments",
 };
