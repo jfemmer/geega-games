@@ -4767,6 +4767,144 @@ export type Database = {
         }
         Relationships: []
       }
+      tournament_entrants: {
+        Row: {
+          created_at: string
+          dropped_at: string | null
+          id: string
+          player_one: string
+          player_two: string | null
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dropped_at?: string | null
+          id?: string
+          player_one: string
+          player_two?: string | null
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dropped_at?: string | null
+          id?: string
+          player_one?: string
+          player_two?: string | null
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_entrants_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_matches: {
+        Row: {
+          created_at: string
+          entrant_a: string
+          entrant_b: string | null
+          id: string
+          reported_at: string | null
+          reported_by: string | null
+          result: string
+          round: number
+          table_number: number
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entrant_a: string
+          entrant_b?: string | null
+          id?: string
+          reported_at?: string | null
+          reported_by?: string | null
+          result?: string
+          round: number
+          table_number: number
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entrant_a?: string
+          entrant_b?: string | null
+          id?: string
+          reported_at?: string | null
+          reported_by?: string | null
+          result?: string
+          round?: number
+          table_number?: number
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_matches_entrant_a_tournament_id_fkey"
+            columns: ["entrant_a", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entrants"
+            referencedColumns: ["id", "tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_matches_entrant_b_tournament_id_fkey"
+            columns: ["entrant_b", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entrants"
+            referencedColumns: ["id", "tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_matches_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournaments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          current_round: number
+          finished_at: string | null
+          format: string
+          id: string
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          current_round?: number
+          finished_at?: string | null
+          format: string
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          current_round?: number
+          finished_at?: string | null
+          format?: string
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       trade_consents: {
         Row: {
           confirm_by: string | null
@@ -7131,6 +7269,15 @@ export type Database = {
           p_is_deal: boolean
           p_original_price_cents: number
           p_price_cents: number
+        }
+        Returns: number
+      }
+      tournament_pair_round: {
+        Args: {
+          p_pairings: Json
+          p_replace: boolean
+          p_round: number
+          p_tournament_id: string
         }
         Returns: number
       }

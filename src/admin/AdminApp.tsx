@@ -30,6 +30,7 @@ import { CheckoutSettingsPage } from "./pages/CheckoutSettingsPage";
 import { YardSaleModePage } from "./pages/YardSaleModePage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { CubeChecklistPage } from "./pages/CubeChecklistPage";
+import { TournamentsPage } from "./pages/TournamentsPage";
 import "../foilShimmer.css";
 import "./admin.css";
 
@@ -142,6 +143,8 @@ function AdminDashboard() {
         return <AuditLogPage />;
       case "cube-checklist":
         return <CubeChecklistPage />;
+      case "tournaments":
+        return <TournamentsPage query={query} onNavigate={navigate} />;
       case "overview":
       default:
         return <OverviewPage onNavigate={navigate} />;
