@@ -3255,15 +3255,21 @@ html {
 }
 
 
-/* ---- Storewide Sale Banner ---- */
+/* ---- Storewide Sale Banner ----
+   Rides inside the sticky black header, between the search row and the nav,
+   so it needs a color of its own to get noticed: a saturated violet band (the
+   same gradient as the card deal ribbon), a gold "% OFF" badge to match the
+   gold Deals & Specials link, and a solid white "Shop sale" button. A slow
+   light sweep crosses it every few seconds; visitors who ask their device for
+   reduced motion get the band without it. */
 .gg-store-sale {
   position: relative;
   overflow: hidden;
+  isolation: isolate;
   color: #fff;
-  border-top: 1px solid rgba(255,255,255,.06);
-  border-bottom: 1px solid rgba(173,100,255,.28);
-  background:
-    linear-gradient(180deg, rgba(18,10,27,.98), rgba(9,5,14,.99));
+  border-top: 1px solid rgba(255,255,255,.24);
+  border-bottom: 1px solid rgba(24,0,48,.7);
+  background: linear-gradient(100deg, #4b0096 0%, #7c00e6 34%, #9d00ff 58%, #7c00e6 80%, #5a00b4 100%);
 }
 .gg-store-sale::before {
   content: "";
@@ -3271,8 +3277,27 @@ html {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(420px 110px at 15% 50%, rgba(157,0,255,.18), transparent 70%),
-    radial-gradient(360px 120px at 85% 50%, rgba(102,51,153,.15), transparent 72%);
+    radial-gradient(640px 120px at 50% -50%, rgba(255,255,255,.2), transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08));
+}
+.gg-store-sale::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,.2) 50%, transparent 100%);
+  transform: translateX(-120%) skewX(-18deg);
+  animation: gg-store-sale-sheen 7s ease-in-out 1.2s infinite;
+}
+@keyframes gg-store-sale-sheen {
+  0% { transform: translateX(-120%) skewX(-18deg); }
+  22%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-store-sale::after { display: none; }
 }
 .gg-store-sale__inner {
   position: relative;
@@ -3294,9 +3319,9 @@ html {
   gap: .9rem;
 }
 .gg-store-sale__eyebrow {
-  color: #c9a7ea;
-  font-size: .65rem;
-  font-weight: 800;
+  color: #ffe08a;
+  font-size: .66rem;
+  font-weight: 850;
   letter-spacing: .11em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -3305,23 +3330,27 @@ html {
   min-width: 0;
   display: flex;
   align-items: baseline;
-  gap: .7rem;
+  /* Small row gap: when a narrow screen wraps the line, "Save X%" sits
+     right under the sale name instead of floating below it. */
+  gap: .1rem .7rem;
   flex-wrap: wrap;
 }
 .gg-store-sale__message strong {
   color: #fff;
-  font-size: .95rem;
-  font-weight: 750;
+  font-size: 1.05rem;
+  font-weight: 800;
   letter-spacing: .01em;
+  text-shadow: 0 1px 0 rgba(40,0,80,.35);
 }
 .gg-store-sale__message > span {
-  color: rgba(255,255,255,.68);
-  font-size: .8rem;
+  color: rgba(255,255,255,.92);
+  font-size: .84rem;
+  font-weight: 600;
 }
 .gg-store-sale__meta {
   display: flex;
   align-items: center;
-  gap: .8rem;
+  gap: .7rem;
   flex: none;
 }
 .gg-store-sale__badge {
@@ -3329,29 +3358,32 @@ html {
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  padding: .24rem .58rem;
-  border: 1px solid rgba(197,139,255,.38);
+  padding: .24rem .6rem;
   border-radius: 7px;
-  background: rgba(124,0,230,.16);
-  color: #e4c8ff;
-  font-size: .69rem;
-  font-weight: 850;
-  letter-spacing: .045em;
+  background: #ffd86b;
+  color: #2b0650;
+  font-size: .74rem;
+  font-weight: 900;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  box-shadow: 0 2px 0 rgba(48,0,92,.45), 0 0 16px rgba(255,216,107,.35);
 }
 .gg-store-sale__timer {
-  display: flex;
+  display: inline-flex;
   align-items: baseline;
   gap: .35rem;
-  padding-left: .8rem;
-  border-left: 1px solid rgba(255,255,255,.11);
-  color: rgba(255,255,255,.55);
-  font-size: .68rem;
+  padding: .32rem .62rem;
+  border-radius: 7px;
+  background: rgba(22,0,44,.36);
+  color: rgba(255,255,255,.86);
+  font-size: .7rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 .gg-store-sale__timer strong {
   color: #fff;
-  font-size: .8rem;
-  font-weight: 700;
+  font-size: .86rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: .01em;
 }
@@ -3359,44 +3391,54 @@ html {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
-  padding: .3rem .72rem;
-  border: 1px solid rgba(255,255,255,.14);
+  gap: .35rem;
+  min-height: 34px;
+  padding: .32rem .9rem;
   border-radius: 8px;
-  background: rgba(255,255,255,.055);
-  color: #fff;
-  font-size: .72rem;
-  font-weight: 700;
+  background: #fff;
+  color: #5a00b4;
+  font-size: .78rem;
+  font-weight: 800;
   text-decoration: none;
   white-space: nowrap;
-  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+  box-shadow: 0 2px 0 rgba(40,0,80,.35), 0 6px 16px rgba(30,0,60,.25);
+  transition: background .16s ease, transform .16s ease, box-shadow .16s ease;
 }
-.gg-store-sale__link:hover {
-  color: #fff;
-  background: rgba(157,0,255,.14);
-  border-color: rgba(197,139,255,.34);
-  transform: translateY(-1px);
+/* Decorative arrow; the "/ ''" form keeps screen readers from reading it out
+   (the first line is the fallback for browsers without that syntax). */
+.gg-store-sale__link::after {
+  content: "\2192";
+  content: "\2192" / "";
+  transition: transform .16s ease;
+}
+@media (hover: hover) {
+  .gg-store-sale__link:hover {
+    color: #4b0096;
+    background: #fff6d1;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 0 rgba(40,0,80,.35), 0 8px 20px rgba(30,0,60,.3);
+  }
+  .gg-store-sale__link:hover::after {
+    transform: translateX(2px);
+  }
 }
 .gg-store-sale__link:focus-visible {
-  outline: 2px solid #b96cff;
+  outline: 2px solid #ffd86b;
   outline-offset: 2px;
 }
 
+/* Tablets and large phones: one row, the name and "Save X%" stacked. */
 @media (max-width: 760px) {
   .gg-store-sale__inner {
     min-height: 0;
-    padding: .58rem .75rem;
-    gap: .65rem;
-    align-items: flex-start;
+    padding: .55rem .9rem;
+    gap: .9rem;
   }
   .gg-store-sale__lead {
     flex: 1 1 auto;
-    display: block;
   }
   .gg-store-sale__eyebrow {
-    display: block;
-    margin-bottom: .15rem;
-    font-size: .58rem;
+    display: none;
   }
   .gg-store-sale__message {
     display: block;
@@ -3404,59 +3446,76 @@ html {
   }
   .gg-store-sale__message strong {
     display: block;
-    font-size: .84rem;
+    font-size: .98rem;
   }
   .gg-store-sale__message > span {
     display: block;
-    margin-top: .14rem;
-    font-size: .7rem;
+    margin-top: .12rem;
+    font-size: .76rem;
   }
   .gg-store-sale__meta {
-    display: grid;
-    grid-template-columns: auto auto;
-    gap: .34rem .45rem;
-    justify-items: end;
+    gap: .5rem;
   }
   .gg-store-sale__badge {
-    grid-column: 1;
-    min-height: 25px;
-    padding: .18rem .45rem;
-    font-size: .62rem;
+    font-size: .7rem;
+    padding: .22rem .5rem;
   }
   .gg-store-sale__timer {
-    grid-column: 2;
-    padding-left: .45rem;
-    font-size: .61rem;
+    padding: .28rem .5rem;
+    font-size: .66rem;
   }
   .gg-store-sale__timer strong {
-    font-size: .7rem;
+    font-size: .8rem;
   }
   .gg-store-sale__link {
-    grid-column: 1 / -1;
-    min-height: 27px;
-    padding: .2rem .5rem;
-    font-size: .64rem;
+    padding: .28rem .75rem;
+    font-size: .76rem;
   }
 }
 
-@media (max-width: 430px) {
+/* Phones: two tight rows rather than a tall stack, because this band sits in
+   the sticky header and every line of it stays on screen while scrolling.
+   display: contents lets the badge, timer and button join one grid; those
+   wrappers carry no meaning for screen readers, so nothing is lost. */
+@media (max-width: 560px) {
   .gg-store-sale__inner {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .gg-store-sale__lead {
-    text-align: center;
-  }
-  .gg-store-sale__meta {
-    width: 100%;
-    grid-template-columns: 1fr auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name  badge"
+      "sub   badge"
+      "timer link";
     align-items: center;
+    gap: .08rem .75rem;
+    padding: .6rem .85rem .65rem;
+  }
+  .gg-store-sale__lead,
+  .gg-store-sale__message,
+  .gg-store-sale__meta {
+    display: contents;
+  }
+  .gg-store-sale__message strong {
+    grid-area: name;
+    line-height: 1.2;
+  }
+  .gg-store-sale__message > span {
+    grid-area: sub;
+    margin-top: 0;
+    line-height: 1.25;
   }
   .gg-store-sale__badge {
+    grid-area: badge;
+    justify-self: end;
+  }
+  .gg-store-sale__timer {
+    grid-area: timer;
     justify-self: start;
+    margin-top: .5rem;
   }
   .gg-store-sale__link {
-    width: 100%;
+    grid-area: link;
+    margin-top: .5rem;
+    min-height: 36px;
   }
 }
 
