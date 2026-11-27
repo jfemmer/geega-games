@@ -5804,3 +5804,53 @@ html.gg-tv { font-size: clamp(16px, 1.05vw, 26px); }
 @media (prefers-reduced-motion: reduce) {
   .gg-bside { transition: none; }
 }
+
+/* Tournaments: sign-ups (admin card, player join form, TV lobby) */
+.gg-tourney-signup { display: grid; gap: 10px; }
+.gg-tourney-signup p { margin: 0; }
+.gg-tourney-signup__bar,
+.gg-bracket__spotsbar { height: 8px; border-radius: 999px; background: var(--gg-surface-3); overflow: hidden; }
+.gg-tourney-signup__bar > span,
+.gg-bracket__spotsbar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gg-brand), var(--gg-gold));
+  transition: width 300ms ease;
+}
+.gg-bracket__lfg { color: var(--gg-warning) !important; font-weight: 600; }
+.gg-bracket__open { border-style: dashed !important; background: transparent !important; color: var(--gg-text-faint); }
+.gg-bracket__open .gg-bcards--empty { background: transparent; border: 1px dashed var(--gg-line-strong); color: var(--gg-text-faint); }
+.gg-bracket__joinform { display: grid; gap: 0.8rem; }
+.gg-bracket__joinbtn { width: 100%; justify-content: center; min-height: 48px; }
+.gg-bracket__findlink { justify-self: start; font-size: 0.9rem; }
+.gg-bracket__waiting { color: var(--gg-text-soft); }
+
+/* TV lobby: a big QR to scan, the count, and who's in. */
+.gg-bracket__lobbygrid { display: grid; grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.6fr); gap: 2rem; align-items: start; }
+.gg-bracket__join {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  padding: 1.5rem;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-lg);
+  background: var(--gg-surface);
+  text-align: center;
+}
+.gg-bracket__join .gg-qr { width: min(100%, 21rem); height: auto; padding: 12px; border-radius: 12px; background: #fff; }
+.gg-bracket__join > strong { font-size: 2rem; line-height: 1.1; }
+.gg-bracket__join > span { color: var(--gg-text-soft); }
+.gg-bracket__count { display: flex; align-items: baseline; gap: 0.35rem; font-variant-numeric: tabular-nums; }
+.gg-bracket__count b { font-size: 3.5rem; line-height: 1; color: #e2c6ff; }
+.gg-bracket__count span { font-size: 1.6rem; color: var(--gg-text-soft); }
+.gg-bracket__count small { margin-left: 0.3rem; color: var(--gg-text-faint); font-size: 0.9rem; }
+.gg-bracket--lobbyview .gg-bracket__entrants { grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); }
+.gg-bracket--lobbyview .gg-bracket__lfg { color: #f3c26b !important; }
+@media (max-width: 900px) {
+  .gg-bracket__lobbygrid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gg-tourney-signup__bar > span,
+  .gg-bracket__spotsbar > span { transition: none; }
+}

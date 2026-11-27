@@ -1,19 +1,24 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "../ui/Button";
-import { SelectField } from "../ui/Field";
+import { SelectField, TextField } from "../ui/Field";
 import { Icon } from "../ui/Icon";
 import { QrCode } from "../partners/QrCode";
 import { CommanderPicker, type CommanderOption } from "./CommanderPicker";
 import {
+  MAX_PLAYER_NAME,
   activeEntrants,
+  cleanPlayerName,
   commanderImageUrl,
   commanderSummary,
   computeStandings,
   entrantLabel,
   formatInfo,
+  isSigningUp,
   matchesInRound,
   parseSeatKey,
+  playerCount,
   seatKey,
+  soloEntrants,
   type PlayerSeat,
   type StandingRow,
   type TournamentCommander,
@@ -31,9 +36,21 @@ import {
 //   Phone: "your commander" and "your table" first, then the same sections
 //   stacked.
 
+/** What a player sends to take a spot. */
+export interface SignUpInput {
+  name: string;
+  commander: TournamentCommander | null;
+  /** Two-Headed Giant: someone who signed up alone, to team up with. */
+  teamWith: string | null;
+}
+
+/** Open-spot placeholders shown before "+ N more". */
+const OPEN_SPOTS_SHOWN = 12;
+
 function statusLine(t: TournamentDetail, pending: number, pairs: number, entrants: number): string {
   const info = formatInfo(t.format);
   if (t.status === "finished") return "Final standings";
+  if (isSigningUp(t)) return `Signing up · ${playerCount(t)} of ${t.spots} spots filled`;
   if (t.currentRound === 0) return `Starting soon · ${entrants} ${entrants === 1 ? info.noun : info.nounPlural}`;
   if (pairs === 0) return `Round ${t.currentRound}`;
   return pending === 0
@@ -49,6 +66,7 @@ export function BracketDisplay({
   me,
   onPickMe,
   onSaveCommander,
+  onSignUp,
   searchCommanders,
   updatedAt,
   onFullscreen,
@@ -62,6 +80,8 @@ export function BracketDisplay({
   me: PlayerSeat | null;
   onPickMe: (seat: PlayerSeat | null) => void;
   onSaveCommander: (seat: PlayerSeat, commander: TournamentCommander | null) => Promise<boolean>;
+  /** Takes a spot (sign-up tournaments). */
+  onSignUp?: (input: SignUpInput) => Promise<boolean>;
   searchCommanders: (query: string) => Promise<CommanderOption[]>;
   updatedAt: Date | null;
   onFullscreen?: () => void;
@@ -83,7 +103,11 @@ export function BracketDisplay({
   const active = activeEntrants(t);
   const finished = t.status === "finished";
   const leaders = finished ? standings.filter((r) => r.rank === 1 && r.points > 0) : [];
+  const signingUp = isSigningUp(t);
+  const players = playerCount(t);
+  const spotsLeft = signingUp && t.spots != null ? Math.max(0, t.spots - players) : 0;
   const meEntrant = me ? byId.get(me.entrantId) ?? null : null;
+  const seated = me && meEntrant && me.seat < meEntrant.players.length ? me : null;
   const myMatch =
     meEntrant && !finished ? current.find((m) => m.a === meEntrant.id || m.b === meEntrant.id) ?? null : null;
 
@@ -97,7 +121,7 @@ export function BracketDisplay({
           <span>{statusLine(t, pending, pairs, active.length)}</span>
         </p>
       </div>
-      {tv && shareUrl && t.status === "active" && (
+      {tv && shareUrl && t.status === "active" && !signingUp && (
         <div className="gg-bracket__qr">
           <QrCode value={shareUrl} size={132} label="QR code: open this bracket on your phone" />
           <span>
@@ -162,6 +186,60 @@ export function BracketDisplay({
     </section>
   );
 
+  const lobbySection = signingUp && (
+    <section className="gg-bracket__section gg-bracket__lobby" aria-labelledby="bracket-lobby">
+      <h2 id="bracket-lobby">
+        Who's in · {players} of {t.spots}
+      </h2>
+      <div
+        className="gg-bracket__spotsbar"
+        role="progressbar"
+        aria-label="Spots filled"
+        aria-valuemin={0}
+        aria-valuemax={t.spots ?? 0}
+        aria-valuenow={players}
+      >
+        <span style={{ width: `${t.spots ? Math.min(100, (players / t.spots) * 100) : 0}%` }} />
+      </div>
+      <ul className="gg-bracket__entrants">
+        {active.map((e) => (
+          <li key={e.id} className={meEntrant?.id === e.id ? "is-mine" : undefined}>
+            <CommanderCards entrant={e} size="sm" />
+            <div>
+              <strong>{entrantLabel(e)}</strong>
+              {commanderSummary(e) && <span>{commanderSummary(e)}</span>}
+              {t.format === "2hg" && e.players.length === 1 && <span className="gg-bracket__lfg">Needs a teammate</span>}
+            </div>
+          </li>
+        ))}
+        {/* The TV shows each open spot; a phone, one line. */}
+        {!tv && spotsLeft > 0 && (
+          <li className="gg-bracket__open">
+            <span className="gg-bcards gg-bcards--sm gg-bcards--empty" aria-hidden="true">
+              +
+            </span>
+            <span>
+              {spotsLeft} open {spotsLeft === 1 ? "spot" : "spots"}
+            </span>
+          </li>
+        )}
+        {Array.from({ length: tv ? Math.min(spotsLeft, OPEN_SPOTS_SHOWN) : 0 }, (_, i) => (
+          <li key={`open-${i}`} className="gg-bracket__open">
+            <span className="gg-bcards gg-bcards--sm gg-bcards--empty" aria-hidden="true">
+              +
+            </span>
+            <span>Open spot</span>
+          </li>
+        ))}
+        {tv && spotsLeft > OPEN_SPOTS_SHOWN && (
+          <li className="gg-bracket__open">
+            <span>+ {spotsLeft - OPEN_SPOTS_SHOWN} more open spots</span>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+
   // Before round 1 the standings would only repeat "who's playing" with zeros.
   const standingsSection = t.currentRound > 0 && (
     <section className="gg-bracket__section gg-bracket__standings" aria-labelledby="bracket-standings">
@@ -200,6 +278,30 @@ export function BracketDisplay({
     </footer>
   );
 
+  if (tv && signingUp) {
+    return (
+      <div className="gg-bracket gg-bracket--tv gg-bracket--lobbyview">
+        {head}
+        <div className="gg-bracket__lobbygrid">
+          <div className="gg-bracket__join">
+            {shareUrl && <QrCode value={shareUrl} size={240} label="QR code: scan to sign up" />}
+            <strong>Scan to join</strong>
+            <span>
+              Enter your name and commander on your phone. Round 1 starts when all {t.spots} spots are filled.
+            </span>
+            <div className="gg-bracket__count" aria-live="polite">
+              <b>{players}</b>
+              <span>/ {t.spots}</span>
+              <small>players in</small>
+            </div>
+          </div>
+          {lobbySection}
+        </div>
+        {footer}
+      </div>
+    );
+  }
+
   if (tv) {
     return (
       <div className="gg-bracket gg-bracket--tv">
@@ -223,18 +325,29 @@ export function BracketDisplay({
     <div className="gg-bracket gg-bracket--phone">
       {head}
       {champion}
-      {!finished && (
-        <MyCommander
+      {!finished && signingUp && !seated && onSignUp ? (
+        <JoinCard
           tournament={t}
-          me={me}
-          meEntrant={meEntrant}
+          spotsLeft={spotsLeft}
+          onSignUp={onSignUp}
           onPickMe={onPickMe}
-          onSave={onSaveCommander}
           search={searchCommanders}
         />
+      ) : (
+        !finished && (
+          <MyCommander
+            tournament={t}
+            me={me}
+            meEntrant={meEntrant}
+            onPickMe={onPickMe}
+            onSave={onSaveCommander}
+            search={searchCommanders}
+            waitingFor={signingUp ? spotsLeft : null}
+          />
+        )
       )}
       {myMatch && meEntrant && <MyTable match={myMatch} me={meEntrant} byId={byId} />}
-      {roundSection}
+      {signingUp ? lobbySection : roundSection}
       {standingsSection}
       {roundsSection}
       {footer}
@@ -461,6 +574,33 @@ function MyTable({ match, me, byId }: { match: TournamentMatch; me: TournamentEn
   );
 }
 
+/** "Who are you?": every player still in, for someone who already has a spot. */
+function SeatPicker({ tournament, onPickMe }: { tournament: TournamentDetail; onPickMe: (seat: PlayerSeat | null) => void }) {
+  const seats = activeEntrants(tournament).flatMap((e) =>
+    e.players.map((player, seat) => ({
+      key: seatKey({ entrantId: e.id, seat }),
+      label: e.players.length === 2 ? `${player} (with ${e.players[1 - seat]})` : player,
+    })),
+  );
+  return (
+    <SelectField
+      label="Who are you?"
+      value=""
+      onChange={(e) => {
+        const picked = e.target.value ? parseSeatKey(e.target.value) : null;
+        if (picked) onPickMe(picked);
+      }}
+    >
+      <option value="">Pick your name…</option>
+      {seats.map((s) => (
+        <option key={s.key} value={s.key}>
+          {s.label}
+        </option>
+      ))}
+    </SelectField>
+  );
+}
+
 function MyCommander({
   tournament,
   me,
@@ -468,6 +608,7 @@ function MyCommander({
   onPickMe,
   onSave,
   search,
+  waitingFor,
 }: {
   tournament: TournamentDetail;
   me: PlayerSeat | null;
@@ -475,47 +616,132 @@ function MyCommander({
   onPickMe: (seat: PlayerSeat | null) => void;
   onSave: (seat: PlayerSeat, commander: TournamentCommander | null) => Promise<boolean>;
   search: (query: string) => Promise<CommanderOption[]>;
+  /** Open spots left while signing up (null once the tournament has started). */
+  waitingFor: number | null;
 }) {
-  const seats = activeEntrants(tournament).flatMap((e) =>
-    e.players.map((player, seat) => ({
-      key: seatKey({ entrantId: e.id, seat }),
-      label: e.players.length === 2 ? `${player} (with ${e.players[1 - seat]})` : player,
-    })),
-  );
   const seated = me && meEntrant && me.seat < meEntrant.players.length ? me : null;
 
   return (
     <section className="gg-card gg-bracket__mine" aria-labelledby="bracket-mine">
-      <h2 id="bracket-mine">Your commander</h2>
+      <h2 id="bracket-mine">{seated && waitingFor != null ? "You're in!" : "Your commander"}</h2>
       {!seated || !meEntrant ? (
         <>
           <p className="gg-muted">Find your name, then add the commander you're playing (optional).</p>
-          <SelectField
-            label="Who are you?"
-            value=""
-            onChange={(e) => {
-              const picked = e.target.value ? parseSeatKey(e.target.value) : null;
-              if (picked) onPickMe(picked);
-            }}
-          >
-            <option value="">Pick your name…</option>
-            {seats.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </SelectField>
+          <SeatPicker tournament={tournament} onPickMe={onPickMe} />
         </>
       ) : (
-        <CommanderForm
-          key={seatKey(seated)}
-          seat={seated}
-          entrant={meEntrant}
-          onSave={onSave}
-          onSwitch={() => onPickMe(null)}
-          search={search}
-        />
+        <>
+          {waitingFor != null && (
+            <p className="gg-bracket__waiting">
+              {waitingFor > 0
+                ? `Waiting for ${waitingFor} more ${waitingFor === 1 ? "player" : "players"}. Round 1 starts when every spot is filled. Keep this page open: your table will show up here.`
+                : "Every spot is filled. Round 1 is about to start."}
+            </p>
+          )}
+          <CommanderForm
+            key={seatKey(seated)}
+            seat={seated}
+            entrant={meEntrant}
+            onSave={onSave}
+            onSwitch={() => onPickMe(null)}
+            search={search}
+          />
+        </>
       )}
+    </section>
+  );
+}
+
+/** Sign-ups: take a spot with your name, commander and (Two-Headed Giant) maybe a teammate. */
+function JoinCard({
+  tournament,
+  spotsLeft,
+  onSignUp,
+  onPickMe,
+  search,
+}: {
+  tournament: TournamentDetail;
+  spotsLeft: number;
+  onSignUp: (input: SignUpInput) => Promise<boolean>;
+  onPickMe: (seat: PlayerSeat | null) => void;
+  search: (query: string) => Promise<CommanderOption[]>;
+}) {
+  const [finding, setFinding] = useState(false);
+  const [name, setName] = useState("");
+  const [commander, setCommander] = useState<TournamentCommander | null>(null);
+  const [teamWith, setTeamWith] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const solos = soloEntrants(tournament);
+  const full = spotsLeft <= 0;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const clean = cleanPlayerName(name);
+    if (!clean) {
+      setError("Enter your name.");
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    const ok = await onSignUp({ name: clean, commander, teamWith: teamWith || null });
+    setBusy(false);
+    if (ok) {
+      setName("");
+      setCommander(null);
+      setTeamWith("");
+    }
+  }
+
+  return (
+    <section className="gg-card gg-bracket__mine gg-bracket__joincard" aria-labelledby="bracket-join">
+      <h2 id="bracket-join">{finding ? "Find your name" : full ? "Every spot is taken" : "Join the tournament"}</h2>
+      {finding ? (
+        <SeatPicker tournament={tournament} onPickMe={onPickMe} />
+      ) : full ? (
+        <p className="gg-muted">All the spots are filled. Ask the store if you'd like to play.</p>
+      ) : (
+        <form className="gg-bracket__joinform" onSubmit={submit} noValidate>
+          <p className="gg-muted">
+            {spotsLeft} {spotsLeft === 1 ? "spot" : "spots"} left. Round 1 starts when every spot is filled.
+          </p>
+          <TextField
+            label="Your name"
+            value={name}
+            maxLength={MAX_PLAYER_NAME}
+            autoComplete="given-name"
+            autoCapitalize="words"
+            required
+            error={error ?? undefined}
+            onChange={(e) => {
+              setName(e.target.value);
+              setError(null);
+            }}
+          />
+          <CommanderPicker label="Commander (optional)" value={commander} onChange={setCommander} search={search} />
+          {tournament.format === "2hg" && (
+            <SelectField
+              label="Teammate"
+              hint="Two-Headed Giant is played in teams of two."
+              value={teamWith}
+              onChange={(e) => setTeamWith(e.target.value)}
+            >
+              <option value="">Give me a random teammate</option>
+              {solos.map((e) => (
+                <option key={e.id} value={e.id}>
+                  Team up with {e.players[0]}
+                </option>
+              ))}
+            </SelectField>
+          )}
+          <Button type="submit" variant="primary" icon="trophy" loading={busy} className="gg-bracket__joinbtn">
+            Join the tournament
+          </Button>
+        </form>
+      )}
+      <button type="button" className="gg-link-btn gg-bracket__findlink" onClick={() => setFinding((f) => !f)}>
+        {finding ? "Back to sign-up" : "Already signed up? Find your name"}
+      </button>
     </section>
   );
 }

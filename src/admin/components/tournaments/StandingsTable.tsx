@@ -90,6 +90,7 @@ export function StandingsTable({
                   <div className="gg-tourney-standings__name">
                     <strong>{label}</strong>
                     {dropped && <Badge tone="neutral">Dropped</Badge>}
+                    {format === "2hg" && row.entrant.players.length === 1 && <Badge tone="warning">Needs a teammate</Badge>}
                     {row.byes > 0 && (
                       <Badge tone="info">
                         {row.byes} bye{row.byes === 1 ? "" : "s"}
@@ -164,11 +165,14 @@ export function EntrantFields({
   values,
   onChange,
   autoFocus,
+  allowSolo,
 }: {
   format: TournamentFormat;
   values: string[];
   onChange: (values: string[]) => void;
   autoFocus?: boolean;
+  /** Player 2 may be left empty (sign-ups: they get a teammate later). */
+  allowSolo?: boolean;
 }) {
   const size = formatInfo(format).teamSize;
   return (
@@ -176,7 +180,7 @@ export function EntrantFields({
       {Array.from({ length: size }, (_, i) => (
         <TextField
           key={i}
-          label={size === 1 ? "Player name" : `Player ${i + 1}`}
+          label={size === 1 ? "Player name" : i === 1 && allowSolo ? "Player 2 (optional)" : `Player ${i + 1}`}
           value={values[i] ?? ""}
           maxLength={40}
           autoComplete="off"
@@ -198,10 +202,13 @@ export function EntrantFields({
 export function AddEntrantForm({
   format,
   started,
+  allowSolo = false,
   onAdd,
 }: {
   format: TournamentFormat;
   started: boolean;
+  /** Sign-ups: a Two-Headed Giant player can be added alone. */
+  allowSolo?: boolean;
   onAdd: (players: string[]) => Promise<boolean>;
 }) {
   const info = formatInfo(format);
@@ -211,8 +218,10 @@ export function AddEntrantForm({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const players = Array.from({ length: info.teamSize }, (_, i) => cleanPlayerName(values[i] ?? ""));
-    const problem = entrantProblem(format, players);
+    const players = Array.from({ length: info.teamSize }, (_, i) => cleanPlayerName(values[i] ?? "")).filter(
+      (p, i) => i === 0 || p || !allowSolo,
+    );
+    const problem = entrantProblem(format, players, allowSolo);
     setError(problem);
     if (problem) return;
     setBusy(true);
@@ -227,13 +236,14 @@ export function AddEntrantForm({
         <EntrantFields
           format={format}
           values={values}
+          allowSolo={allowSolo}
           onChange={(next) => {
             setValues(next);
             setError(null);
           }}
         />
         <Button type="submit" variant="secondary" icon="plus" loading={busy}>
-          Add {info.noun}
+          Add {allowSolo ? "player" : info.noun}
         </Button>
       </div>
       {error ? (
@@ -242,7 +252,13 @@ export function AddEntrantForm({
         </p>
       ) : (
         <p className="gg-field__hint">
-          {started ? `Late arrivals join from the next round with no wins.` : `They'll be paired in round 1.`}
+          {started
+            ? `Late arrivals join from the next round with no wins.`
+            : allowSolo && format === "2hg"
+              ? "Leave Player 2 empty and they'll get a teammate. Added players take spots."
+              : allowSolo
+                ? "Added players take spots, like sign-ups."
+                : `They'll be paired in round 1.`}
         </p>
       )}
     </form>

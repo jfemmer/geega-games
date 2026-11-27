@@ -36,6 +36,9 @@ import { TOURNAMENT_PATH } from "../../store/lib/tournamentPath.js";
 export { TOURNAMENT_PATH };
 /** Entrants per tournament (players for 1v1, teams for Two-Headed Giant). */
 export const MAX_ENTRANTS = 64;
+/** Player spots for sign-ups (players, not teams). Two-Headed Giant needs an even number, at least 4. */
+export const MIN_SPOTS = 2;
+export const MAX_SPOTS = 64;
 /** Tournaments the list returns (newest first). */
 export const TOURNAMENT_LIST_LIMIT = 50;
 
@@ -89,6 +92,8 @@ export interface TournamentDetail {
   matches: TournamentMatch[];
   /** The player display link. Staff only: the public view never includes it. */
   share?: { token: string; enabled: boolean };
+  /** Player spots players fill by signing up on the player display; null = staff enter everyone. */
+  spots: number | null;
 }
 
 export function isTournamentFormat(value: unknown): value is TournamentFormat {
@@ -252,8 +257,10 @@ export function randomTeams(names: string[], random: () => number = Math.random)
  * number of names for the format, each with something in it, and a team's
  * two players different people.
  */
-export function entrantProblem(format: TournamentFormat, players: string[]): string | null {
+export function entrantProblem(format: TournamentFormat, players: string[], allowSolo = false): string | null {
   const size = formatInfo(format).teamSize;
+  // Before a sign-up tournament starts, a Two-Headed Giant player may be waiting for a teammate.
+  if (allowSolo && size === 2 && players.length === 1 && players[0]) return null;
   if (players.length !== size || players.some((p) => !p)) {
     return size === 2 ? "A Two-Headed Giant team needs two player names." : "Enter the player's name.";
   }
@@ -654,10 +661,48 @@ export function activeEntrants(detail: Pick<TournamentDetail, "entrants">): Tour
   return detail.entrants.filter((e) => !e.droppedAt);
 }
 
+/** Players still in (a Two-Headed Giant team is two; someone waiting for a teammate is one). */
+export function playerCount(detail: Pick<TournamentDetail, "entrants">): number {
+  return activeEntrants(detail).reduce((n, e) => n + e.players.length, 0);
+}
+
+/** Signing up: spots are set and round 1 hasn't been paired. */
+export function isSigningUp(detail: Pick<TournamentDetail, "spots" | "currentRound" | "status">): boolean {
+  return detail.spots != null && detail.currentRound === 0 && detail.status === "active";
+}
+
+/** Two-Headed Giant sign-ups still without a teammate. */
+export function soloEntrants(detail: Pick<TournamentDetail, "entrants" | "format">): TournamentEntrant[] {
+  return detail.format === "2hg" ? activeEntrants(detail).filter((e) => e.players.length === 1) : [];
+}
+
+/** Why `spots` won't do for this format, or null. */
+export function spotsProblem(format: TournamentFormat, spots: unknown): string | null {
+  if (typeof spots !== "number" || !Number.isInteger(spots)) return "Enter the number of player spots.";
+  const min = format === "2hg" ? 4 : MIN_SPOTS;
+  if (spots < min || spots > MAX_SPOTS) return `Pick between ${min} and ${MAX_SPOTS} player spots.`;
+  if (format === "2hg" && spots % 2 === 1) return "Two-Headed Giant needs an even number of player spots.";
+  return null;
+}
+
+/** Why round 1 can't start yet, or null when it can (sign-ups may still have open spots). */
+export function startBlocker(detail: TournamentDetail): string | null {
+  if (detail.status !== "active") return "This tournament is finished. Reopen it to play.";
+  if (detail.currentRound > 0) return "This tournament has already started.";
+  const players = playerCount(detail);
+  if (detail.format === "2hg") {
+    if (players < 4) return "Two-Headed Giant needs at least 4 players (two teams) to start.";
+    if (players % 2 === 1) return `Two-Headed Giant needs an even number of players: ${players} have signed up.`;
+    return null;
+  }
+  return players < 2 ? "Add at least two players to start." : null;
+}
+
 /** Why the next round can't be paired yet, or null when it can. */
 export function nextRoundBlocker(detail: TournamentDetail): string | null {
   const info = formatInfo(detail.format);
   if (detail.status !== "active") return "This tournament is finished. Reopen it to play another round.";
+  if (detail.currentRound === 0) return startBlocker(detail);
   if (activeEntrants(detail).length < 2) return `Add at least two ${info.nounPlural} to start.`;
   const pending = matchesInRound(detail.matches, detail.currentRound).filter((m) => m.result === "pending").length;
   if (pending > 0) {

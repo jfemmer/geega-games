@@ -61,6 +61,7 @@ beforeEach(() => {
     finished_at: null,
     share_token: `tok${fakeId().replace(/-/g, "")}`,
     share_enabled: true,
+    spots: null,
   });
   state.defaults.tournament_entrants = () => ({
     player_two: null,
@@ -99,6 +100,50 @@ beforeEach(() => {
     });
     t.current_round = args.p_round;
     return { data: args.p_round, error: null };
+  };
+  // Stand-ins for tournament_sign_up() and tournament_form_teams(), with the SQL's rules.
+  state.rpc.tournament_sign_up = (args) => {
+    const t = state.tables.tournaments.find((r) => r.id === args.p_tournament_id)!;
+    const err = (code: string, message: string) => ({ data: null, error: { code, message } });
+    if (t.status !== "active" || (t.current_round as number) > 0) return err("GGT04", "Sign-ups are closed: this tournament has started.");
+    if (t.spots == null) return err("GGT04", "This tournament isn't taking sign-ups. Ask the store to add you.");
+    const mine = state.tables.tournament_entrants.filter((e) => e.tournament_id === t.id);
+    const players = mine.filter((e) => !e.dropped_at).reduce((n, e) => n + (e.player_two ? 2 : 1), 0);
+    if (players >= (t.spots as number)) return err("GGT04", "Sorry, every spot is taken.");
+    const name = String(args.p_name).toLowerCase();
+    if (mine.some((e) => String(e.player_one).toLowerCase() === name || String(e.player_two ?? "").toLowerCase() === name)) {
+      return err("GGT05", `Someone named ${args.p_name} has already signed up. Add your last initial.`);
+    }
+    if (args.p_team_with) {
+      const e = mine.find((x) => x.id === args.p_team_with && !x.player_two && !x.dropped_at);
+      if (!e) return err("GGT05", "That player already has a teammate.");
+      Object.assign(e, { player_two: args.p_name, commander_two: args.p_commander, commander_two_card: args.p_card });
+      return { data: { entrant_id: e.id, seat: 1, players: players + 1, spots: t.spots }, error: null };
+    }
+    const row = {
+      id: fakeId(),
+      tournament_id: t.id,
+      player_one: args.p_name,
+      player_two: null,
+      commander_one: args.p_commander,
+      commander_one_card: args.p_card,
+      commander_two: null,
+      commander_two_card: null,
+      dropped_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    state.tables.tournament_entrants.push(row);
+    return { data: { entrant_id: row.id, seat: 0, players: players + 1, spots: t.spots }, error: null };
+  };
+  state.rpc.tournament_form_teams = (args) => {
+    for (const { keep, merge } of args.p_pairs as { keep: string; merge: string }[]) {
+      const m = state.tables.tournament_entrants.find((e) => e.id === merge)!;
+      const k = state.tables.tournament_entrants.find((e) => e.id === keep)!;
+      Object.assign(k, { player_two: m.player_one, commander_two: m.commander_one, commander_two_card: m.commander_one_card });
+      state.tables.tournament_entrants = state.tables.tournament_entrants.filter((e) => e.id !== merge);
+    }
+    return { data: (args.p_pairs as unknown[]).length, error: null };
   };
 });
 
@@ -459,5 +504,141 @@ describe("commanders", () => {
     // Renaming without commanders leaves them alone.
     await post({ action: "rename-entrant", id: t.id, entrantId: t.entrants[0].id, players: ["Alex"] });
     expect(state.tables.tournament_entrants[0]).toMatchObject({ player_one: "Alex", commander_one: "Atraxa, Praetors' Voice" });
+  });
+});
+
+// ─────────────────────────────── sign-ups ───────────────────────────────
+
+async function signupTournament(format: "1v1" | "2hg", spots: number) {
+  const res = await post({ action: "create", name: "Sign-up night", format, entrants: [], spots });
+  expect(res.status).toBe(201);
+  return res.body.tournament as Body;
+}
+const join = (token: string, name: string, extra: Body = {}) => playerPost({ token, action: "sign-up", name, ...extra });
+
+describe("sign-ups", () => {
+  it("creates a tournament with player spots and nobody in yet", async () => {
+    const t = await signupTournament("1v1", 4);
+    expect(t).toMatchObject({ spots: 4, currentRound: 0, entrants: [] });
+    expect(state.tables.tournaments[0].spots).toBe(4);
+  });
+
+  it("checks the number of spots for the format", async () => {
+    const bad = async (format: string, spots: unknown) =>
+      (await post({ action: "create", name: "X", format, entrants: [], spots })).body.message;
+    expect(await bad("1v1", 1)).toMatch(/between 2 and 64/);
+    expect(await bad("1v1", 65)).toMatch(/between 2 and 64/);
+    expect(await bad("1v1", "8")).toMatch(/number of player spots/);
+    expect(await bad("2hg", 2)).toMatch(/between 4 and 64/);
+    expect(await bad("2hg", 7)).toMatch(/even number/);
+    expect((await post({ action: "create", name: "X", format: "1v1", entrants: [["A"], ["B"], ["C"]], spots: 2 })).body.message).toMatch(
+      /more names than the 2 player spots/,
+    );
+  });
+
+  it("players take spots from the link, with their commander, and get their seat back", async () => {
+    const t = await signupTournament("1v1", 3);
+    const res = await join(t.share.token, "  Alex ", { commander: { name: "Atraxa, Praetors' Voice", cardId: ATRAXA } });
+    expect(res.status).toBe(200);
+    expect(res.body.started).toBe(false);
+    expect(res.body.seat).toEqual({ entrantId: state.tables.tournament_entrants[0].id, seat: 0 });
+    expect(res.body.tournament.entrants[0]).toMatchObject({
+      players: ["Alex"],
+      commanders: [{ name: "Atraxa, Praetors' Voice", cardId: ATRAXA }],
+    });
+    expect(res.body.tournament.share).toBeUndefined();
+    expect((await join(t.share.token, "")).body.message).toMatch(/Enter your name/);
+    const dup = await join(t.share.token, "ALEX");
+    expect(dup.status).toBe(409);
+    expect(dup.body.message).toMatch(/already signed up/);
+  });
+
+  it("starts round 1 by itself when the last spot fills, and then turns sign-ups away", async () => {
+    const t = await signupTournament("1v1", 3);
+    await join(t.share.token, "Alex");
+    await join(t.share.token, "Blair");
+    expect(rpcCalls).toHaveLength(0);
+    const last = await join(t.share.token, "Casey");
+    expect(last.body.started).toBe(true);
+    expect(last.body.tournament.currentRound).toBe(1);
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0]).toMatchObject({ p_round: 1, p_replace: false });
+    const ids = (rpcCalls[0].p_pairings as { a: string; b: string | null }[]).flatMap((p) => [p.a, p.b]).filter(Boolean);
+    expect(new Set(ids).size).toBe(3);
+
+    const late = await join(t.share.token, "Drew");
+    expect(late.status).toBe(409);
+    expect(late.body.message).toMatch(/Sign-ups are closed/);
+  });
+
+  it("refuses sign-ups for tournaments where staff enter everyone", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    const res = await join(t.share.token, "Casey");
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/isn't taking sign-ups/);
+  });
+
+  it("Two-Headed Giant: friends team up, everyone else gets a random teammate when it fills", async () => {
+    const t = await signupTournament("2hg", 6);
+    const alex = (await join(t.share.token, "Alex")).body.seat;
+    const sam = await join(t.share.token, "Sam", { teamWith: alex.entrantId, commander: { name: "Krenko, Mob Boss" } });
+    expect(sam.body.seat).toEqual({ entrantId: alex.entrantId, seat: 1 });
+    expect(sam.body.tournament.entrants[0]).toMatchObject({
+      players: ["Alex", "Sam"],
+      commanders: [null, { name: "Krenko, Mob Boss", cardId: null }],
+    });
+    await join(t.share.token, "Jo");
+    await join(t.share.token, "Kim");
+    await join(t.share.token, "Pat");
+    const last = await join(t.share.token, "Lee");
+    expect(last.body.started).toBe(true);
+    const teams = (last.body.tournament.entrants as Body[]).map((e) => e.players.slice().sort().join("+"));
+    expect(teams).toHaveLength(3);
+    expect(teams).toContain("Alex+Sam");
+    expect(teams.flatMap((x) => x.split("+")).sort()).toEqual(["Alex", "Jo", "Kim", "Lee", "Pat", "Sam"]);
+    expect(rpcCalls).toHaveLength(1);
+  });
+
+  it("staff can start early, but Two-Headed Giant needs an even number of players", async () => {
+    const t = await signupTournament("2hg", 8);
+    for (const n of ["Alex", "Blair", "Casey", "Drew", "Eli"]) await join(t.share.token, n);
+    const odd = await post({ action: "start", id: t.id });
+    expect(odd.status).toBe(409);
+    expect(odd.body.message).toMatch(/even number of players: 5/);
+    await join(t.share.token, "Frankie");
+    const started = await post({ action: "start", id: t.id });
+    expect(started.status).toBe(200);
+    expect(started.body.tournament.currentRound).toBe(1);
+    expect(started.body.tournament.entrants).toHaveLength(3);
+    expect((started.body.tournament.entrants as Body[]).every((e) => e.players.length === 2)).toBe(true);
+  });
+
+  it("staff change the spots (never below who's in), and matching them starts round 1", async () => {
+    const t = await signupTournament("1v1", 6);
+    for (const n of ["Alex", "Blair", "Casey"]) await join(t.share.token, n);
+    const below = await post({ action: "spots", id: t.id, spots: 2 });
+    expect(below.status).toBe(409);
+    expect(below.body.message).toMatch(/3 players have already signed up/);
+    const more = await post({ action: "spots", id: t.id, spots: 8 });
+    expect(more.body.tournament).toMatchObject({ spots: 8, currentRound: 0 });
+    const match = await post({ action: "spots", id: t.id, spots: 3 });
+    expect(match.body.tournament).toMatchObject({ spots: 3, currentRound: 1 });
+    expect((await post({ action: "spots", id: t.id, spots: 4 })).status).toBe(409);
+  });
+
+  it("staff-added players take spots too: alone in Two-Headed Giant, and the last one starts it", async () => {
+    const t = await signupTournament("2hg", 4);
+    await join(t.share.token, "Alex");
+    const solo = await post({ action: "add-entrant", id: t.id, players: ["Blair", ""] });
+    expect(solo.status).toBe(200);
+    expect(solo.body.tournament.entrants[1].players).toEqual(["Blair"]);
+    const tooMany = await post({ action: "add-entrant", id: t.id, players: ["Casey", "Drew", "Eli"] });
+    expect(tooMany.status).toBe(400);
+    const team = await post({ action: "add-entrant", id: t.id, players: ["Casey", "Drew"] });
+    expect(team.body.tournament.currentRound).toBe(1);
+    // Once it has started, late arrivals join as usual: spots no longer apply.
+    const late = await post({ action: "add-entrant", id: t.id, players: ["Late", "Comer"] });
+    expect(late.status).toBe(200);
+    expect(late.body.tournament.entrants).toHaveLength(3);
   });
 });

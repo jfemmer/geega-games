@@ -14,10 +14,13 @@ import { tournamentShareUrl } from "../../utils/tournament";
 export function PlayerDisplayPanel({
   share,
   busy,
+  signingUp = false,
   onChange,
 }: {
   share: { token: string; enabled: boolean };
   busy: boolean;
+  /** Players sign up from this link before round 1. */
+  signingUp?: boolean;
   onChange: (change: { enabled?: boolean; rotate?: boolean }) => Promise<boolean>;
 }) {
   const toast = useToast();
@@ -49,8 +52,9 @@ export function PlayerDisplayPanel({
           <QrCode value={phoneUrl} size={120} label="QR code for the player display" />
           <div className="gg-tourney-share__body">
             <p>
-              Put the bracket on a TV, or let players scan the code to follow along on their phones and add their
-              commander.
+              {signingUp
+                ? "Players scan this code (or the one on the TV display) to sign up with their name and commander. Round 1 starts when every spot is filled."
+                : "Put the bracket on a TV, or let players scan the code to follow along on their phones and add their commander."}
             </p>
             <a className="gg-tourney-share__url" href={phoneUrl} target="_blank" rel="noopener noreferrer">
               {phoneUrl}
@@ -80,7 +84,10 @@ export function PlayerDisplayPanel({
         </div>
       ) : (
         <div className="gg-tourney-share__off">
-          <p className="gg-muted">The player display link is off, so the TV and players' phones can't open it.</p>
+          <p className="gg-muted">
+            The player display link is off, so the TV and players' phones can't open it
+            {signingUp ? ", and nobody can sign up" : ""}.
+          </p>
           <Button variant="secondary" loading={busy} onClick={() => void onChange({ enabled: true })}>
             Turn link on
           </Button>

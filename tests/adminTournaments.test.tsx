@@ -40,6 +40,7 @@ function detail(extra: Partial<TournamentDetail> = {}): TournamentDetail {
     finishedAt: null,
     entrants: [entrant("a", ["Alex"]), entrant("b", ["Blair"]), entrant("c", ["Casey"]), entrant("d", ["Drew"])],
     matches: [match("m1", 1, 1, "a", "b", "pending"), match("m2", 1, 2, "c", "d", "pending")],
+    spots: null,
     ...extra,
   };
 }
@@ -105,6 +106,7 @@ describe("creating a tournament", () => {
     });
     renderPage();
     await screen.findByRole("heading", { name: "New tournament" });
+    await user.click(screen.getByRole("radio", { name: /I'll enter names/ }));
     await user.type(screen.getByLabelText("Players"), "Alex\nBlair\n\nCasey");
     expect(screen.getByText("3 players")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Create tournament" }));
@@ -120,6 +122,7 @@ describe("creating a tournament", () => {
     await screen.findByRole("heading", { name: "New tournament" });
     await user.click(screen.getByRole("radio", { name: /Two-Headed Giant/ }));
     expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toMatch(/^Two-Headed Giant · /);
+    await user.click(screen.getByRole("radio", { name: /I'll enter names/ }));
 
     await user.type(screen.getByLabelText("Players"), "Alex\nBlair\nCasey");
     await user.click(screen.getByRole("button", { name: "Create tournament" }));
@@ -143,6 +146,7 @@ describe("creating a tournament", () => {
     renderPage();
     await screen.findByRole("heading", { name: "New tournament" });
     await user.click(screen.getByRole("radio", { name: /Two-Headed Giant/ }));
+    await user.click(screen.getByRole("radio", { name: /I'll enter names/ }));
     await user.click(screen.getByRole("radio", { name: "I'll set the teams" }));
     await user.type(screen.getByLabelText("Teams"), "Alex & Sam\nJo");
     await user.click(screen.getByRole("button", { name: "Create tournament" }));
@@ -363,5 +367,73 @@ describe("player display and commanders (admin)", () => {
         commanders: [{ name: "Edgar Markov", cardId: "d0d33d52-3d28-4635-b985-51e126289259" }],
       }),
     );
+  });
+});
+
+describe("sign-ups (admin)", () => {
+  it("creates a sign-up tournament with player spots by default, checking them for the format", async () => {
+    const user = userEvent.setup();
+    serve({ t: null }, () => ({ id: "t1", tournament: detail({ currentRound: 0, matches: [], entrants: [], spots: 6 }) }));
+    renderPage();
+    await screen.findByRole("heading", { name: "New tournament" });
+    expect(screen.getByRole("radio", { name: /Players sign up/, checked: true })).toBeTruthy();
+    expect(screen.queryByLabelText("Players")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: /Two-Headed Giant/ }));
+    const spots = screen.getByLabelText("Player spots");
+    await user.clear(spots);
+    await user.type(spots, "7");
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+    expect(await screen.findByText("Two-Headed Giant needs an even number of player spots.")).toBeTruthy();
+    expect(posts()).toHaveLength(0);
+    await user.clear(spots);
+    await user.type(spots, "6");
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+    await waitFor(() => expect(posts()[0]).toMatchObject({ action: "create", format: "2hg", entrants: [], spots: 6 }));
+  });
+
+  it("shows how many spots are filled, starts early, and changes the spots", async () => {
+    const user = userEvent.setup();
+    const current = {
+      t: detail({
+        currentRound: 0,
+        matches: [],
+        spots: 8,
+        entrants: [entrant("a", ["Alex"]), entrant("b", ["Blair"]), entrant("c", ["Casey"]), entrant("d", ["Drew"]), entrant("e", ["Eli"])],
+      }),
+    };
+    serve(current as { t: TournamentDetail | null }, () => ({ tournament: current.t }));
+    renderPage("id=t1");
+    expect(await screen.findByRole("heading", { name: "Sign-ups" })).toBeTruthy();
+    expect(screen.getAllByText("5 of 8 spots filled").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Waiting for 3 more players/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Signed up" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Start now with 5" }));
+    await waitFor(() => expect(posts()[0]).toEqual({ action: "start", id: "t1" }));
+
+    await user.click(screen.getByRole("button", { name: "Change spots" }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText("Player spots");
+    await user.clear(field);
+    await user.type(field, "6");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(posts()[1]).toEqual({ action: "spots", id: "t1", spots: 6 }));
+  });
+
+  it("marks Two-Headed Giant sign-ups still without a teammate", async () => {
+    const current = {
+      t: detail({
+        format: "2hg",
+        currentRound: 0,
+        matches: [],
+        spots: 8,
+        entrants: [entrant("a", ["Alex", "Sam"]), entrant("b", ["Blair"])],
+      }),
+    };
+    serve(current as { t: TournamentDetail | null }, () => ({ tournament: current.t }));
+    renderPage("id=t1");
+    expect(await screen.findByText("Needs a teammate")).toBeTruthy();
+    expect(screen.getByText(/1 player is waiting for a teammate/)).toBeTruthy();
+    expect(screen.getByLabelText("Player 2 (optional)")).toBeTruthy();
   });
 });

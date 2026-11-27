@@ -18,6 +18,12 @@ import {
   formatInfo,
   isCardId,
   isReportableResult,
+  isSigningUp,
+  playerCount,
+  shuffle,
+  soloEntrants,
+  spotsProblem,
+  startBlocker,
   isTournamentFormat,
   matchesInRound,
   nextRoundBlocker,
@@ -44,7 +50,7 @@ type MatchRow = Database["public"]["Tables"]["tournament_matches"]["Row"];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOURNAMENT_COLUMNS =
-  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled";
+  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled, spots";
 const ENTRANT_COLUMNS =
   "id, tournament_id, player_one, player_two, commander_one, commander_one_card, commander_two, commander_two_card, dropped_at, created_at, updated_at";
 /** Share links are 32 url-safe characters (the database also accepts its own 64-character default). */
@@ -68,6 +74,9 @@ export function tournamentDbError(error: { code?: string; message?: string }, fa
       throw new HttpError(409, message);
     case "GGT03":
       throw new HttpError(404, message);
+    case "GGT04":
+    case "GGT05":
+      throw new HttpError(409, message);
     case "22P02":
       throw new HttpError(400, "Something didn't look right. Refresh and try again.");
     case "23505":
@@ -123,10 +132,13 @@ function toMatch(row: MatchRow): TournamentMatch {
   };
 }
 
-/** Trimmed names for one entrant, checked against the format. */
-export function readPlayers(format: TournamentFormat, raw: unknown): string[] {
-  const players = Array.isArray(raw) ? raw.map(cleanPlayerName) : [];
-  const problem = entrantProblem(format, players);
+/**
+ * Trimmed names for one entrant, checked against the format. `allowSolo`:
+ * a Two-Headed Giant player may be on their own (sign-ups before round 1).
+ */
+export function readPlayers(format: TournamentFormat, raw: unknown, allowSolo = false): string[] {
+  const players = (Array.isArray(raw) ? raw.map(cleanPlayerName) : []).filter((p, i) => i === 0 || p || !allowSolo);
+  const problem = entrantProblem(format, players, allowSolo);
   if (problem) throw new HttpError(400, problem);
   return players;
 }
@@ -241,6 +253,7 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
     entrants: ((entrants.data ?? []) as EntrantRow[]).map(toEntrant),
     matches: ((matches.data ?? []) as MatchRow[]).map(toMatch),
     share: { token: row.share_token, enabled: row.share_enabled },
+    spots: row.spots ?? null,
   };
 }
 
@@ -269,10 +282,16 @@ function entrantRow(tournamentId: string, players: string[]) {
 
 // ──────────────────────────── writes ─────────────────────────────
 
+/**
+ * Creates a tournament. With `spots`, players sign themselves up from the
+ * player display (any names sent now take spots too); without, staff enter
+ * at least two entrants now.
+ */
 export async function createTournament(input: {
   name: unknown;
   format: unknown;
   entrants: unknown;
+  spots?: unknown;
   actor: string | null;
 }): Promise<string> {
   if (!isTournamentFormat(input.format)) throw new HttpError(400, "Pick 1v1 or Two-Headed Giant.");
@@ -280,28 +299,39 @@ export async function createTournament(input: {
   const info = formatInfo(format);
   const name = cleanTournamentName(input.name);
   if (!name) throw new HttpError(400, "Give the tournament a name.");
+  const signups = input.spots != null;
+  if (signups) {
+    const problem = spotsProblem(format, input.spots);
+    if (problem) throw new HttpError(400, problem);
+  }
+  const spots = signups ? (input.spots as number) : null;
   const raw = Array.isArray(input.entrants) ? input.entrants : [];
-  if (raw.length < 2) throw new HttpError(400, `Add at least two ${info.nounPlural}.`);
+  if (!signups && raw.length < 2) throw new HttpError(400, `Add at least two ${info.nounPlural}.`);
   if (raw.length > MAX_ENTRANTS) throw new HttpError(400, `A tournament can have up to ${MAX_ENTRANTS} ${info.nounPlural}.`);
-  const entrants = raw.map((players) => readPlayers(format, players));
+  const entrants = raw.map((players) => readPlayers(format, players, signups));
   const dup = duplicateName(entrants);
   if (dup) throw new HttpError(400, `${dup} is entered more than once.`);
+  if (spots != null && entrants.flat().length > spots) {
+    throw new HttpError(400, `That's more names than the ${spots} player spots.`);
+  }
 
   const { data, error } = await db()
     .from("tournaments")
-    .insert({ name, format, created_by: input.actor?.slice(0, 320) ?? null })
+    .insert({ name, format, spots, created_by: input.actor?.slice(0, 320) ?? null })
     .select("id")
     .single();
   if (error || !data) tournamentDbError(error ?? {}, "Couldn't create the tournament.");
   const id = (data as { id: string }).id;
 
-  const { error: entrantsError } = await db()
-    .from("tournament_entrants")
-    .insert(entrants.map((players) => entrantRow(id, players)));
-  if (entrantsError) {
-    // Don't leave an empty tournament behind.
-    await db().from("tournaments").delete().eq("id", id);
-    tournamentDbError(entrantsError, "Couldn't add the players.");
+  if (entrants.length > 0) {
+    const { error: entrantsError } = await db()
+      .from("tournament_entrants")
+      .insert(entrants.map((players) => entrantRow(id, players)));
+    if (entrantsError) {
+      // Don't leave an empty tournament behind.
+      await db().from("tournaments").delete().eq("id", id);
+      tournamentDbError(entrantsError, "Couldn't add the players.");
+    }
   }
   return id;
 }
@@ -336,8 +366,12 @@ export async function addEntrant(t: TournamentDetail, rawPlayers: unknown): Prom
   if (t.entrants.length >= MAX_ENTRANTS) {
     throw new HttpError(409, `A tournament can have up to ${MAX_ENTRANTS} ${info.nounPlural}.`);
   }
-  const players = readPlayers(t.format, rawPlayers);
+  const signingUp = isSigningUp(t);
+  const players = readPlayers(t.format, rawPlayers, signingUp);
   assertNewNames(t, players);
+  if (signingUp && t.spots != null && playerCount(t) + players.length > t.spots) {
+    throw new HttpError(409, `All ${t.spots} player spots are filled. Add a spot first.`);
+  }
   const { error } = await db().from("tournament_entrants").insert(entrantRow(t.id, players));
   if (error) tournamentDbError(error, `Couldn't add the ${info.noun}.`);
 }
@@ -371,7 +405,7 @@ export async function renameEntrant(
   rawCommanders?: unknown,
 ): Promise<void> {
   const entrant = findEntrant(t, rawEntrantId);
-  const players = readPlayers(t.format, rawPlayers);
+  const players = readPlayers(t.format, rawPlayers, isSigningUp(t));
   assertNewNames(t, players, entrant.id);
   const patch: Database["public"]["Tables"]["tournament_entrants"]["Update"] = {
     player_one: players[0],
@@ -570,6 +604,89 @@ export async function reportResult(
     .select("id");
   if (error) tournamentDbError(error);
   if (!data || data.length === 0) throw new HttpError(409, "That match changed while you were working. Refresh and try again.");
+}
+
+// ──────────────────────────── sign-ups ────────────────────────────
+
+/**
+ * A player takes a spot from the player display: their name, an optional
+ * commander, and (Two-Headed Giant) optionally someone who signed up alone
+ * to team up with. Returns which entrant and seat they are.
+ */
+export async function signUp(
+  t: TournamentDetail,
+  input: { name: unknown; commander: unknown; teamWith: unknown },
+): Promise<{ entrantId: string; seat: number }> {
+  const name = cleanPlayerName(input.name);
+  if (!name) throw new HttpError(400, "Enter your name.");
+  const commander = readCommander(input.commander);
+  let teamWith: string | null = null;
+  if (input.teamWith != null && input.teamWith !== "") {
+    teamWith = readId(input.teamWith, "teammate");
+  }
+  const { data, error } = await db().rpc("tournament_sign_up", {
+    p_tournament_id: t.id,
+    p_name: name,
+    p_commander: commander?.name ?? null,
+    p_card: commander?.cardId ?? null,
+    p_team_with: teamWith,
+  });
+  if (error) tournamentDbError(error, "Couldn't sign you up. Please try again.");
+  const result = (data ?? {}) as { entrant_id?: string; seat?: number };
+  if (!result.entrant_id) throw new HttpError(500, "Couldn't sign you up. Please try again.");
+  return { entrantId: result.entrant_id, seat: result.seat === 1 ? 1 : 0 };
+}
+
+/**
+ * Starts round 1: puts Two-Headed Giant players who are still alone into
+ * random teams, then pairs the round. Staff can do this before every spot
+ * is filled ("Start now"); it also runs on its own when the last spot fills.
+ */
+export async function startTournament(t: TournamentDetail, random: () => number = Math.random): Promise<void> {
+  const blocker = startBlocker(t);
+  if (blocker) throw new HttpError(409, blocker);
+  let current = t;
+  const solos = soloEntrants(t);
+  if (solos.length > 0) {
+    const order = shuffle(solos, random);
+    const pairs = [];
+    for (let i = 0; i + 1 < order.length; i += 2) pairs.push({ keep: order[i].id, merge: order[i + 1].id });
+    const { error } = await db().rpc("tournament_form_teams", { p_tournament_id: t.id, p_pairs: pairs });
+    if (error) tournamentDbError(error, "Couldn't make the teams.");
+    current = await loadTournament(t.id);
+  }
+  await pairTournamentRound(current, { round: 1, replace: false }, random);
+}
+
+/** Starts the tournament if sign-ups just filled the last spot. Never throws: the sign-up already worked. */
+export async function startIfFull(tournamentId: string): Promise<boolean> {
+  try {
+    const t = await loadTournament(tournamentId);
+    if (!isSigningUp(t) || t.spots == null || playerCount(t) < t.spots) return false;
+    await startTournament(t);
+    return true;
+  } catch (err) {
+    console.error("[tournaments] couldn't start when full", tournamentId, err);
+    return false;
+  }
+}
+
+/** Changes the number of player spots (not below who has signed up), or turns sign-ups off with null. */
+export async function setSpots(t: TournamentDetail, raw: unknown): Promise<void> {
+  if (t.currentRound > 0) throw new HttpError(409, "The tournament has started, so the spots are set.");
+  requireActive(t);
+  let spots: number | null = null;
+  if (raw != null) {
+    const problem = spotsProblem(t.format, raw);
+    if (problem) throw new HttpError(400, problem);
+    spots = raw as number;
+    const players = playerCount(t);
+    if (spots < players) {
+      throw new HttpError(409, `${players} players have already signed up. Remove someone first to go below that.`);
+    }
+  }
+  const { error } = await db().from("tournaments").update({ spots }).eq("id", t.id);
+  if (error) tournamentDbError(error);
 }
 
 /** "Alex & Sam" for audit entries. */

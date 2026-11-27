@@ -56,6 +56,7 @@ function tournament(extra: Partial<TournamentDetail> = {}): TournamentDetail {
       match("m3", 2, 1, A, C, "pending"),
       match("m4", 2, 2, B, D, "b"),
     ],
+    spots: null,
     ...extra,
   };
 }
@@ -63,6 +64,7 @@ function tournament(extra: Partial<TournamentDetail> = {}): TournamentDetail {
 function show(props: Partial<Parameters<typeof BracketDisplay>[0]> = {}) {
   const onSaveCommander = vi.fn(async () => true);
   const onPickMe = vi.fn();
+  const onSignUp = vi.fn(async () => true);
   const searchCommanders = vi.fn(async () => [
     { name: "Atraxa, Praetors' Voice", cardId: ATRAXA },
     { name: "Atraxa, Grand Unifier", cardId: "11111111-1111-4111-8111-111111111111" },
@@ -78,13 +80,14 @@ function show(props: Partial<Parameters<typeof BracketDisplay>[0]> = {}) {
         me={null}
         onPickMe={onPickMe}
         onSaveCommander={onSaveCommander}
+        onSignUp={onSignUp}
         searchCommanders={searchCommanders}
         updatedAt={new Date("2026-11-27T20:05:00")}
         {...props}
       />
     </ToastProvider>,
   );
-  return { ...utils, onSaveCommander, onPickMe, searchCommanders };
+  return { ...utils, onSaveCommander, onPickMe, onSignUp, searchCommanders };
 }
 
 afterEach(() => cleanup());
@@ -176,6 +179,72 @@ describe("bracket display", () => {
   });
 });
 
+describe("sign-ups on the player display", () => {
+  const signupTournament = (extra: Partial<TournamentDetail> = {}) =>
+    tournament({ currentRound: 0, matches: [], spots: 6, entrants: [entrant(A, ["Alex"]), entrant(B, ["Blair"])], ...extra });
+
+  it("lets a player join with their name and commander", async () => {
+    const user = userEvent.setup();
+    const { onSignUp } = show({ tournament: signupTournament() });
+    expect(screen.getByText("Signing up · 2 of 6 spots filled")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Who's in · 2 of 6" })).toBeTruthy();
+    expect(screen.getByText("4 open spots")).toBeTruthy();
+    expect(screen.queryByLabelText("Teammate")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Join the tournament" }));
+    expect(screen.getByText("Enter your name.")).toBeTruthy();
+    expect(onSignUp).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText(/Your name/), "  Casey ");
+    await user.type(screen.getByRole("combobox", { name: "Commander (optional)" }), "atr");
+    await user.click(await screen.findByRole("option", { name: "Atraxa, Praetors' Voice" }));
+    await user.click(screen.getByRole("button", { name: "Join the tournament" }));
+    expect(onSignUp).toHaveBeenCalledWith({
+      name: "Casey",
+      commander: { name: "Atraxa, Praetors' Voice", cardId: ATRAXA },
+      teamWith: null,
+    });
+  });
+
+  it("Two-Headed Giant: offers to team up with anyone still alone", async () => {
+    const user = userEvent.setup();
+    const t = signupTournament({ format: "2hg", entrants: [entrant(A, ["Alex", "Sam"]), entrant(B, ["Blair"])] });
+    const { onSignUp } = show({ tournament: t });
+    const teammate = screen.getByLabelText("Teammate") as HTMLSelectElement;
+    expect([...teammate.options].map((o) => o.textContent)).toEqual(["Give me a random teammate", "Team up with Blair"]);
+    expect(screen.getByText("Needs a teammate")).toBeTruthy();
+    await user.type(screen.getByLabelText(/Your name/), "Jo");
+    await user.selectOptions(teammate, B);
+    await user.click(screen.getByRole("button", { name: "Join the tournament" }));
+    expect(onSignUp).toHaveBeenCalledWith({ name: "Jo", commander: null, teamWith: B });
+  });
+
+  it("tells a signed-up player how many are still to come, and lets them change their commander", () => {
+    show({ tournament: signupTournament(), me: { entrantId: B, seat: 0 } });
+    expect(screen.getByRole("heading", { name: "You're in!" })).toBeTruthy();
+    expect(screen.getByText(/Waiting for 4 more players/)).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Commander" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Join the tournament" })).toBeNull();
+  });
+
+  it("lets someone already signed up find their name instead", async () => {
+    const user = userEvent.setup();
+    const { onPickMe } = show({ tournament: signupTournament() });
+    await user.click(screen.getByRole("button", { name: "Already signed up? Find your name" }));
+    await user.selectOptions(screen.getByLabelText("Who are you?"), `${A}:0`);
+    expect(onPickMe).toHaveBeenCalledWith({ entrantId: A, seat: 0 });
+  });
+
+  it("on the TV, shows a big code to scan, the count and the open spots", () => {
+    show({ tournament: signupTournament(), tv: true });
+    expect(screen.getByRole("img", { name: "QR code: scan to sign up" })).toBeTruthy();
+    expect(screen.getByText("Scan to join")).toBeTruthy();
+    expect(screen.getByText("players in")).toBeTruthy();
+    expect(screen.getAllByText("Open spot")).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: "Join the tournament" })).toBeNull();
+  });
+});
+
 describe("commander picker", () => {
   it("keeps a typed name with no card, and a picked one with its card", async () => {
     const user = userEvent.setup();
@@ -258,5 +327,55 @@ describe("player display page", () => {
       seat: 0,
       commander: { name: "Edgar Markov", cardId: null },
     });
+  });
+});
+
+describe("player display page: signing up", () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("signs up, then remembers the player by name even after random teams move them", async () => {
+    const user = userEvent.setup();
+    const before = tournament({ format: "2hg", currentRound: 0, matches: [], spots: 4, entrants: [entrant(A, ["Alex"])] });
+    const joined = { ...before, entrants: [entrant(A, ["Alex"]), entrant(B, ["Blair"])] };
+    // Teams made: Blair's row was merged into Alex's.
+    const teamed = { ...before, currentRound: 1, entrants: [entrant(A, ["Alex", "Blair"]), entrant(C, ["Casey", "Drew"])] };
+    let view: TournamentDetail = before;
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (body.action === "sign-up") {
+        view = joined;
+        return new Response(JSON.stringify({ ok: true, tournament: view, seat: { entrantId: B, seat: 0 }, started: false }));
+      }
+      return new Response(JSON.stringify({ ok: true, tournament: view }));
+    });
+    window.history.replaceState(null, "", "/tournament?t=tokentokentokentokentoken");
+    const { default: TournamentPage } = await import("../src/store/pages/TournamentPage");
+    const { unmount } = render(<TournamentPage />);
+    await user.type(await screen.findByLabelText(/Your name/), "Blair");
+    await user.click(screen.getByRole("button", { name: "Join the tournament" }));
+    expect(await screen.findByRole("heading", { name: "You're in!" })).toBeTruthy();
+    const sent = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init.body))).find((b) => b.action === "sign-up");
+    expect(sent).toEqual({ token: "tokentokentokentokentoken", action: "sign-up", name: "Blair", commander: null, teamWith: null });
+    expect(JSON.parse(window.localStorage.getItem("gg-tournament-me:tokentokentokent")!)).toEqual({
+      entrantId: B,
+      seat: 0,
+      name: "Blair",
+    });
+
+    // Next visit: the tournament has started and Blair is now on Alex's team.
+    unmount();
+    view = teamed;
+    render(<TournamentPage />);
+    expect(await screen.findByText(/Playing as/)).toBeTruthy();
+    expect(screen.getByText(/Playing as/).textContent).toContain("Blair");
   });
 });

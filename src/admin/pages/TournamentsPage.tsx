@@ -18,6 +18,7 @@ import { useToast } from "../hooks/useToast";
 import { ADMIN_BASE } from "../hooks/useRouter";
 import { adminFetch } from "../repositories/apiClient";
 import {
+  MAX_SPOTS,
   MAX_TOURNAMENT_NAME,
   activeEntrants,
   canRepairRound,
@@ -28,7 +29,11 @@ import {
   formatInfo,
   matchesInRound,
   hasNewOpponents,
+  isSigningUp,
   nextRoundBlocker,
+  playerCount,
+  soloEntrants,
+  spotsProblem,
   type ReportableResult,
   type TournamentCommander,
   type TournamentDetail,
@@ -82,7 +87,7 @@ export function TournamentsPage({ query, onNavigate }: { query: URLSearchParams;
     <div className="gg-page">
       <PageHeader
         title="Tournaments"
-        description="Run 1v1 or Two-Headed Giant events: add everyone's names, pair random opponents who haven't played yet, and keep score."
+        description="Run 1v1 or Two-Headed Giant events: players scan in to sign up, each round pairs opponents who haven't played yet, and the standings keep score."
         actions={
           !showCreate && all.length > 0 ? (
             <Button variant="secondary" icon="plus" onClick={() => setCreating(true)}>
@@ -111,7 +116,11 @@ export function TournamentsPage({ query, onNavigate }: { query: URLSearchParams;
                 setCreated(t);
                 select(t.id);
                 list.reload();
-                toast.success(`${t.name} is ready. Start round 1 when everyone's seated.`);
+                toast.success(
+                  t.spots != null
+                    ? `${t.name} is ready. Open the TV display so players can scan in and sign up.`
+                    : `${t.name} is ready. Start round 1 when everyone's seated.`,
+                );
               }}
             />
           )}
@@ -219,6 +228,7 @@ function TournamentView({
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [editingSpots, setEditingSpots] = useState<{ value: string; error: string | null } | null>(null);
   const [editing, setEditing] = useState<{
     entrant: TournamentEntrant;
     values: string[];
@@ -358,12 +368,32 @@ function TournamentView({
   const leaders = started ? standings.filter((r) => r.rank === 1 && r.points > 0) : [];
   const pairBusy = busy === "pair" || busy === "repair";
 
+  const signingUp = isSigningUp(detail);
+  const players = playerCount(detail);
+  const spotsLeft = signingUp && detail.spots != null ? Math.max(0, detail.spots - players) : 0;
+  const solos = soloEntrants(detail);
+
   const pairNext = () =>
-    run(
-      "pair",
-      { action: "pair", round: detail.currentRound + 1 },
-      { success: `Round ${detail.currentRound + 1} is paired.` },
-    );
+    detail.currentRound === 0
+      ? run("pair", { action: "start" }, { success: "Round 1 is paired. Good luck, everyone!" })
+      : run(
+          "pair",
+          { action: "pair", round: detail.currentRound + 1 },
+          { success: `Round ${detail.currentRound + 1} is paired.` },
+        );
+
+  async function saveSpots(e: FormEvent) {
+    e.preventDefault();
+    if (!editingSpots) return;
+    const value = Number(editingSpots.value);
+    const problem = spotsProblem(detail!.format, value);
+    if (problem) {
+      setEditingSpots({ ...editingSpots, error: problem });
+      return;
+    }
+    const ok = await run("spots", { action: "spots", spots: value }, { success: `${value} player spots.` });
+    if (ok) setEditingSpots(null);
+  }
   const repair = () =>
     run(
       "repair",
@@ -394,8 +424,10 @@ function TournamentView({
   async function saveEntrant(e: FormEvent) {
     e.preventDefault();
     if (!editing || !detail) return;
-    const players = Array.from({ length: info.teamSize }, (_, i) => cleanPlayerName(editing.values[i] ?? ""));
-    const problem = entrantProblem(detail.format, players);
+    const players = Array.from({ length: info.teamSize }, (_, i) => cleanPlayerName(editing.values[i] ?? "")).filter(
+      (p, i) => i === 0 || p || !signingUp,
+    );
+    const problem = entrantProblem(detail.format, players, signingUp);
     if (problem) {
       setEditing({ ...editing, error: problem });
       return;
@@ -479,14 +511,16 @@ function TournamentView({
       >
         <div className="gg-tourney-meta">
           <Badge tone="purple">{info.label}</Badge>
-          <Badge tone={editable ? "success" : "neutral"} dot>
-            {editable ? "In progress" : "Finished"}
+          <Badge tone={signingUp ? "info" : editable ? "success" : "neutral"} dot>
+            {signingUp ? "Signing up" : editable ? "In progress" : "Finished"}
           </Badge>
-          <span>{started ? `Round ${detail.currentRound}` : "Not started"}</span>
-          <span>
-            · {active.length} {active.length === 1 ? info.noun : info.nounPlural}
-            {droppedCount > 0 ? ` (${droppedCount} dropped)` : ""}
-          </span>
+          <span>{started ? `Round ${detail.currentRound}` : signingUp ? `${players} of ${detail.spots} spots filled` : "Not started"}</span>
+          {!signingUp && (
+            <span>
+              · {active.length} {active.length === 1 ? info.noun : info.nounPlural}
+              {droppedCount > 0 ? ` (${droppedCount} dropped)` : ""}
+            </span>
+          )}
         </div>
         {!editable && leaders.length > 0 && (
           <div className="gg-tourney-champion">
@@ -503,6 +537,7 @@ function TournamentView({
       {detail.share && (
         <PlayerDisplayPanel
           share={detail.share}
+          signingUp={signingUp}
           busy={busy === "share"}
           onChange={(change) =>
             run(
@@ -521,88 +556,140 @@ function TournamentView({
         />
       )}
 
-      <SectionCard
-        title={started ? `Round ${detail.currentRound}` : "Round 1"}
-        action={
-          started && pairs > 0 ? (
+      {signingUp && detail.spots != null ? (
+        <SectionCard
+          title="Sign-ups"
+          action={
             <span className="gg-muted" aria-live="polite">
-              {pairs - pending} of {pairs} result{pairs === 1 ? "" : "s"} in
+              {players} of {detail.spots} spots filled
             </span>
-          ) : undefined
-        }
-      >
-        {!started ? (
-          <div className="gg-tourney-start">
+          }
+        >
+          <div className="gg-tourney-signup">
+            <div
+              className="gg-tourney-signup__bar"
+              role="progressbar"
+              aria-label="Spots filled"
+              aria-valuemin={0}
+              aria-valuemax={detail.spots}
+              aria-valuenow={players}
+            >
+              <span style={{ width: `${Math.min(100, (players / detail.spots) * 100)}%` }} />
+            </div>
             <p>
-              {active.length} {active.length === 1 ? info.noun : info.nounPlural} entered. Each round pairs everyone at
-              random with someone they haven't played yet{active.length % 2 === 1 ? ", and one gets a bye (a free win)" : ""}.
+              {spotsLeft > 0
+                ? `Waiting for ${spotsLeft} more ${spotsLeft === 1 ? "player" : "players"}. Round 1 starts on its own when the last spot fills.`
+                : "Every spot is filled."}
             </p>
-            {blocker && <p className="gg-muted">{blocker}</p>}
-            {editable && (
-              <Button variant="primary" icon="swap" disabled={Boolean(blocker)} loading={busy === "pair"} onClick={pairNext}>
-                Start round 1
-              </Button>
+            {solos.length > 0 && (
+              <p className="gg-muted">
+                {solos.length === 1 ? "1 player is" : `${solos.length} players are`} waiting for a teammate. Anyone still
+                alone gets a random teammate when round 1 starts.
+              </p>
             )}
+            {editable && (
+              <div className="gg-btn-row">
+                <Button
+                  variant="primary"
+                  icon="swap"
+                  disabled={Boolean(blocker)}
+                  loading={busy === "pair"}
+                  onClick={pairNext}
+                >
+                  {spotsLeft > 0 ? `Start now with ${players}` : "Start round 1"}
+                </Button>
+                <Button variant="ghost" onClick={() => setEditingSpots({ value: String(detail.spots), error: null })}>
+                  Change spots
+                </Button>
+              </div>
+            )}
+            {blocker && players > 0 && <p className="gg-muted">{blocker}</p>}
           </div>
-        ) : (
-          <>
-            {extraByes > 0 && (
-              <div className="gg-inline-note gg-inline-note--info gg-tourney-note">
-                <Icon name="info" size={16} />
-                <span>
-                  Not everyone had a new opponent left, so {byes} {info.nounPlural} got a bye this round.
-                </span>
-              </div>
-            )}
-            <RoundMatches
-              matches={current}
-              labels={labels}
-              editable={editable}
-              allowClear
-              onReport={(m, r) => void report(m, r)}
-            />
-            {editable && (
-              <div className="gg-tourney-next">
-                {exhausted ? (
-                  <>
-                    <div className="gg-inline-note gg-inline-note--success">
-                      <Icon name="checkCircle" size={16} />
-                      <span>
-                        Everyone still in has played each other, so there are no new pairings left. Finish the tournament
-                        to lock in the standings.
-                      </span>
-                    </div>
-                    <Button variant="primary" icon="trophy" loading={busy === "finish"} onClick={askFinish}>
-                      Finish tournament
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      variant="primary"
-                      icon="swap"
-                      disabled={Boolean(blocker) || reporting > 0 || pairBusy}
-                      loading={busy === "pair"}
-                      onClick={pairNext}
-                    >
-                      Pair round {detail.currentRound + 1}
-                    </Button>
-                    {canRepairRound(detail) && (
-                      <Button variant="ghost" disabled={pairBusy} loading={busy === "repair"} onClick={repair}>
-                        Re-pair round {detail.currentRound}
+        </SectionCard>
+      ) : (
+        <SectionCard
+          title={started ? `Round ${detail.currentRound}` : "Round 1"}
+          action={
+            started && pairs > 0 ? (
+              <span className="gg-muted" aria-live="polite">
+                {pairs - pending} of {pairs} result{pairs === 1 ? "" : "s"} in
+              </span>
+            ) : undefined
+          }
+        >
+          {!started ? (
+            <div className="gg-tourney-start">
+              <p>
+                {active.length} {active.length === 1 ? info.noun : info.nounPlural} entered. Each round pairs everyone at
+                random with someone they haven't played yet{active.length % 2 === 1 ? ", and one gets a bye (a free win)" : ""}.
+              </p>
+              {blocker && <p className="gg-muted">{blocker}</p>}
+              {editable && (
+                <Button variant="primary" icon="swap" disabled={Boolean(blocker)} loading={busy === "pair"} onClick={pairNext}>
+                  Start round 1
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {extraByes > 0 && (
+                <div className="gg-inline-note gg-inline-note--info gg-tourney-note">
+                  <Icon name="info" size={16} />
+                  <span>
+                    Not everyone had a new opponent left, so {byes} {info.nounPlural} got a bye this round.
+                  </span>
+                </div>
+              )}
+              <RoundMatches
+                matches={current}
+                labels={labels}
+                editable={editable}
+                allowClear
+                onReport={(m, r) => void report(m, r)}
+              />
+              {editable && (
+                <div className="gg-tourney-next">
+                  {exhausted ? (
+                    <>
+                      <div className="gg-inline-note gg-inline-note--success">
+                        <Icon name="checkCircle" size={16} />
+                        <span>
+                          Everyone still in has played each other, so there are no new pairings left. Finish the tournament
+                          to lock in the standings.
+                        </span>
+                      </div>
+                      <Button variant="primary" icon="trophy" loading={busy === "finish"} onClick={askFinish}>
+                        Finish tournament
                       </Button>
-                    )}
-                    {blocker && <p className="gg-muted">{blocker}</p>}
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </SectionCard>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="primary"
+                        icon="swap"
+                        disabled={Boolean(blocker) || reporting > 0 || pairBusy}
+                        loading={busy === "pair"}
+                        onClick={pairNext}
+                      >
+                        Pair round {detail.currentRound + 1}
+                      </Button>
+                      {canRepairRound(detail) && (
+                        <Button variant="ghost" disabled={pairBusy} loading={busy === "repair"} onClick={repair}>
+                          Re-pair round {detail.currentRound}
+                        </Button>
+                      )}
+                      {blocker && <p className="gg-muted">{blocker}</p>}
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </SectionCard>
+      )}
 
       <SectionCard
-        title="Standings"
+        title={signingUp ? "Signed up" : "Standings"}
         action={
           <span className="gg-muted">
             {started ? `After round ${detail.currentRound}` : `${active.length} ${info.nounPlural}`}
@@ -631,6 +718,7 @@ function TournamentView({
           <AddEntrantForm
             format={detail.format}
             started={started}
+            allowSolo={signingUp}
             onAdd={(players) =>
               run(
                 "add",
@@ -682,6 +770,41 @@ function TournamentView({
           onCancel={() => setConfirm(null)}
         />
       )}
+
+      <Modal
+        open={editingSpots != null}
+        onClose={() => setEditingSpots(null)}
+        title="Change player spots"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditingSpots(null)} disabled={busy === "spots"}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" form="gg-tourney-spots" loading={busy === "spots"}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        {editingSpots && (
+          <form id="gg-tourney-spots" onSubmit={saveSpots} noValidate>
+            <TextField
+              label="Player spots"
+              type="number"
+              inputMode="numeric"
+              min={Math.max(players, detail.format === "2hg" ? 4 : 2)}
+              max={MAX_SPOTS}
+              step={detail.format === "2hg" ? 2 : 1}
+              value={editingSpots.value}
+              autoFocus
+              error={editingSpots.error ?? undefined}
+              hint={`${players} signed up so far. If the spots match who has signed up, round 1 starts right away.`}
+              onChange={(e) => setEditingSpots({ value: e.target.value, error: null })}
+            />
+          </form>
+        )}
+      </Modal>
 
       <Modal
         open={renaming != null}
@@ -737,6 +860,7 @@ function TournamentView({
             <EntrantFields
               format={detail.format}
               values={editing.values}
+              allowSolo={signingUp}
               autoFocus
               onChange={(values) => setEditing({ ...editing, values, error: null })}
             />

@@ -6,6 +6,7 @@ import { Icon } from "../ui/Icon";
 import { adminFetch } from "../../repositories/apiClient";
 import {
   MAX_ENTRANTS,
+  MAX_SPOTS,
   MAX_TOURNAMENT_NAME,
   TOURNAMENT_FORMATS,
   duplicateName,
@@ -14,15 +15,22 @@ import {
   parsePlayerList,
   parseTeamList,
   randomTeams,
+  spotsProblem,
   type TournamentDetail,
   type TournamentFormat,
 } from "../../utils/tournament";
 
-// New tournament: a name, 1v1 or Two-Headed Giant, and everyone's names.
-// Two-Headed Giant teams are either typed as pairs ("Alex & Sam") or made at
-// random from a list of names, with a Shuffle button until they look right.
+// New tournament: a name, 1v1 or Two-Headed Giant, and how players get in:
+//   • Sign-ups (default): set the number of player spots. Players scan the QR
+//     code on the player display and enter their name and commander; round 1
+//     starts on its own when the last spot fills.
+//   • Typed names: enter everyone now. Two-Headed Giant teams are typed as
+//     pairs ("Alex & Sam") or made at random, with a Shuffle button.
 
 type TeamMode = "random" | "set";
+type JoinMode = "signup" | "names";
+
+const DEFAULT_SPOTS = 8;
 
 /** Small seeded generator so the random teams preview holds still between renders. */
 function seeded(seed: number): () => number {
@@ -57,6 +65,8 @@ export function CreateTournamentForm({
   const [format, setFormat] = useState<TournamentFormat>("1v1");
   const [name, setName] = useState(() => defaultName("1v1"));
   const [nameEdited, setNameEdited] = useState(false);
+  const [joinMode, setJoinMode] = useState<JoinMode>("signup");
+  const [spots, setSpots] = useState(String(DEFAULT_SPOTS));
   const [teamMode, setTeamMode] = useState<TeamMode>("random");
   const [text, setText] = useState("");
   const [seed, setSeed] = useState(newSeed);
@@ -97,6 +107,7 @@ export function CreateTournamentForm({
 
   function validate(): string | null {
     if (!name.trim()) return "Give the tournament a name.";
+    if (joinMode === "signup") return spotsProblem(format, Number(spots));
     if (plan.problem) return plan.problem;
     if (plan.entrants.length < 2) return `Add at least two ${info.nounPlural}.`;
     if (plan.entrants.length > MAX_ENTRANTS) return `A tournament can have up to ${MAX_ENTRANTS} ${info.nounPlural}.`;
@@ -116,7 +127,10 @@ export function CreateTournamentForm({
     try {
       const res = await adminFetch<{ id: string; tournament: TournamentDetail }>("/api/admin/tournaments", {
         method: "POST",
-        body: { action: "create", name: name.trim(), format, entrants: plan.entrants },
+        body:
+          joinMode === "signup"
+            ? { action: "create", name: name.trim(), format, entrants: [], spots: Number(spots) }
+            : { action: "create", name: name.trim(), format, entrants: plan.entrants },
       });
       onCreated(res.tournament);
     } catch (err) {
@@ -171,7 +185,57 @@ export function CreateTournamentForm({
           </div>
         </div>
 
-        {format === "2hg" && (
+        <div className="gg-field">
+          <span className="gg-field__label" id="tourney-join-label">
+            How do players get in?
+          </span>
+          <div className="gg-tourney-formats" role="radiogroup" aria-labelledby="tourney-join-label">
+            {(
+              [
+                ["signup", "Players sign up", "They scan the QR code and enter their name and commander"],
+                ["names", "I'll enter names", "Type everyone in now"],
+              ] as const
+            ).map(([mode, label, hint]) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={joinMode === mode}
+                className={`gg-tourney-format ${joinMode === mode ? "is-selected" : ""}`}
+                onClick={() => {
+                  setJoinMode(mode);
+                  setError(null);
+                }}
+              >
+                <strong>{label}</strong>
+                <span>{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {joinMode === "signup" && (
+          <TextField
+            label="Player spots"
+            type="number"
+            inputMode="numeric"
+            min={format === "2hg" ? 4 : 2}
+            max={MAX_SPOTS}
+            step={format === "2hg" ? 2 : 1}
+            value={spots}
+            hint={
+              format === "2hg"
+                ? "Players, not teams: an even number. Friends can team up when they sign up; everyone else gets a random teammate. Round 1 starts when every spot is filled."
+                : "Round 1 starts on its own when every spot is filled. You can also start early."
+            }
+            onChange={(e) => {
+              setSpots(e.target.value);
+              setError(null);
+            }}
+          />
+        )}
+
+        {joinMode === "names" && format === "2hg" && (
           <div className="gg-field">
             <span className="gg-field__label" id="tourney-teams-label">
               Team setup
@@ -201,22 +265,24 @@ export function CreateTournamentForm({
           </div>
         )}
 
-        <TextArea
-          label={listLabel}
-          hint={listHint}
-          value={text}
-          rows={8}
-          placeholder={placeholder}
-          autoCapitalize="words"
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => {
-            setText(e.target.value);
-            setError(null);
-          }}
-        />
+        {joinMode === "names" && (
+          <TextArea
+            label={listLabel}
+            hint={listHint}
+            value={text}
+            rows={8}
+            placeholder={placeholder}
+            autoCapitalize="words"
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => {
+              setText(e.target.value);
+              setError(null);
+            }}
+          />
+        )}
 
-        {plan.entrants.length > 0 && (
+        {joinMode === "names" && plan.entrants.length > 0 && (
           <div className="gg-tourney-preview" aria-live="polite">
             <div className="gg-tourney-preview__head">
               <strong>
