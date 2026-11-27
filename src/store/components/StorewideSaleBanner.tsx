@@ -1,14 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../supabase";
+import { useEffect, useState } from "react";
 import { Link } from "../lib/router";
-
-type ActiveSale = {
-  id: string;
-  name: string;
-  discount_percent: number;
-  starts_at: string;
-  ends_at: string;
-};
+import { useStorewideSale } from "../lib/storewideSale";
 
 function formatRemaining(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -22,43 +14,26 @@ function formatRemaining(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
+// The sale itself comes from the shared snapshot (../lib/storewideSale.ts),
+// which also re-prices open carts when the sale starts or ends; this only
+// counts down.
 export default function StorewideSaleBanner() {
-  const [sale, setSale] = useState<ActiveSale | null>(null);
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      const { data, error } = await supabase.rpc("current_storewide_sale");
-      if (!active || error) return;
-      const row = Array.isArray(data) ? data[0] : null;
-      setSale((row as ActiveSale | undefined) ?? null);
-    };
-
-    void load();
-    const refreshTimer = window.setInterval(load, 30_000);
-    return () => {
-      active = false;
-      window.clearInterval(refreshTimer);
-    };
-  }, []);
+  const { sale } = useStorewideSale();
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!sale) return;
+    // Catch up at once (the page may have been open a while before the sale
+    // appeared), then tick every second.
+    const catchUp = window.setTimeout(() => setNow(Date.now()), 0);
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(catchUp);
+      window.clearInterval(timer);
+    };
   }, [sale]);
 
-  const remaining = useMemo(() => {
-    if (!sale) return 0;
-    return new Date(sale.ends_at).getTime() - now;
-  }, [sale, now]);
-
-  useEffect(() => {
-    if (sale && remaining <= 0) setSale(null);
-  }, [sale, remaining]);
-
+  const remaining = sale ? new Date(sale.endsAt).getTime() - now : 0;
   if (!sale || remaining <= 0) return null;
 
   return (
@@ -68,12 +43,12 @@ export default function StorewideSaleBanner() {
           <span className="gg-store-sale__eyebrow">Limited-time event</span>
           <span className="gg-store-sale__message">
             <strong>{sale.name}</strong>
-            <span>Save {sale.discount_percent}% storewide</span>
+            <span>Save {sale.discountPercent}% storewide</span>
           </span>
         </div>
 
         <div className="gg-store-sale__meta">
-          <span className="gg-store-sale__badge">{sale.discount_percent}% OFF</span>
+          <span className="gg-store-sale__badge">{sale.discountPercent}% OFF</span>
           <span className="gg-store-sale__timer">
             <span>Ends in</span>
             <strong>{formatRemaining(remaining)}</strong>

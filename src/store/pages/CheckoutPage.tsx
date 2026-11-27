@@ -20,6 +20,7 @@ import { Link, useRouter } from "../lib/router";
 import { getStripePromise, isStripeConfigured } from "../lib/stripeClient";
 import { isPayPalConfigured, paypalClientId } from "../lib/paypalClient";
 import { formatReopenDate, refreshStoreStatus, useStoreStatus } from "../lib/storeStatus";
+import { refreshStorewideSale, useStorewideSale } from "../lib/storewideSale";
 import { parseTooManyItems, tooManyCardsMessage } from "../lib/orderLimits";
 import { ShippingMethodPicker } from "../components/ShippingMethodPicker";
 import { UsStateSelect } from "../components/UsStateSelect";
@@ -181,7 +182,8 @@ async function pollPaymentStatus(
 
 export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
-  const { lines, subtotalCents, discountableSubtotalCents, hasSaleOnly, loading: cartLoading, refresh, clear } = useCart();
+  const { lines, subtotalCents, discountableSubtotalCents, saleSavingsCents, hasSaleOnly, loading: cartLoading, refresh, clear } =
+    useCart();
   useRouter();
   const storeStatus = useStoreStatus();
   // More different cards than one order may have (admin Checkout Settings).
@@ -238,6 +240,16 @@ export default function CheckoutPage() {
   const [guestEmail, setGuestEmail] = useState("");
   const [guestOrder, setGuestOrder] = useState<GuestOrderAccess | null>(null);
   const isGuest = !authLoading && !user;
+  // The storewide sale % the order on the payment step was priced with (null:
+  // unknown). If a sale starts (or deepens) while a signed-in customer is on
+  // the payment step, their total predates it: the step says so and offers the
+  // way back, where the cart already shows the sale prices. Not for guests: a
+  // guest's own checkout hold reads as sold out to their browser cart, so going
+  // back can drop single copies from it.
+  const [pricedAtSalePercent, setPricedAtSalePercent] = useState<number | null>(null);
+  const { sale: currentSale } = useStorewideSale();
+  const saleStartedAfterPricing =
+    !!user && pricedAtSalePercent != null && currentSale != null && currentSale.discountPercent > pricedAtSalePercent;
 
   // Handles a return trip to return_url: Stripe appends
   // payment_intent_client_secret when a payment step (rarely, for cards —
@@ -442,6 +454,9 @@ export default function CheckoutPage() {
       const latest = await refreshStoreStatus();
       if (latest.ordersPaused) return;
       if (latest.maxOrderLines != null && lines.length > latest.maxOrderLines) return;
+      // The sale this order is about to be priced with (the server applies it).
+      const saleNow = await refreshStorewideSale();
+      setPricedAtSalePercent(saleNow.known ? (saleNow.sale?.discountPercent ?? 0) : null);
 
       // Persist a new address if entered inline (so it's saved for reuse).
       if (selectedAddr === "new" && user) {
@@ -630,6 +645,7 @@ export default function CheckoutPage() {
     setClientSecret(null);
     setDueCents(0);
     setError(null);
+    setPricedAtSalePercent(null);
   };
 
   if (authLoading || cartLoading) {
@@ -691,6 +707,17 @@ export default function CheckoutPage() {
             cards for {CHECKOUT_HOLD_MINUTES} minutes. If you don&rsquo;t finish, they go
             back on sale and stay in your cart.
           </p>
+          {saleStartedAfterPricing && currentSale && (
+            <div className="gg-alert gg-pay-sale" role="status">
+              <strong>
+                {currentSale.name} just started: {currentSale.discountPercent}% off storewide.
+              </strong>{" "}
+              This total was set before it began. Go back and continue to payment again to get the sale price.
+              <button type="button" className="gg-btn gg-btn-sm gg-pay-sale__back" onClick={backToCheckout}>
+                Back to checkout for the sale price
+              </button>
+            </div>
+          )}
           {error && (
             <div className="gg-alert gg-alert-error" role="alert" aria-live="assertive">
               {error}
@@ -855,6 +882,13 @@ export default function CheckoutPage() {
               </div>
               <div className="gg-price">
                 {formatCents(l.priceCents * l.quantity)}
+                {l.originalPriceCents != null && (
+                  // On sale (storewide sale or a deal): the regular price, struck through.
+                  <span className="gg-price-original gg-line-total-was">
+                    <span className="visually-hidden">, regular price </span>
+                    {formatCents(l.originalPriceCents * l.quantity)}
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -953,6 +987,10 @@ export default function CheckoutPage() {
         <aside className="gg-filters" style={{ alignSelf: "start" }}>
           <h2 style={{ marginTop: 0 }}>Summary</h2>
           <SummaryRow label="Subtotal" value={totals.subtotalCents} />
+          {saleSavingsCents > 0 && (
+            // Already in the subtotal, so it's said, not subtracted.
+            <p className="gg-sale-savings">Includes {formatCents(saleSavingsCents)} in sale savings</p>
+          )}
           {totals.discountCents > 0 && (
             <SummaryRow
               label={`Member discount (${MEMBER_DISCOUNT_PERCENT}%)`}

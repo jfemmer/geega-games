@@ -6721,6 +6721,7 @@ export type Database = {
           finish: Database["public"]["Enums"]["card_finish"]
           id: string
           image_url: string
+          original_price_cents: number | null
           price_cents: number
           quantity: number
           set_code: string

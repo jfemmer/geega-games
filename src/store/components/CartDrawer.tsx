@@ -17,8 +17,19 @@ export default function CartDrawer({
   open: boolean;
   onClose: () => void;
 }) {
-  const { lines, subtotalCents, discountableSubtotalCents, itemCount, setQuantity, removeItem, clear, loading, error, stockAdjusted } =
-    useCart();
+  const {
+    lines,
+    subtotalCents,
+    discountableSubtotalCents,
+    saleSavingsCents,
+    itemCount,
+    setQuantity,
+    removeItem,
+    clear,
+    loading,
+    error,
+    stockAdjusted,
+  } = useCart();
   const memberSavingsCents = memberDiscountCents(discountableSubtotalCents);
   const { user } = useAuth();
   const { ordersPaused, message: pausedMessage, pausedUntil, maxOrderLines } = useStoreStatus();
@@ -138,7 +149,16 @@ export default function CartDrawer({
                   {l.setName ?? l.setCode?.toUpperCase()} · {l.condition}
                   {l.finish !== "nonfoil" ? ` · ${l.finish}` : ""}
                 </div>
-                <div className="gg-card-meta">{formatCents(l.priceCents)} each</div>
+                <div className="gg-card-meta">
+                  {formatCents(l.priceCents)} each
+                  {l.originalPriceCents != null && (
+                    // On sale (storewide sale or a deal): the regular price, struck through.
+                    <span className="gg-price-original gg-line-was">
+                      <span className="visually-hidden">, regular price </span>
+                      {formatCents(l.originalPriceCents)}
+                    </span>
+                  )}
+                </div>
                 {l.saleOnly && <div className="gg-card-meta gg-line-consigned">Consigned · no discounts apply</div>}
                 {l.quantity >= l.sellable && (
                   <div className="gg-card-meta" style={{ color: "#92400e" }}>
@@ -200,6 +220,10 @@ export default function CartDrawer({
               <strong>Subtotal</strong>
               <strong>{formatCents(subtotalCents)}</strong>
             </div>
+            {saleSavingsCents > 0 && (
+              // Already in the subtotal above, so it's said, not subtracted.
+              <p className="gg-sale-savings">Includes {formatCents(saleSavingsCents)} in sale savings</p>
+            )}
             {user && memberSavingsCents > 0 && (
               // Signed in: the database takes this off at checkout, unless the
               // order uses store credit (then there's no member discount).

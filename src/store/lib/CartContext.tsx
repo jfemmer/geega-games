@@ -11,6 +11,7 @@ import {
 import { supabase } from "../../supabase";
 import { storefrontImageUrl } from "../../cards";
 import { useAuth } from "./AuthContext";
+import { storewideSaleKey, useStorewideSale } from "./storewideSale";
 import {
   readGuestCart,
   writeGuestCart,
@@ -27,6 +28,12 @@ import {
 // warn/clamp when availability changed while browsing. Stock is resolved via
 // cart_item_availability (inventory_public, which already subtracts active
 // reservations, plus the customer's own checkout hold).
+//
+// Prices are never stored in the cart: each load reads the current price from
+// cart_item_availability, which applies the storewide sale and Deals &
+// Specials (storefront_effective_price, the same price checkout charges). When
+// the sale starts, ends or changes while the page is open, the lines already
+// in the cart are re-priced on the spot (see `reprice`).
 
 export type CartLine = {
   inventoryItemId: string;
@@ -38,6 +45,11 @@ export type CartLine = {
   finish: string;
   imageUrl: string | null;
   priceCents: number;
+  /**
+   * The card's regular price when priceCents is discounted (storewide sale or
+   * Deals & Specials), shown struck through; null when it isn't discounted.
+   */
+  originalPriceCents: number | null;
   /** Current sellable stock for this item (physical minus active reservations). */
   sellable: number;
   /** "Artist Proof", "Special Edition", a custom label, or null for a standard copy. */
@@ -52,6 +64,8 @@ type CartContextValue = {
   subtotalCents: number;
   /** The part of the subtotal the member discount applies to (consigned cards excluded). */
   discountableSubtotalCents: number;
+  /** How much the subtotal is below the cards' regular prices (sale and deals); already taken off. */
+  saleSavingsCents: number;
   /** True when the cart holds a consigned card, so the order must ship tracked. */
   hasSaleOnly: boolean;
   loading: boolean;
@@ -79,6 +93,8 @@ type PublicRow = {
   quantity: number | null; // sellable (view already subtracts reservations)
   variant_type: string | null;
   sale_only?: boolean | null;
+  /** Regular price when price_cents is discounted, else null (absent before the 20261127233000 migration). */
+  original_price_cents?: number | null;
 };
 
 /**
@@ -101,6 +117,13 @@ async function fetchItemsByIds(ids: string[]): Promise<Map<string, PublicRow>> {
   return map;
 }
 
+/** The struck-through regular price, only when it's really above the price charged. */
+function regularPriceOf(row: PublicRow): number | null {
+  const price = row.price_cents ?? 0;
+  const regular = row.original_price_cents;
+  return typeof regular === "number" && regular > price ? regular : null;
+}
+
 function buildLine(row: PublicRow, quantity: number): CartLine {
   const sellable = Math.max(0, row.quantity ?? 0);
   return {
@@ -113,6 +136,7 @@ function buildLine(row: PublicRow, quantity: number): CartLine {
     finish: row.finish ?? "nonfoil",
     imageUrl: storefrontImageUrl(row.image_url ?? null),
     priceCents: row.price_cents ?? 0,
+    originalPriceCents: regularPriceOf(row),
     sellable,
     variantType: row.variant_type || null,
     saleOnly: row.sale_only === true,
@@ -313,6 +337,51 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [user, authLoading, hydrateServer, hydrateGuest, mergeGuestCart]);
 
+  // ---- Re-price when the storewide sale changes ------------------------------
+  // The sale starting, ending or changing percentage changes the price of
+  // cards already in the cart. Re-read the prices of the current lines then,
+  // so an open tab (or a phone that kept the site open) shows what checkout
+  // will charge. Deliberately quiet: no loading state (on the payment step
+  // that would unmount the card form) and no pruning or clamping (a guest's
+  // own checkout hold reads as sold out to them). Stock is still checked by
+  // every normal load and cart change, and by checkout itself.
+  const linesRef = useRef<CartLine[]>([]);
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  const reprice = useCallback(async () => {
+    const ids = linesRef.current.map((l) => l.inventoryItemId);
+    if (!ids.length) return;
+    try {
+      const items = await fetchItemsByIds(ids);
+      setLines((prev) =>
+        prev.map((line) => {
+          const row = items.get(line.inventoryItemId);
+          if (!row) return line;
+          const priceCents = row.price_cents ?? 0;
+          const originalPriceCents = regularPriceOf(row);
+          return priceCents === line.priceCents && originalPriceCents === line.originalPriceCents
+            ? line
+            : { ...line, priceCents, originalPriceCents };
+        }),
+      );
+    } catch {
+      /* keep the prices shown; checkout prices the order on the server anyway */
+    }
+  }, []);
+
+  const sale = useStorewideSale();
+  const saleKey = sale.known ? storewideSaleKey(sale.sale) : null;
+  const seenSaleKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (saleKey == null) return;
+    const before = seenSaleKey.current;
+    seenSaleKey.current = saleKey;
+    // The first answer isn't a change: the cart's own load already had current prices.
+    if (before != null && before !== saleKey) void reprice();
+  }, [saleKey, reprice]);
+
   // ---- Mutations ------------------------------------------------------------
   const persistGuest = useCallback((next: CartLine[]) => {
     writeGuestCart(
@@ -471,6 +540,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     () => lines.reduce((n, l) => n + (l.saleOnly ? 0 : l.priceCents * l.quantity), 0),
     [lines],
   );
+  const saleSavingsCents = useMemo(
+    () =>
+      lines.reduce(
+        (n, l) => n + (l.originalPriceCents != null ? (l.originalPriceCents - l.priceCents) * l.quantity : 0),
+        0,
+      ),
+    [lines],
+  );
   const hasSaleOnly = useMemo(() => lines.some((l) => l.saleOnly), [lines]);
 
   const value = useMemo<CartContextValue>(
@@ -479,6 +556,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       itemCount,
       subtotalCents,
       discountableSubtotalCents,
+      saleSavingsCents,
       hasSaleOnly,
       loading,
       error,
@@ -494,6 +572,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       itemCount,
       subtotalCents,
       discountableSubtotalCents,
+      saleSavingsCents,
       hasSaleOnly,
       loading,
       error,

@@ -49,10 +49,12 @@ create function public.storefront_effective_discount_percent(p_price_cents integ
 returns integer language plpgsql stable set search_path to '' as $f$
 declare v_effective integer; v_regular integer;
 begin
-  v_regular := public.storefront_effective_original_price(p_price_cents, p_original_price_cents, p_is_deal);
+  if p_price_cents is null then return null; end if;
+  v_regular := case when coalesce(p_is_deal, false) and p_original_price_cents is not null then p_original_price_cents else p_price_cents end;
+  if v_regular <= 0 then return null; end if;
   v_effective := public.storefront_effective_price(p_price_cents, p_original_price_cents, p_is_deal);
-  if v_regular is null or v_regular <= 0 or v_effective >= v_regular then return null; end if;
-  return round((v_regular - v_effective) * 100.0 / v_regular)::integer;
+  if v_effective >= v_regular then return null; end if;
+  return greatest(1, round((v_regular - v_effective) * 100.0 / v_regular)::integer);
 end $f$;
 create function public.inventory_live_prices(p_inventory_item_ids uuid[])
 returns table(inventory_item_id uuid, price_cents integer) language sql stable set search_path to '' as $f$

@@ -6715,6 +6715,45 @@ html {
   color: #6d6575;
 }
 .gg-line-consigned { color: #4c2a85; font-weight: 600; }
+
+/* ---- Sale prices in the cart and checkout ----
+   A discounted card (storewide sale or a deal) shows its regular price struck
+   through (.gg-price-original), and the subtotal says how much of it is sale
+   savings. Violet, the storefront's sale color. */
+.gg-line-was {
+  margin-left: 0.4rem;
+}
+.gg-line-total-was {
+  display: block;
+  text-align: right;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+.gg-sale-savings {
+  margin: 0 0 0.35rem;
+  color: #6b21a8;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.gg-drawer-foot .gg-sale-savings {
+  margin: -0.45rem 0 0.75rem;
+}
+/* Payment step: a sale started after this order's total was set. */
+.gg-pay-sale {
+  background: #f7f0ff;
+  color: #3b0764;
+  border: 1px solid #d8b4fe;
+  line-height: 1.45;
+}
+.gg-pay-sale__back {
+  display: block;
+  margin-top: 0.6rem;
+}
+@media (max-width: 640px) {
+  .gg-pay-sale__back {
+    width: 100%;
+  }
+}
 @media (max-width: 640px) {
   .gg-card-detail__listingbuy { flex-wrap: wrap; }
 }
