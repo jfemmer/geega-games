@@ -2,11 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ToastProvider } from "../../admin/components/ui/ToastProvider";
 import { useToast } from "../../admin/hooks/useToast";
 import { Spinner } from "../../admin/components/ui/States";
-import { BracketDisplay } from "../../admin/components/tournaments/BracketDisplay";
+import { BracketDisplay, type SignUpInput } from "../../admin/components/tournaments/BracketDisplay";
 import type { CommanderOption } from "../../admin/components/tournaments/CommanderPicker";
 import {
   parseSeatKey,
-  seatKey,
   tournamentShareUrl,
   type PlayerSeat,
   type TournamentCommander,
@@ -61,21 +60,54 @@ function meKey(token: string): string {
   return `gg-tournament-me:${token.slice(0, 16)}`;
 }
 
-function readMe(token: string): PlayerSeat | null {
+/** Who this phone is: a seat, plus the name, so it can be found again if their team changes. */
+interface SavedMe extends PlayerSeat {
+  name: string | null;
+}
+
+function readMe(token: string): SavedMe | null {
   try {
-    return parseSeatKey(window.localStorage.getItem(meKey(token)));
+    const raw = window.localStorage.getItem(meKey(token));
+    if (!raw) return null;
+    if (raw.startsWith("{")) {
+      const v = JSON.parse(raw) as Partial<SavedMe>;
+      const seat = parseSeatKey(`${v.entrantId}:${v.seat}`);
+      return seat ? { ...seat, name: typeof v.name === "string" ? v.name : null } : null;
+    }
+    const seat = parseSeatKey(raw);
+    return seat ? { ...seat, name: null } : null;
   } catch {
     return null;
   }
 }
 
-function writeMe(token: string, seat: PlayerSeat | null): void {
+function writeMe(token: string, me: SavedMe | null): void {
   try {
-    if (seat) window.localStorage.setItem(meKey(token), seatKey(seat));
+    if (me) window.localStorage.setItem(meKey(token), JSON.stringify(me));
     else window.localStorage.removeItem(meKey(token));
   } catch {
     /* storage unavailable: "me" lasts for this visit only */
   }
+}
+
+/**
+ * The saved player in this tournament: their seat if it still holds their
+ * name, else wherever that name is now (a Two-Headed Giant player who got a
+ * random teammate moves onto that team). Null if they've dropped or gone.
+ */
+function resolveMe(t: TournamentDetail, saved: SavedMe | null): SavedMe | null {
+  if (!saved) return null;
+  const sameName = (a: string | undefined) => saved.name == null || a?.toLowerCase() === saved.name.toLowerCase();
+  const at = t.entrants.find((e) => e.id === saved.entrantId);
+  if (at && !at.droppedAt && saved.seat < at.players.length && sameName(at.players[saved.seat])) {
+    return { ...saved, name: at.players[saved.seat] };
+  }
+  if (!saved.name) return null;
+  for (const e of t.entrants) {
+    const seat = e.players.findIndex((p) => p.toLowerCase() === saved.name!.toLowerCase());
+    if (seat >= 0 && !e.droppedAt) return { entrantId: e.id, seat, name: e.players[seat] };
+  }
+  return null;
 }
 
 export default function TournamentPage() {
@@ -103,7 +135,7 @@ function TournamentScreen() {
   const [tournament, setTournament] = useState<TournamentDetail | null>(null);
   const [error, setError] = useState<{ message: string; gone: boolean } | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-  const [me, setMe] = useState<PlayerSeat | null>(() => (token ? readMe(token) : null));
+  const [me, setMe] = useState<SavedMe | null>(() => (token ? readMe(token) : null));
   const busy = useRef(false);
 
   const load = useCallback(async () => {
@@ -205,10 +237,38 @@ function TournamentScreen() {
 
   const pickMe = useCallback(
     (seat: PlayerSeat | null) => {
-      setMe(seat);
-      writeMe(token, seat);
+      const entrant = seat ? tournament?.entrants.find((e) => e.id === seat.entrantId) : undefined;
+      const next = seat ? { ...seat, name: entrant?.players[seat.seat] ?? null } : null;
+      setMe(next);
+      writeMe(token, next);
     },
-    [token],
+    [token, tournament],
+  );
+
+  const signUp = useCallback(
+    async (input: SignUpInput): Promise<boolean> => {
+      try {
+        const res = await post<{ tournament: TournamentDetail; seat: PlayerSeat; started: boolean }>({
+          token,
+          action: "sign-up",
+          name: input.name,
+          commander: input.commander,
+          teamWith: input.teamWith,
+        });
+        const next = { ...res.seat, name: input.name };
+        setMe(next);
+        writeMe(token, next);
+        setTournament(res.tournament);
+        setUpdatedAt(new Date());
+        toast.success(res.started ? "You're in, and round 1 is paired. Find your table below." : `You're in, ${input.name}!`);
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't sign you up. Please try again.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load],
   );
 
   const saveCommander = useCallback(
@@ -241,6 +301,14 @@ function TournamentScreen() {
     [token],
   );
 
+  // A player who got a random teammate moved seats: remember the new one.
+  const resolved = tournament ? resolveMe(tournament, me) : null;
+  const resolvedKey = resolved ? `${resolved.entrantId}:${resolved.seat}` : "";
+  useEffect(() => {
+    if (resolved && me && (resolved.entrantId !== me.entrantId || resolved.seat !== me.seat)) writeMe(token, resolved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedKey, token]);
+
   const fullscreen = useMemo(() => {
     if (typeof document === "undefined" || !document.fullscreenEnabled) return undefined;
     return () => {
@@ -266,9 +334,7 @@ function TournamentScreen() {
     );
   }
 
-  // A remembered "me" who has dropped or been removed is nobody.
-  const meEntrant = me ? tournament.entrants.find((e) => e.id === me.entrantId) : undefined;
-  const currentMe = me && meEntrant && !meEntrant.droppedAt && me.seat < meEntrant.players.length ? me : null;
+  const currentMe = resolveMe(tournament, me);
   const origin = window.location.origin;
   return (
     <>
@@ -291,6 +357,7 @@ function TournamentScreen() {
         me={currentMe}
         onPickMe={pickMe}
         onSaveCommander={saveCommander}
+        onSignUp={signUp}
         searchCommanders={searchCommanders}
         updatedAt={updatedAt}
         onFullscreen={fullscreen}

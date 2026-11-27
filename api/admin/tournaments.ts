@@ -19,6 +19,9 @@ import {
   searchCommanders,
   setCommander,
   setFinished,
+  setSpots,
+  startIfFull,
+  startTournament,
   updateShare,
 } from "../_lib/tournaments.js";
 
@@ -26,13 +29,16 @@ import {
 //
 //   GET                         -> { tournaments }        (newest first)
 //   GET ?id=                    -> { tournament }         (entrants + every match)
-//   POST { action: "create", name, format: "1v1"|"2hg", entrants: string[][] } -> { id, tournament }
+//   POST { action: "create", name, format: "1v1"|"2hg", entrants: string[][], spots? } -> { id, tournament }
+//        (spots: players sign up from the player display; round 1 starts when they're filled)
 //   POST { action, id, ... }    -> { tournament }         (the updated tournament)
 //        rename          { name }
 //        add-entrant     { players: string[] }
 //        rename-entrant  { entrantId, players: string[], commanders?: ({ name, cardId? } | null)[] }
 //        commander       { entrantId, seat, commander: { name, cardId? } | null }
 //        share           { enabled?, rotate? }   (the player display link)
+//        start                                   (round 1 now: makes any random 2HG teams, then pairs)
+//        spots           { spots: number | null } (sign-up spots; null turns sign-ups off)
 //        remove-entrant  { entrantId }      (deleted before they've played, dropped after)
 //        restore-entrant { entrantId }
 //        pair            { round, replace? } (round = the round being written)
@@ -70,6 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         name: body.name,
         format: body.format,
         entrants: body.entrants,
+        spots: body.spots,
         actor: staff.email,
       });
       const tournament = await loadTournament(id);
@@ -94,6 +101,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case "add-entrant":
         await addEntrant(tournament, body.players);
+        await startIfFull(tournament.id);
+        break;
+      case "start":
+        await startTournament(tournament);
+        break;
+      case "spots":
+        await setSpots(tournament, body.spots);
+        await startIfFull(tournament.id);
         break;
       case "rename-entrant":
         await renameEntrant(tournament, body.entrantId, body.players, body.commanders);

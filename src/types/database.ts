@@ -4892,6 +4892,7 @@ export type Database = {
           name: string
           share_enabled: boolean
           share_token: string
+          spots: number | null
           status: string
           updated_at: string
         }
@@ -4905,6 +4906,7 @@ export type Database = {
           name: string
           share_enabled?: boolean
           share_token?: string
+          spots?: number | null
           status?: string
           updated_at?: string
         }
@@ -4918,6 +4920,7 @@ export type Database = {
           name?: string
           share_enabled?: boolean
           share_token?: string
+          spots?: number | null
           status?: string
           updated_at?: string
         }
@@ -7290,6 +7293,10 @@ export type Database = {
         }
         Returns: number
       }
+      tournament_form_teams: {
+        Args: { p_pairs: Json; p_tournament_id: string }
+        Returns: number
+      }
       tournament_pair_round: {
         Args: {
           p_pairings: Json
@@ -7298,6 +7305,16 @@ export type Database = {
           p_tournament_id: string
         }
         Returns: number
+      }
+      tournament_sign_up: {
+        Args: {
+          p_card: string | null
+          p_commander: string | null
+          p_name: string
+          p_team_with: string | null
+          p_tournament_id: string
+        }
+        Returns: Json
       }
       trade_accept_final: {
         Args: {
