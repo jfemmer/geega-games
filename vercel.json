@@ -46,6 +46,7 @@
     { "source": "/shop/picks", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/yard-sale", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/cube-checklist", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }, { "key": "Referrer-Policy", "value": "same-origin" }] },
+    { "source": "/tournament", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }, { "key": "Referrer-Policy", "value": "same-origin" }] },
     { "source": "/account", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/account/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
     { "source": "/spa.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] },
@@ -101,6 +102,7 @@
     { "source": "/kiosk", "destination": "/spa.html" },
     { "source": "/yard-sale", "destination": "/spa.html" },
     { "source": "/cube-checklist", "destination": "/spa.html" },
+    { "source": "/tournament", "destination": "/spa.html" },
     { "source": "/account", "destination": "/spa.html" },
     { "source": "/account/:path*", "destination": "/spa.html" }
   ],

@@ -13,9 +13,12 @@ beforeAll(() => {
 });
 
 let state: FakeState = createFakeState();
+const scry = vi.hoisted(() => ({ searchCards: vi.fn() }));
 vi.mock("../api/_lib/supabaseAdmin.js", () => ({ getSupabaseAdmin: () => createFakeSupabase(state) }));
+vi.mock("../api/_lib/scryfall.js", () => ({ scryfallSearchCards: scry.searchCards }));
 
 const { default: handler } = await import("../api/admin/tournaments.ts");
+const { default: publicHandler } = await import("../api/tournament.ts");
 
 const STAFF = "staff-token";
 const CUSTOMER = "customer-token";
@@ -56,8 +59,19 @@ beforeEach(() => {
     created_by: null,
     updated_at: new Date().toISOString(),
     finished_at: null,
+    share_token: `tok${fakeId().replace(/-/g, "")}`,
+    share_enabled: true,
   });
-  state.defaults.tournament_entrants = () => ({ player_two: null, dropped_at: null, updated_at: new Date().toISOString() });
+  state.defaults.tournament_entrants = () => ({
+    player_two: null,
+    dropped_at: null,
+    commander_one: null,
+    commander_one_card: null,
+    commander_two: null,
+    commander_two_card: null,
+    updated_at: new Date().toISOString(),
+  });
+  scry.searchCards.mockReset();
   rpcCalls = [];
   // Stand-in for tournament_pair_round(): writes the round the way the SQL does.
   state.rpc.tournament_pair_round = (args) => {
@@ -322,5 +336,128 @@ describe("tournament", () => {
   it("refuses unknown actions", async () => {
     const t = await create("1v1", [["Alex"], ["Blair"]]);
     expect((await post({ action: "explode", id: t.id })).status).toBe(400);
+  });
+});
+
+// ───────────────────────── player display ─────────────────────────
+
+async function playerPost(body: Body) {
+  const res = fakeResponse();
+  await publicHandler({ method: "POST", body, headers: {}, query: {} } as never, res as never);
+  return { status: res.statusCode, body: res.body as Body };
+}
+
+const ATRAXA = "d0d33d52-3d28-4635-b985-51e126289259";
+
+describe("player display link", () => {
+  it("staff see the link; players open the tournament with it, without the link or staff details", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    expect(t.share).toEqual({ token: expect.stringMatching(/^tok/), enabled: true });
+    await post({ action: "pair", id: t.id, round: 1 });
+    const res = await playerPost({ token: t.share.token, action: "get" });
+    expect(res.status).toBe(200);
+    expect(res.body.tournament).toMatchObject({ id: t.id, name: "Friday 1v1", currentRound: 1 });
+    expect(res.body.tournament.matches).toHaveLength(1);
+    expect(res.body.tournament.share).toBeUndefined();
+    const text = JSON.stringify(res.body);
+    expect(text).not.toContain(t.share.token);
+    expect(text).not.toContain("jordan@geega-games.com");
+  });
+
+  it("refuses unknown, malformed and turned-off links alike", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    expect((await playerPost({ token: "nope", action: "get" })).status).toBe(404);
+    expect((await playerPost({ token: "x".repeat(40), action: "get" })).status).toBe(404);
+    const off = await post({ action: "share", id: t.id, enabled: false });
+    expect(off.body.tournament.share.enabled).toBe(false);
+    expect((await playerPost({ token: t.share.token, action: "get" })).status).toBe(404);
+    expect((await playerPost({ token: t.share.token, action: "unknown" })).status).toBe(400);
+  });
+
+  it("a new link replaces the old one", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    const res = await post({ action: "share", id: t.id, rotate: true });
+    const fresh = res.body.tournament.share.token as string;
+    expect(fresh).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(fresh).not.toBe(t.share.token);
+    expect((await playerPost({ token: t.share.token, action: "get" })).status).toBe(404);
+    expect((await playerPost({ token: fresh, action: "get" })).status).toBe(200);
+  });
+});
+
+describe("commanders", () => {
+  it("players set their own commander, with the card they picked", async () => {
+    const t = await create("2hg", [["Alex", "Sam"], ["Jo", "Kim"]]);
+    const team = t.entrants[0].id;
+    const res = await playerPost({
+      token: t.share.token,
+      action: "commander",
+      entrantId: team,
+      seat: 1,
+      commander: { name: "  Atraxa,   Praetors' Voice ", cardId: ATRAXA.toUpperCase() },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.tournament.entrants[0].commanders).toEqual([null, { name: "Atraxa, Praetors' Voice", cardId: ATRAXA }]);
+    expect(state.tables.tournament_entrants[0]).toMatchObject({ commander_two: "Atraxa, Praetors' Voice", commander_two_card: ATRAXA });
+
+    // A typed name with a junk card id keeps the name only; null clears it.
+    await playerPost({ token: t.share.token, action: "commander", entrantId: team, seat: 0, commander: { name: "Thrasios & Tymna", cardId: "javascript:alert(1)" } });
+    expect(state.tables.tournament_entrants[0]).toMatchObject({ commander_one: "Thrasios & Tymna", commander_one_card: null });
+    await playerPost({ token: t.share.token, action: "commander", entrantId: team, seat: 1, commander: null });
+    expect(state.tables.tournament_entrants[0]).toMatchObject({ commander_two: null, commander_two_card: null });
+  });
+
+  it("refuses a seat that doesn't exist, someone from another tournament, and a finished tournament", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    const other = await create("1v1", [["Sam"], ["Jo"]], "Saturday");
+    const alex = t.entrants[0].id;
+    const commander = { name: "Krenko, Mob Boss" };
+    expect((await playerPost({ token: t.share.token, action: "commander", entrantId: alex, seat: 1, commander })).status).toBe(400);
+    expect((await playerPost({ token: t.share.token, action: "commander", entrantId: alex, seat: "0", commander })).status).toBe(400);
+    expect(
+      (await playerPost({ token: t.share.token, action: "commander", entrantId: other.entrants[0].id, seat: 0, commander })).status,
+    ).toBe(404);
+    await post({ action: "finish", id: t.id });
+    const locked = await playerPost({ token: t.share.token, action: "commander", entrantId: alex, seat: 0, commander });
+    expect(locked.status).toBe(409);
+    expect(locked.body.message).toMatch(/locked in/);
+  });
+
+  it("searches commanders on Scryfall with only the words typed", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    scry.searchCards.mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) => ({ id: `${ATRAXA.slice(0, -2)}${String(i).padStart(2, "0")}`, name: `Atraxa ${i}` })),
+    );
+    const res = await playerPost({ token: t.share.token, action: "commander-search", query: 'atraxa" -t:land or (x)' });
+    expect(scry.searchCards).toHaveBeenCalledWith("is:commander game:paper atraxa t land x", "edhrec");
+    expect(res.body.options).toHaveLength(8);
+    expect(res.body.options[0]).toEqual({ name: "Atraxa 0", cardId: `${ATRAXA.slice(0, -2)}00` });
+
+    scry.searchCards.mockClear();
+    expect((await playerPost({ token: t.share.token, action: "commander-search", query: "a" })).body.options).toEqual([]);
+    expect(scry.searchCards).not.toHaveBeenCalled();
+    // Staff search from the admin Edit dialog the same way.
+    scry.searchCards.mockResolvedValue([{ id: ATRAXA, name: "Atraxa, Praetors' Voice" }]);
+    expect((await post({ action: "commander-search", query: "atraxa" })).body.options).toEqual([
+      { name: "Atraxa, Praetors' Voice", cardId: ATRAXA },
+    ]);
+  });
+
+  it("staff set names and commanders together from the Edit dialog", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    const res = await post({
+      action: "rename-entrant",
+      id: t.id,
+      entrantId: t.entrants[0].id,
+      players: ["Alexis"],
+      commanders: [{ name: "Atraxa, Praetors' Voice", cardId: ATRAXA }],
+    });
+    expect(res.body.tournament.entrants[0]).toMatchObject({
+      players: ["Alexis"],
+      commanders: [{ name: "Atraxa, Praetors' Voice", cardId: ATRAXA }],
+    });
+    // Renaming without commanders leaves them alone.
+    await post({ action: "rename-entrant", id: t.id, entrantId: t.entrants[0].id, players: ["Alex"] });
+    expect(state.tables.tournament_entrants[0]).toMatchObject({ player_one: "Alex", commander_one: "Atraxa, Praetors' Voice" });
   });
 });

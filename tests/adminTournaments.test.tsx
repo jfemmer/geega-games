@@ -18,7 +18,7 @@ vi.mock("../src/admin/repositories/apiClient", () => ({ adminFetch: api.adminFet
 const { TournamentsPage } = await import("../src/admin/pages/TournamentsPage");
 
 const T0 = "2026-11-27T20:00:00.000Z";
-const entrant = (id: string, players: string[]) => ({ id, players, droppedAt: null, createdAt: T0 });
+const entrant = (id: string, players: string[]) => ({ id, players, commanders: players.map(() => null), droppedAt: null, createdAt: T0 });
 const match = (id: string, round: number, table: number, a: string, b: string | null, result: TournamentMatch["result"]) => ({
   id,
   round,
@@ -296,5 +296,72 @@ describe("running a tournament", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/2 results in round 1 aren't in yet/)).toBeTruthy();
     expect(posts()).toHaveLength(0);
+  });
+});
+
+describe("player display and commanders (admin)", () => {
+  it("shows the display link with a QR code, opens the TV view, and turns the link off", async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const current = { t: detail({ share: { token: "tok_abcdefghijklmnopqrstuv", enabled: true } }) };
+    serve(current as { t: TournamentDetail | null }, (body) => {
+      if (body.action === "share") current.t = { ...current.t, share: { ...current.t.share!, enabled: Boolean(body.enabled) } };
+      return { tournament: current.t };
+    });
+    renderPage("id=t1");
+    expect(await screen.findByRole("img", { name: "QR code for the player display" })).toBeTruthy();
+    expect(screen.getByText(`${window.location.origin}/tournament?t=tok_abcdefghijklmnopqrstuv`)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Open TV display" }));
+    expect(open).toHaveBeenCalledWith(
+      `${window.location.origin}/tournament?t=tok_abcdefghijklmnopqrstuv&view=tv`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Turn off" }));
+    await waitFor(() => expect(posts()[0]).toEqual({ action: "share", id: "t1", enabled: false }));
+    expect(await screen.findByRole("button", { name: "Turn link on" })).toBeTruthy();
+    open.mockRestore();
+  });
+
+  it("asks before making a new link", async () => {
+    const user = userEvent.setup();
+    const current = { t: detail({ share: { token: "tok_abcdefghijklmnopqrstuv", enabled: true } }) };
+    serve(current as { t: TournamentDetail | null }, () => ({ tournament: current.t }));
+    renderPage("id=t1");
+    await user.click(await screen.findByRole("button", { name: "New link" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/stop working/)).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "New link" }));
+    await waitFor(() => expect(posts()[0]).toEqual({ action: "share", id: "t1", rotate: true }));
+  });
+
+  it("shows commanders in the standings and edits them with the name", async () => {
+    const user = userEvent.setup();
+    const t = detail();
+    t.entrants[0] = { ...t.entrants[0], commanders: [{ name: "Atraxa, Praetors' Voice", cardId: null }] };
+    const current = { t };
+    serve(current as { t: TournamentDetail | null }, (body) => {
+      if (body.action === "commander-search") return { options: [{ name: "Edgar Markov", cardId: "d0d33d52-3d28-4635-b985-51e126289259" }] };
+      return { tournament: current.t };
+    });
+    renderPage("id=t1");
+    expect(await screen.findByText("Atraxa, Praetors' Voice")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Edit Blair" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByRole("combobox", { name: "Commander (optional)" }), "edgar");
+    await user.click(await within(dialog).findByRole("option", { name: "Edgar Markov" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(posts().find((b) => b?.action === "rename-entrant")).toEqual({
+        action: "rename-entrant",
+        id: "t1",
+        entrantId: "b",
+        players: ["Blair"],
+        commanders: [{ name: "Edgar Markov", cardId: "d0d33d52-3d28-4635-b985-51e126289259" }],
+      }),
+    );
   });
 });

@@ -11,6 +11,8 @@ import { ErrorState, TableSkeleton } from "../components/ui/States";
 import { CreateTournamentForm } from "../components/tournaments/CreateTournamentForm";
 import { RoundMatches } from "../components/tournaments/RoundMatches";
 import { AddEntrantForm, EntrantFields, StandingsTable } from "../components/tournaments/StandingsTable";
+import { CommanderPicker, type CommanderOption } from "../components/tournaments/CommanderPicker";
+import { PlayerDisplayPanel } from "../components/tournaments/PlayerDisplayPanel";
 import { useAsync } from "../hooks/useAsync";
 import { useToast } from "../hooks/useToast";
 import { ADMIN_BASE } from "../hooks/useRouter";
@@ -28,6 +30,7 @@ import {
   hasNewOpponents,
   nextRoundBlocker,
   type ReportableResult,
+  type TournamentCommander,
   type TournamentDetail,
   type TournamentEntrant,
   type TournamentMatch,
@@ -216,9 +219,12 @@ function TournamentView({
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ entrant: TournamentEntrant; values: string[]; error: string | null } | null>(
-    null,
-  );
+  const [editing, setEditing] = useState<{
+    entrant: TournamentEntrant;
+    values: string[];
+    commanders: (TournamentCommander | null)[];
+    error: string | null;
+  } | null>(null);
   // Results are saved as they're tapped; the page shows them straight away.
   // Server copies are applied once the last tap in flight comes back, so a
   // slower reply can't flash an older result.
@@ -298,6 +304,16 @@ function TournamentView({
       }
     },
     [id, load, toast],
+  );
+
+  const searchCommanders = useCallback(
+    (query: string) =>
+      adminFetch<{ options: CommanderOption[] }>(ENDPOINT, {
+        method: "POST",
+        body: { action: "commander-search", query },
+        notify: false,
+      }).then((r) => r.options),
+    [],
   );
 
   const derived = useMemo(() => {
@@ -386,7 +402,12 @@ function TournamentView({
     }
     const ok = await run(
       "edit-entrant",
-      { action: "rename-entrant", entrantId: editing.entrant.id, players },
+      {
+        action: "rename-entrant",
+        entrantId: editing.entrant.id,
+        players,
+        commanders: players.map((_, i) => editing.commanders[i] ?? null),
+      },
       { success: "Saved.", listChanged: false },
     );
     if (ok) setEditing(null);
@@ -478,6 +499,27 @@ function TournamentView({
           </div>
         )}
       </SectionCard>
+
+      {detail.share && (
+        <PlayerDisplayPanel
+          share={detail.share}
+          busy={busy === "share"}
+          onChange={(change) =>
+            run(
+              "share",
+              { action: "share", ...change },
+              {
+                success: change.rotate
+                  ? "New link made. Open the TV display again with it."
+                  : change.enabled
+                    ? "Player display link is on."
+                    : "Player display link is off.",
+                listChanged: false,
+              },
+            )
+          }
+        />
+      )}
 
       <SectionCard
         title={started ? `Round ${detail.currentRound}` : "Round 1"}
@@ -573,7 +615,9 @@ function TournamentView({
           labels={labels}
           editable={editable}
           started={started}
-          onEdit={(entrant) => setEditing({ entrant, values: [...entrant.players], error: null })}
+          onEdit={(entrant) =>
+            setEditing({ entrant, values: [...entrant.players], commanders: [...entrant.commanders], error: null })
+          }
           onRemove={askRemove}
           onRestore={(entrant) =>
             void run(
@@ -696,6 +740,23 @@ function TournamentView({
               autoFocus
               onChange={(values) => setEditing({ ...editing, values, error: null })}
             />
+            {editing.values.map((_, seat) => (
+              <CommanderPicker
+                key={`cmd-${seat}`}
+                label={
+                  info.teamSize === 2
+                    ? `${editing.values[seat]?.trim() || `Player ${seat + 1}`}'s commander (optional)`
+                    : "Commander (optional)"
+                }
+                value={editing.commanders[seat] ?? null}
+                onChange={(commander) => {
+                  const commanders = [...editing.commanders];
+                  commanders[seat] = commander;
+                  setEditing({ ...editing, commanders });
+                }}
+                search={searchCommanders}
+              />
+            ))}
             {editing.error && (
               <p className="gg-field__error" role="alert">
                 {editing.error}

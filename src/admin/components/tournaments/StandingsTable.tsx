@@ -4,6 +4,7 @@ import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import {
   cleanPlayerName,
+  commanderSummary,
   entrantLabel,
   entrantProblem,
   formatInfo,
@@ -95,6 +96,9 @@ export function StandingsTable({
                       </Badge>
                     )}
                   </div>
+                  {commanderSummary(row.entrant) && (
+                    <div className="gg-tourney-standings__commander">{commanderSummary(row.entrant)}</div>
+                  )}
                   {played.length > 0 && <div className="gg-tourney-standings__played">vs {played.join(", ")}</div>}
                 </td>
                 <td className="gg-align-center gg-tourney-standings__wld">{row.wins}</td>

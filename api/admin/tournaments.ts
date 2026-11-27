@@ -16,7 +16,10 @@ import {
   renameTournament,
   reportResult,
   restoreEntrant,
+  searchCommanders,
+  setCommander,
   setFinished,
+  updateShare,
 } from "../_lib/tournaments.js";
 
 // /api/admin/tournaments — admin → Tournaments (1v1 and Two-Headed Giant).
@@ -27,13 +30,16 @@ import {
 //   POST { action, id, ... }    -> { tournament }         (the updated tournament)
 //        rename          { name }
 //        add-entrant     { players: string[] }
-//        rename-entrant  { entrantId, players: string[] }
+//        rename-entrant  { entrantId, players: string[], commanders?: ({ name, cardId? } | null)[] }
+//        commander       { entrantId, seat, commander: { name, cardId? } | null }
+//        share           { enabled?, rotate? }   (the player display link)
 //        remove-entrant  { entrantId }      (deleted before they've played, dropped after)
 //        restore-entrant { entrantId }
 //        pair            { round, replace? } (round = the round being written)
 //        report          { matchId, result: "a"|"b"|"draw"|"pending" }
 //        finish | reopen
 //        delete          -> {}
+//   POST { action: "commander-search", query } -> { options: { name, cardId }[] }
 //
 // Every call needs a staff session. Pairing happens here, not in the browser,
 // and the tournament_pair_round() RPC re-checks the round in a transaction.
@@ -76,6 +82,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return sendJson(res, 201, { ok: true, id, tournament });
     }
 
+    if (action === "commander-search") {
+      return sendJson(res, 200, { ok: true, options: await searchCommanders(body.query) });
+    }
+
     const tournament = await loadTournament(body.id);
 
     switch (action) {
@@ -86,7 +96,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await addEntrant(tournament, body.players);
         break;
       case "rename-entrant":
-        await renameEntrant(tournament, body.entrantId, body.players);
+        await renameEntrant(tournament, body.entrantId, body.players, body.commanders);
+        break;
+      case "commander":
+        await setCommander(tournament, { entrantId: body.entrantId, seat: body.seat, commander: body.commander });
+        break;
+      case "share":
+        await updateShare(tournament, { enabled: body.enabled, rotate: body.rotate });
         break;
       case "remove-entrant":
         await removeEntrant(tournament, body.entrantId, staff.email);

@@ -4769,6 +4769,10 @@ export type Database = {
       }
       tournament_entrants: {
         Row: {
+          commander_one: string | null
+          commander_one_card: string | null
+          commander_two: string | null
+          commander_two_card: string | null
           created_at: string
           dropped_at: string | null
           id: string
@@ -4778,6 +4782,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          commander_one?: string | null
+          commander_one_card?: string | null
+          commander_two?: string | null
+          commander_two_card?: string | null
           created_at?: string
           dropped_at?: string | null
           id?: string
@@ -4787,6 +4795,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          commander_one?: string | null
+          commander_one_card?: string | null
+          commander_two?: string | null
+          commander_two_card?: string | null
           created_at?: string
           dropped_at?: string | null
           id?: string
@@ -4878,6 +4890,8 @@ export type Database = {
           format: string
           id: string
           name: string
+          share_enabled: boolean
+          share_token: string
           status: string
           updated_at: string
         }
@@ -4889,6 +4903,8 @@ export type Database = {
           format: string
           id?: string
           name: string
+          share_enabled?: boolean
+          share_token?: string
           status?: string
           updated_at?: string
         }
@@ -4900,6 +4916,8 @@ export type Database = {
           format?: string
           id?: string
           name?: string
+          share_enabled?: boolean
+          share_token?: string
           status?: string
           updated_at?: string
         }

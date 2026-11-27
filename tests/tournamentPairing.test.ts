@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   canRepairRound,
+  commanderImageUrl,
+  commanderSearchQuery,
+  commanderSummary,
+  tournamentShareUrl,
   computeStandings,
   duplicateName,
   entrantProblem,
@@ -170,7 +174,7 @@ describe("pairRound", () => {
 });
 
 function entrant(id: string, players: string[], extra: Partial<TournamentEntrant> = {}): TournamentEntrant {
-  return { id, players, droppedAt: null, createdAt: "2026-11-27T20:00:00.000Z", ...extra };
+  return { id, players, commanders: players.map(() => null), droppedAt: null, createdAt: "2026-11-27T20:00:00.000Z", ...extra };
 }
 let matchSeq = 0;
 function match(round: number, a: string, b: string | null, result: TournamentMatch["result"]): TournamentMatch {
@@ -286,5 +290,39 @@ describe("names", () => {
     expect(entrantProblem("1v1", [""])).toMatch(/name/);
     expect(entrantProblem("2hg", ["Alex"])).toMatch(/two player names/);
     expect(entrantProblem("2hg", ["Alex", "ALEX"])).toMatch(/two different players/);
+  });
+});
+
+describe("commanders and the display link", () => {
+  it("builds Scryfall card image links from a card id (whole card, front face)", () => {
+    expect(commanderImageUrl("D0D33D52-3D28-4635-B985-51E126289259")).toBe(
+      "https://cards.scryfall.io/small/front/d/0/d0d33d52-3d28-4635-b985-51e126289259.jpg",
+    );
+    expect(commanderImageUrl("d0d33d52-3d28-4635-b985-51e126289259", "normal")).toContain("/normal/front/d/0/");
+  });
+
+  it("sums up commanders for a player or a team", () => {
+    expect(commanderSummary({ players: ["Alex"], commanders: [null] })).toBe("");
+    expect(commanderSummary({ players: ["Alex"], commanders: [{ name: "Atraxa", cardId: null }] })).toBe("Atraxa");
+    expect(
+      commanderSummary({ players: ["Jo", "Kim"], commanders: [{ name: "Krenko", cardId: null }, { name: "Yuriko", cardId: null }] }),
+    ).toBe("Jo: Krenko · Kim: Yuriko");
+    expect(commanderSummary({ players: ["Jo", "Kim"], commanders: [null, { name: "Yuriko", cardId: null }] })).toBe("Kim: Yuriko");
+  });
+
+  it("makes phone and TV links", () => {
+    expect(tournamentShareUrl("https://geega-games.com", "abc_123")).toBe("https://geega-games.com/tournament?t=abc_123");
+    expect(tournamentShareUrl("https://geega-games.com", "abc_123", true)).toBe(
+      "https://geega-games.com/tournament?t=abc_123&view=tv",
+    );
+  });
+
+  it("keeps commander searches to plain name words", () => {
+    expect(commanderSearchQuery("Atraxa, Praetors' Voice")).toBe("is:commander game:paper Atraxa Praetors Voice");
+    expect(commanderSearchQuery("Urza, Lord High Artificer's")).toContain("Artificer's");
+    expect(commanderSearchQuery("Éowyn")).toBe("is:commander game:paper Éowyn");
+    expect(commanderSearchQuery('x" or -is:funny (c:r)')).toBe("is:commander game:paper x is funny c r");
+    expect(commanderSearchQuery("a")).toBeNull();
+    expect(commanderSearchQuery(42)).toBeNull();
   });
 });

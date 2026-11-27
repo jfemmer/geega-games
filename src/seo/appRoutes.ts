@@ -37,6 +37,7 @@ export const APP_SHELL_ROUTES = [
   "/kiosk",
   "/yard-sale",
   "/cube-checklist",
+  "/tournament",
   "/account",
   "/account/:path*",
 ] as const;

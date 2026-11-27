@@ -1,23 +1,29 @@
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HttpError } from "./http.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
+import { scryfallSearchCards } from "./scryfall.js";
 import type { Database } from "../../src/types/database.js";
 import {
   MAX_ENTRANTS,
   TOURNAMENT_LIST_LIMIT,
   activeEntrants,
+  cleanCommanderName,
   cleanPlayerName,
   cleanTournamentName,
   duplicateName,
   entrantLabel,
   entrantProblem,
+  commanderSearchQuery,
   formatInfo,
+  isCardId,
   isReportableResult,
   isTournamentFormat,
   matchesInRound,
   nextRoundBlocker,
   pairRound,
   type MatchResult,
+  type TournamentCommander,
   type TournamentDetail,
   type TournamentEntrant,
   type TournamentFormat,
@@ -37,8 +43,14 @@ type EntrantRow = Database["public"]["Tables"]["tournament_entrants"]["Row"];
 type MatchRow = Database["public"]["Tables"]["tournament_matches"]["Row"];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TOURNAMENT_COLUMNS = "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at";
-const ENTRANT_COLUMNS = "id, tournament_id, player_one, player_two, dropped_at, created_at, updated_at";
+const TOURNAMENT_COLUMNS =
+  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled";
+const ENTRANT_COLUMNS =
+  "id, tournament_id, player_one, player_two, commander_one, commander_one_card, commander_two, commander_two_card, dropped_at, created_at, updated_at";
+/** Share links are 32 url-safe characters (the database also accepts its own 64-character default). */
+const TOKEN_RE = /^[A-Za-z0-9_-]{20,100}$/;
+/** Commander suggestions per search. */
+const COMMANDER_RESULTS = 8;
 const MATCH_COLUMNS =
   "id, tournament_id, round, table_number, entrant_a, entrant_b, result, reported_by, reported_at, created_at, updated_at";
 
@@ -82,10 +94,18 @@ function asResult(value: string): MatchResult {
   return value === "a" || value === "b" || value === "draw" || value === "bye" ? value : "pending";
 }
 
+function toCommander(name: string | null | undefined, cardId: string | null | undefined): TournamentCommander | null {
+  return name ? { name, cardId: cardId ?? null } : null;
+}
+
 function toEntrant(row: EntrantRow): TournamentEntrant {
+  const two = Boolean(row.player_two);
   return {
     id: row.id,
-    players: row.player_two ? [row.player_one, row.player_two] : [row.player_one],
+    players: two ? [row.player_one, row.player_two as string] : [row.player_one],
+    commanders: two
+      ? [toCommander(row.commander_one, row.commander_one_card), toCommander(row.commander_two, row.commander_two_card)]
+      : [toCommander(row.commander_one, row.commander_one_card)],
     droppedAt: row.dropped_at,
     createdAt: row.created_at,
   };
@@ -153,12 +173,44 @@ export async function listTournaments(): Promise<TournamentSummary[]> {
   }));
 }
 
+/** A tournament for staff, share link included. */
 export async function loadTournament(rawId: unknown): Promise<TournamentDetail> {
   const id = readId(rawId, "tournament");
   const { data, error } = await db().from("tournaments").select(TOURNAMENT_COLUMNS).eq("id", id).maybeSingle();
   if (error) tournamentDbError(error, "Couldn't load the tournament.");
   if (!data) throw new HttpError(404, "That tournament no longer exists.");
-  const row = data as TournamentRow;
+  return withEntrantsAndMatches(data as TournamentRow);
+}
+
+/**
+ * The tournament a player display link opens, without the link itself.
+ * Turned-off and unknown links look the same.
+ */
+export async function loadTournamentByToken(token: unknown): Promise<TournamentDetail> {
+  if (typeof token !== "string" || !TOKEN_RE.test(token)) {
+    throw new HttpError(404, "This tournament link isn't valid.");
+  }
+  const { data, error } = await db()
+    .from("tournaments")
+    .select(TOURNAMENT_COLUMNS)
+    .eq("share_token", token)
+    .maybeSingle();
+  if (error) tournamentDbError(error, "Couldn't load the tournament.");
+  const row = data as TournamentRow | null;
+  if (!row || !row.share_enabled) {
+    throw new HttpError(404, "This tournament link isn't valid or has been turned off.");
+  }
+  return withEntrantsAndMatches(row);
+}
+
+/** What players see: everything but the share link. */
+export function publicView(t: TournamentDetail): TournamentDetail {
+  const { share: _share, ...rest } = t;
+  return rest;
+}
+
+async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDetail> {
+  const id = row.id;
 
   const [entrants, matches] = await Promise.all([
     db()
@@ -188,6 +240,7 @@ export async function loadTournament(rawId: unknown): Promise<TournamentDetail> 
     finishedAt: row.finished_at,
     entrants: ((entrants.data ?? []) as EntrantRow[]).map(toEntrant),
     matches: ((matches.data ?? []) as MatchRow[]).map(toMatch),
+    share: { token: row.share_token, enabled: row.share_enabled },
   };
 }
 
@@ -289,15 +342,86 @@ export async function addEntrant(t: TournamentDetail, rawPlayers: unknown): Prom
   if (error) tournamentDbError(error, `Couldn't add the ${info.noun}.`);
 }
 
-export async function renameEntrant(t: TournamentDetail, rawEntrantId: unknown, rawPlayers: unknown): Promise<void> {
+/**
+ * A commander as sent by the page: { name, cardId? } sets it, null or an empty
+ * name clears it. A card id only counts when it looks like a Scryfall id.
+ */
+export function readCommander(raw: unknown): TournamentCommander | null {
+  if (raw == null || typeof raw !== "object") return null;
+  const { name, cardId } = raw as { name?: unknown; cardId?: unknown };
+  const clean = cleanCommanderName(name);
+  if (!clean) return null;
+  return { name: clean, cardId: isCardId(cardId) ? cardId.toLowerCase() : null };
+}
+
+function commanderColumns(seat: number, commander: TournamentCommander | null) {
+  return seat === 0
+    ? { commander_one: commander?.name ?? null, commander_one_card: commander?.cardId ?? null }
+    : { commander_two: commander?.name ?? null, commander_two_card: commander?.cardId ?? null };
+}
+
+/**
+ * Renames a player or team (staff). `rawCommanders`, when sent, sets each
+ * player's commander too (one entry per player; null clears).
+ */
+export async function renameEntrant(
+  t: TournamentDetail,
+  rawEntrantId: unknown,
+  rawPlayers: unknown,
+  rawCommanders?: unknown,
+): Promise<void> {
   const entrant = findEntrant(t, rawEntrantId);
   const players = readPlayers(t.format, rawPlayers);
   assertNewNames(t, players, entrant.id);
+  const patch: Database["public"]["Tables"]["tournament_entrants"]["Update"] = {
+    player_one: players[0],
+    player_two: players[1] ?? null,
+  };
+  if (Array.isArray(rawCommanders)) {
+    players.forEach((_, seat) => Object.assign(patch, commanderColumns(seat, readCommander(rawCommanders[seat]))));
+  }
   const { error } = await db()
     .from("tournament_entrants")
-    .update({ player_one: players[0], player_two: players[1] ?? null })
+    .update(patch)
     .eq("id", entrant.id)
     .eq("tournament_id", t.id);
+  if (error) tournamentDbError(error);
+}
+
+/** Sets (or clears) one player's commander: players do this from the display link, staff from the admin. */
+export async function setCommander(
+  t: TournamentDetail,
+  input: { entrantId: unknown; seat: unknown; commander: unknown },
+): Promise<void> {
+  if (t.status !== "active") throw new HttpError(409, "This tournament is finished, so commanders are locked in.");
+  const entrant = findEntrant(t, input.entrantId);
+  const seat = input.seat;
+  if (typeof seat !== "number" || !Number.isInteger(seat) || seat < 0 || seat >= entrant.players.length) {
+    throw new HttpError(400, "Pick which player this commander is for.");
+  }
+  const { error } = await db()
+    .from("tournament_entrants")
+    .update(commanderColumns(seat, readCommander(input.commander)))
+    .eq("id", entrant.id)
+    .eq("tournament_id", t.id);
+  if (error) tournamentDbError(error);
+}
+
+/** Commanders whose name has the words typed, most played first (EDHREC rank). */
+export async function searchCommanders(raw: unknown): Promise<{ name: string; cardId: string }[]> {
+  const query = commanderSearchQuery(raw);
+  if (!query) return [];
+  const cards = await scryfallSearchCards(query, "edhrec");
+  return cards.slice(0, COMMANDER_RESULTS).map((c) => ({ name: c.name, cardId: c.id }));
+}
+
+/** Turns the player display link on or off, or replaces it (old links stop working). */
+export async function updateShare(t: TournamentDetail, input: { enabled: unknown; rotate: unknown }): Promise<void> {
+  const patch: Database["public"]["Tables"]["tournaments"]["Update"] = {};
+  if (typeof input.enabled === "boolean") patch.share_enabled = input.enabled;
+  if (input.rotate === true) patch.share_token = randomBytes(24).toString("base64url");
+  if (Object.keys(patch).length === 0) return;
+  const { error } = await db().from("tournaments").update(patch).eq("id", t.id);
   if (error) tournamentDbError(error);
 }
 

@@ -30,15 +30,27 @@ export type ReportableResult = Exclude<MatchResult, "bye">;
 
 export const MAX_TOURNAMENT_NAME = 80;
 export const MAX_PLAYER_NAME = 40;
+export const MAX_COMMANDER_NAME = 120;
+/** The player display: /tournament?t=<share token> (add &view=tv for a big screen). */
+import { TOURNAMENT_PATH } from "../../store/lib/tournamentPath.js";
+export { TOURNAMENT_PATH };
 /** Entrants per tournament (players for 1v1, teams for Two-Headed Giant). */
 export const MAX_ENTRANTS = 64;
 /** Tournaments the list returns (newest first). */
 export const TOURNAMENT_LIST_LIMIT = 50;
 
+/** The commander a player is on: the name as entered, and the Scryfall card picked (for its art). */
+export interface TournamentCommander {
+  name: string;
+  cardId: string | null;
+}
+
 export interface TournamentEntrant {
   id: string;
   /** One name for 1v1, two for a Two-Headed Giant team. */
   players: string[];
+  /** Lined up with players; null where a player hasn't said. */
+  commanders: (TournamentCommander | null)[];
   droppedAt: string | null;
   createdAt: string;
 }
@@ -75,6 +87,8 @@ export interface TournamentDetail {
   finishedAt: string | null;
   entrants: TournamentEntrant[];
   matches: TournamentMatch[];
+  /** The player display link. Staff only: the public view never includes it. */
+  share?: { token: string; enabled: boolean };
 }
 
 export function isTournamentFormat(value: unknown): value is TournamentFormat {
@@ -121,6 +135,82 @@ export function cleanTournamentName(raw: unknown): string {
       .slice(0, MAX_TOURNAMENT_NAME)
       .trim()
   );
+}
+
+export function cleanCommanderName(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return (
+    raw
+      // oxlint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, MAX_COMMANDER_NAME)
+      .trim()
+  );
+}
+
+const CARD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isCardId(value: unknown): value is string {
+  return typeof value === "string" && CARD_ID_RE.test(value);
+}
+
+/**
+ * Scryfall's card image for a card id (front face). The whole card, not the
+ * art crop: Scryfall asks that an art crop carry the artist and copyright
+ * nearby, which the full card already shows.
+ */
+export function commanderImageUrl(cardId: string, size: "small" | "normal" = "small"): string {
+  const id = cardId.toLowerCase();
+  return `https://cards.scryfall.io/${size}/front/${id[0]}/${id[1]}/${id}.jpg`;
+}
+
+/** "Atraxa, Praetors' Voice" or "Alex: Atraxa · Sam: Kenrith" for a team, or "" when nobody has said. */
+export function commanderSummary(entrant: Pick<TournamentEntrant, "players" | "commanders">): string {
+  const named = entrant.players
+    .map((player, i) => ({ player, commander: entrant.commanders[i] }))
+    .filter((p) => p.commander);
+  if (named.length === 0) return "";
+  if (entrant.players.length === 1) return named[0].commander!.name;
+  return named.map((p) => `${p.player}: ${p.commander!.name}`).join(" · ");
+}
+
+/** Which player a phone belongs to on the player display: an entrant and a seat (0, or 1 on a team). */
+export interface PlayerSeat {
+  entrantId: string;
+  seat: number;
+}
+
+export function seatKey(seat: PlayerSeat): string {
+  return `${seat.entrantId}:${seat.seat}`;
+}
+
+export function parseSeatKey(key: string | null): PlayerSeat | null {
+  const m = key?.match(/^([0-9a-f-]{36}):([01])$/i);
+  return m ? { entrantId: m[1], seat: Number(m[2]) } : null;
+}
+
+/** The player display link for a share token. */
+export function tournamentShareUrl(origin: string, token: string, tv = false): string {
+  return `${origin}${TOURNAMENT_PATH}?t=${encodeURIComponent(token)}${tv ? "&view=tv" : ""}`;
+}
+
+/**
+ * Scryfall search terms for "commanders whose name has these words": letters,
+ * digits and a few name characters only, so typing can't change the query.
+ */
+export function commanderSearchQuery(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const words = raw
+    .replace(/[^\p{L}\p{M}\p{N}' -]+/gu, " ")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[-']+|[-']+$/g, ""))
+    // Scryfall reads a bare "or" / "and" as an operator.
+    .filter((w) => w && !/^(or|and)$/i.test(w))
+    .slice(0, 6);
+  if (words.join("").length < 2) return null;
+  return `is:commander game:paper ${words.join(" ")}`;
 }
 
 /** One player per line (commas and semicolons also separate names). */
