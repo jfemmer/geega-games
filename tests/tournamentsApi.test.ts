@@ -199,7 +199,7 @@ describe("create", () => {
 
   it("refuses bad input with a message the page can show", async () => {
     const bad = async (body: Body) => (await post({ action: "create", name: "X", format: "1v1", ...body })).body.message;
-    expect(await bad({ format: "commander" })).toMatch(/1v1 or Two-Headed Giant/);
+    expect(await bad({ format: "commander" })).toMatch(/1v1, Two-Headed Giant or free-for-all/);
     expect(await bad({ name: "   " })).toMatch(/name/);
     expect(await bad({ entrants: [["Alex"]] })).toMatch(/at least two players/);
     expect(await bad({ entrants: [["Alex"], ["alex"]] })).toMatch(/more than once/);

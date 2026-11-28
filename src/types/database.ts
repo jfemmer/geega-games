@@ -4890,6 +4890,98 @@ export type Database = {
           },
         ]
       }
+      tournament_pod_players: {
+        Row: {
+          created_at: string
+          entrant_id: string
+          id: string
+          life: number | null
+          out_at: string | null
+          place: number | null
+          pod_id: string
+          seat: number
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entrant_id: string
+          id?: string
+          life?: number | null
+          out_at?: string | null
+          place?: number | null
+          pod_id: string
+          seat: number
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entrant_id?: string
+          id?: string
+          life?: number | null
+          out_at?: string | null
+          place?: number | null
+          pod_id?: string
+          seat?: number
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_pod_players_entrant_id_tournament_id_fkey"
+            columns: ["entrant_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entrants"
+            referencedColumns: ["id", "tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_pod_players_pod_id_tournament_id_fkey"
+            columns: ["pod_id", "tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_pods"
+            referencedColumns: ["id", "tournament_id"]
+          },
+        ]
+      }
+      tournament_pods: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          round: number
+          table_number: number
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          round: number
+          table_number: number
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          round?: number
+          table_number?: number
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_pods_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournaments: {
         Row: {
           created_at: string
@@ -4904,6 +4996,7 @@ export type Database = {
           spots: number | null
           starting_life: number
           status: string
+          table_size: number | null
           updated_at: string
         }
         Insert: {
@@ -4919,6 +5012,7 @@ export type Database = {
           spots?: number | null
           starting_life?: number
           status?: string
+          table_size?: number | null
           updated_at?: string
         }
         Update: {
@@ -4934,6 +5028,7 @@ export type Database = {
           spots?: number | null
           starting_life?: number
           status?: string
+          table_size?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -7317,6 +7412,10 @@ export type Database = {
         Args: { p_delta: number; p_match_id: string; p_side: string; p_tournament_id: string }
         Returns: Json
       }
+      tournament_deal_pods: {
+        Args: { p_pods: Json; p_replace: boolean; p_round: number; p_tournament_id: string }
+        Returns: number
+      }
       tournament_form_teams: {
         Args: { p_pairs: Json; p_tournament_id: string }
         Returns: number
@@ -7329,6 +7428,22 @@ export type Database = {
           p_tournament_id: string
         }
         Returns: number
+      }
+      tournament_pod_change_life: {
+        Args: { p_delta: number; p_pod_player_id: string; p_tournament_id: string }
+        Returns: number
+      }
+      tournament_pod_knock_out: {
+        Args: { p_pod_player_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      tournament_pod_set_winner: {
+        Args: { p_entrant_id: string; p_pod_id: string; p_tournament_id: string }
+        Returns: undefined
+      }
+      tournament_pod_undo: {
+        Args: { p_pod_id: string; p_tournament_id: string }
+        Returns: undefined
       }
       tournament_sign_up: {
         Args: {

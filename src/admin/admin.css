@@ -5208,7 +5208,7 @@ ul.gg-partner-agreement__warn { padding-left: 28px; }
  * Tournaments — pages/TournamentsPage.tsx, components/tournaments/*
  * ------------------------------------------------------------------ */
 .gg-tourney-create { display: grid; gap: 16px; max-width: 640px; }
-.gg-tourney-formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gg-tourney-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 10px; }
 .gg-tourney-format {
   display: grid;
   gap: 2px;
@@ -5984,3 +5984,65 @@ html.gg-tv { font-size: clamp(16px, 1.05vw, 26px); }
 @media (prefers-reduced-motion: reduce) {
   .gg-bside__life { transition: none; }
 }
+
+/* Free-for-all (PodDisplay.tsx, PodTables.tsx, LifeCounter.tsx): tables of 3–12 players. */
+.gg-bracket__pods { grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); }
+.gg-bracket--tv .gg-bracket__pods { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
+.gg-bmatch.gg-bpod { grid-template-columns: minmax(0, 1fr); }
+.gg-bpod__left { font-weight: 600; letter-spacing: 0.02em; text-transform: none; color: var(--gg-text-faint); }
+.gg-bpod__players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 0.35rem 0.5rem;
+}
+.gg-bpod .gg-bside { background: var(--gg-surface-2); }
+.gg-bpod .gg-bside--won { background: rgba(47, 143, 91, 0.1); }
+.gg-bracket--tv .gg-bpod .gg-bside--won { background: rgba(63, 191, 127, 0.14); }
+.gg-bpod .gg-bside.is-mine:not(.gg-bside--won) { border-color: var(--gg-brand); }
+.gg-bpod.is-done .gg-bside--lost { opacity: 0.6; }
+.gg-bside__tag--out { color: var(--gg-text-faint); }
+.gg-bmini__place { flex: none; font-size: 0.72rem; font-weight: 600; color: var(--gg-text-faint); font-variant-numeric: tabular-nums; }
+
+.gg-life__others { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.gg-life__others--many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gg-life__others--many .gg-life__them { padding: 0.45rem 0.6rem; }
+.gg-life__others--many .gg-life__them strong { font-size: 1.25rem; }
+.gg-life__them > span { min-width: 0; overflow-wrap: anywhere; }
+.gg-life__them.is-gone { background: transparent; box-shadow: inset 0 0 0 1px var(--gg-line); color: var(--gg-text-faint); }
+.gg-life__place { flex: none; font-size: 0.78rem; font-weight: 600; }
+
+.gg-tourney-pods { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); }
+.gg-tourney-pod {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+}
+.gg-tourney-pod.is-decided { background: var(--gg-surface-2); }
+.gg-tourney-pod__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.gg-tourney-pod__head .gg-tourney-match__clock { margin-left: auto; }
+.gg-tourney-pod__seats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.gg-tourney-seat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 6px 4px 12px;
+  border: 1.5px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+}
+.gg-tourney-seat__name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.gg-tourney-seat.is-winner { border-color: var(--gg-success); background: rgba(47, 143, 91, 0.08); }
+.gg-tourney-seat.is-out { color: var(--gg-text-soft); background: transparent; }
+.gg-tourney-seat.is-out .gg-tourney-seat__name { font-weight: 500; }
+.gg-tourney-seat .gg-badge { flex: none; }
+.gg-tourney-pod__actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.gg-tourney-pod__call { flex: 1 1 12rem; min-width: 0; }
+.gg-tourney-pod__call .gg-field { margin: 0; }

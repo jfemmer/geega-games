@@ -8,6 +8,8 @@ import {
   entrantLabel,
   entrantProblem,
   formatInfo,
+  ordinal,
+  type FfaStandingRow,
   type StandingRow,
   type TournamentEntrant,
   type TournamentFormat,
@@ -15,6 +17,8 @@ import {
 
 // Standings (wins, losses, draws, points, tiebreaker) with who each entrant
 // has played, plus the form for late arrivals. Edit / drop live on each row.
+// Free-for-all has its own table: points by finishing place, games won, and
+// where they finished each round.
 
 function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -116,38 +120,130 @@ export function StandingsTable({
                 </td>
                 {editable && (
                   <td>
-                    <div className="gg-tourney-standings__actions">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon="edit"
-                        aria-label={`Edit ${label}`}
-                        title="Edit name"
-                        onClick={() => onEdit(row.entrant)}
-                      />
-                      {dropped ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          icon="plus"
-                          className="gg-tourney-standings__restore"
-                          aria-label={`Bring back ${label}`}
-                          title="Bring back into the tournament"
-                          onClick={() => onRestore(row.entrant)}
-                        >
-                          Bring back
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          icon="trash"
-                          aria-label={`${started ? "Drop" : "Remove"} ${label}`}
-                          title={started ? "Drop from the tournament" : "Remove"}
-                          onClick={() => onRemove(row.entrant)}
-                        />
-                      )}
-                    </div>
+                    <RowActions entrant={row.entrant} started={started} onEdit={onEdit} onRemove={onRemove} onRestore={onRestore} />
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Edit, and drop / remove / bring back, for one row. */
+function RowActions({
+  entrant,
+  started,
+  onEdit,
+  onRemove,
+  onRestore,
+}: {
+  entrant: TournamentEntrant;
+  started: boolean;
+  onEdit: (entrant: TournamentEntrant) => void;
+  onRemove: (entrant: TournamentEntrant) => void;
+  onRestore: (entrant: TournamentEntrant) => void;
+}) {
+  const label = entrantLabel(entrant);
+  return (
+    <div className="gg-tourney-standings__actions">
+      <Button size="sm" variant="ghost" icon="edit" aria-label={`Edit ${label}`} title="Edit name" onClick={() => onEdit(entrant)} />
+      {entrant.droppedAt ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon="plus"
+          className="gg-tourney-standings__restore"
+          aria-label={`Bring back ${label}`}
+          title="Bring back into the tournament"
+          onClick={() => onRestore(entrant)}
+        >
+          Bring back
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon="trash"
+          aria-label={`${started ? "Drop" : "Remove"} ${label}`}
+          title={started ? "Drop from the tournament" : "Remove"}
+          onClick={() => onRemove(entrant)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Free-for-all standings: points by finishing place, games won, and each round's finish. */
+export function FfaStandingsTable({
+  rows,
+  editable,
+  started,
+  onEdit,
+  onRemove,
+  onRestore,
+}: {
+  rows: FfaStandingRow[];
+  editable: boolean;
+  /** Round 1 has been dealt. */
+  started: boolean;
+  onEdit: (entrant: TournamentEntrant) => void;
+  onRemove: (entrant: TournamentEntrant) => void;
+  onRestore: (entrant: TournamentEntrant) => void;
+}) {
+  return (
+    <div className="gg-table-wrap">
+      <table className="gg-table gg-tourney-standings">
+        <caption className="gg-visually-hidden">Standings: points, games won and games played for each player</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="gg-align-center">
+              #
+            </th>
+            <th scope="col">Player</th>
+            <th scope="col" className="gg-align-center">
+              <abbr title="Points: at a table of N players, 1st gets N, down to 1 for the first one out">Pts</abbr>
+            </th>
+            <th scope="col" className="gg-align-center">
+              <abbr title="Games won (last one standing)">Wins</abbr>
+            </th>
+            <th scope="col" className="gg-align-center gg-tourney-standings__omw">
+              Games
+            </th>
+            {editable && (
+              <th scope="col">
+                <span className="gg-visually-hidden">Actions</span>
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const dropped = Boolean(row.entrant.droppedAt);
+            const finishes = row.places.map((p) => (p.place == null ? "playing" : `${ordinal(p.place)} of ${p.of}`));
+            return (
+              <tr key={row.entrant.id} className={dropped ? "gg-tourney-standings__dropped" : undefined}>
+                <td className="gg-align-center gg-tourney-standings__rank">{started ? row.rank : "–"}</td>
+                <td>
+                  <div className="gg-tourney-standings__name">
+                    <strong>{entrantLabel(row.entrant)}</strong>
+                    {dropped && <Badge tone="neutral">Dropped</Badge>}
+                  </div>
+                  {commanderSummary(row.entrant) && (
+                    <div className="gg-tourney-standings__commander">{commanderSummary(row.entrant)}</div>
+                  )}
+                  {finishes.length > 0 && <div className="gg-tourney-standings__played">Finished {finishes.join(", ")}</div>}
+                </td>
+                <td className="gg-align-center">
+                  <strong>{row.points}</strong>
+                </td>
+                <td className="gg-align-center">{row.wins}</td>
+                <td className="gg-align-center gg-tourney-standings__omw">{row.games}</td>
+                {editable && (
+                  <td>
+                    <RowActions entrant={row.entrant} started={started} onEdit={onEdit} onRemove={onRemove} onRestore={onRestore} />
                   </td>
                 )}
               </tr>

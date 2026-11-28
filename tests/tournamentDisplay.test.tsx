@@ -62,6 +62,8 @@ function tournament(extra: Partial<TournamentDetail> = {}): TournamentDetail {
     ],
     spots: null,
     startingLife: 40,
+    tableSize: null,
+    pods: [],
     ...extra,
   };
 }

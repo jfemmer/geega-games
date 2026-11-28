@@ -5,6 +5,9 @@ import { Spinner } from "../../admin/components/ui/States";
 import { BracketDisplay, type SignUpInput } from "../../admin/components/tournaments/BracketDisplay";
 import type { CommanderOption } from "../../admin/components/tournaments/CommanderPicker";
 import {
+  hasLiveGames,
+  isPlaying,
+  ordinal,
   parseSeatKey,
   tournamentShareUrl,
   type PlayerSeat,
@@ -146,12 +149,36 @@ function TournamentScreen() {
   // Life totals this phone saved, by game, with the server time they were
   // saved: a refresh that left the server before them doesn't undo them.
   const savedLife = useRef(new Map<string, { lifeA: number; lifeB: number; at: number }>());
+  // The same for free-for-all, by seat.
+  const savedPodLife = useRef(new Map<string, { life: number; at: number }>());
 
   /** Takes a tournament from the server: keeps newer life totals saved here, and the server's clock. */
   const receive = useCallback((next: TournamentDetail) => {
     const at = next.serverTime ? Date.parse(next.serverTime) : NaN;
     if (Number.isFinite(at)) setClockOffset(at - Date.now());
     const mine = savedLife.current;
+    const minePods = savedPodLife.current;
+    if (minePods.size > 0) {
+      next = {
+        ...next,
+        pods: next.pods.map((pod) =>
+          pod.endedAt
+            ? pod
+            : {
+                ...pod,
+                players: pod.players.map((p) => {
+                  const saved = minePods.get(p.id);
+                  if (!saved || p.outAt) return p;
+                  if (Number.isFinite(at) && saved.at <= at) {
+                    minePods.delete(p.id);
+                    return p;
+                  }
+                  return { ...p, life: saved.life };
+                }),
+              },
+        ),
+      };
+    }
     if (mine.size > 0) {
       next = {
         ...next,
@@ -194,20 +221,8 @@ function TournamentScreen() {
   // been turned off stops refreshing.
   const gone = error?.gone ?? false;
   const resolvedMe = tournament ? resolveMe(tournament, me) : null;
-  const live =
-    tournament != null &&
-    tournament.status === "active" &&
-    tournament.matches.some((m) => m.round === tournament.currentRound && m.b != null && m.result === "pending");
-  const playing =
-    live &&
-    resolvedMe != null &&
-    tournament!.matches.some(
-      (m) =>
-        m.round === tournament!.currentRound &&
-        m.result === "pending" &&
-        m.b != null &&
-        (m.a === resolvedMe.entrantId || m.b === resolvedMe.entrantId),
-    );
+  const live = tournament != null && hasLiveGames(tournament);
+  const playing = live && resolvedMe != null && isPlaying(tournament!, resolvedMe.entrantId);
   useEffect(() => {
     if (!token || gone) return;
     const every = tv
@@ -315,7 +330,7 @@ function TournamentScreen() {
         setMe(next);
         writeMe(token, next);
         receive(res.tournament);
-        toast.success(res.started ? "You're in, and round 1 is paired. Find your table below." : `You're in, ${input.name}!`);
+        toast.success(res.started ? "You're in, and round 1 has started. Find your table below." : `You're in, ${input.name}!`);
         return true;
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Couldn't sign you up. Please try again.");
@@ -391,6 +406,50 @@ function TournamentScreen() {
     [token, toast, load, receive],
   );
 
+  const changePodLife = useCallback(
+    async (podPlayerId: string, delta: number): Promise<boolean> => {
+      try {
+        const res = await post<{ life: number; serverTime: string }>({ token, action: "pod-life", podPlayerId, delta });
+        const at = Date.parse(res.serverTime);
+        savedPodLife.current.set(podPlayerId, { life: res.life, at: Number.isFinite(at) ? at : Date.now() });
+        setTournament((t) =>
+          t
+            ? {
+                ...t,
+                pods: t.pods.map((pod) => ({
+                  ...pod,
+                  players: pod.players.map((p) => (p.id === podPlayerId ? { ...p, life: res.life } : p)),
+                })),
+              }
+            : t,
+        );
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't update your life total.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load],
+  );
+
+  const podOut = useCallback(
+    async (podPlayerId: string): Promise<boolean> => {
+      try {
+        const res = await post<{ tournament: TournamentDetail; place: number }>({ token, action: "pod-out", podPlayerId });
+        savedPodLife.current.delete(podPlayerId);
+        receive(res.tournament);
+        toast.success(res.place ? `You finished ${ordinal(res.place)}. Good game!` : "Recorded. Good game!");
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't record that. Please try again.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load, receive],
+  );
+
   const searchCommanders = useCallback(
     async (query: string): Promise<CommanderOption[]> => {
       const res = await post<{ options: CommanderOption[] }>({ token, action: "commander-search", query });
@@ -458,6 +517,8 @@ function TournamentScreen() {
         onSignUp={signUp}
         onChangeLife={changeLife}
         onLost={reportLost}
+        onChangePodLife={changePodLife}
+        onPodOut={podOut}
         clockOffset={clockOffset}
         searchCommanders={searchCommanders}
         updatedAt={updatedAt}

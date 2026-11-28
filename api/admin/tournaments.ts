@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import {
   addEntrant,
   createTournament,
+  knockOut,
   deleteTournament,
   entrantNames,
   listTournaments,
@@ -19,19 +20,24 @@ import {
   searchCommanders,
   setCommander,
   setFinished,
+  setPodWinner,
   setSpots,
   setStartingLife,
+  setTableSize,
   startIfFull,
   startTournament,
+  undoPod,
   updateShare,
 } from "../_lib/tournaments.js";
 
-// /api/admin/tournaments — admin → Tournaments (1v1 and Two-Headed Giant).
+// /api/admin/tournaments — admin → Tournaments (1v1, Two-Headed Giant, free-for-all).
 //
 //   GET                         -> { tournaments }        (newest first)
-//   GET ?id=                    -> { tournament }         (entrants + every match)
-//   POST { action: "create", name, format: "1v1"|"2hg", entrants: string[][], spots? } -> { id, tournament }
-//        (spots: players sign up from the player display; round 1 starts when they're filled)
+//   GET ?id=                    -> { tournament }         (entrants + every match / table)
+//   POST { action: "create", name, format: "1v1"|"2hg"|"ffa", entrants: string[][], spots?, startingLife?, tableSize? }
+//        -> { id, tournament }
+//        (spots: players sign up from the player display; round 1 starts when they're filled.
+//         tableSize: free-for-all, the most players per table)
 //   POST { action, id, ... }    -> { tournament }         (the updated tournament)
 //        rename          { name }
 //        add-entrant     { players: string[] }
@@ -43,8 +49,12 @@ import {
 //        starting-life   { life }                 (life at the start of each game)
 //        remove-entrant  { entrantId }      (deleted before they've played, dropped after)
 //        restore-entrant { entrantId }
-//        pair            { round, replace? } (round = the round being written)
+//        pair            { round, replace? } (round = the round being written; free-for-all deals tables)
 //        report          { matchId, result: "a"|"b"|"draw"|"pending" }
+//        table-size      { tableSize }      (free-for-all: players per table, from the next deal)
+//        knock-out       { podPlayerId }    (free-for-all: that player is out; last one left wins)
+//        pod-winner      { podId, entrantId } (free-for-all: end a game; the rest share 2nd)
+//        pod-undo        { podId }          (free-for-all: take back the last one out)
 //        finish | reopen
 //        delete          -> {}
 //   POST { action: "commander-search", query } -> { options: { name, cardId }[] }
@@ -80,6 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         entrants: body.entrants,
         spots: body.spots,
         startingLife: body.startingLife,
+        tableSize: body.tableSize,
         actor: staff.email,
       });
       const tournament = await loadTournament(id);
@@ -87,7 +98,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         action: "tournament.create",
         resourceType: "tournament",
         resourceId: id,
-        after: { name: tournament.name, format: tournament.format, entrants: entrantNames(tournament) },
+        after: {
+          name: tournament.name,
+          format: tournament.format,
+          entrants: entrantNames(tournament),
+          ...(tournament.tableSize != null ? { tableSize: tournament.tableSize } : {}),
+        },
       });
       return sendJson(res, 201, { ok: true, id, tournament });
     }
@@ -136,6 +152,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case "report":
         await reportResult(tournament, { matchId: body.matchId, result: body.result }, staff.email);
+        break;
+      case "table-size":
+        await setTableSize(tournament, body.tableSize);
+        break;
+      case "knock-out":
+        await knockOut(tournament, { podPlayerId: body.podPlayerId });
+        break;
+      case "pod-winner":
+        await setPodWinner(tournament, { podId: body.podId, entrantId: body.entrantId });
+        break;
+      case "pod-undo":
+        await undoPod(tournament, { podId: body.podId });
         break;
       case "finish":
         await setFinished(tournament, true);

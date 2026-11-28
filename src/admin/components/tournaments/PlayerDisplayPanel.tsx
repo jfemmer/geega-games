@@ -78,7 +78,7 @@ export function PlayerDisplayPanel({
               </Button>
             </div>
             <p className="gg-muted">
-              Anyone with the link sees pairings and standings and can set commanders. Results and names stay with staff.
+              Anyone with the link sees the games and standings, can set commanders, and can track life and record their own loss. Pairings and names stay with staff.
             </p>
           </div>
         </div>

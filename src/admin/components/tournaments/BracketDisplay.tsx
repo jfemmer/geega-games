@@ -5,21 +5,29 @@ import { Icon } from "../ui/Icon";
 import { QrCode } from "../partners/QrCode";
 import { CommanderPicker, type CommanderOption } from "./CommanderPicker";
 import { LifeCounter } from "./LifeCounter";
+import { CommanderCards } from "./CommanderCards";
+import { FfaStandings, MyPodTable, PodCard, PodRoundColumn } from "./PodDisplay";
 import { useClock } from "../../hooks/useClock";
 import {
   MAX_PLAYER_NAME,
   activeEntrants,
   cleanPlayerName,
-  commanderImageUrl,
   commanderSummary,
+  computeFfaStandings,
   computeStandings,
   entrantLabel,
   formatDuration,
   formatInfo,
+  findSeatAt,
   gameDuration,
+  hasLiveGames,
   isSigningUp,
   lifeOf,
   matchesInRound,
+  ordinal,
+  podLife,
+  podsInRound,
+  stillIn,
   parseSeatKey,
   playerCount,
   seatKey,
@@ -40,6 +48,9 @@ import {
 //   QR code for phones, and every round as columns underneath.
 //   Phone: "your commander" and "your table" first, then the same sections
 //   stacked.
+//
+// Free-for-all shows tables instead of matches (PodDisplay.tsx): everyone at
+// a table with their life, who's out and where they finished.
 
 /** What a player sends to take a spot. */
 export interface SignUpInput {
@@ -57,6 +68,13 @@ function statusLine(t: TournamentDetail, pending: number, pairs: number, entrant
   if (t.status === "finished") return "Final standings";
   if (isSigningUp(t)) return `Signing up · ${playerCount(t)} of ${t.spots} spots filled`;
   if (t.currentRound === 0) return `Starting soon · ${entrants} ${entrants === 1 ? info.noun : info.nounPlural}`;
+  if (t.format === "ffa") {
+    const pods = podsInRound(t.pods, t.currentRound);
+    const over = pods.filter((p) => p.endedAt).length;
+    if (pods.length === 0) return `Round ${t.currentRound}`;
+    if (pods.length === 1) return `Round ${t.currentRound} · ${over === 1 ? "game over" : "playing"}`;
+    return over === pods.length ? `Round ${t.currentRound} · every game is over` : `Round ${t.currentRound} · ${over} of ${pods.length} games over`;
+  }
   if (pairs === 0) return `Round ${t.currentRound}`;
   return pending === 0
     ? `Round ${t.currentRound} · all results in`
@@ -74,6 +92,8 @@ export function BracketDisplay({
   onSignUp,
   onChangeLife,
   onLost,
+  onChangePodLife,
+  onPodOut,
   searchCommanders,
   updatedAt,
   onFullscreen,
@@ -94,6 +114,10 @@ export function BracketDisplay({
   onChangeLife?: (matchId: string, side: "a" | "b", delta: number) => Promise<boolean>;
   /** Records that a side lost a game being played. */
   onLost?: (matchId: string, side: "a" | "b") => Promise<boolean>;
+  /** Free-for-all: changes a player's life at their table. */
+  onChangePodLife?: (podPlayerId: string, delta: number) => Promise<boolean>;
+  /** Free-for-all: the player is out of their table's game. */
+  onPodOut?: (podPlayerId: string) => Promise<boolean>;
   /** Server clock minus device clock (ms), for game timers. */
   clockOffset?: number;
   searchCommanders: (query: string) => Promise<CommanderOption[]>;
@@ -104,19 +128,24 @@ export function BracketDisplay({
 }) {
   const t = tournament;
   const info = formatInfo(t.format);
+  const ffa = t.format === "ffa";
   const derived = useMemo(() => {
     const byId = new Map(t.entrants.map((e) => [e.id, e]));
     const standings = computeStandings(t.entrants, t.matches);
+    const ffaStandings = t.format === "ffa" ? computeFfaStandings(t.entrants, t.pods) : [];
     const current = matchesInRound(t.matches, t.currentRound);
+    const currentPods = podsInRound(t.pods, t.currentRound);
     const pairs = current.filter((m) => m.b != null).length;
     const pending = current.filter((m) => m.result === "pending").length;
     const rounds = Array.from({ length: t.currentRound }, (_, i) => i + 1);
-    return { byId, standings, current, pairs, pending, rounds };
+    return { byId, standings, ffaStandings, current, currentPods, pairs, pending, rounds };
   }, [t]);
-  const { byId, standings, current, pairs, pending, rounds } = derived;
+  const { byId, standings, ffaStandings, current, currentPods, pairs, pending, rounds } = derived;
   const active = activeEntrants(t);
   const finished = t.status === "finished";
-  const leaders = finished ? standings.filter((r) => r.rank === 1 && r.points > 0) : [];
+  const leaders: { entrant: TournamentEntrant }[] = finished
+    ? (ffa ? ffaStandings : standings).filter((r) => r.rank === 1 && r.points > 0)
+    : [];
   const signingUp = isSigningUp(t);
   const players = playerCount(t);
   const spotsLeft = signingUp && t.spots != null ? Math.max(0, t.spots - players) : 0;
@@ -124,13 +153,19 @@ export function BracketDisplay({
   const seated = me && meEntrant && me.seat < meEntrant.players.length ? me : null;
   const myMatch =
     meEntrant && !finished ? current.find((m) => m.a === meEntrant.id || m.b === meEntrant.id) ?? null : null;
-  const liveGames = !finished && current.some((m) => m.b != null && m.result === "pending");
+  const liveGames = hasLiveGames(t);
   const now = useClock(liveGames, clockOffset);
-  const roundStart = current.length > 0 ? Math.min(...current.map((m) => new Date(m.startedAt).getTime())) : null;
+  const games = ffa ? currentPods : current;
+  const roundStart = games.length > 0 ? Math.min(...games.map((g) => new Date(g.startedAt).getTime())) : null;
   const myLiveGame =
-    myMatch && myMatch.b != null && myMatch.result === "pending" && seated && meEntrant && onChangeLife && onLost
+    !ffa && myMatch && myMatch.b != null && myMatch.result === "pending" && seated && meEntrant && onChangeLife && onLost
       ? myMatch
       : null;
+  // Free-for-all: this player's seat this round, and whether they're still playing it.
+  const mySeat = ffa && meEntrant && !finished ? findSeatAt(t.pods, t.currentRound, meEntrant.id) : null;
+  const myLiveSeat =
+    mySeat && !mySeat.pod.endedAt && !mySeat.player.outAt && seated && onChangePodLife && onPodOut ? mySeat : null;
+  const inLiveGame = Boolean(myLiveGame || myLiveSeat);
 
   const head = (
     <header className="gg-bracket__head">
@@ -203,6 +238,19 @@ export function BracketDisplay({
                 {commanderSummary(e) && <span>{commanderSummary(e)}</span>}
               </div>
             </li>
+          ))}
+        </ul>
+      ) : ffa ? (
+        <ul className="gg-bracket__matches gg-bracket__pods">
+          {currentPods.map((pod) => (
+            <PodCard
+              key={pod.id}
+              pod={pod}
+              byId={byId}
+              startingLife={t.startingLife}
+              now={now}
+              myId={meEntrant?.id ?? null}
+            />
           ))}
         </ul>
       ) : (
@@ -280,7 +328,11 @@ export function BracketDisplay({
   const standingsSection = t.currentRound > 0 && (
     <section className="gg-bracket__section gg-bracket__standings" aria-labelledby="bracket-standings">
       <h2 id="bracket-standings">Standings</h2>
-      <Standings rows={standings} started={t.currentRound > 0} myId={meEntrant?.id ?? null} />
+      {ffa ? (
+        <FfaStandings rows={ffaStandings} started={t.currentRound > 0} myId={meEntrant?.id ?? null} />
+      ) : (
+        <Standings rows={standings} started={t.currentRound > 0} myId={meEntrant?.id ?? null} />
+      )}
     </section>
   );
 
@@ -288,16 +340,27 @@ export function BracketDisplay({
     <section className="gg-bracket__section gg-bracket__rounds" aria-labelledby="bracket-rounds">
       <h2 id="bracket-rounds">Rounds</h2>
       <div className="gg-bracket__cols">
-        {rounds.map((round) => (
-          <RoundColumn
-            key={round}
-            round={round}
-            matches={matchesInRound(t.matches, round)}
-            byId={byId}
-            current={round === t.currentRound && !finished}
-            myId={meEntrant?.id ?? null}
-          />
-        ))}
+        {rounds.map((round) =>
+          ffa ? (
+            <PodRoundColumn
+              key={round}
+              round={round}
+              pods={podsInRound(t.pods, round)}
+              byId={byId}
+              current={round === t.currentRound && !finished}
+              myId={meEntrant?.id ?? null}
+            />
+          ) : (
+            <RoundColumn
+              key={round}
+              round={round}
+              matches={matchesInRound(t.matches, round)}
+              byId={byId}
+              current={round === t.currentRound && !finished}
+              myId={meEntrant?.id ?? null}
+            />
+          ),
+        )}
       </div>
     </section>
   );
@@ -361,7 +424,7 @@ export function BracketDisplay({
     <div className="gg-bracket gg-bracket--phone">
       {head}
       {champion}
-      {!myLiveGame && !finished && signingUp && !seated && onSignUp ? (
+      {!inLiveGame && !finished && signingUp && !seated && onSignUp ? (
         <JoinCard
           tournament={t}
           spotsLeft={spotsLeft}
@@ -371,7 +434,7 @@ export function BracketDisplay({
         />
       ) : (
         !finished &&
-        !myLiveGame && (
+        !inLiveGame && (
           <MyCommander
             tournament={t}
             me={me}
@@ -384,21 +447,61 @@ export function BracketDisplay({
         )
       )}
       {myLiveGame && meEntrant && onChangeLife && onLost ? (
-        <LifeCounter
-          key={myLiveGame.id}
-          match={myLiveGame}
-          side={myLiveGame.a === meEntrant.id ? "a" : "b"}
-          startingLife={t.startingLife}
-          table={myLiveGame.table}
-          opponentLabel={(() => {
-            const opp = byId.get(myLiveGame.a === meEntrant.id ? (myLiveGame.b as string) : myLiveGame.a);
-            return opp ? entrantLabel(opp) : "your opponent";
-          })()}
-          team={t.format === "2hg"}
-          now={now}
-          onChange={(delta) => onChangeLife(myLiveGame.id, myLiveGame.a === meEntrant.id ? "a" : "b", delta)}
-          onLost={() => onLost(myLiveGame.id, myLiveGame.a === meEntrant.id ? "a" : "b")}
-        />
+        (() => {
+          const side = myLiveGame.a === meEntrant.id ? "a" : "b";
+          const opp = byId.get(side === "a" ? (myLiveGame.b as string) : myLiveGame.a);
+          const oppLabel = opp ? entrantLabel(opp) : "your opponent";
+          return (
+            <LifeCounter
+              key={myLiveGame.id}
+              life={lifeOf(myLiveGame, side, t.startingLife)}
+              startingLife={t.startingLife}
+              title={`Table ${myLiveGame.table} · vs ${oppLabel}`}
+              elapsed={gameDuration(myLiveGame, now)}
+              others={[
+                { key: opp?.id ?? "opponent", label: oppLabel, life: lifeOf(myLiveGame, side === "a" ? "b" : "a", t.startingLife), out: null },
+              ]}
+              team={t.format === "2hg"}
+              outcome={`the game is recorded as a win for ${oppLabel} and its clock stops`}
+              onChange={(delta) => onChangeLife(myLiveGame.id, side, delta)}
+              onLost={() => onLost(myLiveGame.id, side)}
+            />
+          );
+        })()
+      ) : myLiveSeat && onChangePodLife && onPodOut ? (
+        (() => {
+          const { pod, player } = myLiveSeat;
+          const left = stillIn(pod);
+          const rest = left.filter((p) => p.id !== player.id);
+          const last = rest.length === 1 ? byId.get(rest[0].entrantId) : undefined;
+          return (
+            <LifeCounter
+              key={player.id}
+              life={podLife(player, t.startingLife)}
+              startingLife={t.startingLife}
+              title={`Table ${pod.table} · ${pod.players.length}-player game`}
+              elapsed={gameDuration(pod, now)}
+              others={pod.players
+                .filter((p) => p.id !== player.id)
+                .map((p) => ({
+                  key: p.id,
+                  label: byId.get(p.entrantId) ? entrantLabel(byId.get(p.entrantId)!) : "Player",
+                  life: podLife(p, t.startingLife),
+                  out: p.outAt && p.place != null ? ordinal(p.place) : null,
+                }))}
+              team={false}
+              outcome={
+                last
+                  ? `you finish 2nd of ${pod.players.length} and ${entrantLabel(last)} wins the game`
+                  : `you're out and finish ${ordinal(left.length)} of ${pod.players.length}`
+              }
+              onChange={(delta) => onChangePodLife(player.id, delta)}
+              onLost={() => onPodOut(player.id)}
+            />
+          );
+        })()
+      ) : ffa ? (
+        mySeat && <MyPodTable pod={mySeat.pod} player={mySeat.player} />
       ) : (
         myMatch && meEntrant && <MyTable match={myMatch} me={meEntrant} byId={byId} />
       )}
@@ -407,34 +510,6 @@ export function BracketDisplay({
       {roundsSection}
       {footer}
     </div>
-  );
-}
-
-/** Small card images for each commander picked from the search (nothing for typed-only names). */
-function CommanderCards({ entrant, size }: { entrant: TournamentEntrant; size: "sm" | "md" | "lg" }) {
-  const cards = entrant.commanders.filter((c): c is TournamentCommander & { cardId: string } => Boolean(c?.cardId));
-  if (cards.length === 0) {
-    return (
-      <span className={`gg-bcards gg-bcards--${size} gg-bcards--empty`} aria-hidden="true">
-        {entrantLabel(entrant)
-          .split(/\s*&\s*/)
-          .map((n) => n.slice(0, 1).toUpperCase())
-          .join("")}
-      </span>
-    );
-  }
-  return (
-    <span className={`gg-bcards gg-bcards--${size}`}>
-      {cards.map((c) => (
-        <img
-          key={c.cardId}
-          src={commanderImageUrl(c.cardId, size === "lg" ? "normal" : "small")}
-          alt={c.name}
-          title={c.name}
-          loading="lazy"
-        />
-      ))}
-    </span>
   );
 }
 
