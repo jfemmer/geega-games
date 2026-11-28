@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouter } from "../lib/router";
 import { useSEO } from "../lib/useSEO";
 import { LISTING_PARAM, cardPageSeo, readListingId, withSelectedFirst } from "../../seo/catalog";
@@ -23,6 +23,7 @@ import { tradeCart } from "../lib/tradeCart";
 import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 import { TRADE_CENTER_PATH, tradePriceCents, tradingOpen } from "../lib/tradeCenter";
 import type { CardDetail } from "../lib/cardDetail";
+import { useOnSalePriceChange } from "../lib/storewideSale";
 
 // One indexable page per unique card (grouped by oracle_id across every
 // in-stock printing/condition — see public.get_card_detail), distinct from
@@ -88,6 +89,27 @@ export default function CardDetailPage({ slug }: { slug: string }) {
       active = false;
     };
   }, [slug]);
+
+  // The storewide sale started or ended while this page was open: re-read the
+  // card's prices in place (no loading state; a failed read keeps the page).
+  const slugRef = useRef(slug);
+  useEffect(() => {
+    slugRef.current = slug;
+  }, [slug]);
+  useOnSalePriceChange(() => {
+    if (!isSupabaseConfigured) return;
+    const forSlug = slug;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc("get_card_detail", { p_slug: forSlug });
+        if (error || !data) return;
+        // Only if the shopper is still on the same card.
+        setDetail((current) => (current && forSlug === slugRef.current ? (data as unknown as CardDetail) : current));
+      } catch {
+        /* keep what's shown */
+      }
+    })();
+  });
 
   async function submitNotifyMe(e: React.FormEvent) {
     e.preventDefault();

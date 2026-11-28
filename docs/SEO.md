@@ -360,6 +360,15 @@ removes every product missing from a fetched file.
    feed by *scheduled download* of the same URL. Approved products show free
    in Bing's Shopping tab.
 
+**Storewide sales:** while a sale runs, each discounted copy in the feed
+carries its regular price as `price`, the sale price as `sale_price` and the
+sale's start and end as `sale_price_effective_date`. Merchant Center shows the
+sale price only inside those dates, so listings go back to regular prices the
+moment the sale ends, even though it reads the file at most once a day. A sale
+that *starts* reaches the listings at the next fetch (the feed can't announce
+a scheduled sale ahead of time). Card and set pages are cached at the edge no
+longer than until the sale ends, so their markup turns back on time too.
+
 **Keeping it honest:** Merchant Center fetches at most once a day, so a single
 that sells can show as available until the next fetch. Google's "automatic
 item updates" (on by default) read each page's markup to correct price and

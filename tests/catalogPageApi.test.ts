@@ -23,7 +23,10 @@ const state: {
   rpc: Record<string, RpcResult | Error>;
   calls: { name: string; args: unknown; signal: unknown }[];
   clientError: Error | null;
-} = { shell: null, shellHosts: [], rpc: {}, calls: [], clientError: null };
+  /** current_storewide_sale, kept apart from the page's own lookups in `calls`. */
+  sale: RpcResult | Error;
+  saleCalls: number;
+} = { shell: null, shellHosts: [], rpc: {}, calls: [], clientError: null, sale: { data: [], error: null }, saleCalls: 0 };
 
 vi.mock("../api/_lib/spaShell.js", () => ({
   loadSpaShell: async (host?: string) => {
@@ -39,6 +42,11 @@ vi.mock("../api/_lib/supabasePublic.js", () => ({
       rpc(name: string, args?: unknown) {
         return {
           abortSignal: async (signal: unknown) => {
+            if (name === "current_storewide_sale") {
+              state.saleCalls += 1;
+              if (state.sale instanceof Error) throw state.sale;
+              return state.sale;
+            }
             state.calls.push({ name, args, signal });
             const result = state.rpc[name];
             if (result instanceof Error) throw result;
@@ -118,6 +126,8 @@ beforeEach(() => {
   state.shell = { html: SHELL, source: "bundle" };
   state.shellHosts = [];
   state.rpc = {};
+  state.sale = { data: [], error: null };
+  state.saleCalls = 0;
   state.calls = [];
   state.clientError = null;
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -149,6 +159,27 @@ describe("a card page", () => {
     state.rpc.get_card_detail = { data: CARD, error: null };
     const res = await call("/shop/card/orcish-bowmasters");
     expect(res.headers["cache-control"]).toBe("public, max-age=0, s-maxage=300, stale-while-revalidate=600");
+    expect(state.saleCalls).toBe(1);
+  });
+
+  it("is never cached past the end of a running storewide sale, whose prices it shows", async () => {
+    state.rpc.get_card_detail = { data: CARD, error: null };
+    const endsIn = (seconds: number) => ({
+      data: [{ id: "s1", name: "Sale", discount_percent: 15, starts_at: "2026-11-27T14:32:00Z", ends_at: new Date(Date.now() + seconds * 1000).toISOString() }],
+      error: null,
+    });
+    state.sale = endsIn(2 * 86400); // ends in two days: the usual cache
+    expect((await call("/shop/card/orcish-bowmasters")).headers["cache-control"]).toBe(
+      "public, max-age=0, s-maxage=300, stale-while-revalidate=600",
+    );
+    state.sale = endsIn(500); // ends in ~8 minutes: fresh 5, stale only until the end
+    expect((await call("/shop/card/orcish-bowmasters")).headers["cache-control"]).toMatch(
+      /^public, max-age=0, s-maxage=300, stale-while-revalidate=(19[0-9]|200)$/,
+    );
+    state.sale = endsIn(90); // ends in a minute and a half: no stale copies at all
+    expect((await call("/shop/card/orcish-bowmasters")).headers["cache-control"]).toMatch(/^public, max-age=0, s-maxage=(8[0-9]|90)$/);
+    state.sale = new Error("network down"); // can't tell: cache briefly
+    expect((await call("/shop/card/orcish-bowmasters")).headers["cache-control"]).toBe("public, max-age=0, s-maxage=60");
   });
 
   it("is a real 404 when no such card is listed — still with the app, which says so too", async () => {

@@ -1,16 +1,18 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { supabase } from "../../supabase";
 
 // The storewide sale (Admin → Storewide Sale), as the storefront sees it. One
 // shared snapshot for the banner, the cart and checkout, refreshed every 30
 // seconds while the page is in view, as soon as the tab comes back into view,
 // and just after the sale ends. So a sale starting, ending or changing reaches
-// open tabs (and the prices of the cards already in their carts) without a
-// reload.
+// open tabs without a reload: every view showing prices re-reads them then
+// (useOnSalePriceChange) — the cart, the shop, deals, set and kiosk grids, card
+// pages, Shop Picks and the deck pages.
 //
 // Display only. The database applies the sale to every price by itself
 // (storefront_effective_price: the catalog, cart_item_availability and the
-// checkout total), so a stale snapshot can never change what a customer pays.
+// checkout total), only while the sale is running, so a stale snapshot can
+// never change what a customer pays.
 
 export type StorewideSale = {
   id: string;
@@ -36,6 +38,13 @@ const REFRESH_MS = 30_000;
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
 let snapshot: StorewideSaleState = UNKNOWN;
+/**
+ * Goes up by one each time the sale's effect on prices changes (it starts,
+ * ends, is replaced or its % is edited) after the page first learned about it.
+ * The first answer isn't a change: whatever loaded before it already had the
+ * database's current prices.
+ */
+let priceVersion = 0;
 let endTimer: number | undefined;
 let inFlight: Promise<StorewideSaleState> | null = null;
 const listeners = new Set<() => void>();
@@ -79,6 +88,7 @@ function publish(sale: StorewideSale | null) {
   scheduleEndCheck(sale);
   // Nothing changed: keep the same snapshot so nothing re-renders.
   if (snapshot.known && sameSale(sale, snapshot.sale)) return;
+  if (snapshot.known && storewideSaleKey(sale) !== storewideSaleKey(snapshot.sale)) priceVersion += 1;
   snapshot = { sale, known: true };
   listeners.forEach((l) => l());
 }
@@ -150,4 +160,26 @@ function subscribe(listener: () => void) {
 export function useStorewideSale(): StorewideSaleState {
   useEffect(start, []);
   return useSyncExternalStore(subscribe, () => snapshot, () => UNKNOWN);
+}
+
+/**
+ * Calls `onChange` whenever the storewide sale's effect on prices changes
+ * while the component is mounted: the sale starts, ends, is replaced or its %
+ * is edited. Not on mount, and not when the page first learns about the sale.
+ * For anything showing prices to re-read them, quietly (keep what's on screen
+ * until the new prices arrive).
+ */
+export function useOnSalePriceChange(onChange: () => void): void {
+  useEffect(start, []);
+  const version = useSyncExternalStore(subscribe, () => priceVersion, () => 0);
+  const seen = useRef(version);
+  const latest = useRef(onChange);
+  useEffect(() => {
+    latest.current = onChange;
+  });
+  useEffect(() => {
+    if (version === seen.current) return;
+    seen.current = version;
+    latest.current();
+  }, [version]);
 }

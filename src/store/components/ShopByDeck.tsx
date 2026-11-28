@@ -6,6 +6,7 @@ import { authLinkWithReturn } from "../lib/authRedirect";
 import { Link } from "../lib/router";
 import { formatCents } from "../lib/money";
 import { OPEN_DECK_SHOP_EVENT } from "../lib/deckShopper";
+import { useOnSalePriceChange } from "../lib/storewideSale";
 import { Icon } from "./Icon";
 
 const db = supabase as any;
@@ -112,6 +113,22 @@ export default function ShopByDeck() {
     setMatches((data ?? []) as DeckInventoryMatch[]);
     setLoadingMatches(false);
   }
+
+  // The storewide sale started or ended with a deck's matches showing:
+  // re-read their prices in place. A failed read keeps what's shown.
+  const selectedDeckIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedDeckIdRef.current = selectedDeck?.id ?? null;
+  }, [selectedDeck]);
+  useOnSalePriceChange(() => {
+    const deckId = selectedDeck?.id;
+    if (!deckId || !matches) return;
+    void (async () => {
+      const { data, error } = await db.rpc("deck_inventory_matches", { p_deck_id: deckId });
+      if (error || !data || selectedDeckIdRef.current !== deckId) return;
+      setMatches(data as DeckInventoryMatch[]);
+    })().catch(() => {});
+  });
 
   const available = (matches ?? []).filter((m) => !m.owned && m.inventory_item_id);
   const availableTotalCents = available.reduce(

@@ -7,6 +7,7 @@ import { TradeCartProgress } from "../components/trades/TradeCartProgress";
 import { cardDetailPath } from "../lib/cardSlug";
 import { listingTiles, type CardDetail } from "../lib/cardDetail";
 import { PICKS_PATH, readPickSlugs } from "../lib/postLinks";
+import { useOnSalePriceChange } from "../lib/storewideSale";
 
 // /shop/picks?c=slug,slug,… — the cards from one of our social posts, so a
 // post about a few cards lands on exactly those cards (with Add to cart and
@@ -27,6 +28,10 @@ export default function ShopPicksPage() {
   // The cards for the link last loaded (keyed, so a different link shows
   // the loading state until its own cards are in).
   const [result, setResult] = useState<{ key: string; rows: Loaded[] } | null>(null);
+  // Bumped when the storewide sale starts or ends, to re-read the prices. The
+  // cards on screen stay until the new ones are in (same key).
+  const [priceReads, setPriceReads] = useState(0);
+  useOnSalePriceChange(() => setPriceReads((n) => n + 1));
 
   useSEO({
     title: "Cards from our post | Geega Games",
@@ -53,7 +58,7 @@ export default function ShopPicksPage() {
     return () => {
       active = false;
     };
-  }, [canLoad, key, slugs]);
+  }, [canLoad, key, slugs, priceReads]);
 
   const rows = !canLoad ? [] : result?.key === key ? result.rows : null;
   const inStock = (rows ?? []).flatMap((r) => (r.detail ? listingTiles(r.detail) : []));

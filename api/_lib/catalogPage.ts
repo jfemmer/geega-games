@@ -466,3 +466,35 @@ export function renderCatalogHtml(shell: string, page: CatalogPage): string {
   const head = renderSeoHead(page.seo);
   return refillShell(shell, page.headHtml ? `${head}\n    ${page.headHtml}` : head, page.summaryHtml);
 }
+
+// ---- How long the edge may keep a page ---------------------------------------
+
+/** A found page: five minutes, then up to ten more served stale while a fresh copy is fetched. */
+const FOUND_FRESH_SECONDS = 300;
+const FOUND_STALE_SECONDS = 600;
+/** When the sale couldn't be looked up: a short cache, nothing stale. */
+const UNSURE_CACHE = "public, max-age=0, s-maxage=60";
+
+/**
+ * The Cache-Control of a found card or set page. Its prices are the storewide
+ * sale's while one runs, and good only until it ends, so neither the cache
+ * nor the stale window may reach past the end: the page turns back to regular
+ * prices on time for crawlers, link previews and Google's automatic item
+ * updates. `sale`: the running sale's end, null for none, "unknown" if the
+ * lookup failed.
+ */
+export function foundPageCacheControl(
+  sale: { endsAt: string } | null | "unknown",
+  now: number = Date.now(),
+): string {
+  if (sale === "unknown") return UNSURE_CACHE;
+  let fresh = FOUND_FRESH_SECONDS;
+  let stale = FOUND_STALE_SECONDS;
+  if (sale) {
+    const left = Math.floor((new Date(sale.endsAt).getTime() - now) / 1000);
+    if (!Number.isFinite(left)) return UNSURE_CACHE;
+    fresh = Math.min(fresh, Math.max(1, left));
+    stale = Math.min(stale, Math.max(0, left - fresh));
+  }
+  return `public, max-age=0, s-maxage=${fresh}${stale > 0 ? `, stale-while-revalidate=${stale}` : ""}`;
+}

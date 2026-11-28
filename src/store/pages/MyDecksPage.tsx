@@ -5,6 +5,7 @@ import { useCart } from "../lib/CartContext";
 import { Link } from "../lib/router";
 import { formatCents } from "../lib/money";
 import { parseDecklist, type ParsedCard } from "../lib/decklist";
+import { useOnSalePriceChange } from "../lib/storewideSale";
 
 const db = supabase as any;
 
@@ -911,6 +912,27 @@ function DeckDetail({ deckId }: { deckId: string }) {
   useEffect(() => {
     void load();
   }, [user, deckId]);
+
+  // The storewide sale started or ended while the deck was open: re-read the
+  // in-stock matches and suggestions (their prices) in place, without the
+  // page's loading state. A failed read keeps what's shown.
+  const deckIdRef = useRef(deckId);
+  useEffect(() => {
+    deckIdRef.current = deckId;
+  }, [deckId]);
+  useOnSalePriceChange(() => {
+    if (!user) return;
+    const forDeck = deckId;
+    void (async () => {
+      const [matchRes, recRes] = await Promise.all([
+        db.rpc("deck_inventory_matches", { p_deck_id: forDeck }),
+        db.rpc("deck_recommendations", { p_deck_id: forDeck, p_limit: 30 }),
+      ]);
+      if (deckIdRef.current !== forDeck) return;
+      if (!matchRes.error && matchRes.data) setMatches(matchRes.data as InventoryMatch[]);
+      if (!recRes.error && recRes.data) setRecommendations(recRes.data as Recommendation[]);
+    })().catch(() => {});
+  });
 
   const matchByCard = useMemo(() => new Map(matches.map((m) => [m.deck_card_id, m])), [matches]);
   const missing = cards.filter((c) => !c.owned && !matchByCard.get(c.id)?.inventory_item_id);

@@ -11,7 +11,7 @@ import {
 import { supabase } from "../../supabase";
 import { storefrontImageUrl } from "../../cards";
 import { useAuth } from "./AuthContext";
-import { storewideSaleKey, useStorewideSale } from "./storewideSale";
+import { useOnSalePriceChange } from "./storewideSale";
 import {
   readGuestCart,
   writeGuestCart,
@@ -339,7 +339,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // ---- Re-price when the storewide sale changes ------------------------------
   // The sale starting, ending or changing percentage changes the price of
-  // cards already in the cart. Re-read the prices of the current lines then,
+  // cards already in the cart (and ending it puts them back to their regular
+  // price). Re-read the prices of the current lines then,
   // so an open tab (or a phone that kept the site open) shows what checkout
   // will charge. Deliberately quiet: no loading state (on the payment step
   // that would unmount the card form) and no pruning or clamping (a guest's
@@ -371,16 +372,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const sale = useStorewideSale();
-  const saleKey = sale.known ? storewideSaleKey(sale.sale) : null;
-  const seenSaleKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (saleKey == null) return;
-    const before = seenSaleKey.current;
-    seenSaleKey.current = saleKey;
-    // The first answer isn't a change: the cart's own load already had current prices.
-    if (before != null && before !== saleKey) void reprice();
-  }, [saleKey, reprice]);
+  useOnSalePriceChange(() => void reprice());
 
   // ---- Mutations ------------------------------------------------------------
   const persistGuest = useCallback((next: CartLine[]) => {

@@ -97,6 +97,41 @@ describe("storewideSale", () => {
     expect(rpc.fn).toHaveBeenCalledTimes(2);
   });
 
+  it("tells price views when the sale starts, changes % or ends — not on the first answer, nor a rename", async () => {
+    const onChange = vi.fn();
+    rpc.fn.mockResolvedValue({ data: [], error: null });
+    renderHook(() => mod.useOnSalePriceChange(onChange));
+    const answer = async (data: unknown[]) => {
+      rpc.fn.mockResolvedValue({ data, error: null });
+      await act(async () => {
+        await mod.refreshStorewideSale();
+      });
+    };
+    await answer([]); // the page's first look: nothing to re-read
+    expect(onChange).not.toHaveBeenCalled();
+    await answer([row()]); // the sale starts
+    expect(onChange).toHaveBeenCalledTimes(1);
+    await answer([row({ name: "Black Friday Weekend" })]); // renamed: prices unchanged
+    expect(onChange).toHaveBeenCalledTimes(1);
+    await answer([row({ discount_percent: 25 })]); // deeper
+    expect(onChange).toHaveBeenCalledTimes(2);
+    await answer([]); // the sale ends: back to regular prices
+    expect(onChange).toHaveBeenCalledTimes(3);
+  });
+
+  it("doesn't re-read for a change that happened before the view opened", async () => {
+    rpc.fn.mockResolvedValue({ data: [], error: null });
+    await mod.refreshStorewideSale();
+    rpc.fn.mockResolvedValue({ data: [row()], error: null });
+    await mod.refreshStorewideSale();
+    const onChange = vi.fn();
+    renderHook(() => mod.useOnSalePriceChange(onChange));
+    await act(async () => {
+      await mod.refreshStorewideSale();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("only changes the price key when the sale's effect on prices changes", () => {
     const sale = { id: "s", name: "A", discountPercent: 15, startsAt: "", endsAt: "" };
     expect(mod.storewideSaleKey(null)).toBe("none");

@@ -1,27 +1,29 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import type { StorewideSale, StorewideSaleState } from "../src/store/lib/storewideSale";
+import type { StorewideSale } from "../src/store/lib/storewideSale";
 
 // The real CartProvider: cards already in a cart follow the storewide sale.
 // When the sale starts, ends or changes while the page is open, the lines are
 // re-priced on the spot from cart_item_availability (the database's sale-aware
 // price, the one checkout charges), quietly: no loading state, and nothing is
 // dropped or clamped (a guest's own checkout hold reads as sold out to them).
+// The sale comes from the real shared module (src/store/lib/storewideSale.ts),
+// fed by a mocked current_storewide_sale.
 
 type AvailRow = { id: string; card_name: string; price_cents: number; original_price_cents: number | null; quantity: number };
 
 const world = vi.hoisted(() => ({
   rows: new Map<string, AvailRow>(),
   availabilityCalls: 0,
-  sale: { sale: null, known: true } as StorewideSaleState,
-  saleListeners: new Set<() => void>(),
+  sale: null as Record<string, unknown> | null,
 }));
 
 vi.mock("../src/supabase", () => ({
   isSupabaseConfigured: false,
   supabase: {
     rpc: async (name: string, args: { p_ids?: string[] }) => {
+      if (name === "current_storewide_sale") return { data: world.sale ? [world.sale] : [], error: null };
       if (name !== "cart_item_availability") throw new Error(`unexpected rpc ${name}`);
       world.availabilityCalls += 1;
       const data = (args.p_ids ?? [])
@@ -37,24 +39,8 @@ vi.mock("../src/store/lib/AuthContext", () => ({
   useAuth: () => ({ user: null, loading: false }),
 }));
 
-vi.mock("../src/store/lib/storewideSale", async () => {
-  const actual = await vi.importActual<typeof import("../src/store/lib/storewideSale")>("../src/store/lib/storewideSale");
-  const { useSyncExternalStore } = await import("react");
-  return {
-    storewideSaleKey: actual.storewideSaleKey,
-    refreshStorewideSale: async () => world.sale,
-    useStorewideSale: () =>
-      useSyncExternalStore(
-        (l: () => void) => {
-          world.saleListeners.add(l);
-          return () => world.saleListeners.delete(l);
-        },
-        () => world.sale,
-      ),
-  };
-});
-
 const { CartProvider, useCart } = await import("../src/store/lib/CartContext");
+const { refreshStorewideSale } = await import("../src/store/lib/storewideSale");
 
 const BLACK_FRIDAY: StorewideSale = {
   id: "sale-1",
@@ -64,10 +50,19 @@ const BLACK_FRIDAY: StorewideSale = {
   endsAt: "2026-11-29T05:59:00Z",
 };
 
-function setSale(next: StorewideSaleState) {
-  act(() => {
-    world.sale = next;
-    world.saleListeners.forEach((l) => l());
+const saleRow = (sale: StorewideSale) => ({
+  id: sale.id,
+  name: sale.name,
+  discount_percent: sale.discountPercent,
+  starts_at: sale.startsAt,
+  ends_at: sale.endsAt,
+});
+
+/** What the database says about the sale now, as the page's next look picks it up. */
+async function setSale(sale: StorewideSale | null) {
+  world.sale = sale ? saleRow(sale) : null;
+  await act(async () => {
+    await refreshStorewideSale();
   });
 }
 
@@ -97,11 +92,10 @@ function Probe() {
 const line = (id: string) => screen.getByTestId(id).textContent;
 const guestCart = () => JSON.parse(localStorage.getItem("geega.guestCart.v1") ?? "[]");
 
-beforeEach(() => {
+beforeEach(async () => {
   world.rows.clear();
   world.availabilityCalls = 0;
-  world.sale = { sale: null, known: true };
-  world.saleListeners.clear();
+  await setSale(null); // each test starts with no sale, already known
   loadingSeen.length = 0;
   localStorage.setItem(
     "geega.guestCart.v1",
@@ -135,7 +129,7 @@ describe("cards already in the cart follow the storewide sale", () => {
     await renderCart();
     price("cradle", 6800, 8000);
     price("signet", 425, 500);
-    setSale({ sale: BLACK_FRIDAY, known: true });
+    await setSale(BLACK_FRIDAY);
 
     await waitFor(() => expect(line("cradle")).toBe("6800|8000|1"));
     expect(line("signet")).toBe("425|500|2");
@@ -148,7 +142,7 @@ describe("cards already in the cart follow the storewide sale", () => {
   it("goes back to regular prices when the sale ends", async () => {
     price("cradle", 6800, 8000);
     price("signet", 425, 500);
-    world.sale = { sale: BLACK_FRIDAY, known: true };
+    await setSale(BLACK_FRIDAY);
     render(
       <CartProvider>
         <Probe />
@@ -158,14 +152,14 @@ describe("cards already in the cart follow the storewide sale", () => {
 
     price("cradle", 8000);
     price("signet", 500);
-    setSale({ sale: null, known: true });
+    await setSale(null);
     await waitFor(() => expect(line("cradle")).toBe("8000|-|1"));
     expect(line("signet")).toBe("500|-|2");
     expect(screen.getByTestId("savings")).toHaveTextContent("0");
   });
 
   it("re-prices when the percentage is changed mid-sale", async () => {
-    world.sale = { sale: BLACK_FRIDAY, known: true };
+    await setSale(BLACK_FRIDAY);
     price("cradle", 6800, 8000);
     render(
       <CartProvider>
@@ -174,17 +168,15 @@ describe("cards already in the cart follow the storewide sale", () => {
     );
     await waitFor(() => expect(line("cradle")).toBe("6800|8000|1"));
     price("cradle", 6000, 8000);
-    setSale({ sale: { ...BLACK_FRIDAY, discountPercent: 25 }, known: true });
+    await setSale({ ...BLACK_FRIDAY, discountPercent: 25 });
     await waitFor(() => expect(line("cradle")).toBe("6000|8000|1"));
   });
 
-  it("doesn't re-load when the first answer about the sale arrives", async () => {
-    world.sale = { sale: null, known: false };
+  it("doesn't re-load when nothing about the prices changed (same sale looked at again)", async () => {
     await renderCart();
-    const calls = world.availabilityCalls;
-    setSale({ sale: BLACK_FRIDAY, known: true }); // the page's first look, not a change
-    await new Promise((r) => setTimeout(r, 20));
-    expect(world.availabilityCalls).toBe(calls);
+    await setSale(null);
+    await setSale(null);
+    expect(world.availabilityCalls).toBe(1); // only the cart's own first load
   });
 
   it("never drops or clamps a line while re-pricing, so a held card stays in the cart", async () => {
@@ -192,7 +184,7 @@ describe("cards already in the cart follow the storewide sale", () => {
     // The guest is on the payment step: their own hold makes "signet" read as sold out to them.
     world.rows.delete("signet");
     price("cradle", 6800, 8000, 1);
-    setSale({ sale: BLACK_FRIDAY, known: true });
+    await setSale(BLACK_FRIDAY);
 
     await waitFor(() => expect(line("cradle")).toBe("6800|8000|1"));
     expect(line("signet")).toBe("500|-|2");

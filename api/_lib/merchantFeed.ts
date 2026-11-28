@@ -40,8 +40,20 @@ export interface FeedListing {
   variantType: string | null;
   /** Copies that can be bought now (held copies excluded). */
   quantity: number;
-  /** What it sells for now (deals included), in cents. */
+  /** What it sells for now (deals and a running storewide sale included), in cents. */
   priceCents: number;
+  /**
+   * During a storewide sale: what it sells for once the sale is over (its own
+   * price, deals included), from public.storefront_regular_prices. Unset
+   * otherwise.
+   */
+  regularPriceCents?: number | null;
+}
+
+/** The storewide sale running as the feed is built: when it started and ends (ISO times). */
+export interface FeedSale {
+  startsAt: string;
+  endsAt: string;
 }
 
 const text = (value: unknown): string | null =>
@@ -148,6 +160,41 @@ function price(cents: number): string {
   return `${(cents / 100).toFixed(2)} USD`;
 }
 
+/** "2026-11-27T14:32+0000": the ISO 8601 form Google's examples use, in UTC. Null if unreadable. */
+function feedTime(iso: string): string | null {
+  const time = new Date(iso);
+  if (Number.isNaN(time.getTime())) return null;
+  return `${time.toISOString().slice(0, 16)}+0000`;
+}
+
+/** "start/end" for sale_price_effective_date, or null if either time is unreadable or the window is empty. */
+export function saleEffectiveDate(sale: FeedSale): string | null {
+  const start = feedTime(sale.startsAt);
+  const end = feedTime(sale.endsAt);
+  if (!start || !end || new Date(sale.endsAt).getTime() <= new Date(sale.startsAt).getTime()) return null;
+  return `${start}/${end}`;
+}
+
+/**
+ * The price tags of one copy. Outside a sale: its price. During a storewide
+ * sale, when the sale lowers it: its regular price, the sale price, and the
+ * sale's dates — so Merchant Center shows the sale price only while the sale
+ * runs and the regular price again the moment it ends, even though it reads
+ * this file at most once a day.
+ */
+function priceTags(listing: FeedListing, sale: FeedSale | null): string[] {
+  const regular = listing.regularPriceCents;
+  const dates = sale ? saleEffectiveDate(sale) : null;
+  if (dates && regular != null && regular > listing.priceCents) {
+    return [
+      tag("price", price(regular)),
+      tag("sale_price", price(listing.priceCents)),
+      tag("sale_price_effective_date", dates),
+    ];
+  }
+  return [tag("price", price(listing.priceCents))];
+}
+
 /** What a feed looks like to the person reading it, for a header or a log line. */
 export interface FeedSummary {
   items: number;
@@ -171,6 +218,9 @@ export interface FeedSummary {
  *                  one product with variants (Google: "use the same group ID
  *                  for every version a customer can select on one landing
  *                  page"); the same id the page's ProductGroup uses
+ *   * price        what it sells for; during a storewide sale, what it sells
+ *                  for after the sale, with sale_price and
+ *                  sale_price_effective_date beside it (see priceTags)
  *
  * Shipping and tax aren't in the file: they're set once in each Merchant
  * Center account, which Google prefers to per-item values.
@@ -178,7 +228,9 @@ export interface FeedSummary {
 export function buildMerchantFeed(
   listings: FeedListing[],
   origin: string = PRODUCTION_ORIGIN,
+  options: { sale?: FeedSale | null } = {},
 ): { xml: string; summary: FeedSummary } {
+  const sale = options.sale ?? null;
   const copiesPerCard = new Map<string, number>();
   for (const listing of listings) {
     if (listing.oracleId) copiesPerCard.set(listing.oracleId, (copiesPerCard.get(listing.oracleId) ?? 0) + 1);
@@ -207,7 +259,7 @@ export function buildMerchantFeed(
         tag("link", absoluteUrl(listingPagePath(slug, listing.id), origin)),
         tag("image_link", image),
         tag("availability", "in stock"),
-        tag("price", price(listing.priceCents)),
+        ...priceTags(listing, sale),
         tag("condition", LISTING_CONDITION),
         tag("brand", "Magic: The Gathering"),
         tag("identifier_exists", "no"),

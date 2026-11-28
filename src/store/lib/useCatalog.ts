@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase";
 import { storefrontImageUrl } from "../../cards";
+import { useOnSalePriceChange } from "./storewideSale";
 
 // Server-backed catalog. Uses the reservation-aware public.search_inventory RPC
 // (fixed in migration 20260914000000) which returns SELLABLE quantity and a
@@ -271,16 +272,23 @@ export function useCatalog(filters: CatalogFilters, page: number) {
   // 300 ms before the next request even starts).
   const [resultsKey, setResultsKey] = useState<string | null>(null);
 
-  const run = useCallback(async () => {
+  // `quiet`: re-read the same page in place (the storewide sale started or
+  // ended): no loading state, so the cards stay on screen until the new
+  // prices arrive, and a failed read leaves them as they were.
+  const run = useCallback(async (options?: { quiet?: boolean }) => {
+    const quiet = options?.quiet === true;
     const runKey = JSON.stringify({ filters, page });
     if (!isSupabaseConfigured) {
+      if (quiet) return;
       setError("The catalog isn’t configured yet. Please try again later.");
       setLoading(false);
       return;
     }
     const requestId = ++requestRef.current;
-    setLoading(true);
-    setError(null);
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const commonArgs = {
         p_query: filters.query.trim() || undefined,
@@ -315,25 +323,33 @@ export function useCatalog(filters: CatalogFilters, page: number) {
       setResultsKey(runKey);
     } catch (err) {
       if (requestId !== requestRef.current) return; // a newer request already landed
+      if (quiet) return; // keep what's on screen
       setError(
         err instanceof Error ? err.message : "Could not load the catalog.",
       );
       setCards([]);
       setTotal(0);
     } finally {
+      // Also after a quiet read, which may have superseded a normal one.
       if (requestId === requestRef.current) setLoading(false);
     }
   }, [filters, page]);
 
+  // Prices follow the storewide sale only while it runs: when it starts,
+  // ends or changes, re-read the page on screen.
+  useOnSalePriceChange(() => void run({ quiet: true }));
+
   useEffect(() => {
     // Debounce so typing in search doesn't fire a request per keystroke.
     window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(run, 300);
+    debounceRef.current = window.setTimeout(() => void run(), 300);
     return () => window.clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return { cards, total, loading, error, refetch: run, settled: !loading && !error && resultsKey === key };
+  const refetch = useCallback(() => run(), [run]);
+
+  return { cards, total, loading, error, refetch, settled: !loading && !error && resultsKey === key };
 }
 
 export type FacetSet = { code: string; name: string };

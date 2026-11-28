@@ -7306,6 +7306,13 @@ export type Database = {
         }
         Returns: number
       }
+      storefront_regular_prices: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+          price_cents: number
+        }[]
+      }
       tournament_change_life: {
         Args: { p_delta: number; p_match_id: string; p_side: string; p_tournament_id: string }
         Returns: Json

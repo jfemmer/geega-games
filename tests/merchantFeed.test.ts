@@ -4,6 +4,7 @@ import {
   buildMerchantFeed,
   feedDescription,
   feedTitle,
+  saleEffectiveDate,
   toFeedListings,
   type FeedListing,
 } from "../api/_lib/merchantFeed";
@@ -197,10 +198,57 @@ describe("the product feed", () => {
 
 // ---- The endpoint ------------------------------------------------------------
 
+describe("the product feed during a storewide sale", () => {
+  const SALE = { startsAt: "2026-11-27T14:32:00+00:00", endsAt: "2026-11-29T05:59:00+00:00" };
+  const item = (xmlText: string, id: string) => xmlText.split("<item>").find((chunk) => chunk.includes(`<g:id>${id}</g:id>`)) ?? "";
+
+  it("sends the regular price, the sale price and the sale's dates, so listings go back on their own at the end", () => {
+    const [nm, foil, sol] = LISTINGS;
+    const { xml } = buildMerchantFeed(
+      [
+        { ...nm, priceCents: 3485, regularPriceCents: 4100 }, // 15% off
+        { ...foil, regularPriceCents: foil.priceCents }, // the sale doesn't lower it (e.g. consigned)
+        { ...sol, regularPriceCents: null }, // no regular price known: plain price
+      ],
+      undefined,
+      { sale: SALE },
+    );
+    const discounted = item(xml, nm.id);
+    expect(discounted).toContain("<g:price>41.00 USD</g:price>");
+    expect(discounted).toContain("<g:sale_price>34.85 USD</g:sale_price>");
+    expect(discounted).toContain("<g:sale_price_effective_date>2026-11-27T14:32+0000/2026-11-29T05:59+0000</g:sale_price_effective_date>");
+    for (const plain of [item(xml, foil.id), item(xml, sol.id)]) {
+      expect(plain).toMatch(/<g:price>[\d.]+ USD<\/g:price>/);
+      expect(plain).not.toContain("sale_price");
+    }
+  });
+
+  it("sends a deal's own price as the regular price (it stays on a deal after the sale)", () => {
+    const [nm] = LISTINGS;
+    // A $41 card on a deal at $32.80; a deeper 25% sale takes it to $30.75 while it runs.
+    const { xml } = buildMerchantFeed([{ ...nm, priceCents: 3075, regularPriceCents: 3280 }], undefined, { sale: SALE });
+    expect(xml).toContain("<g:price>32.80 USD</g:price>");
+    expect(xml).toContain("<g:sale_price>30.75 USD</g:sale_price>");
+  });
+
+  it("has no sale tags without a sale, or with unreadable sale dates", () => {
+    const [nm] = LISTINGS;
+    const listing = { ...nm, priceCents: 3485, regularPriceCents: 4100 };
+    expect(buildMerchantFeed([listing]).xml).not.toContain("sale_price");
+    expect(buildMerchantFeed([listing], undefined, { sale: { startsAt: "soon", endsAt: SALE.endsAt } }).xml).not.toContain("sale_price");
+    expect(saleEffectiveDate({ startsAt: SALE.endsAt, endsAt: SALE.startsAt })).toBeNull();
+  });
+});
+
 const db = vi.hoisted(() => ({
   pages: [] as unknown[][],
   failOn: -1,
   calls: [] as Record<string, unknown>[],
+  /** current_storewide_sale's row, or null for no sale; "fail" for an error. */
+  sale: null as Record<string, unknown> | null | "fail",
+  /** storefront_regular_prices: id → price after the sale; "fail" for an error. */
+  regular: new Map<string, number>() as Map<string, number> | "fail",
+  regularCalls: [] as string[][],
 }));
 
 vi.mock("../api/_lib/supabasePublic.js", () => ({
@@ -208,6 +256,17 @@ vi.mock("../api/_lib/supabasePublic.js", () => ({
     rpc(name: string, args: Record<string, unknown>) {
       return {
         abortSignal: async () => {
+          if (name === "current_storewide_sale") {
+            if (db.sale === "fail") return { data: null, error: { message: "sale lookup failed" } };
+            return { data: db.sale ? [db.sale] : [], error: null };
+          }
+          if (name === "storefront_regular_prices") {
+            const ids = args.p_ids as string[];
+            db.regularCalls.push(ids);
+            if (db.regular === "fail") return { data: null, error: { message: "regular prices failed" } };
+            const regular = db.regular;
+            return { data: ids.filter((id) => regular.has(id)).map((id) => ({ id, price_cents: regular.get(id) })), error: null };
+          }
           if (name !== "search_inventory") throw new Error(`unexpected rpc ${name}`);
           const page = db.calls.length;
           db.calls.push(args);
@@ -248,6 +307,9 @@ beforeEach(() => {
   db.pages = [];
   db.failOn = -1;
   db.calls = [];
+  db.sale = null;
+  db.regular = new Map();
+  db.regularCalls = [];
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -287,6 +349,38 @@ describe("GET /feeds/products.xml", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.headers["retry-after"]).toBe("600");
     expect(res.body).not.toContain("<rss");
+  });
+
+  it("during a storewide sale, gives each discounted copy its regular price, sale price and the sale's dates", async () => {
+    db.sale = { id: "s1", name: "Black Friday Sale", discount_percent: 15, starts_at: "2026-11-27T14:32:00+00:00", ends_at: "2026-11-29T05:59:00+00:00" };
+    db.pages = [ROWS.map((r) => ({ ...r, price_cents: Math.round(r.price_cents * 0.85) }))];
+    db.regular = new Map(ROWS.map((r) => [r.id, r.price_cents]));
+    const res = await fetchFeed();
+    expect(res.status).toBe(200);
+    expect(db.regularCalls).toEqual([ROWS.map((r) => r.id)]);
+    expect(res.body).toContain("<g:price>41.00 USD</g:price>");
+    expect(res.body).toContain("<g:sale_price>34.85 USD</g:sale_price>");
+    expect(res.body?.match(/<g:sale_price_effective_date>2026-11-27T14:32\+0000\/2026-11-29T05:59\+0000</g)).toHaveLength(ROWS.length);
+  });
+
+  it("doesn't look up regular prices when no sale is running", async () => {
+    db.pages = [ROWS];
+    const res = await fetchFeed();
+    expect(res.status).toBe(200);
+    expect(db.regularCalls).toEqual([]);
+    expect(res.body).not.toContain("sale_price");
+  });
+
+  it("answers 503 rather than a feed whose only price is the sale price", async () => {
+    db.pages = [ROWS];
+    for (const broken of [{ sale: "fail" as const }, { sale: { starts_at: "2026-11-27T14:32:00Z", ends_at: "2026-11-29T05:59:00Z" }, regular: "fail" as const }]) {
+      db.sale = broken.sale;
+      db.regular = broken.regular ?? new Map();
+      db.calls = [];
+      const res = await fetchFeed();
+      expect(res.status).toBe(503);
+      expect(res.headers["cache-control"]).toBe("no-store");
+    }
   });
 
   it("answers HEAD without a body, and refuses other methods", async () => {

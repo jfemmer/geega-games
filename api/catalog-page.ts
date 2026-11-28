@@ -7,6 +7,7 @@ import {
   buildInvalidPage,
   buildSetPage,
   findSet,
+  foundPageCacheControl,
   parseCatalogRequest,
   renderCatalogHtml,
   toCardDetail,
@@ -39,7 +40,9 @@ import {
 //     the same row-level security, as a signed-out visitor's browser — so it
 //     can only say what the storefront itself would show.
 //   * Answers are cached at Vercel's edge for a few minutes, so a crawl or a
-//     shared link doesn't run the function (or the database) on every hit.
+//     shared link doesn't run the function (or the database) on every hit —
+//     never past the end of a running storewide sale, whose prices the page
+//     shows only until then (foundPageCacheControl).
 //   * If the lookup fails, the plain shell is served — what this address
 //     returned before this function existed — and the app loads the page.
 //
@@ -48,10 +51,19 @@ import {
 //   X-GG-Shell     bundle | fetch     (where the shell came from, see spaShell.ts)
 //   X-GG-Address   path | query       (where the address was read from)
 
-const FOUND_CACHE = "public, max-age=0, s-maxage=300, stale-while-revalidate=600";
 const NOT_FOUND_CACHE = "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
 const REDIRECT_CACHE = "public, max-age=0, s-maxage=86400";
 const LOOKUP_TIMEOUT_MS = 3000;
+
+/** When the storewide sale running now ends, or null for none. */
+async function lookUpSale(): Promise<{ endsAt: string } | null> {
+  const { data, error } = await getSupabasePublic()
+    .rpc("current_storewide_sale")
+    .abortSignal(AbortSignal.timeout(LOOKUP_TIMEOUT_MS));
+  if (error) throw new Error(error.message);
+  const row = Array.isArray(data) ? (data[0] as { ends_at?: unknown } | undefined) : undefined;
+  return row && typeof row.ends_at === "string" ? { endsAt: row.ends_at } : null;
+}
 
 async function lookUp(request: CatalogRequest): Promise<CatalogPage> {
   const db = getSupabasePublic();
@@ -132,9 +144,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("X-GG-Shell", shell.source);
 
   let page: CatalogPage;
+  // Asked alongside the page, for how long its prices may be cached.
+  let sale: Promise<{ endsAt: string } | null | "unknown"> = Promise.resolve(null);
   if (parsed.type === "invalid") {
     page = buildInvalidPage(parsed.kind);
   } else {
+    sale = lookUpSale().catch((err) => {
+      console.error("[catalog-page] storewide sale lookup failed, caching briefly:", err);
+      return "unknown" as const;
+    });
     try {
       page = await lookUp(parsed.request);
     } catch (err) {
@@ -145,7 +163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  res.setHeader("Cache-Control", page.status === 200 ? FOUND_CACHE : NOT_FOUND_CACHE);
+  res.setHeader("Cache-Control", page.status === 200 ? foundPageCacheControl(await sale) : NOT_FOUND_CACHE);
   res.setHeader("X-GG-Page", page.status === 200 ? "filled" : "not-found");
   return sendHtml(req, res, page.status, renderCatalogHtml(shell.html, page));
 }

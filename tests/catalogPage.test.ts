@@ -10,6 +10,7 @@ import {
   renderCatalogHtml,
   toCardDetail,
   toSetCards,
+  foundPageCacheControl,
 } from "../api/_lib/catalogPage";
 import { renderSeoHead } from "../src/seo/head";
 import { fillTemplate, hasHeadMarkers, refillShell } from "../src/seo/template";
@@ -593,5 +594,28 @@ describe("the shared template helpers", () => {
     const shell = '<head><!--seo-head-->old<!--/seo-head--></head><body><div id="root"></div></body>';
     expect(refillShell(shell, "<title>New</title>")).toContain('<div id="root"></div>');
     expect(refillShell(shell, "<title>New</title>", "<p>Hi</p>")).toContain('<div id="root"><p>Hi</p></div>');
+  });
+});
+
+describe("foundPageCacheControl", () => {
+  const now = Date.parse("2026-11-28T05:00:00Z");
+  const endsIn = (seconds: number) => ({ endsAt: new Date(now + seconds * 1000).toISOString() });
+
+  it("is five minutes plus ten stale, without a sale", () => {
+    expect(foundPageCacheControl(null, now)).toBe("public, max-age=0, s-maxage=300, stale-while-revalidate=600");
+  });
+
+  it("never lets the cache or its stale window outlast a running sale", () => {
+    expect(foundPageCacheControl(endsIn(86_400), now)).toBe("public, max-age=0, s-maxage=300, stale-while-revalidate=600");
+    expect(foundPageCacheControl(endsIn(700), now)).toBe("public, max-age=0, s-maxage=300, stale-while-revalidate=400");
+    expect(foundPageCacheControl(endsIn(300), now)).toBe("public, max-age=0, s-maxage=300");
+    expect(foundPageCacheControl(endsIn(42), now)).toBe("public, max-age=0, s-maxage=42");
+    expect(foundPageCacheControl(endsIn(0), now)).toBe("public, max-age=0, s-maxage=1");
+    expect(foundPageCacheControl(endsIn(-30), now)).toBe("public, max-age=0, s-maxage=1");
+  });
+
+  it("caches briefly when the sale couldn't be looked up, or its end can't be read", () => {
+    expect(foundPageCacheControl("unknown", now)).toBe("public, max-age=0, s-maxage=60");
+    expect(foundPageCacheControl({ endsAt: "whenever" }, now)).toBe("public, max-age=0, s-maxage=60");
   });
 });
