@@ -4767,6 +4767,68 @@ export type Database = {
         }
         Relationships: []
       }
+      tournament_counters: {
+        Row: {
+          id: string
+          kind: string
+          match_id: string | null
+          pod_player_id: string | null
+          round: number
+          side: string | null
+          source: string
+          target: string | null
+          tournament_id: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          id?: string
+          kind: string
+          match_id?: string | null
+          pod_player_id?: string | null
+          round: number
+          side?: string | null
+          source?: string
+          tournament_id: string
+          updated_at?: string
+          value?: number
+        }
+        Update: {
+          id?: string
+          kind?: string
+          match_id?: string | null
+          pod_player_id?: string | null
+          round?: number
+          side?: string | null
+          source?: string
+          tournament_id?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_counters_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_counters_pod_player_id_fkey"
+            columns: ["pod_player_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_pod_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_counters_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_entrants: {
         Row: {
           commander_one: string | null
@@ -4778,6 +4840,7 @@ export type Database = {
           id: string
           player_one: string
           player_two: string | null
+          ready_for: number | null
           tournament_id: string
           updated_at: string
         }
@@ -4791,6 +4854,7 @@ export type Database = {
           id?: string
           player_one: string
           player_two?: string | null
+          ready_for?: number | null
           tournament_id: string
           updated_at?: string
         }
@@ -4804,6 +4868,7 @@ export type Database = {
           id?: string
           player_one?: string
           player_two?: string | null
+          ready_for?: number | null
           tournament_id?: string
           updated_at?: string
         }
@@ -4826,6 +4891,7 @@ export type Database = {
           id: string
           life_a: number | null
           life_b: number | null
+          loss_reason: string | null
           reported_at: string | null
           reported_by: string | null
           result: string
@@ -4842,6 +4908,7 @@ export type Database = {
           id?: string
           life_a?: number | null
           life_b?: number | null
+          loss_reason?: string | null
           reported_at?: string | null
           reported_by?: string | null
           result?: string
@@ -4858,6 +4925,7 @@ export type Database = {
           id?: string
           life_a?: number | null
           life_b?: number | null
+          loss_reason?: string | null
           reported_at?: string | null
           reported_by?: string | null
           result?: string
@@ -4897,6 +4965,7 @@ export type Database = {
           id: string
           life: number | null
           out_at: string | null
+          out_reason: string | null
           place: number | null
           pod_id: string
           seat: number
@@ -4909,6 +4978,7 @@ export type Database = {
           id?: string
           life?: number | null
           out_at?: string | null
+          out_reason?: string | null
           place?: number | null
           pod_id: string
           seat: number
@@ -4921,6 +4991,7 @@ export type Database = {
           id?: string
           life?: number | null
           out_at?: string | null
+          out_reason?: string | null
           place?: number | null
           pod_id?: string
           seat?: number
@@ -7408,6 +7479,18 @@ export type Database = {
           price_cents: number
         }[]
       }
+      tournament_change_counter: {
+        Args: {
+          p_delta: number
+          p_kind: string
+          p_match_id: string | null
+          p_pod_player_id: string | null
+          p_side: string | null
+          p_source: string
+          p_tournament_id: string
+        }
+        Returns: number
+      }
       tournament_change_life: {
         Args: { p_delta: number; p_match_id: string; p_side: string; p_tournament_id: string }
         Returns: Json
@@ -7434,11 +7517,11 @@ export type Database = {
         Returns: number
       }
       tournament_pod_knock_out: {
-        Args: { p_pod_player_id: string; p_tournament_id: string }
+        Args: { p_pod_player_id: string; p_reason?: string; p_tournament_id: string }
         Returns: Json
       }
       tournament_pod_set_winner: {
-        Args: { p_entrant_id: string; p_pod_id: string; p_tournament_id: string }
+        Args: { p_entrant_id: string; p_pod_id: string; p_reason?: string; p_tournament_id: string }
         Returns: undefined
       }
       tournament_pod_undo: {

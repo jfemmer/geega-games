@@ -6007,9 +6007,6 @@ html.gg-tv { font-size: clamp(16px, 1.05vw, 26px); }
 .gg-bmini__place { flex: none; font-size: 0.72rem; font-weight: 600; color: var(--gg-text-faint); font-variant-numeric: tabular-nums; }
 
 .gg-life__others { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
-.gg-life__others--many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.gg-life__others--many .gg-life__them { padding: 0.45rem 0.6rem; }
-.gg-life__others--many .gg-life__them strong { font-size: 1.25rem; }
 .gg-life__them > span { min-width: 0; overflow-wrap: anywhere; }
 .gg-life__them.is-gone { background: transparent; box-shadow: inset 0 0 0 1px var(--gg-line); color: var(--gg-text-faint); }
 .gg-life__place { flex: none; font-size: 0.78rem; font-weight: 600; }
@@ -6046,3 +6043,100 @@ html.gg-tv { font-size: clamp(16px, 1.05vw, 26px); }
 .gg-tourney-pod__actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .gg-tourney-pod__call { flex: 1 1 12rem; min-width: 0; }
 .gg-tourney-pod__call .gg-field { margin: 0; }
+
+/* Ready-up, ways to lose, poison and commander damage (LifeCounter.tsx, BracketDisplay.tsx). */
+.gg-life__others .gg-life__them { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 0.35rem; align-items: stretch; }
+.gg-life__themhead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; min-width: 0; }
+.gg-life__themhead > span { min-width: 0; overflow-wrap: anywhere; }
+.gg-life__cmd { display: grid; gap: 0.3rem; }
+.gg-life__counterrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.6rem 3.6rem 2.6rem;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--gg-text-soft);
+}
+.gg-life__counterlabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-life__counterrow button {
+  min-height: 2.6rem;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+  color: var(--gg-text);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.gg-life__counterrow button:active { background: var(--gg-brand-tint); }
+.gg-life__counterrow button:disabled { opacity: 0.4; cursor: default; }
+.gg-life__counterrow button:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-life__counterrow output { text-align: center; font-size: 1.2rem; font-weight: 800; color: var(--gg-text); font-variant-numeric: tabular-nums; }
+.gg-life__counterrow output small { font-size: 0.7rem; font-weight: 600; color: var(--gg-text-faint); }
+.gg-life__counterrow.is-near output { color: #d9822b; }
+.gg-life__counterrow.is-max output { color: var(--gg-danger); }
+.gg-life__poison { padding: 0.45rem 0.6rem 0.45rem 0.8rem; border-radius: var(--gg-radius-sm); background: var(--gg-surface-2); }
+.gg-life__poison .gg-life__counterlabel { font-weight: 600; color: var(--gg-text); }
+
+.gg-loss { display: grid; gap: 12px; }
+.gg-loss .gg-confirm__message { margin: 0; }
+.gg-loss__reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.gg-loss__reason {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+  color: var(--gg-text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.gg-loss__reason.is-selected { border-color: var(--gg-danger); background: #fde8e8; color: #8f1d1d; }
+.gg-loss__reason:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-loss .gg-field { margin: 0; }
+
+.gg-bracket__ready { display: grid; gap: 0.6rem; padding: 1rem; border: 2px solid var(--gg-brand); }
+.gg-bracket__ready h2 { margin: 0; font-size: 1.15rem; }
+.gg-bracket__ready p { margin: 0; color: var(--gg-text-soft); }
+.gg-bracket__ready.is-ready { border-color: var(--gg-success); background: rgba(47, 143, 91, 0.06); }
+.gg-bracket__ready .gg-link-btn { justify-self: start; }
+.gg-bracket__readybtn { width: 100%; justify-content: center; min-height: 52px; font-size: 1.05rem; }
+.gg-bracket__readyline {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: -0.25rem 0 0.6rem;
+  color: var(--gg-text-soft);
+  font-size: 0.95rem;
+}
+.gg-bracket__readyline svg { flex: none; color: var(--gg-success); }
+.gg-bracket__readyline strong { color: var(--gg-text); }
+.gg-bside__ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  justify-self: start;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(47, 143, 91, 0.14);
+  color: #1f6b43;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gg-bside__counters { display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; font-size: 0.75rem; font-weight: 700; color: #b5651d; font-variant-numeric: tabular-nums; }
+.gg-bracket--tv .gg-bside__ready { background: rgba(63, 191, 127, 0.18); color: #7be3ad; opacity: 1; }
+.gg-bracket--tv .gg-bside__counters { color: #f3b26b; }
+.gg-bracket--tv .gg-bracket__readyline svg { color: #7be3ad; }
+
+.gg-tourney-readyline { display: grid; gap: 2px; flex-basis: 100%; }
+.gg-tourney-side__how { display: block; font-size: 0.72rem; font-weight: 600; color: var(--gg-text-faint); }

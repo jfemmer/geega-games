@@ -1,5 +1,12 @@
 import { Icon } from "../ui/Icon";
-import { formatDuration, gameDuration, lifeOf, type ReportableResult, type TournamentMatch } from "../../utils/tournament";
+import {
+  formatDuration,
+  gameDuration,
+  lifeOf,
+  lossLabel,
+  type ReportableResult,
+  type TournamentMatch,
+} from "../../utils/tournament";
 
 // One round's pairings. Tap a side to record who won (tap it again to clear,
 // in the round being played), or Draw. Byes are listed last; they count as a
@@ -100,7 +107,10 @@ function MatchRow({
         disabled={disabled}
         onClick={() => pick(key)}
       >
-        <span className="gg-tourney-side__name">{label}</span>
+        <span className="gg-tourney-side__name">
+          {label}
+          {lost && match.lossReason && <small className="gg-tourney-side__how">{lossLabel(match.lossReason)}</small>}
+        </span>
         {tracked && (
           <span className={`gg-tourney-side__life ${life <= 0 ? "is-out" : ""}`} title="Life (tracked on their phone)">
             {life}

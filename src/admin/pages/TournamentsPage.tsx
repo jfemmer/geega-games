@@ -43,6 +43,7 @@ import {
   ordinal,
   playerCount,
   podsInRound,
+  readiness,
   soloEntrants,
   spotsProblem,
   startingLifeProblem,
@@ -307,15 +308,18 @@ function TournamentView({
   }, [load]);
 
   // While games are being played, players change life totals and record
-  // losses from their phones: keep this page up to date.
+  // losses from their phones, then ready up and start the next round:
+  // keep this page up to date.
   const liveRound = detail != null && hasLiveGames(detail);
+  const between = detail != null && readiness(detail) != null;
+  const watching = liveRound || between;
   useEffect(() => {
-    if (!liveRound) return;
+    if (!watching) return;
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible" && inFlight.current === 0) void load();
     }, 10_000);
     return () => window.clearInterval(id);
-  }, [liveRound, load]);
+  }, [watching, load]);
   const now = useClock(liveRound);
 
   const run = useCallback(
@@ -405,7 +409,8 @@ function TournamentView({
       detail.format === "ffa"
         ? currentPods.filter((p) => !p.endedAt).length
         : current.filter((m) => m.result === "pending").length;
-    return { labels, standings, ffaStandings, current, currentPods, active, blocker, exhausted, pairs, byes, extraByes, pending };
+    const ready = readiness(detail);
+    return { labels, standings, ffaStandings, current, currentPods, active, blocker, exhausted, pairs, byes, extraByes, pending, ready };
   }, [detail]);
 
   if (!detail || !derived) {
@@ -423,7 +428,7 @@ function TournamentView({
   const info = formatInfo(detail.format);
   const editable = detail.status === "active";
   const started = detail.currentRound > 0;
-  const { labels, standings, ffaStandings, current, currentPods, active, blocker, exhausted, pairs, byes, extraByes, pending } =
+  const { labels, standings, ffaStandings, current, currentPods, active, blocker, exhausted, pairs, byes, extraByes, pending, ready } =
     derived;
   const ffa = detail.format === "ffa";
   const droppedCount = detail.entrants.length - active.length;
@@ -858,6 +863,20 @@ function TournamentView({
                     </>
                   ) : (
                     <>
+                      {ready && (
+                        <div className="gg-tourney-readyline" aria-live="polite">
+                          <strong>
+                            {ready.ready.length} of {ready.ready.length + ready.waiting.length} ready for round {ready.next}
+                          </strong>
+                          <span className="gg-muted">
+                            {ready.waiting.length > 0 && ready.waiting.length <= 6
+                              ? `Waiting on ${ready.waiting.map(entrantLabel).join(", ")}. `
+                              : ""}
+                            Players ready up on their phones once their game is over; round {ready.next} starts on its own when
+                            everyone is. You can also start it now.
+                          </span>
+                        </div>
+                      )}
                       <Button
                         variant="primary"
                         icon="swap"

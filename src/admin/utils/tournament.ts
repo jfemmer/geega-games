@@ -86,6 +86,14 @@ export interface TournamentEntrant {
   commanders: (TournamentCommander | null)[];
   droppedAt: string | null;
   createdAt: string;
+  /** The round they've said they're ready to start (ready-up between rounds). */
+  readyFor?: number | null;
+}
+
+/** Poison counters and commander damage (by source, see commanderSources()) for one side or player in a game. */
+export interface GameCounters {
+  poison: number;
+  commander: Record<string, number>;
 }
 
 export interface TournamentMatch {
@@ -104,6 +112,11 @@ export interface TournamentMatch {
   startedAt: string;
   /** When the result was first recorded (null while playing). */
   endedAt: string | null;
+  /** How the losing side lost, when a player recorded it. */
+  lossReason?: LossReason | null;
+  /** Poison and commander damage each side has taken (this round's games). */
+  countersA?: GameCounters;
+  countersB?: GameCounters;
 }
 
 /** A player at a free-for-all table. */
@@ -119,6 +132,10 @@ export interface TournamentPodPlayer {
   outAt: string | null;
   /** Where they finished (1 = won); null while still in. */
   place: number | null;
+  /** How they went out, when a player recorded it. */
+  outReason?: LossReason | null;
+  /** Poison and commander damage they've taken (this round's games). */
+  counters?: GameCounters;
 }
 
 /** One free-for-all table's game in a round. */
@@ -1075,4 +1092,144 @@ export function isPlaying(
   return detail.matches.some(
     (m) => m.round === detail.currentRound && m.result === "pending" && m.b != null && (m.a === entrantId || m.b === entrantId),
   );
+}
+
+// ─────────────────────────── ways to lose ───────────────────────────
+
+/** How a game can be lost, in the order the phone offers them. */
+export const LOSS_REASONS = [
+  { value: "life", label: "Life total", short: "Life" },
+  { value: "commander", label: "Commander damage", short: "Commander damage" },
+  { value: "poison", label: "Poison", short: "Poison" },
+  { value: "alt_win", label: "Alt win con", short: "Alt win con" },
+  { value: "decked", label: "Decked", short: "Decked" },
+  { value: "card", label: "A card said I lose", short: "Card effect" },
+  { value: "concede", label: "Conceded", short: "Conceded" },
+] as const;
+
+export type LossReason = (typeof LOSS_REASONS)[number]["value"];
+
+export function isLossReason(value: unknown): value is LossReason {
+  return LOSS_REASONS.some((r) => r.value === value);
+}
+
+/** "Commander damage", "Alt win con"… */
+export function lossLabel(reason: LossReason): string {
+  return LOSS_REASONS.find((r) => r.value === reason)?.short ?? "";
+}
+
+/** Combat damage from one commander that loses the game. */
+export const COMMANDER_DAMAGE_TO_LOSE = 21;
+
+/** Poison counters that lose the game: 10, or 15 for a Two-Headed Giant team. */
+export function poisonToLose(format: TournamentFormat): number {
+  return format === "2hg" ? 15 : 10;
+}
+
+const NO_COUNTERS: GameCounters = Object.freeze({ poison: 0, commander: Object.freeze({}) }) as GameCounters;
+
+/** A side's counters in a match (zeros when nothing's been tracked). */
+export function countersOf(match: Pick<TournamentMatch, "countersA" | "countersB">, side: "a" | "b"): GameCounters {
+  return (side === "a" ? match.countersA : match.countersB) ?? NO_COUNTERS;
+}
+
+/** A free-for-all player's counters (zeros when nothing's been tracked). */
+export function podCounters(player: Pick<TournamentPodPlayer, "counters">): GameCounters {
+  return player.counters ?? NO_COUNTERS;
+}
+
+/** The most commander damage from any one commander. */
+export function topCommanderDamage(counters: GameCounters): number {
+  return Math.max(0, ...Object.values(counters.commander));
+}
+
+/** A commander that can deal commander damage: one per player, and typed partners ("Thrasios & Tymna") apart. */
+export interface CommanderSource {
+  /** "<entrant id>:<seat>:<partner 0|1>". */
+  key: string;
+  entrantId: string;
+  /** The commander's name, or "Alex's commander" when they haven't said. */
+  label: string;
+  player: string;
+}
+
+const PARTNER_SEPARATOR = /\s+(?:&|\+)\s+/;
+const SOURCE_KEY_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([01]):([01])$/i;
+
+export function commanderSources(entrant: Pick<TournamentEntrant, "id" | "players" | "commanders">): CommanderSource[] {
+  return entrant.players.flatMap((player, seat) => {
+    const commander = entrant.commanders[seat];
+    // A card picked from the search is one commander; a typed pair is two partners.
+    const names = !commander ? [] : commander.cardId ? [commander.name] : commander.name.split(PARTNER_SEPARATOR).filter(Boolean).slice(0, 2);
+    if (names.length === 0) return [{ key: `${entrant.id}:${seat}:0`, entrantId: entrant.id, label: `${player}'s commander`, player }];
+    return names.map((name, i) => ({ key: `${entrant.id}:${seat}:${i}`, entrantId: entrant.id, label: name, player }));
+  });
+}
+
+export function parseSourceKey(key: unknown): { entrantId: string; seat: number; partner: number } | null {
+  const m = typeof key === "string" ? key.match(SOURCE_KEY_RE) : null;
+  return m ? { entrantId: m[1].toLowerCase(), seat: Number(m[2]), partner: Number(m[3]) } : null;
+}
+
+// ──────────────────────────── ready-up ────────────────────────────
+//
+// Once a player's game is over (or they're out of a free-for-all game, or
+// they have a bye), their phone asks them to ready up for the next round.
+// When everyone still in is ready and every game is decided, the server
+// pairs (or deals) the next round. Staff can still start it early.
+
+/** True when this entrant has nothing left to play this round. */
+export function doneThisRound(
+  detail: Pick<TournamentDetail, "currentRound" | "format" | "matches" | "pods">,
+  entrantId: string,
+): boolean {
+  if (detail.currentRound < 1) return false;
+  if (detail.format === "ffa") {
+    const at = findSeatAt(detail.pods, detail.currentRound, entrantId);
+    return !at || Boolean(at.pod.endedAt || at.player.outAt);
+  }
+  const match = detail.matches.find((m) => m.round === detail.currentRound && (m.a === entrantId || m.b === entrantId));
+  return !match || match.result !== "pending";
+}
+
+/** True when this entrant is ready for the next round. */
+export function isReady(
+  detail: Pick<TournamentDetail, "currentRound" | "format" | "matches" | "pods">,
+  entrant: Pick<TournamentEntrant, "id" | "readyFor">,
+): boolean {
+  return entrant.readyFor === detail.currentRound + 1 && doneThisRound(detail, entrant.id);
+}
+
+export interface Readiness {
+  /** The round being readied for. */
+  next: number;
+  ready: TournamentEntrant[];
+  waiting: TournamentEntrant[];
+}
+
+/**
+ * Who's ready for the next round, or null when there's nothing to ready up
+ * for (not started, finished, or a round robin with nobody left to play).
+ */
+export function readiness(detail: TournamentDetail): Readiness | null {
+  if (detail.status !== "active" || detail.currentRound < 1) return null;
+  const active = activeEntrants(detail);
+  if (active.length < 2) return null;
+  if (
+    detail.format !== "ffa" &&
+    !hasNewOpponents(
+      active.map((e) => e.id),
+      detail.matches,
+    )
+  ) {
+    return null;
+  }
+  const ready = active.filter((e) => isReady(detail, e));
+  return { next: detail.currentRound + 1, ready, waiting: active.filter((e) => !ready.includes(e)) };
+}
+
+/** True when the next round should start: everyone still in is ready and every game is decided. */
+export function everyoneReady(detail: TournamentDetail): boolean {
+  const r = readiness(detail);
+  return r != null && r.waiting.length === 0 && nextRoundBlocker(detail) == null;
 }

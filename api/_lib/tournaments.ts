@@ -7,6 +7,12 @@ import type { Database } from "../../src/types/database.js";
 import {
   DEFAULT_TABLE_SIZE,
   MAX_ENTRANTS,
+  everyoneReady,
+  doneThisRound,
+  isLossReason,
+  parseSourceKey,
+  type GameCounters,
+  type LossReason,
   TOURNAMENT_LIST_LIMIT,
   activeEntrants,
   canRepairRound,
@@ -61,22 +67,27 @@ type MatchRow = Database["public"]["Tables"]["tournament_matches"]["Row"];
 type PodRow = Pick<Database["public"]["Tables"]["tournament_pods"]["Row"], "id" | "round" | "table_number" | "created_at" | "ended_at">;
 type PodPlayerRow = Pick<
   Database["public"]["Tables"]["tournament_pod_players"]["Row"],
-  "id" | "pod_id" | "entrant_id" | "seat" | "life" | "out_at" | "place"
+  "id" | "pod_id" | "entrant_id" | "seat" | "life" | "out_at" | "place" | "out_reason"
+>;
+type CounterRow = Pick<
+  Database["public"]["Tables"]["tournament_counters"]["Row"],
+  "match_id" | "side" | "pod_player_id" | "kind" | "source" | "value"
 >;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOURNAMENT_COLUMNS =
   "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled, spots, starting_life, table_size";
 const ENTRANT_COLUMNS =
-  "id, tournament_id, player_one, player_two, commander_one, commander_one_card, commander_two, commander_two_card, dropped_at, created_at, updated_at";
+  "id, tournament_id, player_one, player_two, commander_one, commander_one_card, commander_two, commander_two_card, dropped_at, created_at, updated_at, ready_for";
 /** Share links are 32 url-safe characters (the database also accepts its own 64-character default). */
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,100}$/;
 /** Commander suggestions per search. */
 const COMMANDER_RESULTS = 8;
 const MATCH_COLUMNS =
-  "id, tournament_id, round, table_number, entrant_a, entrant_b, result, reported_by, reported_at, created_at, updated_at, life_a, life_b, ended_at";
+  "id, tournament_id, round, table_number, entrant_a, entrant_b, result, reported_by, reported_at, created_at, updated_at, life_a, life_b, ended_at, loss_reason";
 const POD_COLUMNS = "id, round, table_number, created_at, ended_at";
-const POD_PLAYER_COLUMNS = "id, pod_id, entrant_id, seat, life, out_at, place";
+const POD_PLAYER_COLUMNS = "id, pod_id, entrant_id, seat, life, out_at, place, out_reason";
+const COUNTER_COLUMNS = "match_id, side, pod_player_id, kind, source, value";
 
 function db(): SupabaseClient<Database> {
   return getSupabaseAdmin();
@@ -135,15 +146,42 @@ function toEntrant(row: EntrantRow): TournamentEntrant {
       : [toCommander(row.commander_one, row.commander_one_card)],
     droppedAt: row.dropped_at,
     createdAt: row.created_at,
+    readyFor: row.ready_for ?? null,
   };
 }
 
+function asLossReason(value: string | null | undefined): LossReason | null {
+  return isLossReason(value) ? value : null;
+}
+
+/** This round's counters by "<match id>:<side>" or pod player id. */
+function toCounters(rows: CounterRow[]): Map<string, GameCounters> {
+  const out = new Map<string, GameCounters>();
+  for (const r of rows) {
+    const key = r.match_id ? `${r.match_id}:${r.side}` : (r.pod_player_id ?? "");
+    const c = out.get(key) ?? { poison: 0, commander: {} };
+    if (r.kind === "poison") c.poison = r.value;
+    else if (r.kind === "commander" && r.source) c.commander[r.source] = r.value;
+    out.set(key, c);
+  }
+  return out;
+}
+
 /** Tables with their players in seat order. */
-function toPods(pods: PodRow[], players: PodPlayerRow[]): TournamentPod[] {
+function toPods(pods: PodRow[], players: PodPlayerRow[], counters: Map<string, GameCounters>): TournamentPod[] {
   const byPod = new Map<string, TournamentPodPlayer[]>();
   for (const p of players) {
     const list = byPod.get(p.pod_id) ?? [];
-    list.push({ id: p.id, entrantId: p.entrant_id, seat: p.seat, life: p.life ?? null, outAt: p.out_at ?? null, place: p.place ?? null });
+    list.push({
+      id: p.id,
+      entrantId: p.entrant_id,
+      seat: p.seat,
+      life: p.life ?? null,
+      outAt: p.out_at ?? null,
+      place: p.place ?? null,
+      outReason: asLossReason(p.out_reason),
+      ...(counters.has(p.id) ? { counters: counters.get(p.id) } : {}),
+    });
     byPod.set(p.pod_id, list);
   }
   return pods
@@ -158,8 +196,13 @@ function toPods(pods: PodRow[], players: PodPlayerRow[]): TournamentPod[] {
     .sort((x, y) => x.round - y.round || x.table - y.table);
 }
 
-function toMatch(row: MatchRow): TournamentMatch {
+function toMatch(row: MatchRow, counters: Map<string, GameCounters>): TournamentMatch {
+  const a = counters.get(`${row.id}:a`);
+  const b = counters.get(`${row.id}:b`);
   return {
+    ...(a ? { countersA: a } : {}),
+    ...(b ? { countersB: b } : {}),
+    lossReason: asLossReason(row.loss_reason),
     id: row.id,
     round: row.round,
     table: row.table_number,
@@ -267,7 +310,7 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
   const id = row.id;
   const ffa = row.format === "ffa";
 
-  const [entrants, matches, pods, podPlayers] = await Promise.all([
+  const [entrants, matches, pods, podPlayers, counterRows] = await Promise.all([
     db()
       .from("tournament_entrants")
       .select(ENTRANT_COLUMNS)
@@ -286,11 +329,17 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
       ? db().from("tournament_pods").select(POD_COLUMNS).eq("tournament_id", id).order("round", { ascending: true }).limit(5_000)
       : null,
     ffa ? db().from("tournament_pod_players").select(POD_PLAYER_COLUMNS).eq("tournament_id", id).limit(20_000) : null,
+    // Poison and commander damage: only the round being played is shown.
+    row.current_round > 0
+      ? db().from("tournament_counters").select(COUNTER_COLUMNS).eq("tournament_id", id).eq("round", row.current_round).limit(5_000)
+      : null,
   ]);
   if (entrants.error) tournamentDbError(entrants.error, "Couldn't load the tournament.");
   if (matches.error) tournamentDbError(matches.error, "Couldn't load the tournament.");
   if (pods?.error) tournamentDbError(pods.error, "Couldn't load the tournament.");
   if (podPlayers?.error) tournamentDbError(podPlayers.error, "Couldn't load the tournament.");
+  if (counterRows?.error) tournamentDbError(counterRows.error, "Couldn't load the tournament.");
+  const counters = toCounters((counterRows?.data ?? []) as CounterRow[]);
 
   return {
     id: row.id,
@@ -301,12 +350,12 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
     createdAt: row.created_at,
     finishedAt: row.finished_at,
     entrants: ((entrants.data ?? []) as EntrantRow[]).map(toEntrant),
-    matches: ((matches.data ?? []) as MatchRow[]).map(toMatch),
+    matches: ((matches.data ?? []) as MatchRow[]).map((m) => toMatch(m, counters)),
     share: { token: row.share_token, enabled: row.share_enabled },
     spots: row.spots ?? null,
     startingLife: row.starting_life ?? DEFAULT_STARTING_LIFE[asFormat(row.format)],
     tableSize: ffa ? (row.table_size ?? DEFAULT_TABLE_SIZE) : null,
-    pods: ffa ? toPods((pods?.data ?? []) as PodRow[], (podPlayers?.data ?? []) as PodPlayerRow[]) : [],
+    pods: ffa ? toPods((pods?.data ?? []) as PodRow[], (podPlayers?.data ?? []) as PodPlayerRow[], counters) : [],
     serverTime: new Date().toISOString(),
   };
 }
@@ -711,11 +760,13 @@ export async function reportResult(
     .from("tournament_matches")
     .update(
       result === "pending"
-        ? { result, reported_at: null, reported_by: null, ended_at: null }
+        ? { result, reported_at: null, reported_by: null, ended_at: null, loss_reason: null }
         : {
             result,
             reported_at: now,
             reported_by: actor?.slice(0, 320) ?? null,
+            // Staff decided it: how it was lost is no longer the player's account.
+            loss_reason: null,
             // The game ended when it was first decided; changing the winner later doesn't move that.
             ended_at: match.endedAt ?? (match.result === "pending" ? now : match.reportedAt ?? now),
           },
@@ -848,12 +899,16 @@ export async function changeLife(
  * goes to the other side and its clock stops. Only while it's being played,
  * so two phones confirming at once record it once.
  */
-export async function reportLoss(t: TournamentDetail, input: { matchId: unknown; side: unknown }): Promise<void> {
+export async function reportLoss(
+  t: TournamentDetail,
+  input: { matchId: unknown; side: unknown; reason?: unknown },
+): Promise<void> {
   const { match, side } = findLiveGame(t, input.matchId, input.side);
+  const reason = readLossReason(input.reason);
   const now = new Date().toISOString();
   const { data, error } = await db()
     .from("tournament_matches")
-    .update({ result: side === "a" ? "b" : "a", reported_at: now, reported_by: "player", ended_at: now })
+    .update({ result: side === "a" ? "b" : "a", reported_at: now, reported_by: "player", ended_at: now, loss_reason: reason })
     .eq("id", match.id)
     .eq("tournament_id", t.id)
     .eq("result", "pending")
@@ -905,13 +960,33 @@ export async function changePodLife(t: TournamentDetail, input: { podPlayerId: u
  * or staff marked it): they take the lowest place still open, and when one
  * player is left the game is theirs. Returns the place they finished.
  */
-export async function knockOut(t: TournamentDetail, input: { podPlayerId: unknown }): Promise<{ place: number; ended: boolean }> {
+export async function knockOut(
+  t: TournamentDetail,
+  input: { podPlayerId: unknown; reason?: unknown; winnerEntrantId?: unknown },
+): Promise<{ place: number; ended: boolean }> {
   const { pod, player } = findPodSeat(t, input.podPlayerId);
   if (pod.endedAt) throw new HttpError(409, "This game is over.");
   if (player.outAt) throw new HttpError(409, "You're already out of this game.");
+  const reason = readLossReason(input.reason);
+  const left = stillIn(pod);
+  // Someone won with a card (Thassa's Oracle, Approach…): everyone else
+  // loses at once, so the game ends with them 1st and the rest sharing 2nd.
+  if (reason === "alt_win" && left.length > 2) {
+    const winner = typeof input.winnerEntrantId === "string" ? left.find((p) => p.entrantId === input.winnerEntrantId) : undefined;
+    if (!winner || winner.id === player.id) throw new HttpError(400, "Pick who won the game.");
+    const { error } = await db().rpc("tournament_pod_set_winner", {
+      p_tournament_id: t.id,
+      p_pod_id: pod.id,
+      p_entrant_id: winner.entrantId,
+      p_reason: "alt_win",
+    });
+    if (error) tournamentDbError(error, "Couldn't record that. Please try again.");
+    return { place: 2, ended: true };
+  }
   const { data, error } = await db().rpc("tournament_pod_knock_out", {
     p_tournament_id: t.id,
     p_pod_player_id: player.id,
+    ...(reason ? { p_reason: reason } : {}),
   });
   if (error) tournamentDbError(error, "Couldn't record that. Please try again.");
   const result = (data ?? {}) as { place?: number; ended?: boolean };
@@ -950,6 +1025,105 @@ export async function setTableSize(t: TournamentDetail, raw: unknown): Promise<v
   if (problem) throw new HttpError(400, problem);
   const { error } = await db().from("tournaments").update({ table_size: raw as number }).eq("id", t.id);
   if (error) tournamentDbError(error);
+}
+
+/** How a game was lost, as sent by a phone: a known reason, or null when none was given. */
+function readLossReason(raw: unknown): LossReason | null {
+  if (raw == null || raw === "") return null;
+  if (!isLossReason(raw)) throw new HttpError(400, "Pick how the game was lost.");
+  return raw;
+}
+
+/**
+ * Adds to poison counters or commander damage while a game is played:
+ * a side of a match ({ matchId, side }) or a free-for-all seat
+ * ({ podPlayerId }). Commander damage names the commander that dealt it,
+ * which has to belong to someone else in that game.
+ */
+export async function changeCounter(
+  t: TournamentDetail,
+  input: { matchId?: unknown; side?: unknown; podPlayerId?: unknown; kind: unknown; source?: unknown; delta: unknown },
+): Promise<number> {
+  const kind = input.kind;
+  if (kind !== "poison" && kind !== "commander") throw new HttpError(400, "Pick poison or commander damage.");
+  const delta = input.delta;
+  if (typeof delta !== "number" || !Number.isInteger(delta) || delta === 0 || Math.abs(delta) > MAX_LIFE_CHANGE) {
+    throw new HttpError(400, "That change doesn't look right.");
+  }
+
+  let target: { matchId: string; side: "a" | "b" } | { podPlayerId: string };
+  /** Entrants who could have dealt this player commander damage. */
+  let opponents: string[];
+  if (input.podPlayerId != null) {
+    const { pod, player } = findPodSeat(t, input.podPlayerId);
+    if (pod.endedAt || player.outAt) throw new HttpError(409, "This game is over for you.");
+    target = { podPlayerId: player.id };
+    opponents = pod.players.filter((p) => p.id !== player.id).map((p) => p.entrantId);
+  } else {
+    const { match, side } = findLiveGame(t, input.matchId, input.side);
+    target = { matchId: match.id, side };
+    opponents = [side === "a" ? (match.b as string) : match.a];
+  }
+
+  let source = "";
+  if (kind === "commander") {
+    const parsed = parseSourceKey(input.source);
+    const from = parsed ? t.entrants.find((e) => e.id === parsed.entrantId) : undefined;
+    if (!parsed || !from || !opponents.includes(from.id) || parsed.seat >= from.players.length) {
+      throw new HttpError(400, "Pick which commander dealt the damage.");
+    }
+    source = `${parsed.entrantId}:${parsed.seat}:${parsed.partner}`;
+  }
+
+  const { data, error } = await db().rpc("tournament_change_counter", {
+    p_tournament_id: t.id,
+    p_match_id: "matchId" in target ? target.matchId : null,
+    p_side: "matchId" in target ? target.side : null,
+    p_pod_player_id: "podPlayerId" in target ? target.podPlayerId : null,
+    p_kind: kind,
+    p_source: source,
+    p_delta: delta,
+  });
+  if (error) tournamentDbError(error, "Couldn't save that.");
+  return typeof data === "number" ? data : 0;
+}
+
+/**
+ * A player is ready for the next round (or takes it back). Only once their
+ * game this round is over. Returns true when that made everyone ready and
+ * the next round started.
+ */
+export async function setReady(t: TournamentDetail, input: { entrantId: unknown; ready: unknown }): Promise<boolean> {
+  if (t.status !== "active") throw new HttpError(409, "This tournament is finished.");
+  if (t.currentRound < 1) throw new HttpError(409, "The tournament hasn't started yet.");
+  const entrant = findEntrant(t, input.entrantId);
+  if (entrant.droppedAt) throw new HttpError(409, "You've been dropped from this tournament. Ask the store to bring you back.");
+  const ready = input.ready !== false;
+  if (ready && !doneThisRound(t, entrant.id)) throw new HttpError(409, "Finish your game first.");
+  const { error } = await db()
+    .from("tournament_entrants")
+    .update({ ready_for: ready ? t.currentRound + 1 : null })
+    .eq("id", entrant.id)
+    .eq("tournament_id", t.id);
+  if (error) tournamentDbError(error);
+  return ready ? advanceIfAllReady(t.id) : false;
+}
+
+/**
+ * Pairs (or deals) the next round when everyone still in is ready and every
+ * game is decided. Never throws: two players readying at once both get here,
+ * and the round check in the RPC lets only one of them start it.
+ */
+export async function advanceIfAllReady(tournamentId: string, random: () => number = Math.random): Promise<boolean> {
+  try {
+    const t = await loadTournament(tournamentId);
+    if (!everyoneReady(t)) return false;
+    await pairTournamentRound(t, { round: t.currentRound + 1, replace: false }, random);
+    return true;
+  } catch (err) {
+    if (!(err instanceof HttpError && err.status === 409)) console.error("[tournaments] couldn't start the next round", tournamentId, err);
+    return false;
+  }
 }
 
 /** Changes the starting life (games already being played keep what they've tracked). */

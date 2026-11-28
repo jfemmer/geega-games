@@ -161,7 +161,7 @@ describe("on a player's phone", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Your life is at 0. If you lost, you're out and finish 3rd of 4.")).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Yes, I lost" }));
-    await waitFor(() => expect(onPodOut).toHaveBeenCalledWith("seat-1-1"));
+    await waitFor(() => expect(onPodOut).toHaveBeenCalledWith("seat-1-1", { reason: "life", winnerId: null }));
   });
 
   it("names the winner when only two are left", async () => {
@@ -171,7 +171,7 @@ describe("on a player's phone", () => {
     });
     phone(3, t);
     await user.click(screen.getByRole("button", { name: "I lost this game" }));
-    expect(within(await screen.findByRole("dialog")).getByText("Confirm and you finish 2nd of 4 and Alex wins the game.")).toBeTruthy();
+    expect(within(await screen.findByRole("dialog")).getByText("Pick how, then confirm and you finish 2nd of 4 and Alex wins the game.")).toBeTruthy();
   });
 
   it("shows where they finished once they're out, and their commander form again", () => {

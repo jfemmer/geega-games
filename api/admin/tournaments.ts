@@ -5,6 +5,7 @@ import { logAdminAction } from "../_lib/auditLog.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import {
   addEntrant,
+  advanceIfAllReady,
   createTournament,
   knockOut,
   deleteTournament,
@@ -143,6 +144,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case "remove-entrant":
         await removeEntrant(tournament, body.entrantId, staff.email);
+        // They may have been the last one everyone was waiting on.
+        await advanceIfAllReady(tournament.id);
         break;
       case "restore-entrant":
         await restoreEntrant(tournament, body.entrantId);

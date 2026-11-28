@@ -2,14 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ToastProvider } from "../../admin/components/ui/ToastProvider";
 import { useToast } from "../../admin/hooks/useToast";
 import { Spinner } from "../../admin/components/ui/States";
-import { BracketDisplay, type SignUpInput } from "../../admin/components/tournaments/BracketDisplay";
+import { BracketDisplay, type CounterTarget, type SignUpInput } from "../../admin/components/tournaments/BracketDisplay";
+import type { LossPick } from "../../admin/components/tournaments/LifeCounter";
 import type { CommanderOption } from "../../admin/components/tournaments/CommanderPicker";
 import {
+  doneThisRound,
   hasLiveGames,
   isPlaying,
   ordinal,
+  readiness,
   parseSeatKey,
   tournamentShareUrl,
+  type GameCounters,
   type PlayerSeat,
   type TournamentCommander,
   type TournamentDetail,
@@ -151,6 +155,8 @@ function TournamentScreen() {
   const savedLife = useRef(new Map<string, { lifeA: number; lifeB: number; at: number }>());
   // The same for free-for-all, by seat.
   const savedPodLife = useRef(new Map<string, { life: number; at: number }>());
+  // And poison / commander damage, by "<match id>:<side>" or seat id, then "poison" or the commander's key.
+  const savedCounters = useRef(new Map<string, { target: string; kind: string; source: string; value: number; at: number }>());
 
   /** Takes a tournament from the server: keeps newer life totals saved here, and the server's clock. */
   const receive = useCallback((next: TournamentDetail) => {
@@ -158,6 +164,13 @@ function TournamentScreen() {
     if (Number.isFinite(at)) setClockOffset(at - Date.now());
     const mine = savedLife.current;
     const minePods = savedPodLife.current;
+    const myCounters = savedCounters.current;
+    if (myCounters.size > 0) {
+      for (const [key, saved] of [...myCounters]) {
+        if (Number.isFinite(at) && saved.at <= at) myCounters.delete(key);
+      }
+      if (myCounters.size > 0) next = withSavedCounters(next, [...myCounters.values()]);
+    }
     if (minePods.size > 0) {
       next = {
         ...next,
@@ -223,13 +236,17 @@ function TournamentScreen() {
   const resolvedMe = tournament ? resolveMe(tournament, me) : null;
   const live = tournament != null && hasLiveGames(tournament);
   const playing = live && resolvedMe != null && isPlaying(tournament!, resolvedMe.entrantId);
+  // Between rounds: players readying up, and the next round can start any moment.
+  const ready = tournament ? readiness(tournament) : null;
+  const readying = (ready?.ready.length ?? 0) > 0;
+  const waitingForNext = ready != null && resolvedMe != null && doneThisRound(tournament!, resolvedMe.entrantId);
   useEffect(() => {
     if (!token || gone) return;
     const every = tv
-      ? live
+      ? live || readying
         ? TV_LIVE_REFRESH_MS
         : TV_REFRESH_MS
-      : playing
+      : playing || waitingForNext
         ? PHONE_PLAYING_REFRESH_MS
         : live
           ? PHONE_WATCHING_REFRESH_MS
@@ -245,7 +262,7 @@ function TournamentScreen() {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [token, tv, gone, load, live, playing]);
+  }, [token, tv, gone, load, live, playing, readying, waitingForNext]);
 
   // A TV showing the bracket, or a phone tracking life on the table, shouldn't go to sleep.
   const keepAwake = tv || playing;
@@ -390,9 +407,9 @@ function TournamentScreen() {
   );
 
   const reportLost = useCallback(
-    async (matchId: string, side: "a" | "b"): Promise<boolean> => {
+    async (matchId: string, side: "a" | "b", pick: LossPick): Promise<boolean> => {
       try {
-        const res = await post<{ tournament: TournamentDetail }>({ token, action: "lost", matchId, side });
+        const res = await post<{ tournament: TournamentDetail }>({ token, action: "lost", matchId, side, reason: pick.reason });
         savedLife.current.delete(matchId);
         receive(res.tournament);
         toast.success("Game recorded. Good game!");
@@ -434,15 +451,56 @@ function TournamentScreen() {
   );
 
   const podOut = useCallback(
-    async (podPlayerId: string): Promise<boolean> => {
+    async (podPlayerId: string, pick: LossPick): Promise<boolean> => {
       try {
-        const res = await post<{ tournament: TournamentDetail; place: number }>({ token, action: "pod-out", podPlayerId });
+        const res = await post<{ tournament: TournamentDetail; place: number }>({
+          token,
+          action: "pod-out",
+          podPlayerId,
+          reason: pick.reason,
+          ...(pick.winnerId ? { winnerEntrantId: pick.winnerId } : {}),
+        });
         savedPodLife.current.delete(podPlayerId);
         receive(res.tournament);
         toast.success(res.place ? `You finished ${ordinal(res.place)}. Good game!` : "Recorded. Good game!");
         return true;
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Couldn't record that. Please try again.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load, receive],
+  );
+
+  const changeCounter = useCallback(
+    async (target: CounterTarget, kind: "poison" | "commander", source: string, delta: number): Promise<boolean> => {
+      try {
+        const res = await post<{ value: number; serverTime: string }>({ token, action: "counter", ...target, kind, source, delta });
+        const at = Date.parse(res.serverTime);
+        const key = "matchId" in target ? `${target.matchId}:${target.side}` : target.podPlayerId;
+        const saved = { target: key, kind, source, value: res.value, at: Number.isFinite(at) ? at : Date.now() };
+        savedCounters.current.set(`${key}|${kind}|${source}`, saved);
+        setTournament((t) => (t ? withSavedCounters(t, [saved]) : t));
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't save that.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load],
+  );
+
+  const setReady = useCallback(
+    async (entrantId: string, ready: boolean): Promise<boolean> => {
+      try {
+        const res = await post<{ tournament: TournamentDetail; started: boolean }>({ token, action: "ready", entrantId, ready });
+        receive(res.tournament);
+        if (res.started) toast.success(`Everyone's ready. Round ${res.tournament.currentRound} is on: find your table!`);
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't save that. Please try again.");
         void load();
         return false;
       }
@@ -519,6 +577,8 @@ function TournamentScreen() {
         onLost={reportLost}
         onChangePodLife={changePodLife}
         onPodOut={podOut}
+        onCounter={changeCounter}
+        onReady={setReady}
         clockOffset={clockOffset}
         searchCommanders={searchCommanders}
         updatedAt={updatedAt}
@@ -526,6 +586,32 @@ function TournamentScreen() {
       />
     </>
   );
+}
+
+/** Puts counters saved from this phone onto a tournament (so an older refresh doesn't undo them). */
+function withSavedCounters(
+  t: TournamentDetail,
+  saved: { target: string; kind: string; source: string; value: number }[],
+): TournamentDetail {
+  const apply = (counters: GameCounters | undefined, target: string): GameCounters | undefined => {
+    const mine = saved.filter((c) => c.target === target);
+    if (mine.length === 0) return counters;
+    const next: GameCounters = { poison: counters?.poison ?? 0, commander: { ...(counters?.commander ?? {}) } };
+    for (const c of mine) {
+      if (c.kind === "poison") next.poison = c.value;
+      else next.commander[c.source] = c.value;
+    }
+    return next;
+  };
+  return {
+    ...t,
+    matches: t.matches.map((m) =>
+      m.result !== "pending" ? m : { ...m, countersA: apply(m.countersA, `${m.id}:a`), countersB: apply(m.countersB, `${m.id}:b`) },
+    ),
+    pods: t.pods.map((pod) =>
+      pod.endedAt ? pod : { ...pod, players: pod.players.map((p) => (p.outAt ? p : { ...p, counters: apply(p.counters, p.id) })) },
+    ),
+  };
 }
 
 function Notice({ title, message, retry }: { title: string; message: string; retry?: () => void }) {

@@ -86,7 +86,7 @@ describe("life counter", () => {
     expect(within(dialog).getByRole("heading", { name: "Did you lose?" })).toBeTruthy();
     expect(within(dialog).getByText("Your life is at 0. If you lost, the game is recorded as a win for Blair and its clock stops.")).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Yes, I lost" }));
-    await waitFor(() => expect(onLost).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onLost).toHaveBeenCalledWith({ reason: "life", winnerId: null }));
     // The taps were sent first.
     expect(onChange).toHaveBeenCalledWith(-6);
     expect(onChange.mock.invocationCallOrder[0]).toBeLessThan(onLost.mock.invocationCallOrder[0]);
@@ -110,8 +110,12 @@ describe("life counter", () => {
     await user.click(screen.getByRole("button", { name: "We lost this game" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Did your team lose?" })).toBeTruthy();
-    await user.click(within(dialog).getByRole("button", { name: "Yes, we lost" }));
-    await waitFor(() => expect(onLost).toHaveBeenCalledTimes(1));
+    // How they lost comes first.
+    const confirm = within(dialog).getByRole("button", { name: "Yes, we lost" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    await user.click(within(dialog).getByRole("radio", { name: "Alt win con" }));
+    await user.click(confirm);
+    await waitFor(() => expect(onLost).toHaveBeenCalledWith({ reason: "alt_win", winnerId: null }));
   });
 });
 

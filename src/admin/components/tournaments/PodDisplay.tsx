@@ -5,10 +5,14 @@ import {
   entrantLabel,
   formatDuration,
   gameDuration,
+  lossLabel,
   ordinal,
+  podCounters,
   podLife,
   stillIn,
+  topCommanderDamage,
   type FfaStandingRow,
+  type GameCounters,
   type TournamentEntrant,
   type TournamentPod,
   type TournamentPodPlayer,
@@ -25,12 +29,15 @@ export function PodCard({
   startingLife,
   now,
   myId,
+  readyIds,
 }: {
   pod: TournamentPod;
   byId: Map<string, TournamentEntrant>;
   startingLife: number;
   now: number;
   myId: string | null;
+  /** Entrants ready for the next round. */
+  readyIds?: Set<string>;
 }) {
   const done = Boolean(pod.endedAt);
   const elapsed = gameDuration(pod, now);
@@ -54,7 +61,15 @@ export function PodCard({
         {pod.players.map((p) => {
           const entrant = byId.get(p.entrantId);
           return entrant ? (
-            <PodSeat key={p.id} player={p} entrant={entrant} startingLife={startingLife} done={done} mine={p.entrantId === myId} />
+            <PodSeat
+              key={p.id}
+              player={p}
+              entrant={entrant}
+              startingLife={startingLife}
+              done={done}
+              mine={p.entrantId === myId}
+              ready={Boolean(readyIds?.has(p.entrantId)) && (done || Boolean(p.outAt))}
+            />
           ) : null;
         })}
       </ol>
@@ -68,12 +83,14 @@ function PodSeat({
   startingLife,
   done,
   mine,
+  ready,
 }: {
   player: TournamentPodPlayer;
   entrant: TournamentEntrant;
   startingLife: number;
   done: boolean;
   mine: boolean;
+  ready: boolean;
 }) {
   const won = done && player.place === 1;
   const out = Boolean(player.outAt);
@@ -90,9 +107,20 @@ function PodSeat({
             <Icon name="trophy" size={13} /> Won
           </span>
         )}
-        {out && player.place != null && <span className="gg-bside__tag gg-bside__tag--out">Out · {ordinal(player.place)}</span>}
+        {out && player.place != null && (
+          <span className="gg-bside__tag gg-bside__tag--out">
+            Out · {ordinal(player.place)}
+            {player.outReason ? ` · ${lossLabel(player.outReason)}` : ""}
+          </span>
+        )}
         <strong>{entrantLabel(entrant)}</strong>
         {cmd && <span className="gg-bside__cmd">{cmd}</span>}
+        {!out && !done && <CounterChips counters={podCounters(player)} />}
+        {ready && (
+          <span className="gg-bside__ready">
+            <Icon name="check" size={12} /> Ready
+          </span>
+        )}
       </div>
       {!out && (
         <span className={`gg-bside__life ${low ? "is-low" : ""} ${life <= 0 ? "is-out" : ""}`} aria-label={`${life} life`}>
@@ -100,6 +128,18 @@ function PodSeat({
         </span>
       )}
     </li>
+  );
+}
+
+/** Poison and the most commander damage from one commander, when there's any. */
+export function CounterChips({ counters }: { counters: GameCounters }) {
+  const top = topCommanderDamage(counters);
+  if (counters.poison === 0 && top === 0) return null;
+  return (
+    <span className="gg-bside__counters">
+      {counters.poison > 0 && <span title="Poison counters">☠ {counters.poison} poison</span>}
+      {top > 0 && <span title="Most commander damage from one commander">⚔ {top} cmdr</span>}
+    </span>
   );
 }
 

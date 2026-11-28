@@ -4,16 +4,23 @@ import { SelectField, TextField } from "../ui/Field";
 import { Icon } from "../ui/Icon";
 import { QrCode } from "../partners/QrCode";
 import { CommanderPicker, type CommanderOption } from "./CommanderPicker";
-import { LifeCounter } from "./LifeCounter";
+import { LifeCounter, type LossPick } from "./LifeCounter";
 import { CommanderCards } from "./CommanderCards";
-import { FfaStandings, MyPodTable, PodCard, PodRoundColumn } from "./PodDisplay";
+import { FfaStandings, MyPodTable, PodCard, PodRoundColumn, CounterChips } from "./PodDisplay";
 import { useClock } from "../../hooks/useClock";
 import {
   MAX_PLAYER_NAME,
   activeEntrants,
   cleanPlayerName,
+  commanderSources,
   commanderSummary,
   computeFfaStandings,
+  countersOf,
+  doneThisRound,
+  lossLabel,
+  podCounters,
+  poisonToLose,
+  readiness,
   computeStandings,
   entrantLabel,
   formatDuration,
@@ -36,6 +43,8 @@ import {
   type StandingRow,
   type TournamentCommander,
   type TournamentDetail,
+  type GameCounters,
+  type LossReason,
   type TournamentEntrant,
   type TournamentMatch,
 } from "../../utils/tournament";
@@ -51,6 +60,12 @@ import {
 //
 // Free-for-all shows tables instead of matches (PodDisplay.tsx): everyone at
 // a table with their life, who's out and where they finished.
+//
+// Between rounds, a player whose game is over is asked to ready up; the
+// screens show who's ready, and the last one ready starts the next round.
+
+/** Where a poison or commander damage change goes: a side of a match, or a free-for-all seat. */
+export type CounterTarget = { matchId: string; side: "a" | "b" } | { podPlayerId: string };
 
 /** What a player sends to take a spot. */
 export interface SignUpInput {
@@ -94,6 +109,8 @@ export function BracketDisplay({
   onLost,
   onChangePodLife,
   onPodOut,
+  onCounter,
+  onReady,
   searchCommanders,
   updatedAt,
   onFullscreen,
@@ -112,12 +129,16 @@ export function BracketDisplay({
   onSignUp?: (input: SignUpInput) => Promise<boolean>;
   /** Changes a side's life in a game being played. */
   onChangeLife?: (matchId: string, side: "a" | "b", delta: number) => Promise<boolean>;
-  /** Records that a side lost a game being played. */
-  onLost?: (matchId: string, side: "a" | "b") => Promise<boolean>;
+  /** Records that a side lost a game being played, and how. */
+  onLost?: (matchId: string, side: "a" | "b", pick: LossPick) => Promise<boolean>;
   /** Free-for-all: changes a player's life at their table. */
   onChangePodLife?: (podPlayerId: string, delta: number) => Promise<boolean>;
-  /** Free-for-all: the player is out of their table's game. */
-  onPodOut?: (podPlayerId: string) => Promise<boolean>;
+  /** Free-for-all: the player is out of their table's game (an alternate win names the winner). */
+  onPodOut?: (podPlayerId: string, pick: LossPick) => Promise<boolean>;
+  /** Changes poison or commander damage (source: the commander's key) in a game being played. */
+  onCounter?: (target: CounterTarget, kind: "poison" | "commander", source: string, delta: number) => Promise<boolean>;
+  /** Ready (or not) for the next round. */
+  onReady?: (entrantId: string, ready: boolean) => Promise<boolean>;
   /** Server clock minus device clock (ms), for game timers. */
   clockOffset?: number;
   searchCommanders: (query: string) => Promise<CommanderOption[]>;
@@ -166,6 +187,10 @@ export function BracketDisplay({
   const myLiveSeat =
     mySeat && !mySeat.pod.endedAt && !mySeat.player.outAt && seated && onChangePodLife && onPodOut ? mySeat : null;
   const inLiveGame = Boolean(myLiveGame || myLiveSeat);
+  // Ready-up between rounds.
+  const ready = finished ? null : readiness(t);
+  const readyIds = new Set(ready?.ready.map((e) => e.id) ?? []);
+  const myTurnToReady = ready != null && meEntrant != null && seated != null && !meEntrant.droppedAt && doneThisRound(t, meEntrant.id);
 
   const head = (
     <header className="gg-bracket__head">
@@ -228,6 +253,15 @@ export function BracketDisplay({
           </>
         )}
       </h2>
+      {ready && ready.ready.length > 0 && (
+        <p className="gg-bracket__readyline" aria-live="polite">
+          <Icon name="checkCircle" size={16} />
+          <span>
+            Ready for round {ready.next}: <strong>{ready.ready.length}</strong> of {ready.ready.length + ready.waiting.length}
+            {ready.waiting.length > 0 && ready.waiting.length <= 3 && <> · waiting on {ready.waiting.map(entrantLabel).join(", ")}</>}
+          </span>
+        </p>
+      )}
       {t.currentRound === 0 ? (
         <ul className="gg-bracket__entrants">
           {active.map((e) => (
@@ -250,6 +284,7 @@ export function BracketDisplay({
               startingLife={t.startingLife}
               now={now}
               myId={meEntrant?.id ?? null}
+              readyIds={readyIds}
             />
           ))}
         </ul>
@@ -263,6 +298,7 @@ export function BracketDisplay({
               mine={myMatch?.id === m.id}
               startingLife={t.startingLife}
               now={now}
+              readyIds={readyIds}
             />
           ))}
         </ul>
@@ -424,6 +460,17 @@ export function BracketDisplay({
     <div className="gg-bracket gg-bracket--phone">
       {head}
       {champion}
+      {myTurnToReady && ready && meEntrant && onReady && (
+        <ReadyCard
+          next={ready.next}
+          ready={readyIds.has(meEntrant.id)}
+          readyCount={ready.ready.length}
+          total={ready.ready.length + ready.waiting.length}
+          waiting={ready.waiting.filter((e) => e.id !== meEntrant.id).map(entrantLabel)}
+          team={t.format === "2hg"}
+          onReady={(value) => onReady(meEntrant.id, value)}
+        />
+      )}
       {!inLiveGame && !finished && signingUp && !seated && onSignUp ? (
         <JoinCard
           tournament={t}
@@ -451,6 +498,7 @@ export function BracketDisplay({
           const side = myLiveGame.a === meEntrant.id ? "a" : "b";
           const opp = byId.get(side === "a" ? (myLiveGame.b as string) : myLiveGame.a);
           const oppLabel = opp ? entrantLabel(opp) : "your opponent";
+          const mine = countersOf(myLiveGame, side);
           return (
             <LifeCounter
               key={myLiveGame.id}
@@ -459,12 +507,21 @@ export function BracketDisplay({
               title={`Table ${myLiveGame.table} · vs ${oppLabel}`}
               elapsed={gameDuration(myLiveGame, now)}
               others={[
-                { key: opp?.id ?? "opponent", label: oppLabel, life: lifeOf(myLiveGame, side === "a" ? "b" : "a", t.startingLife), out: null },
+                {
+                  key: opp?.id ?? "opponent",
+                  label: oppLabel,
+                  life: lifeOf(myLiveGame, side === "a" ? "b" : "a", t.startingLife),
+                  out: null,
+                  sources: opp ? commanderSources(opp).map((src) => ({ key: src.key, label: src.label, value: mine.commander[src.key] ?? 0 })) : [],
+                },
               ]}
               team={t.format === "2hg"}
+              poison={mine.poison}
+              poisonLimit={poisonToLose(t.format)}
               outcome={`the game is recorded as a win for ${oppLabel} and its clock stops`}
               onChange={(delta) => onChangeLife(myLiveGame.id, side, delta)}
-              onLost={() => onLost(myLiveGame.id, side)}
+              onCounter={onCounter ? (kind, source, delta) => onCounter({ matchId: myLiveGame.id, side }, kind, source, delta) : undefined}
+              onLost={(pick) => onLost(myLiveGame.id, side, pick)}
             />
           );
         })()
@@ -473,30 +530,43 @@ export function BracketDisplay({
           const { pod, player } = myLiveSeat;
           const left = stillIn(pod);
           const rest = left.filter((p) => p.id !== player.id);
-          const last = rest.length === 1 ? byId.get(rest[0].entrantId) : undefined;
+          const nameOf = (entrantId: string) => (byId.get(entrantId) ? entrantLabel(byId.get(entrantId)!) : "Player");
+          const last = rest.length === 1 ? rest[0] : undefined;
+          const mine = podCounters(player);
+          const of = pod.players.length;
           return (
             <LifeCounter
               key={player.id}
               life={podLife(player, t.startingLife)}
               startingLife={t.startingLife}
-              title={`Table ${pod.table} · ${pod.players.length}-player game`}
+              title={`Table ${pod.table} · ${of}-player game`}
               elapsed={gameDuration(pod, now)}
               others={pod.players
                 .filter((p) => p.id !== player.id)
-                .map((p) => ({
-                  key: p.id,
-                  label: byId.get(p.entrantId) ? entrantLabel(byId.get(p.entrantId)!) : "Player",
-                  life: podLife(p, t.startingLife),
-                  out: p.outAt && p.place != null ? ordinal(p.place) : null,
-                }))}
+                .map((p) => {
+                  const e = byId.get(p.entrantId);
+                  return {
+                    key: p.id,
+                    label: nameOf(p.entrantId),
+                    life: podLife(p, t.startingLife),
+                    out: p.outAt && p.place != null ? ordinal(p.place) : null,
+                    sources: e ? commanderSources(e).map((src) => ({ key: src.key, label: src.label, value: mine.commander[src.key] ?? 0 })) : [],
+                  };
+                })}
               team={false}
-              outcome={
+              poison={mine.poison}
+              poisonLimit={poisonToLose(t.format)}
+              altWinners={rest.map((p) => ({ id: p.entrantId, label: nameOf(p.entrantId) }))}
+              outcome={(pick) =>
                 last
-                  ? `you finish 2nd of ${pod.players.length} and ${entrantLabel(last)} wins the game`
-                  : `you're out and finish ${ordinal(left.length)} of ${pod.players.length}`
+                  ? `you finish 2nd of ${of} and ${nameOf(last.entrantId)} wins the game`
+                  : pick.reason === "alt_win"
+                    ? `${pick.winnerId ? nameOf(pick.winnerId) : "they"} win${pick.winnerId ? "s" : ""} the game and everyone else still in shares 2nd`
+                    : `you're out and finish ${ordinal(left.length)} of ${of}`
               }
               onChange={(delta) => onChangePodLife(player.id, delta)}
-              onLost={() => onPodOut(player.id)}
+              onCounter={onCounter ? (kind, source, delta) => onCounter({ podPlayerId: player.id }, kind, source, delta) : undefined}
+              onLost={(pick) => onPodOut(player.id, pick)}
             />
           );
         })()
@@ -519,12 +589,15 @@ function MatchCard({
   mine,
   startingLife,
   now,
+  readyIds,
 }: {
   match: TournamentMatch;
   byId: Map<string, TournamentEntrant>;
   mine: boolean;
   startingLife: number;
   now: number;
+  /** Entrants ready for the next round. */
+  readyIds: Set<string>;
 }) {
   const a = byId.get(match.a);
   if (!a) return null;
@@ -532,7 +605,7 @@ function MatchCard({
     return (
       <li className={`gg-bmatch gg-bmatch--bye ${mine ? "is-mine" : ""}`}>
         <span className="gg-bmatch__table">Bye</span>
-        <Side entrant={a} state="bye" />
+        <Side entrant={a} state="bye" ready={readyIds.has(a.id)} />
       </li>
     );
   }
@@ -559,11 +632,27 @@ function MatchCard({
           </span>
         )}
       </span>
-      <Side entrant={a} state={stateOf("a")} life={lifeOf(match, "a", startingLife)} startingLife={startingLife} />
+      <Side
+        entrant={a}
+        state={stateOf("a")}
+        life={lifeOf(match, "a", startingLife)}
+        startingLife={startingLife}
+        lostBy={match.result === "b" ? match.lossReason : null}
+        counters={done ? undefined : countersOf(match, "a")}
+        ready={done && readyIds.has(a.id)}
+      />
       <span className="gg-bmatch__vs" aria-hidden="true">
         vs
       </span>
-      <Side entrant={b} state={stateOf("b")} life={lifeOf(match, "b", startingLife)} startingLife={startingLife} />
+      <Side
+        entrant={b}
+        state={stateOf("b")}
+        life={lifeOf(match, "b", startingLife)}
+        startingLife={startingLife}
+        lostBy={match.result === "a" ? match.lossReason : null}
+        counters={done ? undefined : countersOf(match, "b")}
+        ready={done && readyIds.has(b.id)}
+      />
     </li>
   );
 }
@@ -573,12 +662,21 @@ function Side({
   state,
   life,
   startingLife,
+  lostBy,
+  counters,
+  ready,
 }: {
   entrant: TournamentEntrant;
   state: "playing" | "won" | "lost" | "draw" | "bye";
   /** Life in this game (not for a bye). */
   life?: number;
   startingLife?: number;
+  /** How they lost, when the player said. */
+  lostBy?: LossReason | null;
+  /** Poison and commander damage while the game is played. */
+  counters?: GameCounters;
+  /** Ready for the next round. */
+  ready?: boolean;
 }) {
   const cmd = commanderSummary(entrant);
   const low = life != null && startingLife != null && life <= Math.ceil(startingLife / 4);
@@ -593,8 +691,15 @@ function Side({
         )}
         {state === "draw" && <span className="gg-bside__tag gg-bside__tag--draw">Draw</span>}
         {state === "bye" && <span className="gg-bside__tag gg-bside__tag--bye">Free win</span>}
+        {state === "lost" && lostBy && <span className="gg-bside__tag gg-bside__tag--out">Lost · {lossLabel(lostBy)}</span>}
         <strong>{entrantLabel(entrant)}</strong>
         {cmd && <span className="gg-bside__cmd">{cmd}</span>}
+        {counters && <CounterChips counters={counters} />}
+        {ready && (
+          <span className="gg-bside__ready">
+            <Icon name="check" size={12} /> Ready
+          </span>
+        )}
       </div>
       {life != null && (
         <span
@@ -964,5 +1069,53 @@ function CommanderForm({
         )}
       </div>
     </form>
+  );
+}
+
+/** Between rounds on a player's phone: "Ready for round 3?" and who the room is waiting on. */
+function ReadyCard({
+  next,
+  ready,
+  readyCount,
+  total,
+  waiting,
+  team,
+  onReady,
+}: {
+  next: number;
+  ready: boolean;
+  readyCount: number;
+  total: number;
+  /** Everyone else not ready yet. */
+  waiting: string[];
+  team: boolean;
+  onReady: (ready: boolean) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const toggle = async (value: boolean) => {
+    setBusy(true);
+    await onReady(value);
+    setBusy(false);
+  };
+  return (
+    <section className={`gg-card gg-bracket__ready ${ready ? "is-ready" : ""}`} aria-labelledby="bracket-ready">
+      <h2 id="bracket-ready">{ready ? (team ? "Your team is ready" : "You're ready") : `Ready for round ${next}?`}</h2>
+      <p>
+        {ready
+          ? waiting.length === 0
+            ? `Everyone's ready. Round ${next} is starting.`
+            : `Round ${next} starts when everyone's ready: ${readyCount} of ${total} so far.${waiting.length <= 3 ? ` Waiting on ${waiting.join(", ")}.` : ""}`
+          : `Your game is done. Tap when ${team ? "your team is" : "you're"} ready to play; round ${next} starts once everyone is (${readyCount} of ${total} ready).`}
+      </p>
+      {ready ? (
+        <button type="button" className="gg-link-btn" disabled={busy} onClick={() => void toggle(false)}>
+          Not ready yet
+        </button>
+      ) : (
+        <Button variant="primary" icon="check" loading={busy} className="gg-bracket__readybtn" onClick={() => void toggle(true)}>
+          {team ? "We're ready" : "I'm ready"}
+        </Button>
+      )}
+    </section>
   );
 }

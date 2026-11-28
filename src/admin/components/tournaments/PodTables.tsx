@@ -5,6 +5,7 @@ import { Icon } from "../ui/Icon";
 import {
   formatDuration,
   gameDuration,
+  lossLabel,
   ordinal,
   podLife,
   stillIn,
@@ -115,7 +116,10 @@ function PodTable({
                   <Icon name="trophy" size={12} /> Won
                 </Badge>
               ) : out && p.place != null ? (
-                <Badge tone="neutral">{ordinal(p.place)}</Badge>
+                <Badge tone="neutral">
+                  {ordinal(p.place)}
+                  {p.outReason ? ` · ${lossLabel(p.outReason)}` : ""}
+                </Badge>
               ) : (
                 tracked && (
                   <span className={`gg-tourney-side__life ${life <= 0 ? "is-out" : ""}`} title="Life (tracked on their phone)">
