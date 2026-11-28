@@ -6,24 +6,30 @@ import { Icon } from "../ui/Icon";
 import { adminFetch } from "../../repositories/apiClient";
 import {
   DEFAULT_STARTING_LIFE,
+  DEFAULT_TABLE_SIZE,
   MAX_ENTRANTS,
   MAX_SPOTS,
   MAX_STARTING_LIFE,
+  MAX_TABLE_SIZE,
   MAX_TOURNAMENT_NAME,
+  MIN_TABLE_SIZE,
   TOURNAMENT_FORMATS,
   duplicateName,
   entrantLabel,
   formatInfo,
+  minPlayers,
   parsePlayerList,
   parseTeamList,
   randomTeams,
   spotsProblem,
   startingLifeProblem,
+  tableSizeProblem,
   type TournamentDetail,
   type TournamentFormat,
 } from "../../utils/tournament";
 
-// New tournament: a name, 1v1 or Two-Headed Giant, and how players get in:
+// New tournament: a name, the format (1v1, Two-Headed Giant, or free-for-all
+// with a players-per-table size), and how players get in:
 //   • Sign-ups (default): set the number of player spots. Players scan the QR
 //     code on the player display and enter their name and commander; round 1
 //     starts on its own when the last spot fills.
@@ -72,6 +78,7 @@ export function CreateTournamentForm({
   const [life, setLife] = useState(String(DEFAULT_STARTING_LIFE["1v1"]));
   const [lifeEdited, setLifeEdited] = useState(false);
   const [spots, setSpots] = useState(String(DEFAULT_SPOTS));
+  const [tableSize, setTableSize] = useState(String(DEFAULT_TABLE_SIZE));
   const [teamMode, setTeamMode] = useState<TeamMode>("random");
   const [text, setText] = useState("");
   const [seed, setSeed] = useState(newSeed);
@@ -82,7 +89,7 @@ export function CreateTournamentForm({
 
   // What will be entered, and anything stopping it.
   const plan = useMemo((): { entrants: string[][]; problem: string | null } => {
-    if (format === "1v1") {
+    if (format !== "2hg") {
       const entrants = parsePlayerList(text).map((n) => [n]);
       return { entrants, problem: null };
     }
@@ -115,8 +122,13 @@ export function CreateTournamentForm({
     if (!name.trim()) return "Give the tournament a name.";
     const lifeProblem = startingLifeProblem(Number(life));
     if (lifeProblem) return lifeProblem;
+    if (format === "ffa") {
+      const sizeProblem = tableSizeProblem(Number(tableSize));
+      if (sizeProblem) return sizeProblem;
+    }
     if (joinMode === "signup") return spotsProblem(format, Number(spots));
     if (plan.problem) return plan.problem;
+    if (format === "ffa" && plan.entrants.length < minPlayers("ffa")) return "Add at least 3 players.";
     if (plan.entrants.length < 2) return `Add at least two ${info.nounPlural}.`;
     if (plan.entrants.length > MAX_ENTRANTS) return `A tournament can have up to ${MAX_ENTRANTS} ${info.nounPlural}.`;
     const dup = duplicateName(plan.entrants);
@@ -135,10 +147,14 @@ export function CreateTournamentForm({
     try {
       const res = await adminFetch<{ id: string; tournament: TournamentDetail }>("/api/admin/tournaments", {
         method: "POST",
-        body:
-          joinMode === "signup"
-            ? { action: "create", name: name.trim(), format, entrants: [], spots: Number(spots), startingLife: Number(life) }
-            : { action: "create", name: name.trim(), format, entrants: plan.entrants, startingLife: Number(life) },
+        body: {
+          action: "create",
+          name: name.trim(),
+          format,
+          startingLife: Number(life),
+          ...(format === "ffa" ? { tableSize: Number(tableSize) } : {}),
+          ...(joinMode === "signup" ? { entrants: [], spots: Number(spots) } : { entrants: plan.entrants }),
+        },
       });
       onCreated(res.tournament);
     } catch (err) {
@@ -150,7 +166,7 @@ export function CreateTournamentForm({
 
   const listLabel = format === "2hg" && teamMode === "set" ? "Teams" : "Players";
   const listHint =
-    format === "1v1"
+    format !== "2hg"
       ? "One name per line."
       : teamMode === "random"
         ? "One name per line. They're paired into random teams of two."
@@ -187,11 +203,27 @@ export function CreateTournamentForm({
                 onClick={() => pickFormat(f.value)}
               >
                 <strong>{f.label}</strong>
-                <span>{f.teamSize === 1 ? "One player against one player" : "Teams of two share a life total"}</span>
+                <span>{f.blurb}</span>
               </button>
             ))}
           </div>
         </div>
+
+        {format === "ffa" && (
+          <TextField
+            label="Most players per table"
+            type="number"
+            inputMode="numeric"
+            min={MIN_TABLE_SIZE}
+            max={MAX_TABLE_SIZE}
+            value={tableSize}
+            hint="8 puts up to 8 players in one big game; 4 splits everyone into pods of four. Tables are as even as possible and reshuffled every round."
+            onChange={(e) => {
+              setTableSize(e.target.value);
+              setError(null);
+            }}
+          />
+        )}
 
         <TextField
           label="Starting life"
@@ -246,7 +278,7 @@ export function CreateTournamentForm({
             label="Player spots"
             type="number"
             inputMode="numeric"
-            min={format === "2hg" ? 4 : 2}
+            min={minPlayers(format)}
             max={MAX_SPOTS}
             step={format === "2hg" ? 2 : 1}
             value={spots}

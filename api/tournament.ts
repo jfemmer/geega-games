@@ -3,6 +3,8 @@ import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "./_lib/http
 import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
 import {
   changeLife,
+  changePodLife,
+  knockOut,
   loadTournamentByToken,
   publicView,
   reportLoss,
@@ -23,6 +25,8 @@ import {
 //   { token, action: "sign-up", name, commander?, teamWith? }   -> { tournament, seat: { entrantId, seat }, started }
 //   { token, action: "life", matchId, side: "a"|"b", delta }   -> { life: { a, b }, serverTime }
 //   { token, action: "lost", matchId, side: "a"|"b" }          -> { tournament }   (that side lost the game)
+//   { token, action: "pod-life", podPlayerId, delta }           -> { life, serverTime }  (free-for-all)
+//   { token, action: "pod-out", podPlayerId }                   -> { tournament, place } (free-for-all: I'm out)
 //
 // Players can sign up for an open spot (when staff set spots), add or
 // change commanders, track life during a game and confirm they lost it.
@@ -39,6 +43,8 @@ const LIMITS: Record<string, number> = {
   get: 12000,
   life: 6000,
   lost: 300,
+  "pod-life": 6000,
+  "pod-out": 300,
   commander: 300,
   "commander-search": 600,
   "sign-up": 120,
@@ -85,6 +91,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "lost") {
       await reportLoss(tournament, { matchId: body.matchId, side: body.side });
       return sendJson(res, 200, { ok: true, tournament: publicView(await loadTournamentByToken(body.token)) });
+    }
+    if (action === "pod-life") {
+      const life = await changePodLife(tournament, { podPlayerId: body.podPlayerId, delta: body.delta });
+      return sendJson(res, 200, { ok: true, life, serverTime: new Date().toISOString() });
+    }
+    if (action === "pod-out") {
+      const { place } = await knockOut(tournament, { podPlayerId: body.podPlayerId });
+      return sendJson(res, 200, { ok: true, place, tournament: publicView(await loadTournamentByToken(body.token)) });
     }
     if (action === "commander") {
       await setCommander(tournament, { entrantId: body.entrantId, seat: body.seat, commander: body.commander });

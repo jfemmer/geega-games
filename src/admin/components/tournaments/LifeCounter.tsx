@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
-import { formatDuration, gameDuration, lifeOf, type TournamentMatch } from "../../utils/tournament";
+import { formatDuration } from "../../utils/tournament";
 
 // The player's life counter on the player display (/tournament), shown while
 // their game is being played. Taps change the number straight away; changes
@@ -10,41 +10,55 @@ import { formatDuration, gameDuration, lifeOf, type TournamentMatch } from "../.
 // its next refresh (every 2.5s while games are live).
 //
 // When a tap takes their life to 0 or below, it asks "Did you lose?": yes
-// records the game for the other side and stops its clock. "I lost this
-// game" does the same for losses that aren't about life (commander damage,
-// poison, conceding).
+// records the loss (1v1 / Two-Headed Giant: the game goes to the other side
+// and its clock stops; free-for-all: they're out and take the next finishing
+// place). "I lost this game" does the same for losses that aren't about life
+// (commander damage, poison, conceding).
+//
+// The same counter serves every format: the page passes this player's life,
+// everyone else at the table, and what confirming a loss does.
 
 /** Wait this long after the last tap before sending the batch. */
 const SEND_AFTER_MS = 450;
 
+/** Someone else at the table, as the counter lists them. */
+export interface LifeOther {
+  key: string;
+  label: string;
+  life: number;
+  /** Free-for-all: where they finished once they're out ("8th"); null while still in. */
+  out: string | null;
+}
+
 export function LifeCounter({
-  match,
-  side,
+  life: saved,
   startingLife,
-  table,
-  opponentLabel,
+  title,
+  elapsed,
+  others,
   team,
-  now,
+  outcome,
   onChange,
   onLost,
 }: {
-  match: TournamentMatch;
-  side: "a" | "b";
+  /** This player's (or team's) life as saved. */
+  life: number;
   startingLife: number;
-  table: number;
-  opponentLabel: string;
+  /** "Table 3 · vs Blair". */
+  title: string;
+  /** How long the game has run (ms), or null. */
+  elapsed: number | null;
+  /** Everyone else at the table. */
+  others: LifeOther[];
   /** Two-Headed Giant: the life is the team's. */
   team: boolean;
-  /** Server-adjusted clock, for the game timer. */
-  now: number;
+  /** What confirming a loss does, as the end of a sentence: "the game is recorded as a win for Blair and its clock stops". */
+  outcome: string;
   /** Sends a change; resolves false if it didn't save (the page shows why). */
   onChange: (delta: number) => Promise<boolean>;
   /** Records the loss; resolves false if it didn't save. */
   onLost: () => Promise<boolean>;
 }) {
-  const other = side === "a" ? "b" : "a";
-  const saved = lifeOf(match, side, startingLife);
-  const theirs = lifeOf(match, other, startingLife);
 
   // Taps not sent yet, and the batch on its way.
   const queued = useRef(0);
@@ -106,16 +120,13 @@ export function LifeCounter({
     if (ok) setAsking(null);
   }
 
-  const elapsed = gameDuration(match, now);
   const low = life <= Math.ceil(startingLife / 4);
   const who = team ? "Your team" : "You";
 
   return (
     <section className="gg-card gg-life" aria-labelledby="life-title">
       <div className="gg-life__top">
-        <h2 id="life-title">
-          Table {table} · vs {opponentLabel}
-        </h2>
+        <h2 id="life-title">{title}</h2>
         {elapsed != null && (
           <span className="gg-life__clock" aria-label={`Game time ${formatDuration(elapsed)}`}>
             <Icon name="clock" size={14} /> {formatDuration(elapsed)}
@@ -146,10 +157,18 @@ export function LifeCounter({
         ))}
       </div>
 
-      <div className="gg-life__them">
-        <span>{opponentLabel}</span>
-        <strong className={theirs <= 0 ? "is-out" : undefined}>{theirs}</strong>
-      </div>
+      <ul className={`gg-life__others ${others.length > 3 ? "gg-life__others--many" : ""}`} aria-label="Everyone else at the table">
+        {others.map((o) => (
+          <li key={o.key} className={`gg-life__them ${o.out ? "is-gone" : ""}`}>
+            <span>{o.label}</span>
+            {o.out ? (
+              <small className="gg-life__place">Out · {o.out}</small>
+            ) : (
+              <strong className={o.life <= 0 ? "is-out" : undefined}>{o.life}</strong>
+            )}
+          </li>
+        ))}
+      </ul>
 
       <button type="button" className="gg-link-btn gg-life__concede" onClick={() => setAsking("concede")}>
         {team ? "We lost this game" : "I lost this game"}
@@ -160,8 +179,8 @@ export function LifeCounter({
         title={team ? "Did your team lose?" : "Did you lose?"}
         message={
           asking === "zero"
-            ? `${team ? "Your team's" : "Your"} life is at ${life}. If you lost, the game is recorded as a win for ${opponentLabel} and its clock stops.`
-            : `This records the game as a win for ${opponentLabel} and stops its clock.`
+            ? `${team ? "Your team's" : "Your"} life is at ${life}. If you lost, ${outcome}.`
+            : `Confirm and ${outcome}.`
         }
         confirmLabel={team ? "Yes, we lost" : "Yes, I lost"}
         cancelLabel="No, keep playing"

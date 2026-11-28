@@ -1,4 +1,5 @@
-// Tournaments (admin → Tournaments): casual 1v1 and Two-Headed Giant events.
+// Tournaments (admin → Tournaments): casual 1v1, Two-Headed Giant and
+// free-for-all (big multiplayer Commander games) events.
 //
 // Shared by the admin page (src/admin/pages/TournamentsPage.tsx) and the API
 // (/api/admin/tournaments). Pure module — no browser or Node APIs — so the
@@ -15,10 +16,30 @@
 //   • A win is 3 points, a draw 1, a loss 0. A bye counts as a win.
 //   • Ties in points are broken by opponents' match-win percentage (each
 //     opponent counted at no less than 33%), as in Magic tournaments.
+//
+// Free-for-all works differently (see "free-for-all" below): each round deals
+// everyone still in onto tables of up to `tableSize` players, mixing up who
+// sits with whom; players go out one by one, and points go by finishing
+// place (1st of 8 = 8 points … 8th = 1).
 
 export const TOURNAMENT_FORMATS = [
-  { value: "1v1", label: "1v1", teamSize: 1, noun: "player", nounPlural: "players" },
-  { value: "2hg", label: "Two-Headed Giant", teamSize: 2, noun: "team", nounPlural: "teams" },
+  { value: "1v1", label: "1v1", teamSize: 1, noun: "player", nounPlural: "players", blurb: "One player against one player" },
+  {
+    value: "2hg",
+    label: "Two-Headed Giant",
+    teamSize: 2,
+    noun: "team",
+    nounPlural: "teams",
+    blurb: "Teams of two share a life total",
+  },
+  {
+    value: "ffa",
+    label: "Free-for-all",
+    teamSize: 1,
+    noun: "player",
+    nounPlural: "players",
+    blurb: "Big casual games: everyone at a table plays everyone",
+  },
 ] as const;
 
 export type TournamentFormat = (typeof TOURNAMENT_FORMATS)[number]["value"];
@@ -32,7 +53,11 @@ export const MAX_TOURNAMENT_NAME = 80;
 export const MAX_PLAYER_NAME = 40;
 export const MAX_COMMANDER_NAME = 120;
 /** Life at the start of a game, by format: Commander 40; Two-Headed Giant Commander, 60 per team. */
-export const DEFAULT_STARTING_LIFE: Record<"1v1" | "2hg", number> = { "1v1": 40, "2hg": 60 };
+export const DEFAULT_STARTING_LIFE: Record<TournamentFormat, number> = { "1v1": 40, "2hg": 60, ffa: 40 };
+/** Free-for-all: the most players at one table. 8 with 8 players = one big game; 4 = pods of four. */
+export const MIN_TABLE_SIZE = 3;
+export const MAX_TABLE_SIZE = 12;
+export const DEFAULT_TABLE_SIZE = 4;
 export const MAX_STARTING_LIFE = 999;
 /** The most one life change may add or take away. */
 export const MAX_LIFE_CHANGE = 999;
@@ -81,6 +106,34 @@ export interface TournamentMatch {
   endedAt: string | null;
 }
 
+/** A player at a free-for-all table. */
+export interface TournamentPodPlayer {
+  /** This seat's id (the phone sends it to change life or go out). */
+  id: string;
+  entrantId: string;
+  /** 1, 2, 3… around the table. */
+  seat: number;
+  /** Life now (null = the starting life). */
+  life: number | null;
+  /** When they went out (null while still in). */
+  outAt: string | null;
+  /** Where they finished (1 = won); null while still in. */
+  place: number | null;
+}
+
+/** One free-for-all table's game in a round. */
+export interface TournamentPod {
+  id: string;
+  round: number;
+  table: number;
+  /** When the round was dealt: the game clock starts here. */
+  startedAt: string;
+  /** When the game was decided (null while it's played). */
+  endedAt: string | null;
+  /** In seat order. */
+  players: TournamentPodPlayer[];
+}
+
 export interface TournamentSummary {
   id: string;
   name: string;
@@ -106,8 +159,12 @@ export interface TournamentDetail {
   share?: { token: string; enabled: boolean };
   /** Player spots players fill by signing up on the player display; null = staff enter everyone. */
   spots: number | null;
-  /** Life at the start of each game (per player in 1v1, per team in Two-Headed Giant). */
+  /** Life at the start of each game (per player in 1v1 and free-for-all, per team in Two-Headed Giant). */
   startingLife: number;
+  /** Free-for-all: the most players at one table (null for the other formats). */
+  tableSize: number | null;
+  /** Free-for-all: every table of every round (empty for the other formats). */
+  pods: TournamentPod[];
   /** The server's clock when this was sent, so game timers don't depend on the device's clock. */
   serverTime?: string;
 }
@@ -141,14 +198,30 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * How long a game has run: from when the round was paired to when its result
- * was recorded, or to `now` while it's being played. Null for a bye.
+ * How long a game has run: from when the round was paired (or dealt) to when
+ * it was decided, or to `now` while it's being played. Null for a bye.
  */
-export function gameDuration(match: Pick<TournamentMatch, "b" | "startedAt" | "endedAt">, now: number): number | null {
-  if (match.b == null || !match.startedAt) return null;
-  const start = new Date(match.startedAt).getTime();
-  const end = match.endedAt ? new Date(match.endedAt).getTime() : now;
+export function gameDuration(
+  game: Pick<TournamentMatch, "startedAt" | "endedAt"> & { b?: string | null },
+  now: number,
+): number | null {
+  if (game.b === null || !game.startedAt) return null;
+  const start = new Date(game.startedAt).getTime();
+  const end = game.endedAt ? new Date(game.endedAt).getTime() : now;
   return Math.max(0, end - start);
+}
+
+/** Why a players-per-table number won't do, or null. */
+export function tableSizeProblem(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < MIN_TABLE_SIZE || value > MAX_TABLE_SIZE) {
+    return `Players per table is a whole number from ${MIN_TABLE_SIZE} to ${MAX_TABLE_SIZE}.`;
+  }
+  return null;
+}
+
+/** The fewest players a format can start with. */
+export function minPlayers(format: TournamentFormat): number {
+  return format === "2hg" ? 4 : format === "ffa" ? 3 : 2;
 }
 
 /** Why a starting life won't do, or null. */
@@ -730,7 +803,7 @@ export function soloEntrants(detail: Pick<TournamentDetail, "entrants" | "format
 /** Why `spots` won't do for this format, or null. */
 export function spotsProblem(format: TournamentFormat, spots: unknown): string | null {
   if (typeof spots !== "number" || !Number.isInteger(spots)) return "Enter the number of player spots.";
-  const min = format === "2hg" ? 4 : MIN_SPOTS;
+  const min = Math.max(MIN_SPOTS, minPlayers(format));
   if (spots < min || spots > MAX_SPOTS) return `Pick between ${min} and ${MAX_SPOTS} player spots.`;
   if (format === "2hg" && spots % 2 === 1) return "Two-Headed Giant needs an even number of player spots.";
   return null;
@@ -746,6 +819,9 @@ export function startBlocker(detail: TournamentDetail): string | null {
     if (players % 2 === 1) return `Two-Headed Giant needs an even number of players: ${players} have signed up.`;
     return null;
   }
+  if (detail.format === "ffa") {
+    return players < minPlayers("ffa") ? "A free-for-all needs at least 3 players to start." : null;
+  }
   return players < 2 ? "Add at least two players to start." : null;
 }
 
@@ -755,6 +831,13 @@ export function nextRoundBlocker(detail: TournamentDetail): string | null {
   if (detail.status !== "active") return "This tournament is finished. Reopen it to play another round.";
   if (detail.currentRound === 0) return startBlocker(detail);
   if (activeEntrants(detail).length < 2) return `Add at least two ${info.nounPlural} to start.`;
+  if (detail.format === "ffa") {
+    const open = podsInRound(detail.pods, detail.currentRound).filter((p) => !p.endedAt).length;
+    if (open > 0) {
+      return `Finish ${open === 1 ? "the last game" : `the ${open} games still being played`} in round ${detail.currentRound} first.`;
+    }
+    return null;
+  }
   const pending = matchesInRound(detail.matches, detail.currentRound).filter((m) => m.result === "pending").length;
   if (pending > 0) {
     return `Record ${pending === 1 ? "the last result" : `the ${pending} results still open`} in round ${detail.currentRound} first.`;
@@ -762,8 +845,234 @@ export function nextRoundBlocker(detail: TournamentDetail): string | null {
   return null;
 }
 
-/** True when the current round can be re-paired: it exists and no results are in yet. */
+/** True when the current round can be re-paired (re-dealt): it exists and no results are in yet. */
 export function canRepairRound(detail: TournamentDetail): boolean {
   if (detail.status !== "active" || detail.currentRound < 1) return false;
+  if (detail.format === "ffa") {
+    return podsInRound(detail.pods, detail.currentRound).every((p) => !p.endedAt && p.players.every((pp) => !pp.outAt));
+  }
   return matchesInRound(detail.matches, detail.currentRound).every((m) => m.result === "pending" || m.result === "bye");
+}
+
+// ────────────────────────── free-for-all ──────────────────────────
+//
+// Each round, everyone still in is dealt onto tables of up to `tableSize`
+// players, as evenly as the count allows (10 players at 8 a table = two
+// tables of 5). Among the random deals it keeps one where the fewest people
+// sit with someone they've already sat with. Players go out one at a time and
+// finish from the bottom (the first out of 8 is 8th); the last one standing
+// is 1st. Points: a table of N gives N points for 1st, down to 1 for last.
+
+/** A round's tables, by table number. */
+export function podsInRound(pods: readonly TournamentPod[], round: number): TournamentPod[] {
+  return pods.filter((p) => p.round === round).sort((x, y) => x.table - y.table);
+}
+
+/** A player's life at their table: what's been tracked, or the starting life. */
+export function podLife(player: Pick<TournamentPodPlayer, "life">, startingLife: number): number {
+  return player.life ?? startingLife;
+}
+
+/** Players at a table who haven't gone out. */
+export function stillIn(pod: Pick<TournamentPod, "players">): TournamentPodPlayer[] {
+  return pod.players.filter((p) => !p.outAt);
+}
+
+/** Where an entrant sits this round: their table and seat, or null. */
+export function findSeatAt(
+  pods: readonly TournamentPod[],
+  round: number,
+  entrantId: string,
+): { pod: TournamentPod; player: TournamentPodPlayer } | null {
+  for (const pod of pods) {
+    if (pod.round !== round) continue;
+    const player = pod.players.find((p) => p.entrantId === entrantId);
+    if (player) return { pod, player };
+  }
+  return null;
+}
+
+/** "1st", "2nd", "3rd", "4th", "11th", "22nd". */
+export function ordinal(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
+/** Points for a finishing place at a table of `tableCount` players: 1st = tableCount … last = 1. */
+export function placePoints(place: number, tableCount: number): number {
+  return Math.max(1, tableCount - place + 1);
+}
+
+/** How many sit at each table: as even as possible and none over `tableSize`. 10 at 8 a table → [5, 5]. */
+export function tableSizes(players: number, tableSize: number): number[] {
+  if (players < 2) return [];
+  const size = Math.max(2, Math.floor(tableSize));
+  const tables = Math.ceil(players / size);
+  const base = Math.floor(players / tables);
+  const extra = players % tables;
+  return Array.from({ length: tables }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
+/** Random deals tried per round (each then improved by swapping players between tables). */
+const DEAL_ATTEMPTS = 24;
+/** Passes of swaps over a deal before keeping it as it is. */
+const SWAP_PASSES = 12;
+
+/**
+ * Deals a free-for-all round: tables of the sizes tableSizes() gives, seats in
+ * random order. Prefers deals where the fewest pairs of players sit together
+ * again (two who've shared a table twice count four times as much as once).
+ * Null when there aren't two players.
+ */
+export function dealTables(
+  ids: readonly string[],
+  tableSize: number,
+  history: readonly Pick<TournamentPod, "players">[],
+  random: () => number = Math.random,
+): string[][] | null {
+  const order = [...new Set(ids)];
+  const sizes = tableSizes(order.length, tableSize);
+  if (sizes.length === 0) return null;
+  if (sizes.length === 1) return [shuffle(order, random)];
+
+  const n = order.length;
+  const index = new Map(order.map((id, i) => [id, i]));
+  const met = order.map(() => new Array<number>(n).fill(0));
+  for (const pod of history) {
+    const at = pod.players.map((p) => index.get(p.entrantId)).filter((i): i is number => i !== undefined);
+    for (let x = 0; x < at.length; x += 1) {
+      for (let y = x + 1; y < at.length; y += 1) {
+        met[at[x]][at[y]] += 1;
+        met[at[y]][at[x]] += 1;
+      }
+    }
+  }
+  const weight = (x: number, y: number) => met[x][y] * met[x][y];
+  const withTable = (x: number, table: number[], skip: number) =>
+    table.reduce((sum, z) => (z === x || z === skip ? sum : sum + weight(x, z)), 0);
+  const cost = (tables: number[][]) =>
+    tables.reduce((sum, table) => sum + table.reduce((s, x) => s + withTable(x, table, -1), 0) / 2, 0);
+
+  let best: number[][] | null = null;
+  let bestCost = Infinity;
+  const attempts = n <= 32 ? DEAL_ATTEMPTS : DEAL_ATTEMPTS / 3;
+  for (let attempt = 0; attempt < attempts && bestCost > 0; attempt += 1) {
+    const shuffled = shuffle(
+      order.map((_, i) => i),
+      random,
+    );
+    const tables: number[][] = [];
+    let at = 0;
+    for (const size of sizes) {
+      tables.push(shuffled.slice(at, at + size));
+      at += size;
+    }
+    // Swap two players between tables whenever it means fewer repeat tablemates.
+    for (let pass = 0; pass < SWAP_PASSES; pass += 1) {
+      let improved = false;
+      for (let t1 = 0; t1 < tables.length; t1 += 1) {
+        for (let t2 = t1 + 1; t2 < tables.length; t2 += 1) {
+          for (let i = 0; i < tables[t1].length; i += 1) {
+            for (let j = 0; j < tables[t2].length; j += 1) {
+              const x = tables[t1][i];
+              const y = tables[t2][j];
+              const before = withTable(x, tables[t1], x) + withTable(y, tables[t2], y);
+              const after = withTable(x, tables[t2], y) + withTable(y, tables[t1], x);
+              if (after < before) {
+                tables[t1][i] = y;
+                tables[t2][j] = x;
+                improved = true;
+              }
+            }
+          }
+        }
+      }
+      if (!improved) break;
+    }
+    const c = cost(tables);
+    if (c < bestCost) {
+      best = tables;
+      bestCost = c;
+    }
+  }
+  return (best ?? []).map((table) => shuffle(table, random).map((i) => order[i]));
+}
+
+export interface FfaStandingRow {
+  entrant: TournamentEntrant;
+  /** 1-based; level on points and wins share a rank. */
+  rank: number;
+  points: number;
+  /** Games won (finished 1st). */
+  wins: number;
+  /** Games with a finishing place. */
+  games: number;
+  /** Where they finished in each round they played, in round order (null = still playing). */
+  places: { round: number; place: number | null; of: number }[];
+}
+
+/** Free-for-all standings: points by finishing place, then games won. */
+export function computeFfaStandings(
+  entrants: readonly TournamentEntrant[],
+  pods: readonly TournamentPod[],
+): FfaStandingRow[] {
+  const rows = new Map<string, FfaStandingRow>();
+  for (const entrant of entrants) {
+    rows.set(entrant.id, { entrant, rank: 0, points: 0, wins: 0, games: 0, places: [] });
+  }
+  const ordered = [...pods].sort((x, y) => x.round - y.round || x.table - y.table);
+  for (const pod of ordered) {
+    const of = pod.players.length;
+    for (const p of pod.players) {
+      const row = rows.get(p.entrantId);
+      if (!row) continue;
+      row.places.push({ round: pod.round, place: p.place, of });
+      if (p.place == null) continue;
+      row.games += 1;
+      row.points += placePoints(p.place, of);
+      if (p.place === 1) row.wins += 1;
+    }
+  }
+  const sorted = [...rows.values()].sort(
+    (x, y) => y.points - x.points || y.wins - x.wins || entrantLabel(x.entrant).localeCompare(entrantLabel(y.entrant)),
+  );
+  sorted.forEach((row, i) => {
+    const prev = sorted[i - 1];
+    row.rank = prev && prev.points === row.points && prev.wins === row.wins ? prev.rank : i + 1;
+  });
+  return sorted;
+}
+
+// ───────────────────────────── live ──────────────────────────────
+
+/** True while any game in the current round is being played (screens refresh faster then). */
+export function hasLiveGames(detail: Pick<TournamentDetail, "status" | "currentRound" | "format" | "matches" | "pods">): boolean {
+  if (detail.status !== "active" || detail.currentRound < 1) return false;
+  if (detail.format === "ffa") return detail.pods.some((p) => p.round === detail.currentRound && !p.endedAt);
+  return detail.matches.some((m) => m.round === detail.currentRound && m.b != null && m.result === "pending");
+}
+
+/** True while this entrant is in a game being played (and, in free-for-all, hasn't gone out of it). */
+export function isPlaying(
+  detail: Pick<TournamentDetail, "status" | "currentRound" | "format" | "matches" | "pods">,
+  entrantId: string,
+): boolean {
+  if (!hasLiveGames(detail)) return false;
+  if (detail.format === "ffa") {
+    const at = findSeatAt(detail.pods, detail.currentRound, entrantId);
+    return at != null && !at.pod.endedAt && !at.player.outAt;
+  }
+  return detail.matches.some(
+    (m) => m.round === detail.currentRound && m.result === "pending" && m.b != null && (m.a === entrantId || m.b === entrantId),
+  );
 }

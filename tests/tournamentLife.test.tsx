@@ -37,13 +37,13 @@ function counter(props: Partial<Parameters<typeof LifeCounter>[0]> = {}) {
   const onLost = vi.fn(async () => true);
   const utils = render(
     <LifeCounter
-      match={game()}
-      side="a"
+      life={40}
       startingLife={40}
-      table={3}
-      opponentLabel="Blair"
+      title="Table 3 · vs Blair"
+      elapsed={754_000}
+      others={[{ key: B, label: "Blair", life: 40, out: null }]}
       team={false}
-      now={Date.parse(START) + 754_000}
+      outcome="the game is recorded as a win for Blair and its clock stops"
       onChange={onChange}
       onLost={onLost}
       {...props}
@@ -56,7 +56,7 @@ afterEach(() => cleanup());
 
 describe("life counter", () => {
   it("shows the table, opponent, game clock and both life totals", () => {
-    counter({ match: game({ lifeB: 33 }) });
+    counter({ others: [{ key: B, label: "Blair", life: 33, out: null }] });
     expect(screen.getByRole("heading", { name: "Table 3 · vs Blair" })).toBeTruthy();
     expect(screen.getByLabelText("Game time 12:34")).toBeTruthy();
     expect(screen.getByLabelText("You: 40 life")).toBeTruthy();
@@ -78,13 +78,13 @@ describe("life counter", () => {
 
   it("asks 'Did you lose?' when life reaches 0, and records the loss after saving the taps", async () => {
     const user = userEvent.setup();
-    const { onChange, onLost } = counter({ match: game({ lifeA: 6 }) });
+    const { onChange, onLost } = counter({ life: 6 });
     await user.click(screen.getByRole("button", { name: "Lose 5 life" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Lose 1 life" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Did you lose?" })).toBeTruthy();
-    expect(within(dialog).getByText(/Your life is at 0/)).toBeTruthy();
+    expect(within(dialog).getByText("Your life is at 0. If you lost, the game is recorded as a win for Blair and its clock stops.")).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Yes, I lost" }));
     await waitFor(() => expect(onLost).toHaveBeenCalledTimes(1));
     // The taps were sent first.
@@ -94,7 +94,7 @@ describe("life counter", () => {
 
   it("lets a player say no and keep playing", async () => {
     const user = userEvent.setup();
-    const { onLost } = counter({ match: game({ lifeA: 1 }) });
+    const { onLost } = counter({ life: 1 });
     await user.click(screen.getByRole("button", { name: "Lose 1 life" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "No, keep playing" }));
@@ -131,6 +131,8 @@ function tournament(matches: TournamentMatch[], extra: Partial<TournamentDetail>
     matches,
     spots: null,
     startingLife: 40,
+    tableSize: null,
+    pods: [],
     serverTime: START,
     ...extra,
   };

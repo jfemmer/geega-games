@@ -10,7 +10,8 @@ import { Icon } from "../components/ui/Icon";
 import { ErrorState, TableSkeleton } from "../components/ui/States";
 import { CreateTournamentForm } from "../components/tournaments/CreateTournamentForm";
 import { RoundMatches } from "../components/tournaments/RoundMatches";
-import { AddEntrantForm, EntrantFields, StandingsTable } from "../components/tournaments/StandingsTable";
+import { AddEntrantForm, EntrantFields, FfaStandingsTable, StandingsTable } from "../components/tournaments/StandingsTable";
+import { PodTables } from "../components/tournaments/PodTables";
 import { CommanderPicker, type CommanderOption } from "../components/tournaments/CommanderPicker";
 import { PlayerDisplayPanel } from "../components/tournaments/PlayerDisplayPanel";
 import { useAsync } from "../hooks/useAsync";
@@ -21,22 +22,33 @@ import { adminFetch } from "../repositories/apiClient";
 import {
   MAX_SPOTS,
   MAX_STARTING_LIFE,
+  MAX_TABLE_SIZE,
   MAX_TOURNAMENT_NAME,
+  MIN_TABLE_SIZE,
   activeEntrants,
   canRepairRound,
   cleanPlayerName,
+  computeFfaStandings,
   computeStandings,
   entrantLabel,
   entrantProblem,
+  findSeatAt,
   formatInfo,
   matchesInRound,
+  hasLiveGames,
   hasNewOpponents,
   isSigningUp,
+  minPlayers,
   nextRoundBlocker,
+  ordinal,
   playerCount,
+  podsInRound,
   soloEntrants,
   spotsProblem,
   startingLifeProblem,
+  stillIn,
+  tableSizes,
+  tableSizeProblem,
   type ReportableResult,
   type TournamentCommander,
   type TournamentDetail,
@@ -45,11 +57,14 @@ import {
   type TournamentSummary,
 } from "../utils/tournament";
 
-// Admin → Tournaments: run a 1v1 or Two-Headed Giant event at the store.
-// Enter everyone's names, then each round pairs every player (or team) at
-// random with someone they haven't played yet; tap the winner of each match
-// and the standings keep score. Pairing happens on the server
-// (/api/admin/tournaments) so two devices can't pair the same round twice.
+// Admin → Tournaments: run a 1v1, Two-Headed Giant or free-for-all event at
+// the store. Enter everyone's names (or let them sign up), then each round
+// pairs every player (or team) at random with someone they haven't played
+// yet; tap the winner of each match and the standings keep score.
+// Free-for-all instead deals everyone onto tables of up to N players each
+// round; players go out from their phones (or staff tap Out) and points go by
+// finishing place. Pairing and dealing happen on the server
+// (/api/admin/tournaments) so two devices can't start the same round twice.
 
 const ENDPOINT = "/api/admin/tournaments";
 const PAGE_PATH = `${ADMIN_BASE}/tournaments`;
@@ -90,7 +105,7 @@ export function TournamentsPage({ query, onNavigate }: { query: URLSearchParams;
     <div className="gg-page">
       <PageHeader
         title="Tournaments"
-        description="Run 1v1 or Two-Headed Giant events: players scan in to sign up, each round pairs opponents who haven't played yet, and the standings keep score."
+        description="Run 1v1, Two-Headed Giant or big free-for-all games: players scan in to sign up, each round pairs (or deals) new opponents, and the standings keep score."
         actions={
           !showCreate && all.length > 0 ? (
             <Button variant="secondary" icon="plus" onClick={() => setCreating(true)}>
@@ -159,10 +174,29 @@ export function TournamentsPage({ query, onNavigate }: { query: URLSearchParams;
   );
 }
 
+/** "two tables of 4", "one table of 8", "tables of 4, 3 and 3". */
+function describeTables(sizes: number[]): string {
+  if (sizes.length === 0) return "tables";
+  if (sizes.length === 1) return `one table of ${sizes[0]}`;
+  if (sizes.every((n) => n === sizes[0])) {
+    const words = ["", "", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+    return `${words[sizes.length] ?? sizes.length} tables of ${sizes[0]}`;
+  }
+  return `tables of ${sizes.slice(0, -1).join(", ")} and ${sizes[sizes.length - 1]}`;
+}
+
+/** What a players-per-table number means for the players in now. */
+function tableSizeHint(players: number, size: number): string {
+  const base = "Used from the next deal; games being played keep their tables.";
+  if (players < 2 || tableSizeProblem(size)) return base;
+  return `With ${players} players: ${describeTables(tableSizes(players, size))}. ${base}`;
+}
+
 type Confirm =
   | { kind: "delete" }
   | { kind: "finish"; pending: number }
-  | { kind: "remove"; entrant: TournamentEntrant; opponent: string | null };
+  /** note: what happens to the game they're in ("Their match this round goes to Sam."). */
+  | { kind: "remove"; entrant: TournamentEntrant; note: string | null };
 
 function withResult(detail: TournamentDetail, matchId: string, result: ReportableResult): TournamentDetail {
   return {
@@ -192,7 +226,10 @@ function describeConfirm(
     const one = confirm.pending === 1;
     return {
       title: "Finish the tournament?",
-      message: `${one ? "One result" : `${confirm.pending} results`} in round ${detail.currentRound} ${one ? "isn't" : "aren't"} in yet and won't count. You can reopen the tournament later.`,
+      message:
+        detail.format === "ffa"
+          ? `${one ? "One game" : `${confirm.pending} games`} in round ${detail.currentRound} ${one ? "isn't" : "aren't"} over yet. Players already out keep their places; anyone still playing gets no points for it. You can reopen the tournament later.`
+          : `${one ? "One result" : `${confirm.pending} results`} in round ${detail.currentRound} ${one ? "isn't" : "aren't"} in yet and won't count. You can reopen the tournament later.`,
       confirmLabel: "Finish",
       tone: "primary",
     };
@@ -208,7 +245,7 @@ function describeConfirm(
   }
   return {
     title: `Drop ${label}?`,
-    message: `Their results stay in the standings and they won't be paired again.${confirm.opponent ? ` Their match this round goes to ${confirm.opponent}.` : ""} You can bring them back later.`,
+    message: `Their results stay in the standings and they won't be ${detail.format === "ffa" ? "dealt in" : "paired"} again.${confirm.note ? ` ${confirm.note}` : ""} You can bring them back later.`,
     confirmLabel: "Drop",
     tone: "danger",
   };
@@ -233,6 +270,7 @@ function TournamentView({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [editingSpots, setEditingSpots] = useState<{ value: string; error: string | null } | null>(null);
   const [editingLife, setEditingLife] = useState<{ value: string; error: string | null } | null>(null);
+  const [editingTables, setEditingTables] = useState<{ value: string; error: string | null } | null>(null);
   const [editing, setEditing] = useState<{
     entrant: TournamentEntrant;
     values: string[];
@@ -270,10 +308,7 @@ function TournamentView({
 
   // While games are being played, players change life totals and record
   // losses from their phones: keep this page up to date.
-  const liveRound =
-    detail != null &&
-    detail.status === "active" &&
-    detail.matches.some((m) => m.round === detail.currentRound && m.b != null && m.result === "pending");
+  const liveRound = detail != null && hasLiveGames(detail);
   useEffect(() => {
     if (!liveRound) return;
     const id = window.setInterval(() => {
@@ -349,11 +384,14 @@ function TournamentView({
     if (!detail) return null;
     const labels = new Map(detail.entrants.map((e) => [e.id, entrantLabel(e)]));
     const standings = computeStandings(detail.entrants, detail.matches);
+    const ffaStandings = detail.format === "ffa" ? computeFfaStandings(detail.entrants, detail.pods) : [];
     const current = matchesInRound(detail.matches, detail.currentRound);
+    const currentPods = podsInRound(detail.pods, detail.currentRound);
     const active = activeEntrants(detail);
     const blocker = nextRoundBlocker(detail);
-    // Nobody left with a new opponent: the round robin is complete.
+    // Nobody left with a new opponent: the round robin is complete (free-for-all reshuffles forever).
     const exhausted =
+      detail.format !== "ffa" &&
       !blocker &&
       detail.currentRound > 0 &&
       !hasNewOpponents(
@@ -363,8 +401,11 @@ function TournamentView({
     const pairs = current.filter((m) => m.b != null).length;
     const byes = current.length - pairs;
     const extraByes = Math.max(0, byes - ((pairs * 2 + byes) % 2));
-    const pending = current.filter((m) => m.result === "pending").length;
-    return { labels, standings, current, active, blocker, exhausted, pairs, byes, extraByes, pending };
+    const pending =
+      detail.format === "ffa"
+        ? currentPods.filter((p) => !p.endedAt).length
+        : current.filter((m) => m.result === "pending").length;
+    return { labels, standings, ffaStandings, current, currentPods, active, blocker, exhausted, pairs, byes, extraByes, pending };
   }, [detail]);
 
   if (!detail || !derived) {
@@ -382,10 +423,19 @@ function TournamentView({
   const info = formatInfo(detail.format);
   const editable = detail.status === "active";
   const started = detail.currentRound > 0;
-  const { labels, standings, current, active, blocker, exhausted, pairs, byes, extraByes, pending } = derived;
+  const { labels, standings, ffaStandings, current, currentPods, active, blocker, exhausted, pairs, byes, extraByes, pending } =
+    derived;
+  const ffa = detail.format === "ffa";
   const droppedCount = detail.entrants.length - active.length;
-  const leaders = started ? standings.filter((r) => r.rank === 1 && r.points > 0) : [];
+  const leaderRows = started ? (ffa ? ffaStandings : standings).filter((r) => r.rank === 1 && r.points > 0) : [];
+  const leaders = leaderRows.map((r) => ({
+    entrant: r.entrant,
+    record: "losses" in r ? `${r.wins}-${r.losses}-${r.draws}` : `${r.points} points`,
+  }));
   const pairBusy = busy === "pair" || busy === "repair";
+  // Free-for-all words: tables are dealt, not paired.
+  const pairWord = ffa ? "dealt" : "paired";
+  const podBusy = busy?.startsWith("pod:") ? busy.slice(4) : null;
 
   const signingUp = isSigningUp(detail);
   const players = playerCount(detail);
@@ -394,12 +444,33 @@ function TournamentView({
 
   const pairNext = () =>
     detail.currentRound === 0
-      ? run("pair", { action: "start" }, { success: "Round 1 is paired. Good luck, everyone!" })
+      ? run("pair", { action: "start" }, { success: `Round 1 is ${pairWord}. Good luck, everyone!` })
       : run(
           "pair",
           { action: "pair", round: detail.currentRound + 1 },
-          { success: `Round ${detail.currentRound + 1} is paired.` },
+          { success: `Round ${detail.currentRound + 1} is ${pairWord}.` },
         );
+
+  async function saveTables(e: FormEvent) {
+    e.preventDefault();
+    if (!editingTables) return;
+    const value = Number(editingTables.value);
+    const problem = tableSizeProblem(value);
+    if (problem) {
+      setEditingTables({ ...editingTables, error: problem });
+      return;
+    }
+    const ok = await run(
+      "table-size",
+      { action: "table-size", tableSize: value },
+      { success: `Tables of up to ${value} from the next deal.`, listChanged: false },
+    );
+    if (ok) setEditingTables(null);
+  }
+
+  /** Free-for-all table changes, saved one table at a time. */
+  const podAction = (podId: string, body: Record<string, unknown>, success?: string) =>
+    void run(`pod:${podId}`, body, { success, listChanged: false });
 
   async function saveLife(e: FormEvent) {
     e.preventDefault();
@@ -434,7 +505,7 @@ function TournamentView({
     run(
       "repair",
       { action: "pair", round: detail.currentRound, replace: true },
-      { success: `Round ${detail.currentRound} re-paired.` },
+      { success: `Round ${detail.currentRound} re-${pairWord}.` },
     );
   const finish = () => run("finish", { action: "finish" }, { success: "Tournament finished. Final standings are locked in." });
 
@@ -444,9 +515,23 @@ function TournamentView({
   }
 
   function askRemove(entrant: TournamentEntrant) {
+    if (ffa) {
+      const seat = findSeatAt(detail!.pods, detail!.currentRound, entrant.id);
+      const playing = seat && !seat.pod.endedAt && !seat.player.outAt ? seat : null;
+      const left = playing ? stillIn(playing.pod).length : 0;
+      setConfirm({
+        kind: "remove",
+        entrant,
+        note: playing
+          ? `They're out of their game at table ${playing.pod.table} and finish ${ordinal(left)}${left === 2 ? ", so the other player wins it" : ""}.`
+          : null,
+      });
+      return;
+    }
     const open = current.find((m) => m.result === "pending" && m.b != null && (m.a === entrant.id || m.b === entrant.id));
     const opponentId = open ? (open.a === entrant.id ? open.b : open.a) : null;
-    setConfirm({ kind: "remove", entrant, opponent: opponentId ? (labels.get(opponentId) ?? null) : null });
+    const opponent = opponentId ? (labels.get(opponentId) ?? null) : null;
+    setConfirm({ kind: "remove", entrant, note: opponent ? `Their match this round goes to ${opponent}.` : null });
   }
 
   async function saveRename(e: FormEvent) {
@@ -481,7 +566,9 @@ function TournamentView({
     if (ok) setEditing(null);
   }
 
-  const hasMatches = (entrantId: string) => detail.matches.some((m) => m.a === entrantId || m.b === entrantId);
+  const hasMatches = (entrantId: string) =>
+    detail.matches.some((m) => m.a === entrantId || m.b === entrantId) ||
+    detail.pods.some((pod) => pod.players.some((p) => p.entrantId === entrantId));
 
   async function confirmAction() {
     if (!confirm) return;
@@ -507,6 +594,15 @@ function TournamentView({
   }
 
   const confirmText = confirm ? describeConfirm(confirm, detail, hasMatches) : null;
+
+  const editEntrant = (entrant: TournamentEntrant) =>
+    setEditing({ entrant, values: [...entrant.players], commanders: [...entrant.commanders], error: null });
+  const restoreEntrant = (entrant: TournamentEntrant) =>
+    void run(
+      "restore",
+      { action: "restore-entrant", entrantId: entrant.id },
+      { success: `${entrantLabel(entrant)} is back in from the next round.` },
+    );
 
   const earlierRounds = Array.from({ length: Math.max(0, detail.currentRound - 1) }, (_, i) => detail.currentRound - 1 - i);
 
@@ -562,10 +658,26 @@ function TournamentView({
             <button
               type="button"
               className="gg-link-btn"
+              aria-label="Change starting life"
               onClick={() => setEditingLife({ value: String(detail.startingLife), error: null })}
             >
               Change
             </button>
+          )}
+          {ffa && detail.tableSize != null && (
+            <>
+              <span>· Tables of up to {detail.tableSize}</span>
+              {editable && (
+                <button
+                  type="button"
+                  className="gg-link-btn"
+                  aria-label="Change players per table"
+                  onClick={() => setEditingTables({ value: String(detail.tableSize), error: null })}
+                >
+                  Change
+                </button>
+              )}
+            </>
           )}
         </div>
         {!editable && leaders.length > 0 && (
@@ -574,7 +686,7 @@ function TournamentView({
             <span>
               {leaders.length === 1 ? "Winner: " : "Tied for first: "}
               <strong>{leaders.map((r) => entrantLabel(r.entrant)).join(", ")}</strong>
-              {leaders.length === 1 && ` (${leaders[0].wins}-${leaders[0].losses}-${leaders[0].draws})`}
+              {leaders.length === 1 && ` (${leaders[0].record})`}
             </span>
           </div>
         )}
@@ -656,7 +768,11 @@ function TournamentView({
         <SectionCard
           title={started ? `Round ${detail.currentRound}` : "Round 1"}
           action={
-            started && pairs > 0 ? (
+            started && ffa && currentPods.length > 0 ? (
+              <span className="gg-muted" aria-live="polite">
+                {currentPods.length - pending} of {currentPods.length} game{currentPods.length === 1 ? "" : "s"} over
+              </span>
+            ) : started && pairs > 0 ? (
               <span className="gg-muted" aria-live="polite">
                 {pairs - pending} of {pairs} result{pairs === 1 ? "" : "s"} in
               </span>
@@ -665,10 +781,20 @@ function TournamentView({
         >
           {!started ? (
             <div className="gg-tourney-start">
-              <p>
-                {active.length} {active.length === 1 ? info.noun : info.nounPlural} entered. Each round pairs everyone at
-                random with someone they haven't played yet{active.length % 2 === 1 ? ", and one gets a bye (a free win)" : ""}.
-              </p>
+              {ffa ? (
+                <p>
+                  {active.length} {active.length === 1 ? "player" : "players"} entered.{" "}
+                  {active.length >= minPlayers("ffa")
+                    ? `Round 1 deals them onto ${describeTables(tableSizes(active.length, detail.tableSize ?? active.length))}. `
+                    : ""}
+                  Each round reshuffles the tables so people sit with someone new.
+                </p>
+              ) : (
+                <p>
+                  {active.length} {active.length === 1 ? info.noun : info.nounPlural} entered. Each round pairs everyone at
+                  random with someone they haven't played yet{active.length % 2 === 1 ? ", and one gets a bye (a free win)" : ""}.
+                </p>
+              )}
               {blocker && <p className="gg-muted">{blocker}</p>}
               {editable && (
                 <Button variant="primary" icon="swap" disabled={Boolean(blocker)} loading={busy === "pair"} onClick={pairNext}>
@@ -686,15 +812,35 @@ function TournamentView({
                   </span>
                 </div>
               )}
-              <RoundMatches
-                matches={current}
-                labels={labels}
-                editable={editable}
-                allowClear
-                onReport={(m, r) => void report(m, r)}
-                startingLife={detail.startingLife}
-                now={now}
-              />
+              {ffa ? (
+                <PodTables
+                  pods={currentPods}
+                  labels={labels}
+                  editable={editable}
+                  startingLife={detail.startingLife}
+                  now={now}
+                  busy={podBusy}
+                  onOut={(pod, p) => podAction(pod.id, { action: "knock-out", podPlayerId: p.id })}
+                  onWinner={(pod, entrantId) =>
+                    podAction(
+                      pod.id,
+                      { action: "pod-winner", podId: pod.id, entrantId },
+                      `${labels.get(entrantId) ?? "They"} won${currentPods.length > 1 ? ` at table ${pod.table}` : ""}.`,
+                    )
+                  }
+                  onUndo={(pod) => podAction(pod.id, { action: "pod-undo", podId: pod.id })}
+                />
+              ) : (
+                <RoundMatches
+                  matches={current}
+                  labels={labels}
+                  editable={editable}
+                  allowClear
+                  onReport={(m, r) => void report(m, r)}
+                  startingLife={detail.startingLife}
+                  now={now}
+                />
+              )}
               {editable && (
                 <div className="gg-tourney-next">
                   {exhausted ? (
@@ -715,15 +861,15 @@ function TournamentView({
                       <Button
                         variant="primary"
                         icon="swap"
-                        disabled={Boolean(blocker) || reporting > 0 || pairBusy}
+                        disabled={Boolean(blocker) || reporting > 0 || pairBusy || podBusy != null}
                         loading={busy === "pair"}
                         onClick={pairNext}
                       >
-                        Pair round {detail.currentRound + 1}
+                        {ffa ? "Deal" : "Pair"} round {detail.currentRound + 1}
                       </Button>
                       {canRepairRound(detail) && (
                         <Button variant="ghost" disabled={pairBusy} loading={busy === "repair"} onClick={repair}>
-                          Re-pair round {detail.currentRound}
+                          Re-{ffa ? "deal" : "pair"} round {detail.currentRound}
                         </Button>
                       )}
                       {blocker && <p className="gg-muted">{blocker}</p>}
@@ -744,24 +890,27 @@ function TournamentView({
           </span>
         }
       >
-        <StandingsTable
-          rows={standings}
-          format={detail.format}
-          labels={labels}
-          editable={editable}
-          started={started}
-          onEdit={(entrant) =>
-            setEditing({ entrant, values: [...entrant.players], commanders: [...entrant.commanders], error: null })
-          }
-          onRemove={askRemove}
-          onRestore={(entrant) =>
-            void run(
-              "restore",
-              { action: "restore-entrant", entrantId: entrant.id },
-              { success: `${entrantLabel(entrant)} is back in from the next round.` },
-            )
-          }
-        />
+        {ffa ? (
+          <FfaStandingsTable
+            rows={ffaStandings}
+            editable={editable}
+            started={started}
+            onEdit={editEntrant}
+            onRemove={askRemove}
+            onRestore={restoreEntrant}
+          />
+        ) : (
+          <StandingsTable
+            rows={standings}
+            format={detail.format}
+            labels={labels}
+            editable={editable}
+            started={started}
+            onEdit={editEntrant}
+            onRemove={askRemove}
+            onRestore={restoreEntrant}
+          />
+        )}
         {editable && (
           <AddEntrantForm
             format={detail.format}
@@ -771,19 +920,45 @@ function TournamentView({
               run(
                 "add",
                 { action: "add-entrant", players },
-                { success: `${players.join(" & ")} added${started ? " — they're paired from the next round" : ""}.` },
+                { success: `${players.join(" & ")} added${started ? ` — they're ${pairWord} in from the next round` : ""}.` },
               )
             }
           />
         )}
         <p className="gg-muted gg-tourney-scoring">
-          3 points for a win (a bye counts as a win), 1 for a draw. Ties are broken by opponents' match-win %.
+          {ffa
+            ? "Points by finishing place: at a table of 8, the last one standing gets 8 points, 2nd gets 7, down to 1 for the first one out. Ties are broken by games won."
+            : "3 points for a win (a bye counts as a win), 1 for a draw. Ties are broken by opponents' match-win %."}
         </p>
       </SectionCard>
 
       {earlierRounds.length > 0 && (
         <SectionCard title="Earlier rounds">
           {earlierRounds.map((round) => {
+            if (ffa) {
+              const pods = podsInRound(detail.pods, round);
+              return (
+                <details key={round} className="gg-tourney-round">
+                  <summary>
+                    Round {round}
+                    <span className="gg-muted">
+                      {pods.length} table{pods.length === 1 ? "" : "s"}
+                    </span>
+                  </summary>
+                  <PodTables
+                    pods={pods}
+                    labels={labels}
+                    editable={false}
+                    startingLife={detail.startingLife}
+                    now={now}
+                    busy={null}
+                    onOut={() => undefined}
+                    onWinner={() => undefined}
+                    onUndo={() => undefined}
+                  />
+                </details>
+              );
+            }
             const matches = matchesInRound(detail.matches, round);
             const played = matches.filter((m) => m.b != null).length;
             return (
@@ -860,6 +1035,40 @@ function TournamentView({
       </Modal>
 
       <Modal
+        open={editingTables != null}
+        onClose={() => setEditingTables(null)}
+        title="Players per table"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditingTables(null)} disabled={busy === "table-size"}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" form="gg-tourney-tables" loading={busy === "table-size"}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        {editingTables && (
+          <form id="gg-tourney-tables" onSubmit={saveTables} noValidate>
+            <TextField
+              label="Most players per table"
+              type="number"
+              inputMode="numeric"
+              min={MIN_TABLE_SIZE}
+              max={MAX_TABLE_SIZE}
+              value={editingTables.value}
+              autoFocus
+              error={editingTables.error ?? undefined}
+              hint={tableSizeHint(active.length, Number(editingTables.value))}
+              onChange={(e) => setEditingTables({ value: e.target.value, error: null })}
+            />
+          </form>
+        )}
+      </Modal>
+
+      <Modal
         open={editingSpots != null}
         onClose={() => setEditingSpots(null)}
         title="Change player spots"
@@ -881,7 +1090,7 @@ function TournamentView({
               label="Player spots"
               type="number"
               inputMode="numeric"
-              min={Math.max(players, detail.format === "2hg" ? 4 : 2)}
+              min={Math.max(players, minPlayers(detail.format))}
               max={MAX_SPOTS}
               step={detail.format === "2hg" ? 2 : 1}
               value={editingSpots.value}

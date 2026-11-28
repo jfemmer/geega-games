@@ -46,6 +46,8 @@ function detail(extra: Partial<TournamentDetail> = {}): TournamentDetail {
     matches: [match("m1", 1, 1, "a", "b", "pending"), match("m2", 1, 2, "c", "d", "pending")],
     spots: null,
     startingLife: 40,
+    tableSize: null,
+    pods: [],
     ...extra,
   };
 }
@@ -477,7 +479,7 @@ describe("life and game times (admin)", () => {
     expect(within(table2).queryByText("40")).toBeNull();
 
     expect(screen.getByText("· Starting life 40")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Change" }));
+    await user.click(screen.getByRole("button", { name: "Change starting life" }));
     const dialog = await screen.findByRole("dialog");
     const field = within(dialog).getByLabelText("Starting life");
     await user.clear(field);

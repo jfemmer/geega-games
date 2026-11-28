@@ -5,9 +5,17 @@ import { getSupabaseAdmin } from "./supabaseAdmin.js";
 import { scryfallSearchCards } from "./scryfall.js";
 import type { Database } from "../../src/types/database.js";
 import {
+  DEFAULT_TABLE_SIZE,
   MAX_ENTRANTS,
   TOURNAMENT_LIST_LIMIT,
   activeEntrants,
+  canRepairRound,
+  dealTables,
+  minPlayers,
+  stillIn,
+  tableSizeProblem,
+  type TournamentPod,
+  type TournamentPodPlayer,
   cleanCommanderName,
   cleanPlayerName,
   cleanTournamentName,
@@ -28,7 +36,6 @@ import {
   startingLifeProblem,
   MAX_LIFE_CHANGE,
   isTournamentFormat,
-  matchesInRound,
   nextRoundBlocker,
   pairRound,
   type MatchResult,
@@ -44,16 +51,22 @@ import {
 // Database side of admin → Tournaments (/api/admin/tournaments). The rules
 // for names, pairing and standings live in src/admin/utils/tournament.ts so
 // the page and the server agree; this file reads and writes the rows.
-// Rounds are written only by the tournament_pair_round() RPC, which checks
-// the round number and the player list in one transaction.
+// Rounds are written only by the tournament_pair_round() RPC (free-for-all:
+// tournament_deal_pods()), which checks the round number and the player list
+// in one transaction.
 
 type TournamentRow = Database["public"]["Tables"]["tournaments"]["Row"];
 type EntrantRow = Database["public"]["Tables"]["tournament_entrants"]["Row"];
 type MatchRow = Database["public"]["Tables"]["tournament_matches"]["Row"];
+type PodRow = Pick<Database["public"]["Tables"]["tournament_pods"]["Row"], "id" | "round" | "table_number" | "created_at" | "ended_at">;
+type PodPlayerRow = Pick<
+  Database["public"]["Tables"]["tournament_pod_players"]["Row"],
+  "id" | "pod_id" | "entrant_id" | "seat" | "life" | "out_at" | "place"
+>;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOURNAMENT_COLUMNS =
-  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled, spots, starting_life";
+  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled, spots, starting_life, table_size";
 const ENTRANT_COLUMNS =
   "id, tournament_id, player_one, player_two, commander_one, commander_one_card, commander_two, commander_two_card, dropped_at, created_at, updated_at";
 /** Share links are 32 url-safe characters (the database also accepts its own 64-character default). */
@@ -62,6 +75,8 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{20,100}$/;
 const COMMANDER_RESULTS = 8;
 const MATCH_COLUMNS =
   "id, tournament_id, round, table_number, entrant_a, entrant_b, result, reported_by, reported_at, created_at, updated_at, life_a, life_b, ended_at";
+const POD_COLUMNS = "id, round, table_number, created_at, ended_at";
+const POD_PLAYER_COLUMNS = "id, pod_id, entrant_id, seat, life, out_at, place";
 
 function db(): SupabaseClient<Database> {
   return getSupabaseAdmin();
@@ -121,6 +136,26 @@ function toEntrant(row: EntrantRow): TournamentEntrant {
     droppedAt: row.dropped_at,
     createdAt: row.created_at,
   };
+}
+
+/** Tables with their players in seat order. */
+function toPods(pods: PodRow[], players: PodPlayerRow[]): TournamentPod[] {
+  const byPod = new Map<string, TournamentPodPlayer[]>();
+  for (const p of players) {
+    const list = byPod.get(p.pod_id) ?? [];
+    list.push({ id: p.id, entrantId: p.entrant_id, seat: p.seat, life: p.life ?? null, outAt: p.out_at ?? null, place: p.place ?? null });
+    byPod.set(p.pod_id, list);
+  }
+  return pods
+    .map((row) => ({
+      id: row.id,
+      round: row.round,
+      table: row.table_number,
+      startedAt: row.created_at,
+      endedAt: row.ended_at ?? null,
+      players: (byPod.get(row.id) ?? []).sort((x, y) => x.seat - y.seat),
+    }))
+    .sort((x, y) => x.round - y.round || x.table - y.table);
 }
 
 function toMatch(row: MatchRow): TournamentMatch {
@@ -230,8 +265,9 @@ export function publicView(t: TournamentDetail): TournamentDetail {
 
 async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDetail> {
   const id = row.id;
+  const ffa = row.format === "ffa";
 
-  const [entrants, matches] = await Promise.all([
+  const [entrants, matches, pods, podPlayers] = await Promise.all([
     db()
       .from("tournament_entrants")
       .select(ENTRANT_COLUMNS)
@@ -245,9 +281,16 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
       .order("round", { ascending: true })
       .order("table_number", { ascending: true })
       .limit(10_000),
+    // Free-for-all tables (only that format has any).
+    ffa
+      ? db().from("tournament_pods").select(POD_COLUMNS).eq("tournament_id", id).order("round", { ascending: true }).limit(5_000)
+      : null,
+    ffa ? db().from("tournament_pod_players").select(POD_PLAYER_COLUMNS).eq("tournament_id", id).limit(20_000) : null,
   ]);
   if (entrants.error) tournamentDbError(entrants.error, "Couldn't load the tournament.");
   if (matches.error) tournamentDbError(matches.error, "Couldn't load the tournament.");
+  if (pods?.error) tournamentDbError(pods.error, "Couldn't load the tournament.");
+  if (podPlayers?.error) tournamentDbError(podPlayers.error, "Couldn't load the tournament.");
 
   return {
     id: row.id,
@@ -262,6 +305,8 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
     share: { token: row.share_token, enabled: row.share_enabled },
     spots: row.spots ?? null,
     startingLife: row.starting_life ?? DEFAULT_STARTING_LIFE[asFormat(row.format)],
+    tableSize: ffa ? (row.table_size ?? DEFAULT_TABLE_SIZE) : null,
+    pods: ffa ? toPods((pods?.data ?? []) as PodRow[], (podPlayers?.data ?? []) as PodPlayerRow[]) : [],
     serverTime: new Date().toISOString(),
   };
 }
@@ -302,9 +347,11 @@ export async function createTournament(input: {
   entrants: unknown;
   spots?: unknown;
   startingLife?: unknown;
+  /** Free-for-all: the most players per table. */
+  tableSize?: unknown;
   actor: string | null;
 }): Promise<string> {
-  if (!isTournamentFormat(input.format)) throw new HttpError(400, "Pick 1v1 or Two-Headed Giant.");
+  if (!isTournamentFormat(input.format)) throw new HttpError(400, "Pick 1v1, Two-Headed Giant or free-for-all.");
   const format = input.format;
   const info = formatInfo(format);
   const name = cleanTournamentName(input.name);
@@ -318,8 +365,17 @@ export async function createTournament(input: {
   const startingLife = input.startingLife == null ? DEFAULT_STARTING_LIFE[format] : input.startingLife;
   const lifeProblem = startingLifeProblem(startingLife);
   if (lifeProblem) throw new HttpError(400, lifeProblem);
+  let tableSize: number | null = null;
+  if (format === "ffa") {
+    tableSize = input.tableSize == null ? DEFAULT_TABLE_SIZE : (input.tableSize as number);
+    const problem = tableSizeProblem(tableSize);
+    if (problem) throw new HttpError(400, problem);
+  }
   const raw = Array.isArray(input.entrants) ? input.entrants : [];
-  if (!signups && raw.length < 2) throw new HttpError(400, `Add at least two ${info.nounPlural}.`);
+  const fewest = Math.max(2, minPlayers(format) / info.teamSize);
+  if (!signups && raw.length < fewest) {
+    throw new HttpError(400, fewest === 2 ? `Add at least two ${info.nounPlural}.` : `Add at least ${fewest} ${info.nounPlural}.`);
+  }
   if (raw.length > MAX_ENTRANTS) throw new HttpError(400, `A tournament can have up to ${MAX_ENTRANTS} ${info.nounPlural}.`);
   const entrants = raw.map((players) => readPlayers(format, players, signups));
   const dup = duplicateName(entrants);
@@ -330,7 +386,14 @@ export async function createTournament(input: {
 
   const { data, error } = await db()
     .from("tournaments")
-    .insert({ name, format, spots, starting_life: startingLife as number, created_by: input.actor?.slice(0, 320) ?? null })
+    .insert({
+      name,
+      format,
+      spots,
+      starting_life: startingLife as number,
+      table_size: tableSize,
+      created_by: input.actor?.slice(0, 320) ?? null,
+    })
     .select("id")
     .single();
   if (error || !data) tournamentDbError(error ?? {}, "Couldn't create the tournament.");
@@ -486,8 +549,9 @@ export async function removeEntrant(
   requireActive(t);
   const entrant = findEntrant(t, rawEntrantId);
   const theirs = t.matches.filter((m) => m.a === entrant.id || m.b === entrant.id);
+  const seats = t.pods.flatMap((pod) => pod.players.filter((p) => p.entrantId === entrant.id).map((player) => ({ pod, player })));
 
-  if (theirs.length === 0) {
+  if (theirs.length === 0 && seats.length === 0) {
     const { error } = await db()
       .from("tournament_entrants")
       .delete()
@@ -498,6 +562,16 @@ export async function removeEntrant(
   }
 
   if (entrant.droppedAt) return "dropped";
+  // Free-for-all: leaving a game being played counts as going out of it.
+  const playing = seats.find((s) => !s.pod.endedAt && !s.player.outAt);
+  if (playing) {
+    const { error } = await db().rpc("tournament_pod_knock_out", {
+      p_tournament_id: t.id,
+      p_pod_player_id: playing.player.id,
+    });
+    // Already out or the game just ended: nothing left to record.
+    if (error && error.code !== "GGT02") tournamentDbError(error);
+  }
   const open = theirs.find((m) => m.result === "pending" && m.b != null);
   if (open) {
     const { error } = await db()
@@ -555,14 +629,20 @@ export async function pairTournamentRound(
 
   if (replace) {
     requireActive(t);
-    const current = matchesInRound(t.matches, t.currentRound);
-    if (t.currentRound < 1 || current.some((m) => m.result !== "pending" && m.result !== "bye")) {
-      throw new HttpError(409, `Results are already in for round ${t.currentRound}, so it can't be re-paired.`);
+    if (!canRepairRound(t)) {
+      throw new HttpError(
+        409,
+        t.format === "ffa"
+          ? `Someone is already out in round ${t.currentRound}, so it can't be re-dealt.`
+          : `Results are already in for round ${t.currentRound}, so it can't be re-paired.`,
+      );
     }
   } else {
     const blocker = nextRoundBlocker(t);
     if (blocker) throw new HttpError(409, blocker);
   }
+
+  if (t.format === "ffa") return dealRound(t, round, replace, random);
 
   const history = replace ? t.matches.filter((m) => m.round !== t.currentRound) : t.matches;
   const active = activeEntrants(t);
@@ -588,6 +668,26 @@ export async function pairTournamentRound(
     ],
   });
   if (error) tournamentDbError(error, "Couldn't pair the round.");
+  return round;
+}
+
+/** Free-for-all: deals everyone still in onto new tables (see dealTables()). */
+async function dealRound(t: TournamentDetail, round: number, replace: boolean, random: () => number): Promise<number> {
+  const history = replace ? t.pods.filter((p) => p.round !== t.currentRound) : t.pods;
+  const tables = dealTables(
+    activeEntrants(t).map((e) => e.id),
+    t.tableSize ?? DEFAULT_TABLE_SIZE,
+    history,
+    random,
+  );
+  if (!tables) throw new HttpError(409, "Add at least two players to deal a round.");
+  const { error } = await db().rpc("tournament_deal_pods", {
+    p_tournament_id: t.id,
+    p_round: round,
+    p_replace: replace,
+    p_pods: tables,
+  });
+  if (error) tournamentDbError(error, "Couldn't deal the tables.");
   return round;
 }
 
@@ -760,6 +860,96 @@ export async function reportLoss(t: TournamentDetail, input: { matchId: unknown;
     .select("id");
   if (error) tournamentDbError(error);
   if (!data || data.length === 0) throw new HttpError(409, "This game is already over.");
+}
+
+// ───────────────────── free-for-all tables ─────────────────────
+
+function findPodSeat(t: TournamentDetail, rawId: unknown): { pod: TournamentPod; player: TournamentPodPlayer } {
+  if (t.status !== "active") throw new HttpError(409, "This tournament is finished.");
+  const id = readId(rawId, "seat");
+  for (const pod of t.pods) {
+    const player = pod.players.find((p) => p.id === id);
+    if (player) return { pod, player };
+  }
+  throw new HttpError(404, "That table isn't there anymore. Refresh and try again.");
+}
+
+function findPod(t: TournamentDetail, rawId: unknown): TournamentPod {
+  requireActive(t);
+  const id = readId(rawId, "table");
+  const pod = t.pods.find((p) => p.id === id);
+  if (!pod) throw new HttpError(404, "That table isn't there anymore. Refresh and try again.");
+  if (pod.round !== t.currentRound) throw new HttpError(409, "Only this round's games can be changed.");
+  return pod;
+}
+
+/** Adds to (or takes from) a player's life at a free-for-all table. Players do this from their phones. */
+export async function changePodLife(t: TournamentDetail, input: { podPlayerId: unknown; delta: unknown }): Promise<number> {
+  const { pod, player } = findPodSeat(t, input.podPlayerId);
+  if (pod.endedAt || player.outAt) throw new HttpError(409, "This game is over for you.");
+  const delta = input.delta;
+  if (typeof delta !== "number" || !Number.isInteger(delta) || delta === 0 || Math.abs(delta) > MAX_LIFE_CHANGE) {
+    throw new HttpError(400, "That life change doesn't look right.");
+  }
+  const { data, error } = await db().rpc("tournament_pod_change_life", {
+    p_tournament_id: t.id,
+    p_pod_player_id: player.id,
+    p_delta: delta,
+  });
+  if (error) tournamentDbError(error, "Couldn't update the life total.");
+  return typeof data === "number" ? data : t.startingLife;
+}
+
+/**
+ * A player is out of their free-for-all game (they confirmed on their phone,
+ * or staff marked it): they take the lowest place still open, and when one
+ * player is left the game is theirs. Returns the place they finished.
+ */
+export async function knockOut(t: TournamentDetail, input: { podPlayerId: unknown }): Promise<{ place: number; ended: boolean }> {
+  const { pod, player } = findPodSeat(t, input.podPlayerId);
+  if (pod.endedAt) throw new HttpError(409, "This game is over.");
+  if (player.outAt) throw new HttpError(409, "You're already out of this game.");
+  const { data, error } = await db().rpc("tournament_pod_knock_out", {
+    p_tournament_id: t.id,
+    p_pod_player_id: player.id,
+  });
+  if (error) tournamentDbError(error, "Couldn't record that. Please try again.");
+  const result = (data ?? {}) as { place?: number; ended?: boolean };
+  return { place: result.place ?? 0, ended: result.ended === true };
+}
+
+/** Staff end a free-for-all game (time's up): the winner is 1st, everyone else still in shares 2nd. */
+export async function setPodWinner(t: TournamentDetail, input: { podId: unknown; entrantId: unknown }): Promise<void> {
+  const pod = findPod(t, input.podId);
+  if (pod.endedAt) throw new HttpError(409, "This game is already over. Undo it first to change the winner.");
+  const entrantId = readId(input.entrantId, "player");
+  if (!stillIn(pod).some((p) => p.entrantId === entrantId)) {
+    throw new HttpError(400, "The winner has to be someone still in the game.");
+  }
+  const { error } = await db().rpc("tournament_pod_set_winner", {
+    p_tournament_id: t.id,
+    p_pod_id: pod.id,
+    p_entrant_id: entrantId,
+  });
+  if (error) tournamentDbError(error);
+}
+
+/** Staff take back the last thing at a table: whoever went out last is back in, and a decided game is open again. */
+export async function undoPod(t: TournamentDetail, input: { podId: unknown }): Promise<void> {
+  const pod = findPod(t, input.podId);
+  if (pod.players.every((p) => !p.outAt)) throw new HttpError(409, "Nobody is out at this table yet.");
+  const { error } = await db().rpc("tournament_pod_undo", { p_tournament_id: t.id, p_pod_id: pod.id });
+  if (error) tournamentDbError(error);
+}
+
+/** Free-for-all: changes the most players per table (used from the next deal). */
+export async function setTableSize(t: TournamentDetail, raw: unknown): Promise<void> {
+  if (t.format !== "ffa") throw new HttpError(400, "Players per table is for free-for-all tournaments.");
+  requireActive(t);
+  const problem = tableSizeProblem(raw);
+  if (problem) throw new HttpError(400, problem);
+  const { error } = await db().from("tournaments").update({ table_size: raw as number }).eq("id", t.id);
+  if (error) tournamentDbError(error);
 }
 
 /** Changes the starting life (games already being played keep what they've tracked). */
