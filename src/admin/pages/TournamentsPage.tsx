@@ -14,11 +14,13 @@ import { AddEntrantForm, EntrantFields, StandingsTable } from "../components/tou
 import { CommanderPicker, type CommanderOption } from "../components/tournaments/CommanderPicker";
 import { PlayerDisplayPanel } from "../components/tournaments/PlayerDisplayPanel";
 import { useAsync } from "../hooks/useAsync";
+import { useClock } from "../hooks/useClock";
 import { useToast } from "../hooks/useToast";
 import { ADMIN_BASE } from "../hooks/useRouter";
 import { adminFetch } from "../repositories/apiClient";
 import {
   MAX_SPOTS,
+  MAX_STARTING_LIFE,
   MAX_TOURNAMENT_NAME,
   activeEntrants,
   canRepairRound,
@@ -34,6 +36,7 @@ import {
   playerCount,
   soloEntrants,
   spotsProblem,
+  startingLifeProblem,
   type ReportableResult,
   type TournamentCommander,
   type TournamentDetail,
@@ -229,6 +232,7 @@ function TournamentView({
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [editingSpots, setEditingSpots] = useState<{ value: string; error: string | null } | null>(null);
+  const [editingLife, setEditingLife] = useState<{ value: string; error: string | null } | null>(null);
   const [editing, setEditing] = useState<{
     entrant: TournamentEntrant;
     values: string[];
@@ -263,6 +267,21 @@ function TournamentView({
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [load]);
+
+  // While games are being played, players change life totals and record
+  // losses from their phones: keep this page up to date.
+  const liveRound =
+    detail != null &&
+    detail.status === "active" &&
+    detail.matches.some((m) => m.round === detail.currentRound && m.b != null && m.result === "pending");
+  useEffect(() => {
+    if (!liveRound) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible" && inFlight.current === 0) void load();
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [liveRound, load]);
+  const now = useClock(liveRound);
 
   const run = useCallback(
     async (
@@ -381,6 +400,23 @@ function TournamentView({
           { action: "pair", round: detail.currentRound + 1 },
           { success: `Round ${detail.currentRound + 1} is paired.` },
         );
+
+  async function saveLife(e: FormEvent) {
+    e.preventDefault();
+    if (!editingLife) return;
+    const value = Number(editingLife.value);
+    const problem = startingLifeProblem(value);
+    if (problem) {
+      setEditingLife({ ...editingLife, error: problem });
+      return;
+    }
+    const ok = await run(
+      "starting-life",
+      { action: "starting-life", life: value },
+      { success: `Games start at ${value} life.`, listChanged: false },
+    );
+    if (ok) setEditingLife(null);
+  }
 
   async function saveSpots(e: FormEvent) {
     e.preventDefault();
@@ -521,6 +557,16 @@ function TournamentView({
               {droppedCount > 0 ? ` (${droppedCount} dropped)` : ""}
             </span>
           )}
+          <span>· Starting life {detail.startingLife}</span>
+          {editable && (
+            <button
+              type="button"
+              className="gg-link-btn"
+              onClick={() => setEditingLife({ value: String(detail.startingLife), error: null })}
+            >
+              Change
+            </button>
+          )}
         </div>
         {!editable && leaders.length > 0 && (
           <div className="gg-tourney-champion">
@@ -646,6 +692,8 @@ function TournamentView({
                 editable={editable}
                 allowClear
                 onReport={(m, r) => void report(m, r)}
+                startingLife={detail.startingLife}
+                now={now}
               />
               {editable && (
                 <div className="gg-tourney-next">
@@ -752,6 +800,8 @@ function TournamentView({
                   editable={editable}
                   allowClear={false}
                   onReport={(m, r) => void report(m, r)}
+                  startingLife={detail.startingLife}
+                  now={now}
                 />
               </details>
             );
@@ -770,6 +820,44 @@ function TournamentView({
           onCancel={() => setConfirm(null)}
         />
       )}
+
+      <Modal
+        open={editingLife != null}
+        onClose={() => setEditingLife(null)}
+        title="Starting life"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditingLife(null)} disabled={busy === "starting-life"}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" form="gg-tourney-life" loading={busy === "starting-life"}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        {editingLife && (
+          <form id="gg-tourney-life" onSubmit={saveLife} noValidate>
+            <TextField
+              label="Starting life"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_STARTING_LIFE}
+              value={editingLife.value}
+              autoFocus
+              error={editingLife.error ?? undefined}
+              hint={
+                detail.format === "2hg"
+                  ? "Per team. Games already being played keep the life they've tracked."
+                  : "Games already being played keep the life they've tracked."
+              }
+              onChange={(e) => setEditingLife({ value: e.target.value, error: null })}
+            />
+          </form>
+        )}
+      </Modal>
 
       <Modal
         open={editingSpots != null}

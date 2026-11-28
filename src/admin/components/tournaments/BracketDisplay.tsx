@@ -4,6 +4,8 @@ import { SelectField, TextField } from "../ui/Field";
 import { Icon } from "../ui/Icon";
 import { QrCode } from "../partners/QrCode";
 import { CommanderPicker, type CommanderOption } from "./CommanderPicker";
+import { LifeCounter } from "./LifeCounter";
+import { useClock } from "../../hooks/useClock";
 import {
   MAX_PLAYER_NAME,
   activeEntrants,
@@ -12,8 +14,11 @@ import {
   commanderSummary,
   computeStandings,
   entrantLabel,
+  formatDuration,
   formatInfo,
+  gameDuration,
   isSigningUp,
+  lifeOf,
   matchesInRound,
   parseSeatKey,
   playerCount,
@@ -67,10 +72,13 @@ export function BracketDisplay({
   onPickMe,
   onSaveCommander,
   onSignUp,
+  onChangeLife,
+  onLost,
   searchCommanders,
   updatedAt,
   onFullscreen,
   tvUrl,
+  clockOffset = 0,
 }: {
   tournament: TournamentDetail;
   tv: boolean;
@@ -82,6 +90,12 @@ export function BracketDisplay({
   onSaveCommander: (seat: PlayerSeat, commander: TournamentCommander | null) => Promise<boolean>;
   /** Takes a spot (sign-up tournaments). */
   onSignUp?: (input: SignUpInput) => Promise<boolean>;
+  /** Changes a side's life in a game being played. */
+  onChangeLife?: (matchId: string, side: "a" | "b", delta: number) => Promise<boolean>;
+  /** Records that a side lost a game being played. */
+  onLost?: (matchId: string, side: "a" | "b") => Promise<boolean>;
+  /** Server clock minus device clock (ms), for game timers. */
+  clockOffset?: number;
   searchCommanders: (query: string) => Promise<CommanderOption[]>;
   updatedAt: Date | null;
   onFullscreen?: () => void;
@@ -110,6 +124,13 @@ export function BracketDisplay({
   const seated = me && meEntrant && me.seat < meEntrant.players.length ? me : null;
   const myMatch =
     meEntrant && !finished ? current.find((m) => m.a === meEntrant.id || m.b === meEntrant.id) ?? null : null;
+  const liveGames = !finished && current.some((m) => m.b != null && m.result === "pending");
+  const now = useClock(liveGames, clockOffset);
+  const roundStart = current.length > 0 ? Math.min(...current.map((m) => new Date(m.startedAt).getTime())) : null;
+  const myLiveGame =
+    myMatch && myMatch.b != null && myMatch.result === "pending" && seated && meEntrant && onChangeLife && onLost
+      ? myMatch
+      : null;
 
   const head = (
     <header className="gg-bracket__head">
@@ -163,7 +184,15 @@ export function BracketDisplay({
 
   const roundSection = (
     <section className="gg-bracket__section gg-bracket__now" aria-labelledby="bracket-now">
-      <h2 id="bracket-now">{t.currentRound === 0 ? "Who's playing" : finished ? `Round ${t.currentRound}` : `Now playing · Round ${t.currentRound}`}</h2>
+      <h2 id="bracket-now">
+        {t.currentRound === 0 ? "Who's playing" : finished ? `Round ${t.currentRound}` : `Now playing · Round ${t.currentRound}`}
+        {liveGames && roundStart != null && Number.isFinite(roundStart) && (
+          <>
+            {" · "}
+            <span className="gg-bracket__roundclock">{formatDuration(now - roundStart)}</span>
+          </>
+        )}
+      </h2>
       {t.currentRound === 0 ? (
         <ul className="gg-bracket__entrants">
           {active.map((e) => (
@@ -179,7 +208,14 @@ export function BracketDisplay({
       ) : (
         <ul className="gg-bracket__matches">
           {current.map((m) => (
-            <MatchCard key={m.id} match={m} byId={byId} mine={myMatch?.id === m.id} />
+            <MatchCard
+              key={m.id}
+              match={m}
+              byId={byId}
+              mine={myMatch?.id === m.id}
+              startingLife={t.startingLife}
+              now={now}
+            />
           ))}
         </ul>
       )}
@@ -325,7 +361,7 @@ export function BracketDisplay({
     <div className="gg-bracket gg-bracket--phone">
       {head}
       {champion}
-      {!finished && signingUp && !seated && onSignUp ? (
+      {!myLiveGame && !finished && signingUp && !seated && onSignUp ? (
         <JoinCard
           tournament={t}
           spotsLeft={spotsLeft}
@@ -334,7 +370,8 @@ export function BracketDisplay({
           search={searchCommanders}
         />
       ) : (
-        !finished && (
+        !finished &&
+        !myLiveGame && (
           <MyCommander
             tournament={t}
             me={me}
@@ -346,7 +383,25 @@ export function BracketDisplay({
           />
         )
       )}
-      {myMatch && meEntrant && <MyTable match={myMatch} me={meEntrant} byId={byId} />}
+      {myLiveGame && meEntrant && onChangeLife && onLost ? (
+        <LifeCounter
+          key={myLiveGame.id}
+          match={myLiveGame}
+          side={myLiveGame.a === meEntrant.id ? "a" : "b"}
+          startingLife={t.startingLife}
+          table={myLiveGame.table}
+          opponentLabel={(() => {
+            const opp = byId.get(myLiveGame.a === meEntrant.id ? (myLiveGame.b as string) : myLiveGame.a);
+            return opp ? entrantLabel(opp) : "your opponent";
+          })()}
+          team={t.format === "2hg"}
+          now={now}
+          onChange={(delta) => onChangeLife(myLiveGame.id, myLiveGame.a === meEntrant.id ? "a" : "b", delta)}
+          onLost={() => onLost(myLiveGame.id, myLiveGame.a === meEntrant.id ? "a" : "b")}
+        />
+      ) : (
+        myMatch && meEntrant && <MyTable match={myMatch} me={meEntrant} byId={byId} />
+      )}
       {signingUp ? lobbySection : roundSection}
       {standingsSection}
       {roundsSection}
@@ -383,7 +438,19 @@ function CommanderCards({ entrant, size }: { entrant: TournamentEntrant; size: "
   );
 }
 
-function MatchCard({ match, byId, mine }: { match: TournamentMatch; byId: Map<string, TournamentEntrant>; mine: boolean }) {
+function MatchCard({
+  match,
+  byId,
+  mine,
+  startingLife,
+  now,
+}: {
+  match: TournamentMatch;
+  byId: Map<string, TournamentEntrant>;
+  mine: boolean;
+  startingLife: number;
+  now: number;
+}) {
   const a = byId.get(match.a);
   if (!a) return null;
   if (match.b == null) {
@@ -404,20 +471,42 @@ function MatchCard({ match, byId, mine }: { match: TournamentMatch; byId: Map<st
         : match.result === side
           ? "won"
           : "lost";
+  const elapsed = gameDuration(match, now);
+  const done = match.result !== "pending";
   return (
-    <li className={`gg-bmatch ${match.result !== "pending" ? "is-done" : ""} ${mine ? "is-mine" : ""}`}>
-      <span className="gg-bmatch__table">Table {match.table}</span>
-      <Side entrant={a} state={stateOf("a")} />
+    <li className={`gg-bmatch ${done ? "is-done" : ""} ${mine ? "is-mine" : ""}`}>
+      <span className="gg-bmatch__table">
+        <span>Table {match.table}</span>
+        {elapsed != null && (
+          <span className={`gg-bmatch__clock ${done ? "is-done" : ""}`}>
+            <Icon name="clock" size={12} />
+            {done ? `Game over · ${formatDuration(elapsed)}` : formatDuration(elapsed)}
+          </span>
+        )}
+      </span>
+      <Side entrant={a} state={stateOf("a")} life={lifeOf(match, "a", startingLife)} startingLife={startingLife} />
       <span className="gg-bmatch__vs" aria-hidden="true">
         vs
       </span>
-      <Side entrant={b} state={stateOf("b")} />
+      <Side entrant={b} state={stateOf("b")} life={lifeOf(match, "b", startingLife)} startingLife={startingLife} />
     </li>
   );
 }
 
-function Side({ entrant, state }: { entrant: TournamentEntrant; state: "playing" | "won" | "lost" | "draw" | "bye" }) {
+function Side({
+  entrant,
+  state,
+  life,
+  startingLife,
+}: {
+  entrant: TournamentEntrant;
+  state: "playing" | "won" | "lost" | "draw" | "bye";
+  /** Life in this game (not for a bye). */
+  life?: number;
+  startingLife?: number;
+}) {
   const cmd = commanderSummary(entrant);
+  const low = life != null && startingLife != null && life <= Math.ceil(startingLife / 4);
   return (
     <div className={`gg-bside gg-bside--${state}`}>
       <CommanderCards entrant={entrant} size="md" />
@@ -432,6 +521,14 @@ function Side({ entrant, state }: { entrant: TournamentEntrant; state: "playing"
         <strong>{entrantLabel(entrant)}</strong>
         {cmd && <span className="gg-bside__cmd">{cmd}</span>}
       </div>
+      {life != null && (
+        <span
+          className={`gg-bside__life ${low ? "is-low" : ""} ${life <= 0 ? "is-out" : ""}`}
+          aria-label={`${life} life`}
+        >
+          {life}
+        </span>
+      )}
     </div>
   );
 }

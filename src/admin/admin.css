@@ -5854,3 +5854,133 @@ html.gg-tv { font-size: clamp(16px, 1.05vw, 26px); }
   .gg-tourney-signup__bar > span,
   .gg-bracket__spotsbar > span { transition: none; }
 }
+
+/* Tournaments: life totals and game clocks */
+.gg-tourney-match__table { display: grid; gap: 2px; }
+.gg-tourney-match__clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--gg-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.gg-tourney-side__life {
+  flex: none;
+  min-width: 2.2em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--gg-surface-2);
+  color: var(--gg-text-soft);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.gg-tourney-side__life.is-out { background: #fde8e8; color: var(--gg-danger); }
+
+.gg-bmatch__table { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.gg-bmatch__clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--gg-brand);
+}
+.gg-bmatch__clock.is-done { color: var(--gg-text-faint); }
+.gg-bracket__roundclock { font-variant-numeric: tabular-nums; color: var(--gg-brand); }
+.gg-bracket--tv .gg-bmatch__clock:not(.is-done),
+.gg-bracket--tv .gg-bracket__roundclock { color: #e2c6ff; }
+.gg-bside__life {
+  flex: none;
+  min-width: 2ch;
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transition: color 200ms ease;
+}
+.gg-bside__life.is-low { color: #d9822b; }
+.gg-bside__life.is-out { color: var(--gg-danger); }
+.gg-bracket--tv .gg-bside__life { font-size: 2.3rem; }
+.gg-bracket--tv .gg-bside__life.is-low { color: #f3b26b; }
+.gg-bracket--tv .gg-bside__life.is-out { color: #ff8a8a; }
+.gg-bside--lost .gg-bside__life,
+.gg-bside--won .gg-bside__life { font-size: 1.3rem; }
+
+/* The phone life counter: big number, big buttons. */
+.gg-life { display: grid; gap: 0.8rem; padding: 1rem; }
+.gg-life__top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.gg-life__top h2 { margin: 0; font-size: 1rem; overflow-wrap: break-word; }
+.gg-life__clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--gg-brand-tint);
+  color: var(--gg-brand);
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.gg-life__counter { display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: stretch; gap: 0.6rem; }
+.gg-life__btn {
+  min-height: 7rem;
+  border: 1.5px solid var(--gg-line);
+  border-radius: var(--gg-radius);
+  background: var(--gg-surface-2);
+  color: var(--gg-text);
+  font: inherit;
+  font-size: 3rem;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gg-life__btn:active { background: var(--gg-brand-tint); border-color: var(--gg-brand); }
+.gg-life__total { display: grid; place-items: center; align-content: center; gap: 0.1rem; }
+.gg-life__who { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gg-text-faint); }
+.gg-life__total output { font-size: 4.2rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.gg-life__total.is-low output { color: #d9822b; }
+.gg-life__total.is-out output { color: var(--gg-danger); }
+.gg-life__steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+.gg-life__steps button {
+  min-height: 2.9rem;
+  border: 1px solid var(--gg-line);
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface);
+  color: var(--gg-text);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.gg-life__steps button:active { background: var(--gg-brand-tint); }
+.gg-life__btn:focus-visible,
+.gg-life__steps button:focus-visible { outline: 2px solid var(--gg-brand); outline-offset: 2px; }
+.gg-life__them {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--gg-radius-sm);
+  background: var(--gg-surface-2);
+  color: var(--gg-text-soft);
+}
+.gg-life__them strong { font-size: 1.5rem; color: var(--gg-text); font-variant-numeric: tabular-nums; }
+.gg-life__them strong.is-out { color: var(--gg-danger); }
+.gg-life__concede { justify-self: center; font-size: 0.9rem; color: var(--gg-text-soft); }
+@media (prefers-reduced-motion: reduce) {
+  .gg-bside__life { transition: none; }
+}

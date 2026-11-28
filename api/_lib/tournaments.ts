@@ -11,6 +11,7 @@ import {
   cleanCommanderName,
   cleanPlayerName,
   cleanTournamentName,
+  DEFAULT_STARTING_LIFE,
   duplicateName,
   entrantLabel,
   entrantProblem,
@@ -24,6 +25,8 @@ import {
   soloEntrants,
   spotsProblem,
   startBlocker,
+  startingLifeProblem,
+  MAX_LIFE_CHANGE,
   isTournamentFormat,
   matchesInRound,
   nextRoundBlocker,
@@ -50,7 +53,7 @@ type MatchRow = Database["public"]["Tables"]["tournament_matches"]["Row"];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOURNAMENT_COLUMNS =
-  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled, spots";
+  "id, name, format, status, current_round, created_by, created_at, updated_at, finished_at, share_token, share_enabled, spots, starting_life";
 const ENTRANT_COLUMNS =
   "id, tournament_id, player_one, player_two, commander_one, commander_one_card, commander_two, commander_two_card, dropped_at, created_at, updated_at";
 /** Share links are 32 url-safe characters (the database also accepts its own 64-character default). */
@@ -58,7 +61,7 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{20,100}$/;
 /** Commander suggestions per search. */
 const COMMANDER_RESULTS = 8;
 const MATCH_COLUMNS =
-  "id, tournament_id, round, table_number, entrant_a, entrant_b, result, reported_by, reported_at, created_at, updated_at";
+  "id, tournament_id, round, table_number, entrant_a, entrant_b, result, reported_by, reported_at, created_at, updated_at, life_a, life_b, ended_at";
 
 function db(): SupabaseClient<Database> {
   return getSupabaseAdmin();
@@ -129,6 +132,10 @@ function toMatch(row: MatchRow): TournamentMatch {
     b: row.entrant_b,
     result: asResult(row.result),
     reportedAt: row.reported_at,
+    lifeA: row.life_a ?? null,
+    lifeB: row.life_b ?? null,
+    startedAt: row.created_at,
+    endedAt: row.ended_at ?? null,
   };
 }
 
@@ -254,6 +261,8 @@ async function withEntrantsAndMatches(row: TournamentRow): Promise<TournamentDet
     matches: ((matches.data ?? []) as MatchRow[]).map(toMatch),
     share: { token: row.share_token, enabled: row.share_enabled },
     spots: row.spots ?? null,
+    startingLife: row.starting_life ?? DEFAULT_STARTING_LIFE[asFormat(row.format)],
+    serverTime: new Date().toISOString(),
   };
 }
 
@@ -292,6 +301,7 @@ export async function createTournament(input: {
   format: unknown;
   entrants: unknown;
   spots?: unknown;
+  startingLife?: unknown;
   actor: string | null;
 }): Promise<string> {
   if (!isTournamentFormat(input.format)) throw new HttpError(400, "Pick 1v1 or Two-Headed Giant.");
@@ -305,6 +315,9 @@ export async function createTournament(input: {
     if (problem) throw new HttpError(400, problem);
   }
   const spots = signups ? (input.spots as number) : null;
+  const startingLife = input.startingLife == null ? DEFAULT_STARTING_LIFE[format] : input.startingLife;
+  const lifeProblem = startingLifeProblem(startingLife);
+  if (lifeProblem) throw new HttpError(400, lifeProblem);
   const raw = Array.isArray(input.entrants) ? input.entrants : [];
   if (!signups && raw.length < 2) throw new HttpError(400, `Add at least two ${info.nounPlural}.`);
   if (raw.length > MAX_ENTRANTS) throw new HttpError(400, `A tournament can have up to ${MAX_ENTRANTS} ${info.nounPlural}.`);
@@ -317,7 +330,7 @@ export async function createTournament(input: {
 
   const { data, error } = await db()
     .from("tournaments")
-    .insert({ name, format, spots, created_by: input.actor?.slice(0, 320) ?? null })
+    .insert({ name, format, spots, starting_life: startingLife as number, created_by: input.actor?.slice(0, 320) ?? null })
     .select("id")
     .single();
   if (error || !data) tournamentDbError(error ?? {}, "Couldn't create the tournament.");
@@ -493,6 +506,7 @@ export async function removeEntrant(
         result: open.a === entrant.id ? "b" : "a",
         reported_at: new Date().toISOString(),
         reported_by: actor?.slice(0, 320) ?? null,
+        ended_at: new Date().toISOString(),
       })
       .eq("id", open.id)
       .eq("result", "pending");
@@ -592,12 +606,19 @@ export async function reportResult(
   if (result === "pending" && match.round !== t.currentRound) {
     throw new HttpError(400, "Only this round's results can be cleared. Pick who won instead.");
   }
+  const now = new Date().toISOString();
   const { data, error } = await db()
     .from("tournament_matches")
     .update(
       result === "pending"
-        ? { result, reported_at: null, reported_by: null }
-        : { result, reported_at: new Date().toISOString(), reported_by: actor?.slice(0, 320) ?? null },
+        ? { result, reported_at: null, reported_by: null, ended_at: null }
+        : {
+            result,
+            reported_at: now,
+            reported_by: actor?.slice(0, 320) ?? null,
+            // The game ended when it was first decided; changing the winner later doesn't move that.
+            ended_at: match.endedAt ?? (match.result === "pending" ? now : match.reportedAt ?? now),
+          },
     )
     .eq("id", match.id)
     .eq("tournament_id", t.id)
@@ -686,6 +707,66 @@ export async function setSpots(t: TournamentDetail, raw: unknown): Promise<void>
     }
   }
   const { error } = await db().from("tournaments").update({ spots }).eq("id", t.id);
+  if (error) tournamentDbError(error);
+}
+
+// ───────────────────────────── life ─────────────────────────────
+
+function findLiveGame(t: TournamentDetail, rawMatchId: unknown, rawSide: unknown) {
+  if (t.status !== "active") throw new HttpError(409, "This tournament is finished.");
+  const matchId = readId(rawMatchId, "game");
+  const match = t.matches.find((m) => m.id === matchId);
+  if (!match || match.b == null) throw new HttpError(404, "That game isn't there anymore. Refresh and try again.");
+  if (rawSide !== "a" && rawSide !== "b") throw new HttpError(400, "Pick a side.");
+  if (match.result !== "pending") throw new HttpError(409, "This game is over.");
+  return { match, side: rawSide as "a" | "b" };
+}
+
+/** Adds to (or takes from) one side's life while the game is played. Players do this from their phones. */
+export async function changeLife(
+  t: TournamentDetail,
+  input: { matchId: unknown; side: unknown; delta: unknown },
+): Promise<{ lifeA: number; lifeB: number }> {
+  const { match, side } = findLiveGame(t, input.matchId, input.side);
+  const delta = input.delta;
+  if (typeof delta !== "number" || !Number.isInteger(delta) || delta === 0 || Math.abs(delta) > MAX_LIFE_CHANGE) {
+    throw new HttpError(400, "That life change doesn't look right.");
+  }
+  const { data, error } = await db().rpc("tournament_change_life", {
+    p_tournament_id: t.id,
+    p_match_id: match.id,
+    p_side: side,
+    p_delta: delta,
+  });
+  if (error) tournamentDbError(error, "Couldn't update the life total.");
+  const life = (data ?? {}) as { life_a?: number; life_b?: number };
+  return { lifeA: life.life_a ?? t.startingLife, lifeB: life.life_b ?? t.startingLife };
+}
+
+/**
+ * A player confirms they lost (their life hit 0, or they conceded): the game
+ * goes to the other side and its clock stops. Only while it's being played,
+ * so two phones confirming at once record it once.
+ */
+export async function reportLoss(t: TournamentDetail, input: { matchId: unknown; side: unknown }): Promise<void> {
+  const { match, side } = findLiveGame(t, input.matchId, input.side);
+  const now = new Date().toISOString();
+  const { data, error } = await db()
+    .from("tournament_matches")
+    .update({ result: side === "a" ? "b" : "a", reported_at: now, reported_by: "player", ended_at: now })
+    .eq("id", match.id)
+    .eq("tournament_id", t.id)
+    .eq("result", "pending")
+    .select("id");
+  if (error) tournamentDbError(error);
+  if (!data || data.length === 0) throw new HttpError(409, "This game is already over.");
+}
+
+/** Changes the starting life (games already being played keep what they've tracked). */
+export async function setStartingLife(t: TournamentDetail, raw: unknown): Promise<void> {
+  const problem = startingLifeProblem(raw);
+  if (problem) throw new HttpError(400, problem);
+  const { error } = await db().from("tournaments").update({ starting_life: raw as number }).eq("id", t.id);
   if (error) tournamentDbError(error);
 }
 

@@ -27,6 +27,10 @@ const match = (id: string, round: number, table: number, a: string, b: string | 
   b,
   result,
   reportedAt: result === "a" || result === "b" || result === "draw" ? T0 : null,
+  lifeA: null,
+  lifeB: null,
+  startedAt: T0,
+  endedAt: result === "a" || result === "b" || result === "draw" ? T0 : null,
 });
 
 function detail(extra: Partial<TournamentDetail> = {}): TournamentDetail {
@@ -41,6 +45,7 @@ function detail(extra: Partial<TournamentDetail> = {}): TournamentDetail {
     entrants: [entrant("a", ["Alex"]), entrant("b", ["Blair"]), entrant("c", ["Casey"]), entrant("d", ["Drew"])],
     matches: [match("m1", 1, 1, "a", "b", "pending"), match("m2", 1, 2, "c", "d", "pending")],
     spots: null,
+    startingLife: 40,
     ...extra,
   };
 }
@@ -435,5 +440,49 @@ describe("sign-ups (admin)", () => {
     expect(await screen.findByText("Needs a teammate")).toBeTruthy();
     expect(screen.getByText(/1 player is waiting for a teammate/)).toBeTruthy();
     expect(screen.getByLabelText("Player 2 (optional)")).toBeTruthy();
+  });
+});
+
+describe("life and game times (admin)", () => {
+  it("sets starting life on create, following the format until it's changed", async () => {
+    const user = userEvent.setup();
+    serve({ t: null }, () => ({ id: "t1", tournament: detail({ currentRound: 0, matches: [], entrants: [], spots: 8 }) }));
+    renderPage();
+    await screen.findByRole("heading", { name: "New tournament" });
+    const life = screen.getByLabelText("Starting life") as HTMLInputElement;
+    expect(life.value).toBe("40");
+    await user.click(screen.getByRole("radio", { name: /Two-Headed Giant/ }));
+    expect(life.value).toBe("60");
+    await user.clear(life);
+    await user.type(life, "30");
+    await user.click(screen.getByRole("radio", { name: /^1v1/ }));
+    expect(life.value).toBe("30");
+    await user.click(screen.getByRole("button", { name: "Create tournament" }));
+    await waitFor(() => expect(posts()[0]).toMatchObject({ action: "create", format: "1v1", startingLife: 30, spots: 8 }));
+  });
+
+  it("shows tracked life and the game clock on each table, and changes the starting life", async () => {
+    const user = userEvent.setup();
+    const t = detail();
+    t.matches[0] = { ...t.matches[0], lifeA: 31, lifeB: -2 };
+    const current = { t };
+    serve(current as { t: TournamentDetail | null }, () => ({ tournament: current.t }));
+    renderPage("id=t1");
+    const table1 = await screen.findByRole("group", { name: "Table 1: Alex vs Blair" });
+    expect(within(table1).getByText("31")).toBeTruthy();
+    expect(within(table1).getByText("-2").className).toContain("is-out");
+    expect(screen.getAllByText(/^\d+:\d\d:\d\d$|^\d+:\d\d$/).length).toBeGreaterThan(0);
+    // Untracked tables don't show a life total.
+    const table2 = screen.getByRole("group", { name: "Table 2: Casey vs Drew" });
+    expect(within(table2).queryByText("40")).toBeNull();
+
+    expect(screen.getByText("· Starting life 40")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText("Starting life");
+    await user.clear(field);
+    await user.type(field, "20");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(posts()[0]).toEqual({ action: "starting-life", id: "t1", life: 20 }));
   });
 });

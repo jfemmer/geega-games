@@ -5,8 +5,10 @@ import { TextArea, TextField } from "../ui/Field";
 import { Icon } from "../ui/Icon";
 import { adminFetch } from "../../repositories/apiClient";
 import {
+  DEFAULT_STARTING_LIFE,
   MAX_ENTRANTS,
   MAX_SPOTS,
+  MAX_STARTING_LIFE,
   MAX_TOURNAMENT_NAME,
   TOURNAMENT_FORMATS,
   duplicateName,
@@ -16,6 +18,7 @@ import {
   parseTeamList,
   randomTeams,
   spotsProblem,
+  startingLifeProblem,
   type TournamentDetail,
   type TournamentFormat,
 } from "../../utils/tournament";
@@ -66,6 +69,8 @@ export function CreateTournamentForm({
   const [name, setName] = useState(() => defaultName("1v1"));
   const [nameEdited, setNameEdited] = useState(false);
   const [joinMode, setJoinMode] = useState<JoinMode>("signup");
+  const [life, setLife] = useState(String(DEFAULT_STARTING_LIFE["1v1"]));
+  const [lifeEdited, setLifeEdited] = useState(false);
   const [spots, setSpots] = useState(String(DEFAULT_SPOTS));
   const [teamMode, setTeamMode] = useState<TeamMode>("random");
   const [text, setText] = useState("");
@@ -103,10 +108,13 @@ export function CreateTournamentForm({
     setFormat(next);
     setError(null);
     if (!nameEdited) setName(defaultName(next));
+    if (!lifeEdited) setLife(String(DEFAULT_STARTING_LIFE[next]));
   }
 
   function validate(): string | null {
     if (!name.trim()) return "Give the tournament a name.";
+    const lifeProblem = startingLifeProblem(Number(life));
+    if (lifeProblem) return lifeProblem;
     if (joinMode === "signup") return spotsProblem(format, Number(spots));
     if (plan.problem) return plan.problem;
     if (plan.entrants.length < 2) return `Add at least two ${info.nounPlural}.`;
@@ -129,8 +137,8 @@ export function CreateTournamentForm({
         method: "POST",
         body:
           joinMode === "signup"
-            ? { action: "create", name: name.trim(), format, entrants: [], spots: Number(spots) }
-            : { action: "create", name: name.trim(), format, entrants: plan.entrants },
+            ? { action: "create", name: name.trim(), format, entrants: [], spots: Number(spots), startingLife: Number(life) }
+            : { action: "create", name: name.trim(), format, entrants: plan.entrants, startingLife: Number(life) },
       });
       onCreated(res.tournament);
     } catch (err) {
@@ -184,6 +192,25 @@ export function CreateTournamentForm({
             ))}
           </div>
         </div>
+
+        <TextField
+          label="Starting life"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={MAX_STARTING_LIFE}
+          value={life}
+          hint={
+            format === "2hg"
+              ? "Per team. Two-Headed Giant Commander is 60; without commanders, 30. Players track it on their phones."
+              : "Commander is 40; other formats, 20. Players track it on their phones."
+          }
+          onChange={(e) => {
+            setLife(e.target.value);
+            setLifeEdited(true);
+            setError(null);
+          }}
+        />
 
         <div className="gg-field">
           <span className="gg-field__label" id="tourney-join-label">

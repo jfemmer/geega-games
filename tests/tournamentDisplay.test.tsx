@@ -33,6 +33,10 @@ const match = (id: string, round: number, table: number, a: string, b: string | 
   b,
   result,
   reportedAt: null,
+  lifeA: null,
+  lifeB: null,
+  startedAt: T0,
+  endedAt: result === "a" || result === "b" || result === "draw" ? T0 : null,
 });
 
 function tournament(extra: Partial<TournamentDetail> = {}): TournamentDetail {
@@ -57,6 +61,7 @@ function tournament(extra: Partial<TournamentDetail> = {}): TournamentDetail {
       match("m4", 2, 2, B, D, "b"),
     ],
     spots: null,
+    startingLife: 40,
     ...extra,
   };
 }
@@ -97,7 +102,7 @@ describe("bracket display", () => {
     show();
     expect(screen.getByRole("heading", { name: "Friday Commander" })).toBeTruthy();
     expect(screen.getByText("Round 2 · 1 of 2 results in")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Now playing · Round 2" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Now playing · Round 2 · \d+:\d\d/ })).toBeTruthy();
     // Commanders show with names; a picked card shows its image.
     expect(screen.getAllByText("Atraxa, Praetors' Voice").length).toBeGreaterThan(0);
     const img = screen.getAllByRole("img", { name: "Atraxa, Praetors' Voice" })[0] as HTMLImageElement;

@@ -96,6 +96,9 @@ beforeEach(() => {
         reported_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        life_a: null,
+        life_b: null,
+        ended_at: null,
       });
     });
     t.current_round = args.p_round;
@@ -135,6 +138,16 @@ beforeEach(() => {
     };
     state.tables.tournament_entrants.push(row);
     return { data: { entrant_id: row.id, seat: 0, players: players + 1, spots: t.spots }, error: null };
+  };
+  // Stand-in for tournament_change_life(): adds to a side while the game is pending.
+  state.rpc.tournament_change_life = (args) => {
+    const t = state.tables.tournaments.find((r) => r.id === args.p_tournament_id)!;
+    const m = state.tables.tournament_matches.find((r) => r.id === args.p_match_id && r.tournament_id === t.id);
+    if (!m || m.result !== "pending" || !m.entrant_b) return { data: null, error: { code: "GGT02", message: "This game is over." } };
+    const start = t.starting_life as number;
+    const key = args.p_side === "a" ? "life_a" : "life_b";
+    m[key] = ((m[key] as number | null) ?? start) + (args.p_delta as number);
+    return { data: { life_a: (m.life_a as number | null) ?? start, life_b: (m.life_b as number | null) ?? start }, error: null };
   };
   state.rpc.tournament_form_teams = (args) => {
     for (const { keep, merge } of args.p_pairs as { keep: string; merge: string }[]) {
@@ -640,5 +653,113 @@ describe("sign-ups", () => {
     const late = await post({ action: "add-entrant", id: t.id, players: ["Late", "Comer"] });
     expect(late.status).toBe(200);
     expect(late.body.tournament.entrants).toHaveLength(3);
+  });
+});
+
+// ───────────────────────────── life and game times ─────────────────────────────
+
+describe("starting life", () => {
+  it("defaults to 40 for 1v1 and 60 for Two-Headed Giant, or what staff pick", async () => {
+    expect((await create("1v1", [["Alex"], ["Blair"]])).startingLife).toBe(40);
+    expect((await create("2hg", [["Alex", "Sam"], ["Jo", "Kim"]], "2HG")).startingLife).toBe(60);
+    const custom = await post({ action: "create", name: "Modern", format: "1v1", entrants: [["A"], ["B"]], startingLife: 20 });
+    expect(custom.body.tournament.startingLife).toBe(20);
+    const bad = await post({ action: "create", name: "X", format: "1v1", entrants: [["A"], ["B"]], startingLife: 0 });
+    expect(bad.status).toBe(400);
+    expect(bad.body.message).toMatch(/whole number from 1 to 999/);
+  });
+
+  it("staff can change it", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    expect((await post({ action: "starting-life", id: t.id, life: 30 })).body.tournament.startingLife).toBe(30);
+    expect((await post({ action: "starting-life", id: t.id, life: 1000 })).status).toBe(400);
+  });
+
+  it("sends the server's clock with every tournament, for game timers", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    expect(Date.parse(t.serverTime)).toBeGreaterThan(Date.now() - 60_000);
+    expect(Date.parse((await playerPost({ token: t.share.token, action: "get" })).body.tournament.serverTime)).toBeGreaterThan(0);
+  });
+});
+
+describe("life from players' phones", () => {
+  async function liveGame(names: string[][] = [["Alex"], ["Blair"], ["Casey"]]) {
+    const t = await create(names[0].length === 2 ? "2hg" : "1v1", names);
+    await post({ action: "pair", id: t.id, round: 1 });
+    const game = matchRows(1).find((m) => m.entrant_b !== null)!;
+    const bye = matchRows(1).find((m) => m.entrant_b === null);
+    return { t, game, bye };
+  }
+
+  it("adds each change to the right side and sends back both totals", async () => {
+    const { t, game } = await liveGame();
+    const res = await playerPost({ token: t.share.token, action: "life", matchId: game.id, side: "a", delta: -7 });
+    expect(res.status).toBe(200);
+    expect(res.body.life).toEqual({ a: 33, b: 40 });
+    expect(Date.parse(res.body.serverTime)).toBeGreaterThan(0);
+    await playerPost({ token: t.share.token, action: "life", matchId: game.id, side: "b", delta: 3 });
+    expect(game).toMatchObject({ life_a: 33, life_b: 43 });
+    const view = await playerPost({ token: t.share.token, action: "get" });
+    expect(view.body.tournament.matches.find((m: Body) => m.id === game.id)).toMatchObject({ lifeA: 33, lifeB: 43 });
+  });
+
+  it("refuses changes that don't make sense, for byes, and after the game", async () => {
+    const { t, game, bye } = await liveGame();
+    const life = (body: Body) => playerPost({ token: t.share.token, action: "life", matchId: game.id, side: "a", delta: -1, ...body });
+    expect((await life({ delta: 0 })).status).toBe(400);
+    expect((await life({ delta: 1000 })).status).toBe(400);
+    expect((await life({ delta: 1.5 })).status).toBe(400);
+    expect((await life({ side: "c" })).status).toBe(400);
+    expect((await life({ matchId: bye!.id })).status).toBe(404);
+    await post({ action: "report", id: t.id, matchId: game.id, result: "a" });
+    const over = await life({});
+    expect(over.status).toBe(409);
+    expect(over.body.message).toMatch(/game is over/);
+  });
+
+  it("'I lost' gives the game to the other side, stops its clock, and only counts once", async () => {
+    const { t, game } = await liveGame();
+    const res = await playerPost({ token: t.share.token, action: "lost", matchId: game.id, side: "a" });
+    expect(res.status).toBe(200);
+    expect(game).toMatchObject({ result: "b", reported_by: "player" });
+    expect(game.ended_at).toBeTruthy();
+    const shown = res.body.tournament.matches.find((m: Body) => m.id === game.id);
+    expect(shown).toMatchObject({ result: "b", endedAt: game.ended_at });
+    expect(JSON.stringify(res.body)).not.toContain("reported_by");
+    const again = await playerPost({ token: t.share.token, action: "lost", matchId: game.id, side: "b" });
+    expect(again.status).toBe(409);
+    expect(game.result).toBe("b");
+  });
+
+  it("Two-Headed Giant teammates change the same team total", async () => {
+    const { t, game } = await liveGame([["Alex", "Sam"], ["Jo", "Kim"]]);
+    await playerPost({ token: t.share.token, action: "life", matchId: game.id, side: "a", delta: -4 });
+    const res = await playerPost({ token: t.share.token, action: "life", matchId: game.id, side: "a", delta: -6 });
+    expect(res.body.life).toEqual({ a: 50, b: 60 });
+  });
+});
+
+describe("game times", () => {
+  it("a game ends when it's first decided; changing the winner keeps that time, clearing it resumes the clock", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    await post({ action: "pair", id: t.id, round: 1 });
+    const game = matchRows(1)[0];
+    expect(game.ended_at).toBeNull();
+    await post({ action: "report", id: t.id, matchId: game.id, result: "a" });
+    const ended = game.ended_at as string;
+    expect(ended).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 5));
+    await post({ action: "report", id: t.id, matchId: game.id, result: "b" });
+    expect(game.ended_at).toBe(ended);
+    await post({ action: "report", id: t.id, matchId: game.id, result: "pending" });
+    expect(game.ended_at).toBeNull();
+  });
+
+  it("a game handed over when a player drops ends then", async () => {
+    const t = await create("1v1", [["Alex"], ["Blair"]]);
+    await post({ action: "pair", id: t.id, round: 1 });
+    const game = matchRows(1)[0];
+    await post({ action: "remove-entrant", id: t.id, entrantId: game.entrant_a });
+    expect(game.ended_at).toBeTruthy();
   });
 });

@@ -2,8 +2,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { HttpError, methodNotAllowed, readJsonBody, sendJson } from "./_lib/http.js";
 import { checkRateLimit, getClientIp } from "./_lib/rateLimit.js";
 import {
+  changeLife,
   loadTournamentByToken,
   publicView,
+  reportLoss,
   searchCommanders,
   setCommander,
   signUp,
@@ -19,18 +21,24 @@ import {
 //   { token, action: "commander", entrantId, seat, commander }  -> { tournament }
 //   { token, action: "commander-search", query }                -> { options: { name, cardId }[] }
 //   { token, action: "sign-up", name, commander?, teamWith? }   -> { tournament, seat: { entrantId, seat }, started }
+//   { token, action: "life", matchId, side: "a"|"b", delta }   -> { life: { a, b }, serverTime }
+//   { token, action: "lost", matchId, side: "a"|"b" }          -> { tournament }   (that side lost the game)
 //
-// Players can sign up for an open spot (when staff set spots) and add or
-// change commanders. When the last spot fills, round 1 starts. Pairing,
-// results and everyone else's names stay with staff. The view never includes
-// the link itself or who recorded what.
+// Players can sign up for an open spot (when staff set spots), add or
+// change commanders, track life during a game and confirm they lost it.
+// When the last spot fills, round 1 starts. Pairing, names and any other
+// results stay with staff. The view never includes the link itself or who
+// recorded what.
 
 const MAX_BODY_BYTES = 2 * 1024;
 const WINDOW_MS = 10 * 60_000;
-// Per IP, per 10 minutes. A TV refreshes every 10s and phones every 20s, and a
-// room full of players usually shares the store's Wi-Fi address.
+// Per IP, per 10 minutes. While games are live a TV refreshes every 2.5s and
+// each phone every 5s, and a room full of players usually shares the store's
+// Wi-Fi address (32 phones + a TV ≈ 4,100 in 10 minutes).
 const LIMITS: Record<string, number> = {
-  get: 3000,
+  get: 12000,
+  life: 6000,
+  lost: 300,
   commander: 300,
   "commander-search": 600,
   "sign-up": 120,
@@ -65,6 +73,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         started,
         tournament: publicView(await loadTournamentByToken(body.token)),
       });
+    }
+    if (action === "life") {
+      const life = await changeLife(tournament, { matchId: body.matchId, side: body.side, delta: body.delta });
+      return sendJson(res, 200, {
+        ok: true,
+        life: { a: life.lifeA, b: life.lifeB },
+        serverTime: new Date().toISOString(),
+      });
+    }
+    if (action === "lost") {
+      await reportLoss(tournament, { matchId: body.matchId, side: body.side });
+      return sendJson(res, 200, { ok: true, tournament: publicView(await loadTournamentByToken(body.token)) });
     }
     if (action === "commander") {
       await setCommander(tournament, { entrantId: body.entrantId, seat: body.seat, commander: body.commander });

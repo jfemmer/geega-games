@@ -179,7 +179,19 @@ function entrant(id: string, players: string[], extra: Partial<TournamentEntrant
 let matchSeq = 0;
 function match(round: number, a: string, b: string | null, result: TournamentMatch["result"]): TournamentMatch {
   matchSeq += 1;
-  return { id: `m${matchSeq}`, round, table: matchSeq, a, b, result, reportedAt: null };
+  return {
+    id: `m${matchSeq}`,
+    round,
+    table: matchSeq,
+    a,
+    b,
+    result,
+    reportedAt: null,
+    lifeA: null,
+    lifeB: null,
+    startedAt: "2026-11-27T20:00:00.000Z",
+    endedAt: null,
+  };
 }
 
 describe("computeStandings", () => {

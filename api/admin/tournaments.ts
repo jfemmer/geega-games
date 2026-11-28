@@ -20,6 +20,7 @@ import {
   setCommander,
   setFinished,
   setSpots,
+  setStartingLife,
   startIfFull,
   startTournament,
   updateShare,
@@ -39,6 +40,7 @@ import {
 //        share           { enabled?, rotate? }   (the player display link)
 //        start                                   (round 1 now: makes any random 2HG teams, then pairs)
 //        spots           { spots: number | null } (sign-up spots; null turns sign-ups off)
+//        starting-life   { life }                 (life at the start of each game)
 //        remove-entrant  { entrantId }      (deleted before they've played, dropped after)
 //        restore-entrant { entrantId }
 //        pair            { round, replace? } (round = the round being written)
@@ -77,6 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         format: body.format,
         entrants: body.entrants,
         spots: body.spots,
+        startingLife: body.startingLife,
         actor: staff.email,
       });
       const tournament = await loadTournament(id);
@@ -105,6 +108,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case "start":
         await startTournament(tournament);
+        break;
+      case "starting-life":
+        await setStartingLife(tournament, body.life);
         break;
       case "spots":
         await setSpots(tournament, body.spots);

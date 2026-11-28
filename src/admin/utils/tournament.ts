@@ -31,6 +31,11 @@ export type ReportableResult = Exclude<MatchResult, "bye">;
 export const MAX_TOURNAMENT_NAME = 80;
 export const MAX_PLAYER_NAME = 40;
 export const MAX_COMMANDER_NAME = 120;
+/** Life at the start of a game, by format: Commander 40; Two-Headed Giant Commander, 60 per team. */
+export const DEFAULT_STARTING_LIFE: Record<"1v1" | "2hg", number> = { "1v1": 40, "2hg": 60 };
+export const MAX_STARTING_LIFE = 999;
+/** The most one life change may add or take away. */
+export const MAX_LIFE_CHANGE = 999;
 /** The player display: /tournament?t=<share token> (add &view=tv for a big screen). */
 import { TOURNAMENT_PATH } from "../../store/lib/tournamentPath.js";
 export { TOURNAMENT_PATH };
@@ -67,6 +72,13 @@ export interface TournamentMatch {
   b: string | null;
   result: MatchResult;
   reportedAt: string | null;
+  /** Life now for each side while the game is played (null = the starting life). */
+  lifeA: number | null;
+  lifeB: number | null;
+  /** When the round was paired: the game clock starts here. */
+  startedAt: string;
+  /** When the result was first recorded (null while playing). */
+  endedAt: string | null;
 }
 
 export interface TournamentSummary {
@@ -94,6 +106,10 @@ export interface TournamentDetail {
   share?: { token: string; enabled: boolean };
   /** Player spots players fill by signing up on the player display; null = staff enter everyone. */
   spots: number | null;
+  /** Life at the start of each game (per player in 1v1, per team in Two-Headed Giant). */
+  startingLife: number;
+  /** The server's clock when this was sent, so game timers don't depend on the device's clock. */
+  serverTime?: string;
 }
 
 export function isTournamentFormat(value: unknown): value is TournamentFormat {
@@ -106,6 +122,41 @@ export function formatInfo(format: TournamentFormat) {
 
 export function isReportableResult(value: unknown): value is ReportableResult {
   return value === "a" || value === "b" || value === "draw" || value === "pending";
+}
+
+/** A side's life in a game: what's been tracked, or the starting life. */
+export function lifeOf(match: Pick<TournamentMatch, "lifeA" | "lifeB">, side: "a" | "b", startingLife: number): number {
+  const life = side === "a" ? match.lifeA : match.lifeB;
+  return life ?? startingLife;
+}
+
+/** "4:05", "41:23" or "1:02:09". */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+
+/**
+ * How long a game has run: from when the round was paired to when its result
+ * was recorded, or to `now` while it's being played. Null for a bye.
+ */
+export function gameDuration(match: Pick<TournamentMatch, "b" | "startedAt" | "endedAt">, now: number): number | null {
+  if (match.b == null || !match.startedAt) return null;
+  const start = new Date(match.startedAt).getTime();
+  const end = match.endedAt ? new Date(match.endedAt).getTime() : now;
+  return Math.max(0, end - start);
+}
+
+/** Why a starting life won't do, or null. */
+export function startingLifeProblem(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_STARTING_LIFE) {
+    return `Starting life is a whole number from 1 to ${MAX_STARTING_LIFE}.`;
+  }
+  return null;
 }
 
 /** "Alex" for a player, "Alex & Sam" for a team. */

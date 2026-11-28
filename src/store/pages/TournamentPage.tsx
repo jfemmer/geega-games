@@ -26,6 +26,11 @@ import "../../admin/admin.css";
 
 const TV_REFRESH_MS = 10_000;
 const PHONE_REFRESH_MS = 20_000;
+/** While games are being played, so life totals on the TV keep up. */
+const TV_LIVE_REFRESH_MS = 2_500;
+/** A phone whose player is in a game (their opponent's life), or watching games. */
+const PHONE_PLAYING_REFRESH_MS = 5_000;
+const PHONE_WATCHING_REFRESH_MS = 10_000;
 /** The smallest type the TV shrinks to so the whole bracket fits (px per rem). */
 const MIN_TV_FONT_PX = 12;
 
@@ -136,15 +141,41 @@ function TournamentScreen() {
   const [error, setError] = useState<{ message: string; gone: boolean } | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [me, setMe] = useState<SavedMe | null>(() => (token ? readMe(token) : null));
+  const [clockOffset, setClockOffset] = useState(0);
   const busy = useRef(false);
+  // Life totals this phone saved, by game, with the server time they were
+  // saved: a refresh that left the server before them doesn't undo them.
+  const savedLife = useRef(new Map<string, { lifeA: number; lifeB: number; at: number }>());
+
+  /** Takes a tournament from the server: keeps newer life totals saved here, and the server's clock. */
+  const receive = useCallback((next: TournamentDetail) => {
+    const at = next.serverTime ? Date.parse(next.serverTime) : NaN;
+    if (Number.isFinite(at)) setClockOffset(at - Date.now());
+    const mine = savedLife.current;
+    if (mine.size > 0) {
+      next = {
+        ...next,
+        matches: next.matches.map((m) => {
+          const saved = mine.get(m.id);
+          if (!saved || m.result !== "pending") return m;
+          if (Number.isFinite(at) && saved.at <= at) {
+            mine.delete(m.id);
+            return m;
+          }
+          return { ...m, lifeA: saved.lifeA, lifeB: saved.lifeB };
+        }),
+      };
+    }
+    setTournament(next);
+    setUpdatedAt(new Date());
+  }, []);
 
   const load = useCallback(async () => {
     if (!token || busy.current) return;
     busy.current = true;
     try {
       const res = await post<{ tournament: TournamentDetail }>({ token, action: "get" });
-      setTournament(res.tournament);
-      setUpdatedAt(new Date());
+      receive(res.tournament);
       setError(null);
     } catch (err) {
       const e = err as ApiError;
@@ -152,18 +183,42 @@ function TournamentScreen() {
     } finally {
       busy.current = false;
     }
-  }, [token]);
+  }, [token, receive]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Keep up with the room: refresh while the screen is showing, right away
-  // when it comes back. A link that's been turned off stops refreshing.
+  // Keep up with the room: refresh while the screen is showing (faster while
+  // games are being played), right away when it comes back. A link that's
+  // been turned off stops refreshing.
   const gone = error?.gone ?? false;
+  const resolvedMe = tournament ? resolveMe(tournament, me) : null;
+  const live =
+    tournament != null &&
+    tournament.status === "active" &&
+    tournament.matches.some((m) => m.round === tournament.currentRound && m.b != null && m.result === "pending");
+  const playing =
+    live &&
+    resolvedMe != null &&
+    tournament!.matches.some(
+      (m) =>
+        m.round === tournament!.currentRound &&
+        m.result === "pending" &&
+        m.b != null &&
+        (m.a === resolvedMe.entrantId || m.b === resolvedMe.entrantId),
+    );
   useEffect(() => {
     if (!token || gone) return;
-    const every = tv ? TV_REFRESH_MS : PHONE_REFRESH_MS;
+    const every = tv
+      ? live
+        ? TV_LIVE_REFRESH_MS
+        : TV_REFRESH_MS
+      : playing
+        ? PHONE_PLAYING_REFRESH_MS
+        : live
+          ? PHONE_WATCHING_REFRESH_MS
+          : PHONE_REFRESH_MS;
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void load();
     }, every);
@@ -175,11 +230,12 @@ function TournamentScreen() {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [token, tv, gone, load]);
+  }, [token, tv, gone, load, live, playing]);
 
-  // A TV or tablet showing the bracket shouldn't go to sleep.
+  // A TV showing the bracket, or a phone tracking life on the table, shouldn't go to sleep.
+  const keepAwake = tv || playing;
   useEffect(() => {
-    if (!tv || !("wakeLock" in navigator)) return;
+    if (!keepAwake || !("wakeLock" in navigator)) return;
     let lock: { release: () => Promise<void> } | null = null;
     const request = () => {
       navigator.wakeLock
@@ -198,7 +254,7 @@ function TournamentScreen() {
       document.removeEventListener("visibilitychange", onVisible);
       void lock?.release().catch(() => undefined);
     };
-  }, [tv]);
+  }, [keepAwake]);
 
   // A TV can't scroll: shrink the type (every size is in rem) until the whole
   // bracket fits the screen, down to a readable minimum. Runs before paint.
@@ -258,8 +314,7 @@ function TournamentScreen() {
         const next = { ...res.seat, name: input.name };
         setMe(next);
         writeMe(token, next);
-        setTournament(res.tournament);
-        setUpdatedAt(new Date());
+        receive(res.tournament);
         toast.success(res.started ? "You're in, and round 1 is paired. Find your table below." : `You're in, ${input.name}!`);
         return true;
       } catch (err) {
@@ -268,7 +323,7 @@ function TournamentScreen() {
         return false;
       }
     },
-    [token, toast, load],
+    [token, toast, load, receive],
   );
 
   const saveCommander = useCallback(
@@ -281,8 +336,7 @@ function TournamentScreen() {
           seat: seat.seat,
           commander,
         });
-        setTournament(res.tournament);
-        setUpdatedAt(new Date());
+        receive(res.tournament);
         toast.success(commander ? `Saved: ${commander.name}. Good luck!` : "Commander removed.");
         return true;
       } catch (err) {
@@ -290,7 +344,51 @@ function TournamentScreen() {
         return false;
       }
     },
-    [token, toast],
+    [token, toast, receive],
+  );
+
+  const changeLife = useCallback(
+    async (matchId: string, side: "a" | "b", delta: number): Promise<boolean> => {
+      try {
+        const res = await post<{ life: { a: number; b: number }; serverTime: string }>({
+          token,
+          action: "life",
+          matchId,
+          side,
+          delta,
+        });
+        const at = Date.parse(res.serverTime);
+        savedLife.current.set(matchId, { lifeA: res.life.a, lifeB: res.life.b, at: Number.isFinite(at) ? at : Date.now() });
+        setTournament((t) =>
+          t
+            ? { ...t, matches: t.matches.map((m) => (m.id === matchId ? { ...m, lifeA: res.life.a, lifeB: res.life.b } : m)) }
+            : t,
+        );
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't update your life total.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load],
+  );
+
+  const reportLost = useCallback(
+    async (matchId: string, side: "a" | "b"): Promise<boolean> => {
+      try {
+        const res = await post<{ tournament: TournamentDetail }>({ token, action: "lost", matchId, side });
+        savedLife.current.delete(matchId);
+        receive(res.tournament);
+        toast.success("Game recorded. Good game!");
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't record the game. Please try again.");
+        void load();
+        return false;
+      }
+    },
+    [token, toast, load, receive],
   );
 
   const searchCommanders = useCallback(
@@ -334,7 +432,7 @@ function TournamentScreen() {
     );
   }
 
-  const currentMe = resolveMe(tournament, me);
+  const currentMe = resolvedMe;
   const origin = window.location.origin;
   return (
     <>
@@ -358,6 +456,9 @@ function TournamentScreen() {
         onPickMe={pickMe}
         onSaveCommander={saveCommander}
         onSignUp={signUp}
+        onChangeLife={changeLife}
+        onLost={reportLost}
+        clockOffset={clockOffset}
         searchCommanders={searchCommanders}
         updatedAt={updatedAt}
         onFullscreen={fullscreen}

@@ -4820,9 +4820,12 @@ export type Database = {
       tournament_matches: {
         Row: {
           created_at: string
+          ended_at: string | null
           entrant_a: string
           entrant_b: string | null
           id: string
+          life_a: number | null
+          life_b: number | null
           reported_at: string | null
           reported_by: string | null
           result: string
@@ -4833,9 +4836,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          ended_at?: string | null
           entrant_a: string
           entrant_b?: string | null
           id?: string
+          life_a?: number | null
+          life_b?: number | null
           reported_at?: string | null
           reported_by?: string | null
           result?: string
@@ -4846,9 +4852,12 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          ended_at?: string | null
           entrant_a?: string
           entrant_b?: string | null
           id?: string
+          life_a?: number | null
+          life_b?: number | null
           reported_at?: string | null
           reported_by?: string | null
           result?: string
@@ -4893,6 +4902,7 @@ export type Database = {
           share_enabled: boolean
           share_token: string
           spots: number | null
+          starting_life: number
           status: string
           updated_at: string
         }
@@ -4907,6 +4917,7 @@ export type Database = {
           share_enabled?: boolean
           share_token?: string
           spots?: number | null
+          starting_life?: number
           status?: string
           updated_at?: string
         }
@@ -4921,6 +4932,7 @@ export type Database = {
           share_enabled?: boolean
           share_token?: string
           spots?: number | null
+          starting_life?: number
           status?: string
           updated_at?: string
         }
@@ -7293,6 +7305,10 @@ export type Database = {
           p_price_cents: number
         }
         Returns: number
+      }
+      tournament_change_life: {
+        Args: { p_delta: number; p_match_id: string; p_side: string; p_tournament_id: string }
+        Returns: Json
       }
       tournament_form_teams: {
         Args: { p_pairs: Json; p_tournament_id: string }

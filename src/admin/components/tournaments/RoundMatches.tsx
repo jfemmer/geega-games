@@ -1,5 +1,5 @@
 import { Icon } from "../ui/Icon";
-import type { ReportableResult, TournamentMatch } from "../../utils/tournament";
+import { formatDuration, gameDuration, lifeOf, type ReportableResult, type TournamentMatch } from "../../utils/tournament";
 
 // One round's pairings. Tap a side to record who won (tap it again to clear,
 // in the round being played), or Draw. Byes are listed last; they count as a
@@ -11,8 +11,14 @@ export function RoundMatches({
   editable,
   allowClear,
   onReport,
+  startingLife,
+  now,
 }: {
   matches: TournamentMatch[];
+  /** For life totals players track on their phones. */
+  startingLife: number;
+  /** Server-adjusted time now, for game clocks. */
+  now: number;
   /** Entrant id → "Alex" or "Alex & Sam". */
   labels: Map<string, string>;
   /** False once the tournament is finished. */
@@ -41,6 +47,8 @@ export function RoundMatches({
             editable={editable}
             allowClear={allowClear}
             onReport={onReport}
+            startingLife={startingLife}
+            now={now}
           />
         ),
       )}
@@ -55,7 +63,11 @@ function MatchRow({
   editable,
   allowClear,
   onReport,
+  startingLife,
+  now,
 }: {
+  startingLife: number;
+  now: number;
   match: TournamentMatch;
   labelA: string;
   labelB: string;
@@ -73,8 +85,11 @@ function MatchRow({
   };
   const disabled = !editable;
 
+  const tracked = match.lifeA != null || match.lifeB != null;
+  const elapsed = gameDuration(match, now);
   const side = (key: "a" | "b", label: string) => {
     const won = match.result === key;
+    const life = lifeOf(match, key, startingLife);
     const lost = decided && !won && match.result !== "draw";
     return (
       <button
@@ -86,6 +101,11 @@ function MatchRow({
         onClick={() => pick(key)}
       >
         <span className="gg-tourney-side__name">{label}</span>
+        {tracked && (
+          <span className={`gg-tourney-side__life ${life <= 0 ? "is-out" : ""}`} title="Life (tracked on their phone)">
+            {life}
+          </span>
+        )}
         {won && (
           <span className="gg-tourney-side__tag">
             <Icon name="check" size={14} />
@@ -98,7 +118,14 @@ function MatchRow({
 
   return (
     <li className={`gg-tourney-match ${decided ? "is-decided" : ""}`}>
-      <span className="gg-tourney-match__table">Table {match.table}</span>
+      <span className="gg-tourney-match__table">
+        Table {match.table}
+        {elapsed != null && (
+          <span className="gg-tourney-match__clock">
+            <Icon name="clock" size={11} /> {formatDuration(elapsed)}
+          </span>
+        )}
+      </span>
       <div className="gg-tourney-match__sides" role="group" aria-label={`Table ${match.table}: ${labelA} vs ${labelB}`}>
         {side("a", labelA)}
         <span className="gg-tourney-match__vs" aria-hidden="true">
